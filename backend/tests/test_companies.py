@@ -4,13 +4,18 @@ from sqlalchemy.orm import Session
 from bedrock.models.company import Company
 
 
-def test_companies_empty(client: TestClient) -> None:
+def test_companies_requires_session(client: TestClient) -> None:
     response = client.get("/api/v1/companies")
+    assert response.status_code == 401
+
+
+def test_companies_empty(authed_client: TestClient) -> None:
+    response = authed_client.get("/api/v1/companies")
     assert response.status_code == 200
     assert response.json() == []
 
 
-def test_companies_returns_seeded_row(client: TestClient, db_session: Session) -> None:
+def test_companies_returns_seeded_row(authed_client: TestClient, db_session: Session) -> None:
     company = Company(
         ticker="AAPL",
         cik="0000320193",
@@ -23,7 +28,7 @@ def test_companies_returns_seeded_row(client: TestClient, db_session: Session) -
     db_session.add(company)
     db_session.commit()
 
-    response = client.get("/api/v1/companies")
+    response = authed_client.get("/api/v1/companies")
     assert response.status_code == 200
     body = response.json()
     assert len(body) == 1
