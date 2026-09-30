@@ -5,7 +5,7 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, inspect
 
-from bedrock.core.config import get_settings
+from bedrock.core.config import load_settings
 
 
 def test_alembic_upgrade_head_creates_company_table(
@@ -16,7 +16,7 @@ def test_alembic_upgrade_head_creates_company_table(
 
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
     monkeypatch.setenv("DATABASE_URL", database_url)
-    get_settings.cache_clear()
+    load_settings.cache_clear()
 
     backend_dir = Path(__file__).resolve().parent.parent
     config = Config(str(backend_dir / "alembic.ini"))
@@ -25,7 +25,7 @@ def test_alembic_upgrade_head_creates_company_table(
     try:
         command.upgrade(config, "head")
     finally:
-        get_settings.cache_clear()
+        load_settings.cache_clear()
 
     engine = create_engine(database_url)
     inspector = inspect(engine)

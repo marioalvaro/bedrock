@@ -2,7 +2,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from bedrock.core.auth import get_clock, require_session, verify_password
+from bedrock.core.auth import get_clock, require_session, start_session, verify_password
 from bedrock.core.config import Settings, get_settings
 from bedrock.schemas.auth import AuthStatus, LoginRequest
 
@@ -27,8 +27,7 @@ def login(
         raise HTTPException(status_code=401)
 
     throttle.record_success(client_ip)
-    request.session["auth"] = True
-    request.session["last_seen"] = now.isoformat()
+    start_session(request.session, now)
 
 
 @router.post("/logout", status_code=204)

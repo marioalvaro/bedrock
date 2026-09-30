@@ -1,4 +1,6 @@
+from collections.abc import MutableMapping
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError, VerifyMismatchError
@@ -22,25 +24,30 @@ class LoginThrottle:
     def __init__(self, window_minutes: int = 15, max_failures: int = 5) -> None:
         self._window = timedelta(minutes=window_minutes)
         self._max_failures = max_failures
-        self._state: dict[str, tuple[int, datetime]] = {}
+        # Per key: failure times within one window of the most recent failure.
+        self._failures: dict[str, list[datetime]] = {}
 
     def is_blocked(self, key: str, now: datetime) -> bool:
-        state = self._state.get(key)
-        if state is None:
+        failures = self._failures.get(key)
+        if not failures:
             return False
-        count, last_failure_at = state
-        return count >= self._max_failures and now - last_failure_at < self._window
+        return len(failures) >= self._max_failures and now - failures[-1] < self._window
 
     def record_failure(self, key: str, now: datetime) -> None:
-        count = self._state.get(key, (0, now))[0] + 1
-        self._state[key] = (count, now)
+        recent = [t for t in self._failures.get(key, []) if now - t < self._window]
+        self._failures[key] = [*recent, now]
 
     def record_success(self, key: str) -> None:
-        self._state.pop(key, None)
+        self._failures.pop(key, None)
 
 
 def get_clock() -> datetime:
     return datetime.now(UTC)
+
+
+def start_session(session: MutableMapping[str, Any], now: datetime) -> None:
+    session["auth"] = True
+    session["last_seen"] = now.isoformat()
 
 
 def require_session(

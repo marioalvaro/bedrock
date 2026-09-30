@@ -8,7 +8,6 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from bedrock.core.config import Settings
-from bedrock.core.db import make_engine, make_sessionmaker
 from bedrock.main import create_app
 from bedrock.models.base import Base
 
@@ -26,26 +25,23 @@ def settings(tmp_path: Path) -> Settings:
 
 
 @pytest.fixture
-def db_session(settings: Settings) -> Generator[Session, None, None]:
-    engine = make_engine(settings.resolved_database_url)
-    Base.metadata.create_all(engine)
-    session_factory = make_sessionmaker(engine)
-    session = session_factory()
-    try:
-        yield session
-    finally:
-        session.close()
-
-
-@pytest.fixture
-def app(settings: Settings, db_session: Session) -> FastAPI:
+def app(settings: Settings) -> FastAPI:
     return create_app(settings=settings)
 
 
 @pytest.fixture
 def client(app: FastAPI) -> Generator[TestClient, None, None]:
+    # Entering the client runs the lifespan, which opens the app's engine.
     with TestClient(app) as test_client:
+        Base.metadata.create_all(app.state.engine)
         yield test_client
+
+
+@pytest.fixture
+def db_session(app: FastAPI, client: TestClient) -> Generator[Session, None, None]:
+    """A session on the running app's own database."""
+    with app.state.session_factory() as session:
+        yield session
 
 
 @pytest.fixture

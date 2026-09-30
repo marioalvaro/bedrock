@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from fastapi import Request
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -25,5 +26,12 @@ class Settings(BaseSettings):
 
 
 @lru_cache
-def get_settings() -> Settings:
+def load_settings() -> Settings:
+    """Settings from the environment, for code that runs outside a request (CLI, Alembic)."""
     return Settings()
+
+
+def get_settings(request: Request) -> Settings:
+    """The settings the running app was built with."""
+    settings: Settings = request.app.state.settings
+    return settings

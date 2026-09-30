@@ -4,7 +4,7 @@ from argon2 import PasswordHasher
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from bedrock.core.auth import LoginThrottle, get_clock, verify_password
+from bedrock.core.auth import LoginThrottle, get_clock, start_session, verify_password
 from bedrock.core.config import Settings
 
 from .conftest import TEST_PASSWORD
@@ -50,6 +50,32 @@ def test_login_throttle_unblocks_15min_after_last_failure() -> None:
     assert throttle.is_blocked("1.2.3.4", later) is False
 
 
+def test_login_throttle_only_counts_failures_within_window() -> None:
+    throttle = LoginThrottle()
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+    for day in range(5):
+        throttle.record_failure("1.2.3.4", start + timedelta(days=day))
+    assert throttle.is_blocked("1.2.3.4", start + timedelta(days=4, minutes=1)) is False
+
+
+def test_login_throttle_single_failure_after_lockout_does_not_reblock() -> None:
+    throttle = LoginThrottle()
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    for _ in range(5):
+        throttle.record_failure("1.2.3.4", now)
+    later = now + timedelta(minutes=16)
+    throttle.record_failure("1.2.3.4", later)
+    assert throttle.is_blocked("1.2.3.4", later) is False
+
+
+def test_login_throttle_blocks_five_failures_just_inside_window() -> None:
+    throttle = LoginThrottle()
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+    for minute in (0, 4, 8, 12, 14):
+        throttle.record_failure("1.2.3.4", start + timedelta(minutes=minute))
+    assert throttle.is_blocked("1.2.3.4", start + timedelta(minutes=14)) is True
+
+
 def test_login_throttle_success_resets_count() -> None:
     throttle = LoginThrottle()
     now = datetime(2026, 1, 1, tzinfo=UTC)
@@ -65,6 +91,13 @@ def test_login_throttle_keys_are_independent() -> None:
     for _ in range(5):
         throttle.record_failure("1.2.3.4", now)
     assert throttle.is_blocked("5.6.7.8", now) is False
+
+
+def test_start_session_marks_authenticated_and_stamps_activity() -> None:
+    session: dict[str, object] = {}
+    now = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+    start_session(session, now)
+    assert session == {"auth": True, "last_seen": now.isoformat()}
 
 
 def test_login_correct_password_sets_cookie(client: TestClient) -> None:
@@ -113,6 +146,24 @@ def test_idle_expiry(app: FastAPI, client: TestClient, settings: Settings) -> No
     app.dependency_overrides[get_clock] = lambda: later
     response = client.get("/api/v1/auth/me")
     assert response.status_code == 401
+
+
+def test_activity_refreshes_idle_timeout(
+    app: FastAPI, client: TestClient, settings: Settings
+) -> None:
+    base_time = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+    idle = timedelta(minutes=settings.session_idle_minutes)
+    app.dependency_overrides[get_clock] = lambda: base_time
+    assert client.post("/api/v1/auth/login", json={"password": TEST_PASSWORD}).status_code == 204
+
+    active_at = base_time + idle - timedelta(minutes=1)
+    app.dependency_overrides[get_clock] = lambda: active_at
+    assert client.get("/api/v1/auth/me").status_code == 200
+
+    # Past the idle limit counted from login, but within it counted from the last request.
+    later = base_time + idle + timedelta(minutes=1)
+    app.dependency_overrides[get_clock] = lambda: later
+    assert client.get("/api/v1/auth/me").status_code == 200
 
 
 def test_health_is_public(client: TestClient) -> None:
