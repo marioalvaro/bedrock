@@ -3,9 +3,11 @@ from datetime import UTC, datetime, timedelta
 from argon2 import PasswordHasher
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from httpx import Response
 
 from bedrock.core.auth import LoginThrottle, get_clock, start_session, verify_password
 from bedrock.core.config import Settings
+from bedrock.main import create_app
 
 from .conftest import TEST_PASSWORD
 
@@ -169,3 +171,84 @@ def test_activity_refreshes_idle_timeout(
 def test_health_is_public(client: TestClient) -> None:
     response = client.get("/api/v1/health")
     assert response.status_code == 200
+
+
+def _set_cookie(response: Response) -> str:
+    return response.headers["set-cookie"].lower()
+
+
+def test_session_cookie_is_httponly_lax_and_not_secure_by_default(client: TestClient) -> None:
+    response = client.post("/api/v1/auth/login", json={"password": TEST_PASSWORD})
+    cookie = _set_cookie(response)
+    assert "httponly" in cookie
+    assert "samesite=lax" in cookie
+    assert "secure" not in cookie
+
+
+def test_cookie_secure_setting_marks_the_session_cookie_secure(settings: Settings) -> None:
+    app = create_app(settings=settings.model_copy(update={"cookie_secure": True}))
+    with TestClient(app) as secure_client:
+        response = secure_client.post("/api/v1/auth/login", json={"password": TEST_PASSWORD})
+    assert "secure" in _set_cookie(response)
+
+
+def test_session_cookie_signed_with_another_secret_is_rejected(settings: Settings) -> None:
+    other = create_app(settings=settings.model_copy(update={"session_secret": "other-secret"}))
+    with TestClient(other) as other_client:
+        other_client.post("/api/v1/auth/login", json={"password": TEST_PASSWORD})
+        forged = other_client.cookies["bedrock_session"]
+
+    with TestClient(create_app(settings=settings)) as client:
+        client.cookies.set("bedrock_session", forged)
+        assert client.get("/api/v1/auth/me").status_code == 401
+
+
+def test_correct_password_while_throttled_is_still_429(client: TestClient) -> None:
+    for _ in range(5):
+        client.post("/api/v1/auth/login", json={"password": "nope"})
+    response = client.post("/api/v1/auth/login", json={"password": TEST_PASSWORD})
+    assert response.status_code == 429
+    assert client.get("/api/v1/auth/me").status_code == 401
+
+
+def test_successful_login_resets_the_failure_count(client: TestClient) -> None:
+    for _ in range(4):
+        client.post("/api/v1/auth/login", json={"password": "nope"})
+    assert client.post("/api/v1/auth/login", json={"password": TEST_PASSWORD}).status_code == 204
+    for _ in range(4):
+        client.post("/api/v1/auth/login", json={"password": "nope"})
+    response = client.post("/api/v1/auth/login", json={"password": "nope"})
+    assert response.status_code == 401
+
+
+def test_attempts_during_lockout_do_not_extend_it(app: FastAPI, client: TestClient) -> None:
+    start = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+    app.dependency_overrides[get_clock] = lambda: start
+    for _ in range(5):
+        client.post("/api/v1/auth/login", json={"password": "nope"})
+
+    during = start + timedelta(minutes=10)
+    app.dependency_overrides[get_clock] = lambda: during
+    assert client.post("/api/v1/auth/login", json={"password": "nope"}).status_code == 429
+
+    # 15 min after the last *real* failure, not after the blocked attempt.
+    after = start + timedelta(minutes=15, seconds=1)
+    app.dependency_overrides[get_clock] = lambda: after
+    response = client.post("/api/v1/auth/login", json={"password": TEST_PASSWORD})
+    assert response.status_code == 204
+
+
+def test_idle_expiry_clears_the_session(
+    app: FastAPI, client: TestClient, settings: Settings
+) -> None:
+    base_time = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+    app.dependency_overrides[get_clock] = lambda: base_time
+    assert client.post("/api/v1/auth/login", json={"password": TEST_PASSWORD}).status_code == 204
+
+    later = base_time + timedelta(minutes=settings.session_idle_minutes + 1)
+    app.dependency_overrides[get_clock] = lambda: later
+    assert client.get("/api/v1/auth/me").status_code == 401
+
+    # The expired session is gone, not just rejected at that moment.
+    app.dependency_overrides[get_clock] = lambda: base_time
+    assert client.get("/api/v1/auth/me").status_code == 401

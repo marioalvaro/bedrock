@@ -85,6 +85,13 @@ describe("protected routes", () => {
     expect(screen.queryByText(/No companies yet/)).not.toBeInTheDocument();
   });
 
+  it("shows the empty state when there are no companies yet", async () => {
+    renderAt("/");
+
+    expect(await screen.findByText(/No companies yet/)).toBeInTheDocument();
+    expect(screen.queryByText("Could not load companies.")).not.toBeInTheDocument();
+  });
+
   it("lists companies from the API", async () => {
     vi.mocked(getCompaniesApiV1CompaniesGet).mockResolvedValue(
       okResult([

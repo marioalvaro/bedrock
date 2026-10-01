@@ -16,11 +16,19 @@ TEST_PASSWORD = "test-password"
 
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
+    # Every field pinned, and no .env read: init values beat env vars, so nothing in
+    # the developer's environment can change what the suite tests (G11).
     return Settings(
+        _env_file=None,
         data_dir=tmp_path,
         database_url=f"sqlite:///{tmp_path}/bedrock.db",
+        sec_user_agent=None,
+        fred_api_key=None,
         app_password_hash=PasswordHasher().hash(TEST_PASSWORD),
         session_secret="test-secret",
+        session_idle_minutes=720,
+        cookie_secure=False,
+        static_dir=None,
     )
 
 

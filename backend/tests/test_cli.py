@@ -24,3 +24,9 @@ def test_export_openapi_writes_valid_json_with_companies_path(tmp_path: Path) ->
 
     schema = json.loads(out_path.read_text())
     assert "/api/v1/companies" in schema["paths"]
+
+
+def test_hash_password_mismatch_exits_nonzero_without_a_hash() -> None:
+    result = runner.invoke(app, ["hash-password"], input="first-pass\nsecond-pass\n")
+    assert result.exit_code == 1
+    assert "$argon2" not in result.stdout

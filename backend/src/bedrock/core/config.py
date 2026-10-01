@@ -19,11 +19,20 @@ class Settings(BaseSettings):
     cookie_secure: bool = False
     static_dir: Path | None = None
 
-    @field_validator("static_dir", mode="before")
+    @field_validator("database_url", "sec_user_agent", "fred_api_key", "static_dir", mode="before")
     @classmethod
-    def _blank_static_dir_is_unset(cls, value: object) -> object:
-        # Docker cannot unset an inherited ENV, so the dev profile sets STATIC_DIR="".
+    def _blank_is_unset(cls, value: object) -> object:
+        # `KEY=` (as shipped in .env.example, or STATIC_DIR="" in the dev profile, since
+        # Docker cannot unset an inherited ENV) means "not configured", not "" (G9).
         return None if value == "" else value
+
+    @field_validator("session_secret")
+    @classmethod
+    def _session_secret_must_be_set(cls, value: str) -> str:
+        # A blank secret signs cookies with a key anyone can reproduce (G10).
+        if not value.strip():
+            raise ValueError("SESSION_SECRET must not be blank")
+        return value
 
     @property
     def resolved_database_url(self) -> str:
