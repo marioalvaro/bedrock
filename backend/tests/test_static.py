@@ -71,7 +71,7 @@ def test_without_static_dir_root_is_404(client: TestClient) -> None:
 def test_empty_static_dir_env_means_unset(monkeypatch: pytest.MonkeyPatch) -> None:
     # Docker cannot unset an inherited ENV, so the dev profile blanks STATIC_DIR instead.
     monkeypatch.setenv("STATIC_DIR", "")
-    assert Settings(_env_file=None).static_dir is None
+    assert Settings(_env_file=None, session_secret="test-secret").static_dir is None
 
 
 @pytest.mark.parametrize("path", ["/api", "/api/"])

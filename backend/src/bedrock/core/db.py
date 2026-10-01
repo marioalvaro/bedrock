@@ -1,7 +1,5 @@
-from collections.abc import Generator
 from pathlib import Path
 
-from fastapi import Request
 from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -27,9 +25,3 @@ def make_engine(url: str) -> Engine:
 
 def make_sessionmaker(engine: Engine) -> sessionmaker[Session]:
     return sessionmaker(bind=engine, autoflush=False, autocommit=False)
-
-
-def get_session(request: Request) -> Generator[Session, None, None]:
-    session_factory: sessionmaker[Session] = request.app.state.session_factory
-    with session_factory() as session:
-        yield session

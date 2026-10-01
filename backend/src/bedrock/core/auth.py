@@ -1,21 +1,24 @@
 from collections.abc import MutableMapping
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
+from enum import Enum
 from typing import Any
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError, VerifyMismatchError
-from fastapi import Depends, HTTPException, Request
-
-from bedrock.core.config import Settings, get_settings
 
 _hasher = PasswordHasher()
 
+# The session cookie's payload. A session is authenticated while it holds a
+# `last_seen` stamp younger than the idle limit; nothing else is stored.
+SessionData = MutableMapping[str, Any]
+_LAST_SEEN = "last_seen"
 
-def verify_password(plain: str, settings: Settings) -> bool:
-    if not settings.app_password_hash:
+
+def verify_password(plain: str, password_hash: str) -> bool:
+    if not password_hash:
         return False
     try:
-        return _hasher.verify(settings.app_password_hash, plain)
+        return _hasher.verify(password_hash, plain)
     except (VerifyMismatchError, VerificationError):
         return False
 
@@ -41,30 +44,41 @@ class LoginThrottle:
         self._failures.pop(key, None)
 
 
-def get_clock() -> datetime:
-    return datetime.now(UTC)
+class LoginResult(Enum):
+    OK = "ok"
+    WRONG_PASSWORD = "wrong_password"
+    THROTTLED = "throttled"
 
 
-def start_session(session: MutableMapping[str, Any], now: datetime) -> None:
-    session["auth"] = True
-    session["last_seen"] = now.isoformat()
+def attempt_login(
+    password: str, password_hash: str, throttle: LoginThrottle, key: str, now: datetime
+) -> LoginResult:
+    # A blocked key is refused before the password is checked, so attempts during a
+    # lockout neither succeed nor extend it.
+    if throttle.is_blocked(key, now):
+        return LoginResult.THROTTLED
+    if not verify_password(password, password_hash):
+        throttle.record_failure(key, now)
+        return LoginResult.WRONG_PASSWORD
+    throttle.record_success(key)
+    return LoginResult.OK
 
 
-def require_session(
-    request: Request,
-    settings: Settings = Depends(get_settings),
-    now: datetime = Depends(get_clock),
-) -> None:
-    session = request.session
-    if not session.get("auth"):
-        raise HTTPException(status_code=401)
+def start_session(session: SessionData, now: datetime) -> None:
+    session[_LAST_SEEN] = now.isoformat()
 
-    last_seen_raw = session.get("last_seen")
-    last_seen = datetime.fromisoformat(last_seen_raw) if last_seen_raw else None
-    idle_limit = timedelta(minutes=settings.session_idle_minutes)
 
-    if last_seen is None or now - last_seen > idle_limit:
-        session.clear()
-        raise HTTPException(status_code=401)
+def end_session(session: SessionData) -> None:
+    session.clear()
 
-    session["last_seen"] = now.isoformat()
+
+def refresh_session(session: SessionData, now: datetime, idle_limit: timedelta) -> bool:
+    """True, and stamps the activity, if the session is live; clears an idle one."""
+    last_seen = session.get(_LAST_SEEN)
+    if last_seen is None:
+        return False
+    if now - datetime.fromisoformat(last_seen) > idle_limit:
+        end_session(session)
+        return False
+    start_session(session, now)
+    return True

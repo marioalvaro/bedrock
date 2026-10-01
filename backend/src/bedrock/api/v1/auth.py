@@ -2,11 +2,17 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from bedrock.core.auth import get_clock, require_session, start_session, verify_password
-from bedrock.core.config import Settings, get_settings
+from bedrock.api.deps import get_clock, get_login_throttle, get_settings
+from bedrock.core.auth import LoginResult, LoginThrottle, attempt_login, end_session, start_session
+from bedrock.core.config import Settings
 from bedrock.schemas.auth import AuthStatus, LoginRequest
 
+# Public: reachable without a session.
 router = APIRouter(prefix="/auth", tags=["auth"])
+# Mounted behind `require_session` (see api/v1/__init__.py).
+session_router = APIRouter(prefix="/auth", tags=["auth"])
+
+_FAILURE_STATUS = {LoginResult.WRONG_PASSWORD: 401, LoginResult.THROTTLED: 429}
 
 
 @router.post("/login", status_code=204)
@@ -14,27 +20,21 @@ def login(
     request: Request,
     body: LoginRequest,
     settings: Settings = Depends(get_settings),
+    throttle: LoginThrottle = Depends(get_login_throttle),
     now: datetime = Depends(get_clock),
 ) -> None:
-    throttle = request.app.state.login_throttle
     client_ip = request.client.host if request.client else "unknown"
-
-    if throttle.is_blocked(client_ip, now):
-        raise HTTPException(status_code=429)
-
-    if not verify_password(body.password, settings):
-        throttle.record_failure(client_ip, now)
-        raise HTTPException(status_code=401)
-
-    throttle.record_success(client_ip)
+    result = attempt_login(body.password, settings.app_password_hash, throttle, client_ip, now)
+    if result is not LoginResult.OK:
+        raise HTTPException(status_code=_FAILURE_STATUS[result])
     start_session(request.session, now)
 
 
 @router.post("/logout", status_code=204)
 def logout(request: Request) -> None:
-    request.session.clear()
+    end_session(request.session)
 
 
-@router.get("/me", dependencies=[Depends(require_session)])
+@session_router.get("/me")
 def me() -> AuthStatus:
     return AuthStatus(authenticated=True)

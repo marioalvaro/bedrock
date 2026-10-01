@@ -1,11 +1,11 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
+from fastapi import FastAPI
 from starlette.middleware.sessions import SessionMiddleware
 
-from bedrock.api.v1 import auth, companies, health
-from bedrock.core.auth import LoginThrottle, require_session
+from bedrock.api.v1 import api_router
+from bedrock.core.auth import LoginThrottle
 from bedrock.core.config import Settings, load_settings
 from bedrock.core.db import make_engine, make_sessionmaker
 from bedrock.core.spa import mount_spa
@@ -39,9 +39,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         https_only=settings.cookie_secure,
     )
 
-    app.include_router(health.router, prefix="/api/v1")
-    app.include_router(auth.router, prefix="/api/v1")
-    app.include_router(companies.router, prefix="/api/v1", dependencies=[Depends(require_session)])
+    app.include_router(api_router)
 
     if settings.static_dir is not None:
         mount_spa(app, settings.static_dir)

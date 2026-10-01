@@ -21,7 +21,7 @@ def test_root_env_file_overrides_backend_env_file(
     monkeypatch.delenv("SESSION_IDLE_MINUTES", raising=False)
     monkeypatch.chdir(backend)
 
-    assert Settings().session_idle_minutes == 30
+    assert Settings(session_secret="test-secret").session_idle_minutes == 30
 
 
 def _documented_keys() -> set[str]:
@@ -44,7 +44,7 @@ def test_env_example_has_no_keys_the_backend_ignores() -> None:
 def test_blank_optional_setting_means_unset(monkeypatch: pytest.MonkeyPatch, var: str) -> None:
     # .env.example ships these as `KEY=`; a blank must read as "not configured" (G9).
     monkeypatch.setenv(var, "")
-    settings = Settings(_env_file=None)
+    settings = Settings(_env_file=None, session_secret="test-secret")
     assert getattr(settings, var.lower()) is None
 
 
@@ -52,7 +52,7 @@ def test_blank_database_url_falls_back_to_data_dir(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setenv("DATABASE_URL", "")
-    settings = Settings(_env_file=None, data_dir=tmp_path)
+    settings = Settings(_env_file=None, data_dir=tmp_path, session_secret="test-secret")
     assert settings.resolved_database_url == f"sqlite:///{tmp_path}/bedrock.db"
 
 
@@ -60,6 +60,13 @@ def test_blank_database_url_falls_back_to_data_dir(
 def test_blank_session_secret_is_rejected(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
     # `cp .env.example .env` without filling SESSION_SECRET must not sign cookies with "" (G10).
     monkeypatch.setenv("SESSION_SECRET", value)
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
+
+
+def test_missing_session_secret_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A built-in default would be a published key, as forgeable as a blank one (G10).
+    monkeypatch.delenv("SESSION_SECRET", raising=False)
     with pytest.raises(ValidationError):
         Settings(_env_file=None)
 

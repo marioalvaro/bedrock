@@ -38,7 +38,11 @@ def test_building_the_app_does_not_touch_the_database(tmp_path: Path) -> None:
     data_dir = tmp_path / "not-created"
     # database_url pinned to None so the DB really would live under data_dir; with
     # DATABASE_URL set elsewhere (e.g. the dev container) this test proved nothing.
-    app = create_app(settings=Settings(_env_file=None, data_dir=data_dir, database_url=None))
+    app = create_app(
+        settings=Settings(
+            _env_file=None, data_dir=data_dir, database_url=None, session_secret="test-secret"
+        )
+    )
 
     app.openapi()
 

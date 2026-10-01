@@ -1,4 +1,5 @@
 import { queryOptions, useMutation, useQueryClient } from "@tanstack/react-query";
+import type { QueryClient } from "@tanstack/react-query";
 
 import { ApiError, unwrap } from "@/api/errors";
 import {
@@ -19,6 +20,12 @@ export const meQueryOptions = queryOptions({
   retry: false,
 });
 
+// The one place the cached session state changes outside /me: a login's 204, a
+// logout, or any 401. RequireAuth re-renders from it and redirects as needed.
+export function setAuthenticated(queryClient: QueryClient, authenticated: boolean): void {
+  queryClient.setQueryData(authQueryKey, authenticated);
+}
+
 export function loginErrorMessage(error: unknown): string {
   const status = error instanceof ApiError ? error.status : undefined;
   if (status === 401) return "Incorrect password.";
@@ -30,10 +37,8 @@ export function useLogin() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (password: string) => unwrap(loginApiV1AuthLoginPost({ body: { password } })),
-    // The redirect to /login unmounted RequireAuth, so the cached "not
-    // authenticated" answer is inactive; a default invalidate would only mark it
-    // stale and RequireAuth would bounce back to /login. Refetch it regardless.
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: authQueryKey, refetchType: "all" }),
+    // A 204 to a POST is the server's answer (G2's 200 fallback only hits GETs).
+    onSuccess: () => setAuthenticated(queryClient, true),
   });
 }
 
@@ -41,9 +46,6 @@ export function useLogout() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => unwrap(logoutApiV1AuthLogoutPost()),
-    onSuccess: () => {
-      // RequireAuth sees the change and redirects to /login.
-      queryClient.setQueryData(authQueryKey, false);
-    },
+    onSuccess: () => setAuthenticated(queryClient, false),
   });
 }

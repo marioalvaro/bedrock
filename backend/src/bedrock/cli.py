@@ -3,6 +3,7 @@ import json
 import typer
 from argon2 import PasswordHasher
 
+from bedrock.core.config import Settings
 from bedrock.main import create_app
 
 app = typer.Typer()
@@ -22,7 +23,9 @@ def hash_password() -> None:
 
 @app.command("export-openapi")
 def export_openapi(path: str) -> None:
-    schema = create_app().openapi()
+    # Building the schema never signs a cookie, so it needs no real SESSION_SECRET
+    # (CI runs this with no .env).
+    schema = create_app(Settings(session_secret="unused-by-schema-export")).openapi()
     with open(path, "w") as f:
         json.dump(schema, f, indent=2, sort_keys=True)
         f.write("\n")

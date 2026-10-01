@@ -1,6 +1,6 @@
 import { QueryCache, QueryClient } from "@tanstack/react-query";
 
-import { authQueryKey } from "@/api/auth";
+import { setAuthenticated } from "@/api/auth";
 import { ApiError, isUnauthorized } from "@/api/errors";
 
 const MAX_RETRIES = 3;
@@ -8,11 +8,10 @@ const MAX_RETRIES = 3;
 export function createQueryClient(): QueryClient {
   const queryClient: QueryClient = new QueryClient({
     queryCache: new QueryCache({
-      // Any query hitting 401 means the session is gone (e.g. idle expiry):
-      // mark it so RequireAuth redirects to /login.
+      // Any query hitting 401 means the session is gone (e.g. idle expiry).
       onError: (error) => {
         if (isUnauthorized(error)) {
-          queryClient.setQueryData(authQueryKey, false);
+          setAuthenticated(queryClient, false);
         }
       },
     }),

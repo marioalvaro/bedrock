@@ -124,14 +124,14 @@ describe("protected routes", () => {
   });
 
   it("reaches the app on the first login after being redirected to /login", async () => {
-    // The redirect leaves a cached "not authenticated" answer with no observer;
-    // login must refresh it before RequireAuth reads it again.
+    // The redirect leaves a cached "not authenticated" answer; the login's 204
+    // itself must replace it, without waiting on another /me round-trip.
     vi.mocked(meApiV1AuthMeGet).mockResolvedValue(errorResult(401) as never);
     renderAt("/settings");
     await loginButton();
 
     vi.mocked(loginApiV1AuthLoginPost).mockResolvedValue(okResult(undefined, 204) as never);
-    vi.mocked(meApiV1AuthMeGet).mockResolvedValue(okResult({ authenticated: true }) as never);
+    vi.mocked(meApiV1AuthMeGet).mockReturnValue(new Promise(() => {}) as never);
     await userEvent.type(screen.getByLabelText("Password"), "secret");
     await userEvent.click(await loginButton());
 

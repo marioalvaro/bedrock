@@ -19,6 +19,7 @@ def test_alembic_upgrade_head_creates_company_table(
 
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
     monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.setenv("SESSION_SECRET", "test-secret")  # required by Settings; CI has no .env
     load_settings.cache_clear()
 
     backend_dir = Path(__file__).resolve().parent.parent
@@ -39,6 +40,7 @@ def _run_alembic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *steps: tuple[
     database_url = f"sqlite:///{tmp_path / 'bedrock.db'}"
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
     monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.setenv("SESSION_SECRET", "test-secret")  # required by Settings; CI has no .env
     load_settings.cache_clear()
 
     backend_dir = Path(__file__).resolve().parent.parent

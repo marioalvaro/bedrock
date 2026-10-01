@@ -5,26 +5,64 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from httpx import Response
 
-from bedrock.core.auth import LoginThrottle, get_clock, start_session, verify_password
+from bedrock.api.deps import get_clock
+from bedrock.core.auth import (
+    LoginResult,
+    LoginThrottle,
+    attempt_login,
+    end_session,
+    refresh_session,
+    start_session,
+    verify_password,
+)
 from bedrock.core.config import Settings
 from bedrock.main import create_app
 
 from .conftest import TEST_PASSWORD
 
+SECRET_HASH = PasswordHasher().hash("secret")
+NOW = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+IDLE = timedelta(minutes=720)
+
 
 def test_verify_password_correct() -> None:
-    settings = Settings(app_password_hash=PasswordHasher().hash("secret"))
-    assert verify_password("secret", settings) is True
+    assert verify_password("secret", SECRET_HASH) is True
 
 
 def test_verify_password_wrong() -> None:
-    settings = Settings(app_password_hash=PasswordHasher().hash("secret"))
-    assert verify_password("wrong", settings) is False
+    assert verify_password("wrong", SECRET_HASH) is False
 
 
 def test_verify_password_empty_hash_always_fails() -> None:
-    settings = Settings(app_password_hash="")
-    assert verify_password("anything", settings) is False
+    assert verify_password("anything", "") is False
+
+
+def test_attempt_login_correct_password_is_ok() -> None:
+    assert attempt_login("secret", SECRET_HASH, LoginThrottle(), "ip", NOW) is LoginResult.OK
+
+
+def test_attempt_login_wrong_password_records_a_failure() -> None:
+    throttle = LoginThrottle()
+    for _ in range(5):
+        result = attempt_login("nope", SECRET_HASH, throttle, "ip", NOW)
+        assert result is LoginResult.WRONG_PASSWORD
+    assert throttle.is_blocked("ip", NOW) is True
+
+
+def test_attempt_login_while_blocked_is_throttled_even_with_the_right_password() -> None:
+    throttle = LoginThrottle()
+    for _ in range(5):
+        throttle.record_failure("ip", NOW)
+    assert attempt_login("secret", SECRET_HASH, throttle, "ip", NOW) is LoginResult.THROTTLED
+
+
+def test_attempt_login_success_resets_the_failures() -> None:
+    throttle = LoginThrottle()
+    for _ in range(4):
+        throttle.record_failure("ip", NOW)
+    attempt_login("secret", SECRET_HASH, throttle, "ip", NOW)
+    throttle.record_failure("ip", NOW)
+    assert throttle.is_blocked("ip", NOW) is False
 
 
 def test_login_throttle_allows_under_max_failures() -> None:
@@ -95,11 +133,37 @@ def test_login_throttle_keys_are_independent() -> None:
     assert throttle.is_blocked("5.6.7.8", now) is False
 
 
-def test_start_session_marks_authenticated_and_stamps_activity() -> None:
+def test_start_session_stamps_activity() -> None:
     session: dict[str, object] = {}
-    now = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
-    start_session(session, now)
-    assert session == {"auth": True, "last_seen": now.isoformat()}
+    start_session(session, NOW)
+    assert session == {"last_seen": NOW.isoformat()}
+
+
+def test_refresh_session_rejects_a_session_never_started() -> None:
+    session: dict[str, object] = {}
+    assert refresh_session(session, NOW, IDLE) is False
+
+
+def test_refresh_session_accepts_a_live_session_and_stamps_activity() -> None:
+    session: dict[str, object] = {}
+    start_session(session, NOW)
+    later = NOW + IDLE - timedelta(minutes=1)
+    assert refresh_session(session, later, IDLE) is True
+    assert session == {"last_seen": later.isoformat()}
+
+
+def test_refresh_session_clears_an_idle_session() -> None:
+    session: dict[str, object] = {}
+    start_session(session, NOW)
+    assert refresh_session(session, NOW + IDLE + timedelta(seconds=1), IDLE) is False
+    assert session == {}
+
+
+def test_end_session_clears_it() -> None:
+    session: dict[str, object] = {}
+    start_session(session, NOW)
+    end_session(session)
+    assert refresh_session(session, NOW, IDLE) is False
 
 
 def test_login_correct_password_sets_cookie(client: TestClient) -> None:
