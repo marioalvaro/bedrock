@@ -2,7 +2,7 @@ from logging.config import fileConfig
 
 from alembic import context
 
-from bedrock.core.config import get_settings
+from bedrock.core.config import load_settings
 from bedrock.core.db import make_engine
 from bedrock.models.base import Base
 from bedrock.models.company import Company  # noqa: F401  ensure models are registered
@@ -14,7 +14,7 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
-config.set_main_option("sqlalchemy.url", get_settings().resolved_database_url)
+config.set_main_option("sqlalchemy.url", load_settings().resolved_database_url)
 
 
 def run_migrations_offline() -> None:

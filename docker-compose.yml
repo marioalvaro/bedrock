@@ -1,0 +1,51 @@
+# prod: docker compose --profile prod up --build   → http://localhost:8000
+# dev:  docker compose --profile dev up --build    → http://localhost:5173 (API reloads on edit)
+
+# Pin the in-container paths so values in .env meant for running on the host
+# (e.g. DATA_DIR=../data) cannot point the app away from the /data volume.
+x-container-env: &container-env
+  DATA_DIR: /data
+  DATABASE_URL: sqlite:////data/bedrock.db
+
+services:
+  app:
+    profiles: [prod]
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: app
+    ports: ["8000:8000"]
+    env_file: .env
+    environment:
+      <<: *container-env
+      STATIC_DIR: /app/static
+    volumes: ["./data:/data"]
+    restart: unless-stopped
+
+  backend:
+    profiles: [dev]
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: dev
+    ports: ["8000:8000"]
+    env_file: .env
+    environment:
+      <<: *container-env
+      STATIC_DIR: ""
+    volumes:
+      - ./backend:/app/backend
+      - ./data:/data
+
+  web:
+    profiles: [dev]
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    ports: ["5173:5173"]
+    environment:
+      VITE_API_TARGET: http://backend:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on: [backend]

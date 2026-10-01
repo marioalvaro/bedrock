@@ -8,3 +8,5 @@ __pycache__/
 .claude/
 docs/
 CLAUDE.md
+frontend/node_modules/
+frontend/dist/

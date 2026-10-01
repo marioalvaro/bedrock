@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from bedrock.core.db import get_session
+from bedrock.api.deps import get_session
 from bedrock.schemas.company import CompanyOut
 from bedrock.services.companies import list_companies
 
