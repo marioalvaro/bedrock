@@ -8,6 +8,7 @@ from bedrock.api.v1 import auth, companies, health
 from bedrock.core.auth import LoginThrottle, require_session
 from bedrock.core.config import Settings, load_settings
 from bedrock.core.db import make_engine, make_sessionmaker
+from bedrock.core.spa import mount_spa
 
 
 @asynccontextmanager
@@ -41,5 +42,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health.router, prefix="/api/v1")
     app.include_router(auth.router, prefix="/api/v1")
     app.include_router(companies.router, prefix="/api/v1", dependencies=[Depends(require_session)])
+
+    if settings.static_dir is not None:
+        mount_spa(app, settings.static_dir)
 
     return app

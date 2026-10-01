@@ -2,6 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from fastapi import Request
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,6 +18,12 @@ class Settings(BaseSettings):
     session_idle_minutes: int = 720
     cookie_secure: bool = False
     static_dir: Path | None = None
+
+    @field_validator("static_dir", mode="before")
+    @classmethod
+    def _blank_static_dir_is_unset(cls, value: object) -> object:
+        # Docker cannot unset an inherited ENV, so the dev profile sets STATIC_DIR="".
+        return None if value == "" else value
 
     @property
     def resolved_database_url(self) -> str:
