@@ -7,7 +7,10 @@
   unit: USD
   sign: 1
   parent: null
-  concepts: []
+  concepts:
+    - us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax
+    - us-gaap:Revenues
+    - us-gaap:SalesRevenueNet
   residual: false
 - code: cost_of_revenue
   statement: IS
@@ -16,7 +19,10 @@
   unit: USD
   sign: 1
   parent: gross_profit
-  concepts: []
+  concepts:
+    - us-gaap:CostOfRevenue
+    - us-gaap:CostOfGoodsAndServicesSold
+    - us-gaap:CostOfGoodsSold
   residual: false
 - code: gross_profit
   statement: IS
@@ -25,7 +31,8 @@
   unit: USD
   sign: 1
   parent: null
-  concepts: []
+  concepts:
+    - us-gaap:GrossProfit
   derive: revenue - cost_of_revenue
   residual: false
 - code: rnd
@@ -35,7 +42,8 @@
   unit: USD
   sign: 1
   parent: operating_income
-  concepts: []
+  concepts:
+    - us-gaap:ResearchAndDevelopmentExpense
   residual: false
 - code: sga
   statement: IS
@@ -44,7 +52,8 @@
   unit: USD
   sign: 1
   parent: operating_income
-  concepts: []
+  concepts:
+    - us-gaap:SellingGeneralAndAdministrativeExpense
   residual: false
 - code: other_operating_expenses
   statement: IS
@@ -63,7 +72,8 @@
   unit: USD
   sign: 1
   parent: null
-  concepts: []
+  concepts:
+    - us-gaap:OperatingIncomeLoss
   residual: false
 - code: interest_expense
   statement: IS
@@ -72,7 +82,9 @@
   unit: USD
   sign: 1
   parent: pretax_income
-  concepts: []
+  concepts:
+    - us-gaap:InterestExpense
+    - us-gaap:InterestExpenseNonoperating
   residual: false
 - code: other_nonoperating_income
   statement: IS
@@ -91,7 +103,9 @@
   unit: USD
   sign: 1
   parent: null
-  concepts: []
+  concepts:
+    - us-gaap:IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest
+    - us-gaap:IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments
   residual: false
 - code: income_tax
   statement: IS
@@ -100,7 +114,8 @@
   unit: USD
   sign: 1
   parent: net_income
-  concepts: []
+  concepts:
+    - us-gaap:IncomeTaxExpenseBenefit
   residual: false
 - code: net_income
   statement: IS
@@ -109,7 +124,9 @@
   unit: USD
   sign: 1
   parent: null
-  concepts: []
+  concepts:
+    - us-gaap:ProfitLoss
+    - us-gaap:NetIncomeLoss
   residual: false
 - code: net_income_nci
   statement: IS
@@ -118,7 +135,8 @@
   unit: USD
   sign: 1
   parent: net_income_common
-  concepts: []
+  concepts:
+    - us-gaap:NetIncomeLossAttributableToNoncontrollingInterest
   residual: false
 - code: net_income_common
   statement: IS
@@ -127,7 +145,8 @@
   unit: USD
   sign: 1
   parent: null
-  concepts: []
+  concepts:
+    - us-gaap:NetIncomeLoss
   derive: net_income - net_income_nci
   residual: false
 - code: eps_basic
@@ -137,7 +156,8 @@
   unit: USD/shares
   sign: 1
   parent: null
-  concepts: []
+  concepts:
+    - us-gaap:EarningsPerShareBasic
   residual: false
 - code: eps_diluted
   statement: IS
@@ -146,7 +166,8 @@
   unit: USD/shares
   sign: 1
   parent: null
-  concepts: []
+  concepts:
+    - us-gaap:EarningsPerShareDiluted
   residual: false
 - code: shares_basic
   statement: IS
@@ -155,7 +176,8 @@
   unit: shares
   sign: 1
   parent: null
-  concepts: []
+  concepts:
+    - us-gaap:WeightedAverageNumberOfSharesOutstandingBasic
   residual: false
 - code: shares_diluted
   statement: IS
@@ -164,7 +186,8 @@
   unit: shares
   sign: 1
   parent: null
-  concepts: []
+  concepts:
+    - us-gaap:WeightedAverageNumberOfDilutedSharesOutstanding
   residual: false
 - code: cash
   statement: BS
@@ -173,7 +196,8 @@
   unit: USD
   sign: 1
   parent: total_current_assets
-  concepts: []
+  concepts:
+    - us-gaap:CashAndCashEquivalentsAtCarryingValue
   residual: false
 - code: short_term_investments
   statement: BS
@@ -182,7 +206,10 @@
   unit: USD
   sign: 1
   parent: total_current_assets
-  concepts: []
+  concepts:
+    - us-gaap:ShortTermInvestments
+    - us-gaap:MarketableSecuritiesCurrent
+    - us-gaap:AvailableForSaleSecuritiesCurrent
   residual: false
 - code: receivables
   statement: BS
@@ -191,7 +218,9 @@
   unit: USD
   sign: 1
   parent: total_current_assets
-  concepts: []
+  concepts:
+    - us-gaap:AccountsReceivableNetCurrent
+    - us-gaap:ReceivablesNetCurrent
   residual: false
 - code: inventory
   statement: BS
@@ -200,7 +229,8 @@
   unit: USD
   sign: 1
   parent: total_current_assets
-  concepts: []
+  concepts:
+    - us-gaap:InventoryNet
   residual: false
 - code: other_current_assets
   statement: BS
@@ -219,7 +249,8 @@
   unit: USD
   sign: 1
   parent: total_assets
-  concepts: []
+  concepts:
+    - us-gaap:AssetsCurrent
   residual: false
 - code: ppe_net
   statement: BS
@@ -228,7 +259,8 @@
   unit: USD
   sign: 1
   parent: total_assets
-  concepts: []
+  concepts:
+    - us-gaap:PropertyPlantAndEquipmentNet
   residual: false
 - code: operating_lease_rou
   statement: BS
@@ -237,7 +269,8 @@
   unit: USD
   sign: 1
   parent: total_assets
-  concepts: []
+  concepts:
+    - us-gaap:OperatingLeaseRightOfUseAsset
   residual: false
 - code: goodwill
   statement: BS
@@ -246,7 +279,8 @@
   unit: USD
   sign: 1
   parent: total_assets
-  concepts: []
+  concepts:
+    - us-gaap:Goodwill
   residual: false
 - code: intangibles
   statement: BS
@@ -255,7 +289,9 @@
   unit: USD
   sign: 1
   parent: total_assets
-  concepts: []
+  concepts:
+    - us-gaap:IntangibleAssetsNetExcludingGoodwill
+    - us-gaap:FiniteLivedIntangibleAssetsNet
   residual: false
 - code: long_term_investments
   statement: BS
@@ -264,7 +300,10 @@
   unit: USD
   sign: 1
   parent: total_assets
-  concepts: []
+  concepts:
+    - us-gaap:LongTermInvestments
+    - us-gaap:MarketableSecuritiesNoncurrent
+    - us-gaap:AvailableForSaleSecuritiesNoncurrent
   residual: false
 - code: other_noncurrent_assets
   statement: BS
@@ -283,7 +322,8 @@
   unit: USD
   sign: 1
   parent: null
-  concepts: []
+  concepts:
+    - us-gaap:Assets
   residual: false
 - code: accounts_payable
   statement: BS
@@ -292,7 +332,8 @@
   unit: USD
   sign: 1
   parent: total_current_liabilities
-  concepts: []
+  concepts:
+    - us-gaap:AccountsPayableCurrent
   residual: false
 - code: short_term_debt
   statement: BS
@@ -301,7 +342,8 @@
   unit: USD
   sign: 1
   parent: total_current_liabilities
-  concepts: []
+  concepts:
+    - us-gaap:DebtCurrent
   residual: false
 - code: deferred_revenue_current
   statement: BS
@@ -310,7 +352,9 @@
   unit: USD
   sign: 1
   parent: total_current_liabilities
-  concepts: []
+  concepts:
+    - us-gaap:ContractWithCustomerLiabilityCurrent
+    - us-gaap:DeferredRevenueCurrent
   residual: false
 - code: accrued_liabilities
   statement: BS
@@ -319,7 +363,8 @@
   unit: USD
   sign: 1
   parent: total_current_liabilities
-  concepts: []
+  concepts:
+    - us-gaap:AccruedLiabilitiesCurrent
   residual: false
 - code: other_current_liabilities
   statement: BS
@@ -338,7 +383,8 @@
   unit: USD
   sign: 1
   parent: total_liabilities
-  concepts: []
+  concepts:
+    - us-gaap:LiabilitiesCurrent
   residual: false
 - code: long_term_debt
   statement: BS
@@ -347,7 +393,8 @@
   unit: USD
   sign: 1
   parent: total_liabilities
-  concepts: []
+  concepts:
+    - us-gaap:LongTermDebtNoncurrent
   residual: false
 - code: operating_lease_liabilities_noncurrent
   statement: BS
@@ -356,7 +403,8 @@
   unit: USD
   sign: 1
   parent: total_liabilities
-  concepts: []
+  concepts:
+    - us-gaap:OperatingLeaseLiabilityNoncurrent
   residual: false
 - code: other_noncurrent_liabilities
   statement: BS
@@ -375,7 +423,8 @@
   unit: USD
   sign: 1
   parent: null
-  concepts: []
+  concepts:
+    - us-gaap:Liabilities
   derive: total_liabilities_and_equity - total_equity
   residual: false
 - code: common_stock_apic
@@ -385,7 +434,10 @@
   unit: USD
   sign: 1
   parent: equity_parent
-  concepts: []
+  concepts:
+    - us-gaap:CommonStocksIncludingAdditionalPaidInCapital
+    - us-gaap:AdditionalPaidInCapitalCommonStock
+    - us-gaap:AdditionalPaidInCapital
   residual: false
 - code: retained_earnings
   statement: BS
@@ -394,7 +446,8 @@
   unit: USD
   sign: 1
   parent: equity_parent
-  concepts: []
+  concepts:
+    - us-gaap:RetainedEarningsAccumulatedDeficit
   residual: false
 - code: aoci
   statement: BS
@@ -403,7 +456,8 @@
   unit: USD
   sign: 1
   parent: equity_parent
-  concepts: []
+  concepts:
+    - us-gaap:AccumulatedOtherComprehensiveIncomeLossNetOfTax
   residual: false
 - code: other_equity
   statement: BS
@@ -422,7 +476,8 @@
   unit: USD
   sign: 1
   parent: total_equity
-  concepts: []
+  concepts:
+    - us-gaap:StockholdersEquity
   residual: false
 - code: nci
   statement: BS
@@ -431,7 +486,8 @@
   unit: USD
   sign: 1
   parent: total_equity
-  concepts: []
+  concepts:
+    - us-gaap:MinorityInterest
   residual: false
 - code: total_equity
   statement: BS
@@ -440,7 +496,9 @@
   unit: USD
   sign: 1
   parent: null
-  concepts: []
+  concepts:
+    - us-gaap:StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest
+    - us-gaap:StockholdersEquity
   derive: equity_parent + nci
   residual: false
 - code: total_liabilities_and_equity
@@ -450,7 +508,8 @@
   unit: USD
   sign: 1
   parent: null
-  concepts: []
+  concepts:
+    - us-gaap:LiabilitiesAndStockholdersEquity
   residual: false
 - code: cf_net_income
   statement: CF
@@ -459,7 +518,9 @@
   unit: USD
   sign: 1
   parent: cfo
-  concepts: []
+  concepts:
+    - us-gaap:ProfitLoss
+    - us-gaap:NetIncomeLoss
   residual: false
 - code: d_and_a
   statement: CF
@@ -468,7 +529,10 @@
   unit: USD
   sign: 1
   parent: cfo
-  concepts: []
+  concepts:
+    - us-gaap:DepreciationAmortizationAndAccretionNet
+    - us-gaap:DepreciationDepletionAndAmortization
+    - us-gaap:DepreciationAndAmortization
   residual: false
 - code: sbc
   statement: CF
@@ -477,7 +541,9 @@
   unit: USD
   sign: 1
   parent: cfo
-  concepts: []
+  concepts:
+    - us-gaap:ShareBasedCompensation
+    - us-gaap:AllocatedShareBasedCompensationExpense
   residual: false
 - code: deferred_taxes
   statement: CF
@@ -486,7 +552,9 @@
   unit: USD
   sign: 1
   parent: cfo
-  concepts: []
+  concepts:
+    - us-gaap:DeferredIncomeTaxesAndTaxCredits
+    - us-gaap:DeferredIncomeTaxExpenseBenefit
   residual: false
 - code: change_receivables
   statement: CF
@@ -495,7 +563,8 @@
   unit: USD
   sign: -1
   parent: cfo
-  concepts: []
+  concepts:
+    - us-gaap:IncreaseDecreaseInAccountsReceivable
   residual: false
 - code: change_inventory
   statement: CF
@@ -504,7 +573,8 @@
   unit: USD
   sign: -1
   parent: cfo
-  concepts: []
+  concepts:
+    - us-gaap:IncreaseDecreaseInInventories
   residual: false
 - code: change_payables
   statement: CF
@@ -513,7 +583,8 @@
   unit: USD
   sign: 1
   parent: cfo
-  concepts: []
+  concepts:
+    - us-gaap:IncreaseDecreaseInAccountsPayable
   residual: false
 - code: other_operating_activities
   statement: CF
@@ -532,7 +603,9 @@
   unit: USD
   sign: 1
   parent: null
-  concepts: []
+  concepts:
+    - us-gaap:NetCashProvidedByUsedInOperatingActivities
+    - us-gaap:NetCashProvidedByUsedInOperatingActivitiesContinuingOperations
   residual: false
 - code: capex
   statement: CF
@@ -541,7 +614,9 @@
   unit: USD
   sign: -1
   parent: cfi
-  concepts: []
+  concepts:
+    - us-gaap:PaymentsToAcquirePropertyPlantAndEquipment
+    - us-gaap:PaymentsToAcquireProductiveAssets
   residual: false
 - code: acquisitions
   statement: CF
@@ -550,7 +625,9 @@
   unit: USD
   sign: -1
   parent: cfi
-  concepts: []
+  concepts:
+    - us-gaap:PaymentsToAcquireBusinessesNetOfCashAcquired
+    - us-gaap:PaymentsToAcquireBusinessesAndInterestInAffiliates
   residual: false
 - code: purchases_of_investments
   statement: CF
@@ -559,7 +636,11 @@
   unit: USD
   sign: -1
   parent: cfi
-  concepts: []
+  concepts:
+    - us-gaap:PaymentsToAcquireInvestments
+    - us-gaap:PaymentsToAcquireShortTermInvestments
+    - us-gaap:PaymentsToAcquireAvailableForSaleSecuritiesDebt
+    - us-gaap:PaymentsToAcquireAvailableForSaleSecurities
   residual: false
 - code: sales_maturities_of_investments
   statement: CF
@@ -568,7 +649,9 @@
   unit: USD
   sign: 1
   parent: cfi
-  concepts: []
+  concepts:
+    - us-gaap:ProceedsFromSaleMaturityAndCollectionsOfInvestments
+    - us-gaap:ProceedsFromSaleAndMaturityOfMarketableSecurities
   residual: false
 - code: other_investing_activities
   statement: CF
@@ -587,7 +670,9 @@
   unit: USD
   sign: 1
   parent: null
-  concepts: []
+  concepts:
+    - us-gaap:NetCashProvidedByUsedInInvestingActivities
+    - us-gaap:NetCashProvidedByUsedInInvestingActivitiesContinuingOperations
   residual: false
 - code: debt_issued
   statement: CF
@@ -596,7 +681,9 @@
   unit: USD
   sign: 1
   parent: cff
-  concepts: []
+  concepts:
+    - us-gaap:ProceedsFromIssuanceOfLongTermDebt
+    - us-gaap:ProceedsFromDebtMaturingInMoreThanThreeMonths
   residual: false
 - code: debt_repaid
   statement: CF
@@ -605,7 +692,9 @@
   unit: USD
   sign: -1
   parent: cff
-  concepts: []
+  concepts:
+    - us-gaap:RepaymentsOfLongTermDebt
+    - us-gaap:RepaymentsOfDebtMaturingInMoreThanThreeMonths
   residual: false
 - code: buybacks
   statement: CF
@@ -614,7 +703,8 @@
   unit: USD
   sign: -1
   parent: cff
-  concepts: []
+  concepts:
+    - us-gaap:PaymentsForRepurchaseOfCommonStock
   residual: false
 - code: dividends_paid
   statement: CF
@@ -623,7 +713,9 @@
   unit: USD
   sign: -1
   parent: cff
-  concepts: []
+  concepts:
+    - us-gaap:PaymentsOfDividends
+    - us-gaap:PaymentsOfDividendsCommonStock
   residual: false
 - code: other_financing_activities
   statement: CF
@@ -642,7 +734,9 @@
   unit: USD
   sign: 1
   parent: null
-  concepts: []
+  concepts:
+    - us-gaap:NetCashProvidedByUsedInFinancingActivities
+    - us-gaap:NetCashProvidedByUsedInFinancingActivitiesContinuingOperations
   residual: false
 - code: fx_effect
   statement: CF
@@ -651,7 +745,10 @@
   unit: USD
   sign: 1
   parent: null
-  concepts: []
+  concepts:
+    - us-gaap:EffectOfExchangeRateOnCashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents
+    - us-gaap:EffectOfExchangeRateOnCashCashEquivalentsRestrictedCashAndRestrictedCashEquivalentsIncludingDisposalGroupAndDiscontinuedOperations
+    - us-gaap:EffectOfExchangeRateOnCashAndCashEquivalents
   residual: false
 - code: net_change_in_cash
   statement: CF
@@ -660,6 +757,8 @@
   unit: USD
   sign: 1
   parent: null
-  concepts: []
+  concepts:
+    - us-gaap:CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalentsPeriodIncreaseDecreaseIncludingExchangeRateEffect
+    - us-gaap:CashAndCashEquivalentsPeriodIncreaseDecrease
   derive: cfo + cfi + cff + fx_effect
   residual: false

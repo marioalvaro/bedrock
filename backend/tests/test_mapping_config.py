@@ -290,4 +290,4 @@ def test_shipped_canonical_items_load_with_72_codes() -> None:
     assert by_code["total_current_assets"].parent == "total_assets"
     assert by_code["rnd"].parent == "operating_income"
     assert by_code["capex"].parent == "cfi"
-    assert all(i.concepts == () for i in items)  # S3 fills them
+    assert all(i.concepts == () for i in items if i.residual)  # residuals are always computed

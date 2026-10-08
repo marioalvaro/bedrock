@@ -131,9 +131,9 @@ def test_cash_flow_year_to_date_facts_are_differenced_and_marked_derived() -> No
     assert cfo.provenance == ["reported", "derived", "derived", "derived"]
 
 
-def test_q4_is_fy_minus_ytd_of_q3() -> None:
+def test_q4_is_fy_minus_the_displayed_quarters_even_when_ytd_q3_disagrees() -> None:
     raw = flow_facts("Revenues", {2023: (100, 110, 120, 130)})
-    # make the year-to-date Q3 fact disagree with the three discrete quarters
+    # make the year-to-date Q3 fact disagree with the three discrete quarters (a later restatement)
     ytd_q3 = next(
         r
         for r in raw
@@ -141,9 +141,22 @@ def test_q4_is_fy_minus_ytd_of_q3() -> None:
     )
     ytd_q3["value"] = Decimal(329)
 
-    q4 = row(revenue_table("quarterly", raw), "revenue").values[3]
+    values = row(revenue_table("quarterly", raw), "revenue").values
 
-    assert q4 == 460 - 329
+    assert values[:4] == [100, 110, 120, 460 - 330]  # not 460 - 329
+    assert sum(v for v in values[:4] if v is not None) == 460  # the quarters always add up
+
+
+def test_q4_falls_back_to_fy_minus_ytd_of_q3_when_a_quarter_cannot_be_derived() -> None:
+    # No 10-Q reports the 6-month figure, so Q2 and Q3 are unknown, but Q3 year-to-date is.
+    raw = flow_facts(
+        "Revenues", {2023: (100, 110, 120, 130)}, ytd_only=True, skip=frozenset({(2023, 2)})
+    ) + flow_facts("CostOfRevenue", {2023: (1, 1, 1, 1)})  # another flow supplies the calendar
+
+    revenue = row(revenue_table("quarterly", raw), "revenue")
+
+    assert revenue.values == [100, None, None, 460 - 330]
+    assert revenue.provenance == ["reported", None, None, "derived"]
 
 
 def test_q4_falls_back_to_fy_minus_the_three_discrete_quarters() -> None:

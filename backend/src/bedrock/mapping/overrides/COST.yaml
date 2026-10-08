@@ -1,0 +1,5 @@
+# Costco's only short-term debt line is the current portion of long-term debt, so that concept is the
+# whole item. Elsewhere it would understate the item (Apple and Microsoft also report commercial paper
+# or short-term borrowings on separate lines), which is why it is not a default.
+short_term_debt:
+  - us-gaap:LongTermDebtCurrent

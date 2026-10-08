@@ -1,0 +1,4 @@
+# Apple tags the combined "common stock and additional paid-in capital" line CommonStockValue until
+# FY2013 (CommonStocksIncludingAdditionalPaidInCapital from then on); elsewhere CommonStockValue is par value.
+common_stock_apic:
+  - us-gaap:CommonStockValue

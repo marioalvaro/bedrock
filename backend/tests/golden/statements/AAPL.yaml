@@ -1,0 +1,92 @@
+# Apple Inc. (CIK 320193) — golden figures from the 10-K documents on sec.gov, never from companyfacts.
+# Values are USD (EPS: USD per share) in the displayed sign convention: expenses positive,
+# capex negative (an outflow). Read from the filings' R pages (XBRL viewer renderings of the statements).
+#   FY2015: 10-K filed 2015-10-28, accession 0001193125-15-356351 (FYE 2015-09-26)
+#   FY2020: 10-K filed 2020-10-30, accession 0000320193-20-000096 (FYE 2020-09-26)
+#   FY2025: 10-K filed 2025-10-31, accession 0000320193-25-000079 (FYE 2025-09-27)
+# Each 10-K was checked for total liabilities + total equity = total assets.
+# FY2015 total assets and total liabilities are the restated figures from the FY2016 10-K
+# (accession 0001628280-16-020309, ASU 2015-03 / 2015-17 applied retrospectively): the engine shows the latest
+# vintage, and the original FY2015 10-K value stays available as an earlier vintage.
+annual:
+  FY2015:
+    revenue: 233715000000
+    gross_profit: 93626000000
+    operating_income: 71230000000
+    net_income: 53394000000
+    eps_diluted: 9.22
+    cash: 21120000000
+    total_assets: 290345000000      # restated in the FY2016 10-K; the FY2015 10-K said 290,479
+    total_liabilities: 170990000000 # restated in the FY2016 10-K; the FY2015 10-K said 171,124
+    total_equity: 119355000000
+    cfo: 81266000000
+    capex: -11247000000
+  FY2020:
+    revenue: 274515000000
+    gross_profit: 104956000000
+    operating_income: 66288000000
+    net_income: 57411000000
+    eps_diluted: 3.28
+    cash: 38016000000
+    total_assets: 323888000000
+    total_liabilities: 258549000000
+    total_equity: 65339000000
+    cfo: 80674000000
+    capex: -7309000000
+  FY2025:
+    revenue: 416161000000
+    gross_profit: 195201000000
+    operating_income: 133050000000
+    net_income: 112010000000
+    eps_diluted: 7.46
+    cash: 35934000000
+    total_assets: 359241000000
+    total_liabilities: 285508000000
+    total_equity: 73733000000
+    cfo: 111482000000
+    capex: -12715000000
+
+# Q4 of the latest FY = 10-K FY revenue minus the nine-month revenue of the Q3 10-Q
+# (accession 0000320193-25-000073, nine months ended 2025-06-28: 313,695 million).
+# 416,161 - 313,695 = 102,466 million.
+quarterly:
+  FY2025Q4:
+    revenue: 102466000000
+
+# Non-residual codes with no value in some fiscal year, and why. The test compares the codes with
+# `missing_items`; the reasons are for the reader. Early years: XBRL balance sheets start with FY2008-09
+# and the older columns only exist as comparatives.
+expected_missing:
+  interest_expense: "FY2007-10 not tagged; from FY2024 no longer disclosed (inside other income/expense)"
+  net_income_nci: "no noncontrolling interests"
+  short_term_investments: "no XBRL fact before FY2008"
+  receivables: "no XBRL fact before FY2008"
+  inventory: "no XBRL fact before FY2008"
+  total_current_assets: "no XBRL fact before FY2008"
+  ppe_net: "no XBRL fact before FY2011"
+  operating_lease_rou: "no XBRL fact before FY2020"
+  goodwill: "separate goodwill line only until FY2017"
+  intangibles: "separate line only until FY2017"
+  long_term_investments: "no XBRL fact before FY2008"
+  total_assets: "no XBRL fact before FY2008"
+  accounts_payable: "no XBRL fact before FY2008"
+  short_term_debt: "commercial paper and the current term debt are separate lines: no single concept (see S3 log)"
+  deferred_revenue_current: "no XBRL fact before FY2008"
+  accrued_liabilities: "'Accrued expenses' until FY2017, then relabelled 'other current liabilities' (residual)"
+  total_current_liabilities: "no XBRL fact before FY2008"
+  long_term_debt: "no debt before FY2014 (FY2013's single LongTermDebt tag is not mapped: it includes the current part)"
+  operating_lease_liabilities_noncurrent: "no XBRL fact before FY2020"
+  total_liabilities: "no XBRL fact before FY2008"
+  common_stock_apic: "no XBRL fact before FY2008"
+  retained_earnings: "no XBRL fact before FY2008"
+  aoci: "no XBRL fact before FY2008"
+  nci: "no noncontrolling interests"
+  total_liabilities_and_equity: "no XBRL fact before FY2008"
+  deferred_taxes: "folded into 'other adjustments' from FY2023"
+  acquisitions: "no acquisition line from FY2023"
+  sales_maturities_of_investments: "maturities and sales are two lines: no single concept (see S3 log)"
+  debt_issued: "no XBRL fact before FY2011"
+  debt_repaid: "no repayment line before FY2014"
+  buybacks: "no XBRL fact before FY2011"
+  dividends_paid: "dividends paid tagged from FY2013 only"
+  fx_effect: "no exchange-rate line in Apple's cash flow statement"

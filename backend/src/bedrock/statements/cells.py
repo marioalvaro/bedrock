@@ -181,28 +181,24 @@ def _from_year_to_date(code: str, period: Period, year: FiscalYear, index: _Inde
 
 
 def _q4(code: str, year: FiscalYear, cells: dict[CellKey, Cell], index: _Index) -> Cell:
+    """FY less the three quarters as displayed, so the four quarters always add up to the year.
+    The year-to-date Q3 fact can disagree with the 3-month facts of Q1..Q3 (restated later, or
+    reported in another filing); Q4 absorbs that. When a quarter is unknown, FY - YTD Q3."""
     fiscal = cells.get((code, f"FY{year.fiscal_year}"), EMPTY)
     if fiscal.value is None:
         return EMPTY
     ytd_q3 = index.duration(code, year.start, year.quarter_ends[2])
-    if ytd_q3 is not None:
-        return Cell(
-            fiscal.value - ytd_q3.value,
-            "derived",
-            derivation=Derivation(
-                "FY - YTD Q3",
-                (
-                    DerivationInput(code, "FY", fiscal.value),
-                    DerivationInput(code, "YTD Q3", ytd_q3.value),
-                ),
-            ),
-        )
     quarters = [cells.get((code, f"FY{year.fiscal_year}Q{n}"), EMPTY) for n in (1, 2, 3)]
-    if any(q.value is None for q in quarters):
-        return EMPTY
     values = [q.value for q in quarters if q.value is not None]
+    if len(values) < 3:
+        if ytd_q3 is None:
+            return EMPTY
+        return _fy_less_ytd(code, fiscal.value, ytd_q3.value)
+    total = sum(values, Decimal(0))
+    if ytd_q3 is not None and ytd_q3.value == total:  # the usual case: say it the short way
+        return _fy_less_ytd(code, fiscal.value, ytd_q3.value)
     return Cell(
-        fiscal.value - sum(values, Decimal(0)),
+        fiscal.value - total,
         "derived",
         derivation=Derivation(
             "FY - Q1 - Q2 - Q3",
@@ -213,6 +209,17 @@ def _q4(code: str, year: FiscalYear, cells: dict[CellKey, Cell], index: _Index) 
                     for n, v in zip((1, 2, 3), values, strict=True)
                 ),
             ),
+        ),
+    )
+
+
+def _fy_less_ytd(code: str, fiscal: Decimal, ytd_q3: Decimal) -> Cell:
+    return Cell(
+        fiscal - ytd_q3,
+        "derived",
+        derivation=Derivation(
+            "FY - YTD Q3",
+            (DerivationInput(code, "FY", fiscal), DerivationInput(code, "YTD Q3", ytd_q3)),
         ),
     )
 
