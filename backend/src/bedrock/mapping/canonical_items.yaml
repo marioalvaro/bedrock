@@ -1,0 +1,665 @@
+# Canonical line items. File order is display order. `concepts` are filled per company by the map-xbrl skill (M1 S3).
+# Format and rules: docs/erd/data.md, "Canonical mapping file".
+- code: revenue
+  statement: IS
+  label: Revenue
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: null
+  concepts: []
+  residual: false
+- code: cost_of_revenue
+  statement: IS
+  label: Cost of revenue
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: gross_profit
+  concepts: []
+  residual: false
+- code: gross_profit
+  statement: IS
+  label: Gross profit
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: null
+  concepts: []
+  derive: revenue - cost_of_revenue
+  residual: false
+- code: rnd
+  statement: IS
+  label: Research & development
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: operating_income
+  concepts: []
+  residual: false
+- code: sga
+  statement: IS
+  label: Selling, general & administrative
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: operating_income
+  concepts: []
+  residual: false
+- code: other_operating_expenses
+  statement: IS
+  label: Other operating expenses
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: operating_income
+  concepts: []
+  derive: gross_profit - rnd - sga - operating_income
+  residual: true
+- code: operating_income
+  statement: IS
+  label: Operating income
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: null
+  concepts: []
+  residual: false
+- code: interest_expense
+  statement: IS
+  label: Interest expense
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: pretax_income
+  concepts: []
+  residual: false
+- code: other_nonoperating_income
+  statement: IS
+  label: Other non-operating income
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: pretax_income
+  concepts: []
+  derive: pretax_income - operating_income + interest_expense
+  residual: true
+- code: pretax_income
+  statement: IS
+  label: Pre-tax income
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: null
+  concepts: []
+  residual: false
+- code: income_tax
+  statement: IS
+  label: Income tax
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: net_income
+  concepts: []
+  residual: false
+- code: net_income
+  statement: IS
+  label: Net income
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: null
+  concepts: []
+  residual: false
+- code: net_income_nci
+  statement: IS
+  label: Net income attributable to non-controlling interests
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: net_income_common
+  concepts: []
+  residual: false
+- code: net_income_common
+  statement: IS
+  label: Net income to common
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: null
+  concepts: []
+  derive: net_income - net_income_nci
+  residual: false
+- code: eps_basic
+  statement: IS
+  label: EPS, basic
+  kind: average
+  unit: USD/shares
+  sign: 1
+  parent: null
+  concepts: []
+  residual: false
+- code: eps_diluted
+  statement: IS
+  label: EPS, diluted
+  kind: average
+  unit: USD/shares
+  sign: 1
+  parent: null
+  concepts: []
+  residual: false
+- code: shares_basic
+  statement: IS
+  label: Weighted-average shares, basic
+  kind: average
+  unit: shares
+  sign: 1
+  parent: null
+  concepts: []
+  residual: false
+- code: shares_diluted
+  statement: IS
+  label: Weighted-average shares, diluted
+  kind: average
+  unit: shares
+  sign: 1
+  parent: null
+  concepts: []
+  residual: false
+- code: cash
+  statement: BS
+  label: Cash & equivalents
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_current_assets
+  concepts: []
+  residual: false
+- code: short_term_investments
+  statement: BS
+  label: Short-term investments
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_current_assets
+  concepts: []
+  residual: false
+- code: receivables
+  statement: BS
+  label: Receivables
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_current_assets
+  concepts: []
+  residual: false
+- code: inventory
+  statement: BS
+  label: Inventory
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_current_assets
+  concepts: []
+  residual: false
+- code: other_current_assets
+  statement: BS
+  label: Other current assets
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_current_assets
+  concepts: []
+  derive: total_current_assets - cash - short_term_investments - receivables - inventory
+  residual: true
+- code: total_current_assets
+  statement: BS
+  label: Total current assets
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_assets
+  concepts: []
+  residual: false
+- code: ppe_net
+  statement: BS
+  label: Property, plant & equipment, net
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_assets
+  concepts: []
+  residual: false
+- code: operating_lease_rou
+  statement: BS
+  label: Operating lease right-of-use assets
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_assets
+  concepts: []
+  residual: false
+- code: goodwill
+  statement: BS
+  label: Goodwill
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_assets
+  concepts: []
+  residual: false
+- code: intangibles
+  statement: BS
+  label: Intangible assets
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_assets
+  concepts: []
+  residual: false
+- code: long_term_investments
+  statement: BS
+  label: Long-term investments
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_assets
+  concepts: []
+  residual: false
+- code: other_noncurrent_assets
+  statement: BS
+  label: Other non-current assets
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_assets
+  concepts: []
+  derive: total_assets - total_current_assets - ppe_net - operating_lease_rou - goodwill - intangibles - long_term_investments
+  residual: true
+- code: total_assets
+  statement: BS
+  label: Total assets
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: null
+  concepts: []
+  residual: false
+- code: accounts_payable
+  statement: BS
+  label: Accounts payable
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_current_liabilities
+  concepts: []
+  residual: false
+- code: short_term_debt
+  statement: BS
+  label: Short-term debt
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_current_liabilities
+  concepts: []
+  residual: false
+- code: deferred_revenue_current
+  statement: BS
+  label: Deferred revenue, current
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_current_liabilities
+  concepts: []
+  residual: false
+- code: accrued_liabilities
+  statement: BS
+  label: Accrued liabilities
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_current_liabilities
+  concepts: []
+  residual: false
+- code: other_current_liabilities
+  statement: BS
+  label: Other current liabilities
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_current_liabilities
+  concepts: []
+  derive: total_current_liabilities - accounts_payable - short_term_debt - deferred_revenue_current - accrued_liabilities
+  residual: true
+- code: total_current_liabilities
+  statement: BS
+  label: Total current liabilities
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_liabilities
+  concepts: []
+  residual: false
+- code: long_term_debt
+  statement: BS
+  label: Long-term debt
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_liabilities
+  concepts: []
+  residual: false
+- code: operating_lease_liabilities_noncurrent
+  statement: BS
+  label: Operating lease liabilities, non-current
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_liabilities
+  concepts: []
+  residual: false
+- code: other_noncurrent_liabilities
+  statement: BS
+  label: Other non-current liabilities
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_liabilities
+  concepts: []
+  derive: total_liabilities - total_current_liabilities - long_term_debt - operating_lease_liabilities_noncurrent
+  residual: true
+- code: total_liabilities
+  statement: BS
+  label: Total liabilities
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: null
+  concepts: []
+  derive: total_liabilities_and_equity - total_equity
+  residual: false
+- code: common_stock_apic
+  statement: BS
+  label: Common stock & APIC
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: equity_parent
+  concepts: []
+  residual: false
+- code: retained_earnings
+  statement: BS
+  label: Retained earnings
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: equity_parent
+  concepts: []
+  residual: false
+- code: aoci
+  statement: BS
+  label: Accumulated other comprehensive income
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: equity_parent
+  concepts: []
+  residual: false
+- code: other_equity
+  statement: BS
+  label: Other equity
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: equity_parent
+  concepts: []
+  derive: equity_parent - common_stock_apic - retained_earnings - aoci
+  residual: true
+- code: equity_parent
+  statement: BS
+  label: Equity attributable to parent
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_equity
+  concepts: []
+  residual: false
+- code: nci
+  statement: BS
+  label: Non-controlling interests
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_equity
+  concepts: []
+  residual: false
+- code: total_equity
+  statement: BS
+  label: Total equity
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: null
+  concepts: []
+  derive: equity_parent + nci
+  residual: false
+- code: total_liabilities_and_equity
+  statement: BS
+  label: Total liabilities & equity
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: null
+  concepts: []
+  residual: false
+- code: cf_net_income
+  statement: CF
+  label: Net income
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: cfo
+  concepts: []
+  residual: false
+- code: d_and_a
+  statement: CF
+  label: Depreciation & amortization
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: cfo
+  concepts: []
+  residual: false
+- code: sbc
+  statement: CF
+  label: Stock-based compensation
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: cfo
+  concepts: []
+  residual: false
+- code: deferred_taxes
+  statement: CF
+  label: Deferred taxes
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: cfo
+  concepts: []
+  residual: false
+- code: change_receivables
+  statement: CF
+  label: Change in receivables
+  kind: flow
+  unit: USD
+  sign: -1
+  parent: cfo
+  concepts: []
+  residual: false
+- code: change_inventory
+  statement: CF
+  label: Change in inventory
+  kind: flow
+  unit: USD
+  sign: -1
+  parent: cfo
+  concepts: []
+  residual: false
+- code: change_payables
+  statement: CF
+  label: Change in payables
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: cfo
+  concepts: []
+  residual: false
+- code: other_operating_activities
+  statement: CF
+  label: Other operating activities
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: cfo
+  concepts: []
+  derive: cfo - cf_net_income - d_and_a - sbc - deferred_taxes - change_receivables - change_inventory - change_payables
+  residual: true
+- code: cfo
+  statement: CF
+  label: Cash from operations
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: null
+  concepts: []
+  residual: false
+- code: capex
+  statement: CF
+  label: Capital expenditures
+  kind: flow
+  unit: USD
+  sign: -1
+  parent: cfi
+  concepts: []
+  residual: false
+- code: acquisitions
+  statement: CF
+  label: Acquisitions
+  kind: flow
+  unit: USD
+  sign: -1
+  parent: cfi
+  concepts: []
+  residual: false
+- code: purchases_of_investments
+  statement: CF
+  label: Purchases of investments
+  kind: flow
+  unit: USD
+  sign: -1
+  parent: cfi
+  concepts: []
+  residual: false
+- code: sales_maturities_of_investments
+  statement: CF
+  label: Sales & maturities of investments
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: cfi
+  concepts: []
+  residual: false
+- code: other_investing_activities
+  statement: CF
+  label: Other investing activities
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: cfi
+  concepts: []
+  derive: cfi - capex - acquisitions - purchases_of_investments - sales_maturities_of_investments
+  residual: true
+- code: cfi
+  statement: CF
+  label: Cash from investing
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: null
+  concepts: []
+  residual: false
+- code: debt_issued
+  statement: CF
+  label: Debt issued
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: cff
+  concepts: []
+  residual: false
+- code: debt_repaid
+  statement: CF
+  label: Debt repaid
+  kind: flow
+  unit: USD
+  sign: -1
+  parent: cff
+  concepts: []
+  residual: false
+- code: buybacks
+  statement: CF
+  label: Share repurchases
+  kind: flow
+  unit: USD
+  sign: -1
+  parent: cff
+  concepts: []
+  residual: false
+- code: dividends_paid
+  statement: CF
+  label: Dividends paid
+  kind: flow
+  unit: USD
+  sign: -1
+  parent: cff
+  concepts: []
+  residual: false
+- code: other_financing_activities
+  statement: CF
+  label: Other financing activities
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: cff
+  concepts: []
+  derive: cff - debt_issued - debt_repaid - buybacks - dividends_paid
+  residual: true
+- code: cff
+  statement: CF
+  label: Cash from financing
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: null
+  concepts: []
+  residual: false
+- code: fx_effect
+  statement: CF
+  label: FX effect on cash
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: null
+  concepts: []
+  residual: false
+- code: net_change_in_cash
+  statement: CF
+  label: Net change in cash
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: null
+  concepts: []
+  derive: cfo + cfi + cff + fx_effect
+  residual: false
