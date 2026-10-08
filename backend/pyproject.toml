@@ -12,6 +12,10 @@ dependencies = [
     "typer",
     "argon2-cffi",
     "itsdangerous",
+    "pandas>=3.0.6",
+    "httpx>=0.28.1",
+    "pyyaml>=6.0.3",
+    "yfinance>=1.7.0",
 ]
 
 [project.scripts]
@@ -27,9 +31,10 @@ packages = ["src/bedrock"]
 [dependency-groups]
 dev = [
     "pytest",
-    "httpx",
     "ruff",
     "mypy",
+    "pandas-stubs>=3.0.5.260914",
+    "types-pyyaml>=6.0.12.20260906",
 ]
 
 [tool.ruff]
@@ -45,5 +50,11 @@ select = ["E", "F", "I", "UP", "B"]
 strict = true
 plugins = ["pydantic.mypy"]
 
+[[tool.mypy.overrides]]
+module = ["yfinance", "yfinance.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["live: hits real external APIs (opt-in)"]
+addopts = "-m 'not live'"

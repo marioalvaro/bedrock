@@ -8,7 +8,11 @@ from alembic.runtime.migration import MigrationContext
 from sqlalchemy import create_engine, inspect
 
 from bedrock.core.config import load_settings
+from bedrock.models import canonical_item, company, concept_mapping, filing, price_daily, raw_fact
 from bedrock.models.base import Base
+
+# Importing registers every table on Base.metadata, so the drift test below sees them all.
+_MODELS = (canonical_item, company, concept_mapping, filing, price_daily, raw_fact)
 
 
 def test_alembic_upgrade_head_creates_company_table(
@@ -34,6 +38,15 @@ def test_alembic_upgrade_head_creates_company_table(
     engine = create_engine(database_url)
     inspector = inspect(engine)
     assert "company" in inspector.get_table_names()
+
+
+def test_upgrade_head_creates_the_data_layer_tables(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+
+    tables = set(inspect(create_engine(database_url)).get_table_names())
+    assert {"filing", "raw_fact", "canonical_item", "concept_mapping", "price_daily"} <= tables
 
 
 def _run_alembic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *steps: tuple[str, str]) -> str:
