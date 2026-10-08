@@ -56,3 +56,13 @@ class DataSource(Protocol[P]):
     name: ClassVar[str]
 
     def fetch(self, company: CompanyRef, since: date | None) -> P: ...
+
+
+class EdgarLike(DataSource[EdgarPayload], Protocol):
+    """What the services need from EDGAR: `EdgarSource`, or a test double."""
+
+    def resolve(self, ticker: str) -> CompanyProfile: ...
+
+
+class PricesLike(DataSource[PricePayload], Protocol):
+    """What the services need from the price source: `YFinanceSource`, or a test double."""

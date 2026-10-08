@@ -3,15 +3,15 @@ from dataclasses import dataclass
 from bedrock.core.config import Settings
 from bedrock.ingest.cache import RawCache
 from bedrock.ingest.http import RateLimitedClient
-from bedrock.ingest.protocol import SourceNotConfigured
+from bedrock.ingest.protocol import EdgarLike, PricesLike, SourceNotConfigured
 from bedrock.ingest.sources.edgar import EdgarSource
 from bedrock.ingest.sources.yfinance import YFinanceSource
 
 
 @dataclass(frozen=True)
 class Sources:
-    edgar: EdgarSource
-    prices: YFinanceSource
+    edgar: EdgarLike
+    prices: PricesLike
 
 
 def build_sources(settings: Settings) -> Sources:

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from bedrock.core.auth import LoginThrottle, refresh_session
 from bedrock.core.config import Settings
+from bedrock.ingest.sources import Sources
 
 
 def get_settings(request: Request) -> Settings:
@@ -21,6 +22,11 @@ def get_session(request: Request) -> Generator[Session, None, None]:
     session_factory: sessionmaker[Session] = request.app.state.session_factory
     with session_factory() as session:
         yield session
+
+
+def get_sources(request: Request) -> Sources:
+    sources: Sources = request.app.state.sources
+    return sources
 
 
 def get_login_throttle(request: Request) -> LoginThrottle:

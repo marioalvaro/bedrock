@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { GetCompaniesApiV1CompaniesGetData, GetCompaniesApiV1CompaniesGetResponses, HealthApiV1HealthGetData, HealthApiV1HealthGetResponses, LoginApiV1AuthLoginPostData, LoginApiV1AuthLoginPostErrors, LoginApiV1AuthLoginPostResponses, LogoutApiV1AuthLogoutPostData, LogoutApiV1AuthLogoutPostResponses, MeApiV1AuthMeGetData, MeApiV1AuthMeGetResponses } from './types.gen';
+import type { AddCompanyApiV1CompaniesPostData, AddCompanyApiV1CompaniesPostErrors, AddCompanyApiV1CompaniesPostResponses, GetCellApiV1CompaniesTickerStatementsCellGetData, GetCellApiV1CompaniesTickerStatementsCellGetErrors, GetCellApiV1CompaniesTickerStatementsCellGetResponses, GetCompaniesApiV1CompaniesGetData, GetCompaniesApiV1CompaniesGetResponses, GetCompanyApiV1CompaniesTickerGetData, GetCompanyApiV1CompaniesTickerGetErrors, GetCompanyApiV1CompaniesTickerGetResponses, GetMappingGapsApiV1CompaniesTickerMappingGapsGetData, GetMappingGapsApiV1CompaniesTickerMappingGapsGetErrors, GetMappingGapsApiV1CompaniesTickerMappingGapsGetResponses, GetStatementApiV1CompaniesTickerStatementsGetData, GetStatementApiV1CompaniesTickerStatementsGetErrors, GetStatementApiV1CompaniesTickerStatementsGetResponses, HealthApiV1HealthGetData, HealthApiV1HealthGetResponses, LoginApiV1AuthLoginPostData, LoginApiV1AuthLoginPostErrors, LoginApiV1AuthLoginPostResponses, LogoutApiV1AuthLogoutPostData, LogoutApiV1AuthLogoutPostResponses, MeApiV1AuthMeGetData, MeApiV1AuthMeGetResponses, RefreshApiV1CompaniesTickerRefreshPostData, RefreshApiV1CompaniesTickerRefreshPostErrors, RefreshApiV1CompaniesTickerRefreshPostResponses, RemoveCompanyApiV1CompaniesTickerDeleteData, RemoveCompanyApiV1CompaniesTickerDeleteErrors, RemoveCompanyApiV1CompaniesTickerDeleteResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -44,6 +44,48 @@ export const meApiV1AuthMeGet = <ThrowOnError extends boolean = false>(options?:
  * Get Companies
  */
 export const getCompaniesApiV1CompaniesGet = <ThrowOnError extends boolean = false>(options?: Options<GetCompaniesApiV1CompaniesGetData, ThrowOnError>): RequestResult<GetCompaniesApiV1CompaniesGetResponses, unknown, ThrowOnError> => (options?.client ?? client).get<GetCompaniesApiV1CompaniesGetResponses, unknown, ThrowOnError>({ url: '/api/v1/companies', ...options });
+
+/**
+ * Add Company
+ */
+export const addCompanyApiV1CompaniesPost = <ThrowOnError extends boolean = false>(options: Options<AddCompanyApiV1CompaniesPostData, ThrowOnError>): RequestResult<AddCompanyApiV1CompaniesPostResponses, AddCompanyApiV1CompaniesPostErrors, ThrowOnError> => (options.client ?? client).post<AddCompanyApiV1CompaniesPostResponses, AddCompanyApiV1CompaniesPostErrors, ThrowOnError>({
+    url: '/api/v1/companies',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Remove Company
+ */
+export const removeCompanyApiV1CompaniesTickerDelete = <ThrowOnError extends boolean = false>(options: Options<RemoveCompanyApiV1CompaniesTickerDeleteData, ThrowOnError>): RequestResult<RemoveCompanyApiV1CompaniesTickerDeleteResponses, RemoveCompanyApiV1CompaniesTickerDeleteErrors, ThrowOnError> => (options.client ?? client).delete<RemoveCompanyApiV1CompaniesTickerDeleteResponses, RemoveCompanyApiV1CompaniesTickerDeleteErrors, ThrowOnError>({ url: '/api/v1/companies/{ticker}', ...options });
+
+/**
+ * Get Company
+ */
+export const getCompanyApiV1CompaniesTickerGet = <ThrowOnError extends boolean = false>(options: Options<GetCompanyApiV1CompaniesTickerGetData, ThrowOnError>): RequestResult<GetCompanyApiV1CompaniesTickerGetResponses, GetCompanyApiV1CompaniesTickerGetErrors, ThrowOnError> => (options.client ?? client).get<GetCompanyApiV1CompaniesTickerGetResponses, GetCompanyApiV1CompaniesTickerGetErrors, ThrowOnError>({ url: '/api/v1/companies/{ticker}', ...options });
+
+/**
+ * Get Mapping Gaps
+ */
+export const getMappingGapsApiV1CompaniesTickerMappingGapsGet = <ThrowOnError extends boolean = false>(options: Options<GetMappingGapsApiV1CompaniesTickerMappingGapsGetData, ThrowOnError>): RequestResult<GetMappingGapsApiV1CompaniesTickerMappingGapsGetResponses, GetMappingGapsApiV1CompaniesTickerMappingGapsGetErrors, ThrowOnError> => (options.client ?? client).get<GetMappingGapsApiV1CompaniesTickerMappingGapsGetResponses, GetMappingGapsApiV1CompaniesTickerMappingGapsGetErrors, ThrowOnError>({ url: '/api/v1/companies/{ticker}/mapping-gaps', ...options });
+
+/**
+ * Refresh
+ */
+export const refreshApiV1CompaniesTickerRefreshPost = <ThrowOnError extends boolean = false>(options: Options<RefreshApiV1CompaniesTickerRefreshPostData, ThrowOnError>): RequestResult<RefreshApiV1CompaniesTickerRefreshPostResponses, RefreshApiV1CompaniesTickerRefreshPostErrors, ThrowOnError> => (options.client ?? client).post<RefreshApiV1CompaniesTickerRefreshPostResponses, RefreshApiV1CompaniesTickerRefreshPostErrors, ThrowOnError>({ url: '/api/v1/companies/{ticker}/refresh', ...options });
+
+/**
+ * Get Statement
+ */
+export const getStatementApiV1CompaniesTickerStatementsGet = <ThrowOnError extends boolean = false>(options: Options<GetStatementApiV1CompaniesTickerStatementsGetData, ThrowOnError>): RequestResult<GetStatementApiV1CompaniesTickerStatementsGetResponses, GetStatementApiV1CompaniesTickerStatementsGetErrors, ThrowOnError> => (options.client ?? client).get<GetStatementApiV1CompaniesTickerStatementsGetResponses, GetStatementApiV1CompaniesTickerStatementsGetErrors, ThrowOnError>({ url: '/api/v1/companies/{ticker}/statements', ...options });
+
+/**
+ * Get Cell
+ */
+export const getCellApiV1CompaniesTickerStatementsCellGet = <ThrowOnError extends boolean = false>(options: Options<GetCellApiV1CompaniesTickerStatementsCellGetData, ThrowOnError>): RequestResult<GetCellApiV1CompaniesTickerStatementsCellGetResponses, GetCellApiV1CompaniesTickerStatementsCellGetErrors, ThrowOnError> => (options.client ?? client).get<GetCellApiV1CompaniesTickerStatementsCellGetResponses, GetCellApiV1CompaniesTickerStatementsCellGetErrors, ThrowOnError>({ url: '/api/v1/companies/{ticker}/statements/cell', ...options });
 
 /**
  * Health
