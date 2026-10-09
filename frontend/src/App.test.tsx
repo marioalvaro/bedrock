@@ -6,16 +6,21 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   getCompaniesApiV1CompaniesGet,
+  getCompanyApiV1CompaniesTickerGet,
+  getMappingGapsApiV1CompaniesTickerMappingGapsGet,
   loginApiV1AuthLoginPost,
   logoutApiV1AuthLogoutPost,
   meApiV1AuthMeGet,
 } from "@/api/generated/sdk.gen";
 import { AppRoutes } from "@/App";
 import { createQueryClient } from "@/lib/query-client";
+import { companyItem, mappingGaps } from "@/test/companies";
 import { errorResult, okResult } from "@/test/responses";
 
 vi.mock("@/api/generated/sdk.gen", () => ({
   getCompaniesApiV1CompaniesGet: vi.fn(),
+  getCompanyApiV1CompaniesTickerGet: vi.fn(),
+  getMappingGapsApiV1CompaniesTickerMappingGapsGet: vi.fn(),
   loginApiV1AuthLoginPost: vi.fn(),
   logoutApiV1AuthLogoutPost: vi.fn(),
   meApiV1AuthMeGet: vi.fn(),
@@ -37,6 +42,12 @@ describe("protected routes", () => {
   beforeEach(() => {
     vi.mocked(meApiV1AuthMeGet).mockResolvedValue(okResult({ authenticated: true }) as never);
     vi.mocked(getCompaniesApiV1CompaniesGet).mockResolvedValue(okResult([]) as never);
+    vi.mocked(getCompanyApiV1CompaniesTickerGet).mockResolvedValue(
+      okResult(companyItem()) as never,
+    );
+    vi.mocked(getMappingGapsApiV1CompaniesTickerMappingGapsGet).mockResolvedValue(
+      okResult(mappingGaps()) as never,
+    );
   });
 
   it.each(["/", "/settings", "/c/AAPL"])(
@@ -61,7 +72,8 @@ describe("protected routes", () => {
   it("renders the company page for a ticker", async () => {
     renderAt("/c/AAPL");
 
-    expect(await screen.findByText("AAPL overview arrives in M1.")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "AAPL" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Data gaps" })).toBeInTheDocument();
   });
 
   it("sends the user to /login when a data query gets a 401", async () => {
@@ -70,7 +82,7 @@ describe("protected routes", () => {
     renderAt("/");
 
     expect(await loginButton()).toBeInTheDocument();
-    expect(screen.queryByText(/No companies yet/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/No companies yet\. Add a ticker above\./)).not.toBeInTheDocument();
   });
 
   it("shows an error instead of an empty list when companies fail to load", async () => {
@@ -82,35 +94,22 @@ describe("protected routes", () => {
     renderAt("/", queryClient);
 
     expect(await screen.findByText("Could not load companies.")).toBeInTheDocument();
-    expect(screen.queryByText(/No companies yet/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/No companies yet\. Add a ticker above\./)).not.toBeInTheDocument();
   });
 
   it("shows the empty state when there are no companies yet", async () => {
     renderAt("/");
 
-    expect(await screen.findByText(/No companies yet/)).toBeInTheDocument();
+    expect(await screen.findByText(/No companies yet\. Add a ticker above\./)).toBeInTheDocument();
     expect(screen.queryByText("Could not load companies.")).not.toBeInTheDocument();
   });
 
   it("lists companies from the API", async () => {
-    vi.mocked(getCompaniesApiV1CompaniesGet).mockResolvedValue(
-      okResult([
-        {
-          id: 1,
-          ticker: "AAPL",
-          cik: "0000320193",
-          name: "Apple Inc.",
-          fiscal_year_end_month: 9,
-          currency: "USD",
-          sic: "3571",
-          last_refreshed_at: null,
-        },
-      ]) as never,
-    );
+    vi.mocked(getCompaniesApiV1CompaniesGet).mockResolvedValue(okResult([companyItem()]) as never);
 
     renderAt("/");
 
-    expect(await screen.findByRole("link", { name: "AAPL — Apple Inc." })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "AAPL" })).toHaveAttribute("href", "/c/AAPL");
   });
 
   it("logs out and lands on /login", async () => {

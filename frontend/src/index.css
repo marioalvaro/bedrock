@@ -20,6 +20,7 @@
   --color-chart-3: var(--chart-3);
   --color-chart-2: var(--chart-2);
   --color-chart-1: var(--chart-1);
+  --color-prov-derived: var(--prov-derived);
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
@@ -71,6 +72,7 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
+  --prov-derived: oklch(0.5 0.12 250);
   --radius: 0.25rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
@@ -101,6 +103,7 @@
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);
+  --prov-derived: oklch(0.75 0.1 250);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -132,4 +135,10 @@
 .num {
   font-variant-numeric: tabular-nums;
   text-align: right;
+}
+
+/* Provenance: reported is plain; derived (Q4, YTD differences, formulas) is italic and tinted. */
+.prov-derived {
+  font-style: italic;
+  color: var(--prov-derived);
 }
