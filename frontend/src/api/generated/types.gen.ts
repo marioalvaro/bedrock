@@ -463,6 +463,10 @@ export type UnmappedConceptOut = {
      */
     latest_value: string;
     /**
+     * Suggested Codes
+     */
+    suggested_codes: Array<string>;
+    /**
      * Taxonomy
      */
     taxonomy: string;

@@ -4,7 +4,7 @@ import pandas as pd
 from sqlalchemy import delete, insert, or_, select
 from sqlalchemy.orm import Session
 
-from bedrock.mapping.config import CanonicalItemDef, split_concept
+from bedrock.mapping.config import CanonicalItemDef, split_group
 from bedrock.models.canonical_item import CanonicalItem
 from bedrock.models.concept_mapping import ConceptMapping
 
@@ -17,7 +17,8 @@ def replace_mappings(
     overrides: Mapping[int, Mapping[str, Sequence[str]]],
 ) -> None:
     """Make the stored canonical items and concept mappings equal the config: the defaults, plus
-    the overrides of each company (by id). Replace-all keeps the YAML the one source of truth."""
+    the overrides of each company (by id). Replace-all keeps the YAML the one source of truth.
+    A summed concept (`A + B`) is one row per member with the same priority, anchor first."""
     session.execute(delete(ConceptMapping))
     session.execute(delete(CanonicalItem))
     session.execute(
@@ -39,24 +40,26 @@ def replace_mappings(
     rows: list[dict[str, object]] = []
     for item in items:
         for priority, concept in enumerate(item.concepts):
-            rows.append(_row(item.code, concept, priority, None))
+            rows.extend(_rows(item.code, concept, priority, None))
     for company_id, by_code in overrides.items():
         for code, concepts in by_code.items():
             for priority, concept in enumerate(concepts):
-                rows.append(_row(code, concept, priority, company_id))
+                rows.extend(_rows(code, concept, priority, company_id))
     if rows:
         session.execute(insert(ConceptMapping), rows)
 
 
-def _row(code: str, concept: str, priority: int, company_id: int | None) -> dict[str, object]:
-    taxonomy, name = split_concept(concept)
-    return {
-        "canonical_code": code,
-        "taxonomy": taxonomy,
-        "concept": name,
-        "priority": priority,
-        "company_id": company_id,
-    }
+def _rows(code: str, entry: str, priority: int, company_id: int | None) -> list[dict[str, object]]:
+    return [
+        {
+            "canonical_code": code,
+            "taxonomy": taxonomy,
+            "concept": name,
+            "priority": priority,
+            "company_id": company_id,
+        }
+        for taxonomy, name in split_group(entry)
+    ]
 
 
 def mappings_for(session: Session, company_id: int) -> pd.DataFrame:

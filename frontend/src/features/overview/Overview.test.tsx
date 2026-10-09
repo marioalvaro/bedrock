@@ -71,6 +71,27 @@ describe("Overview", () => {
     expect(within(row).getByText("2025-09-27")).toBeInTheDocument();
   });
 
+  it("shows the suggested codes of an unmapped concept, and nothing where there is none", async () => {
+    vi.mocked(getMappingGapsApiV1CompaniesTickerMappingGapsGet).mockResolvedValue(
+      okResult(mappingGaps()) as never,
+    );
+    renderOverview();
+
+    const gaps = await screen.findByRole("region", { name: "Data gaps" });
+    expect(
+      await within(gaps).findByRole("columnheader", { name: "Suggested" }),
+    ).toBeInTheDocument();
+    const suggested = (await within(gaps).findByText("us-gaap:LongTermDebtCurrent")).closest(
+      "tr",
+    ) as HTMLElement;
+    expect(within(suggested).getByText("short_term_debt, long_term_debt")).toBeInTheDocument();
+    // the concept with a suggestion is listed first
+    const rows = within(gaps).getAllByRole("row");
+    expect(rows.findIndex((r) => r === suggested)).toBeLessThan(
+      rows.findIndex((r) => within(r).queryByText(/IncreaseDecrease/) !== null),
+    );
+  });
+
   it("says so when there are no gaps", async () => {
     vi.mocked(getMappingGapsApiV1CompaniesTickerMappingGapsGet).mockResolvedValue(
       okResult({ missing_items: [], unmapped_concepts: [] }) as never,

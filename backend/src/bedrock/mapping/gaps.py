@@ -1,12 +1,13 @@
 """What could not be mapped (FR-DATA-04): items without values, and concepts nothing maps. Pure."""
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 
 import pandas as pd
 
+from bedrock.mapping.candidates import CandidateIndex, candidate_codes
 from bedrock.mapping.config import CanonicalItemDef
 from bedrock.statements.build import StatementTable
 
@@ -29,6 +30,7 @@ class UnmappedConcept:
     latest_value: Decimal
     latest_period_end: date
     facts: int  # how many facts of this concept the latest 10-K carries
+    suggested_codes: list[str] = field(default_factory=list)  # hints from the candidate index
 
 
 def missing_items(
@@ -54,8 +56,12 @@ def missing_items(
     return missing
 
 
-def unmapped_concepts(facts: pd.DataFrame, mappings: pd.DataFrame) -> list[UnmappedConcept]:
-    """Concepts with a fact in the latest 10-K accession that no mapping references."""
+def unmapped_concepts(
+    facts: pd.DataFrame, mappings: pd.DataFrame, index: CandidateIndex | None = None
+) -> list[UnmappedConcept]:
+    """Concepts with a fact in the latest 10-K accession that no mapping references. `index`
+    (see `mapping/candidates.py`) adds the Bedrock codes each might belong to; those with a
+    suggestion come first, then the rest, each group in (taxonomy, concept, unit) order."""
     annual = facts[[str(form).startswith("10-K") for form in facts["form"]]]
     if annual.empty:
         return []
@@ -69,7 +75,10 @@ def unmapped_concepts(facts: pd.DataFrame, mappings: pd.DataFrame) -> list[Unmap
     result = []
     for (taxonomy, concept, unit), observations in sorted(groups.items()):
         period_end, value = max(observations, key=lambda o: o[0])
+        suggested = candidate_codes(index, taxonomy, concept) if index is not None else []
         result.append(
-            UnmappedConcept(taxonomy, concept, unit, value, period_end, len(observations))
+            UnmappedConcept(
+                taxonomy, concept, unit, value, period_end, len(observations), suggested
+            )
         )
-    return result
+    return sorted(result, key=lambda u: not u.suggested_codes)  # stable: keeps the name order

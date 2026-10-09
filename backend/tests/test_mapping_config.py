@@ -11,6 +11,7 @@ from bedrock.mapping.config import (
     load_overrides,
     parse_formula,
     split_concept,
+    split_group,
 )
 
 
@@ -66,6 +67,15 @@ def test_parse_formula_rejects_malformed_text(text: str) -> None:
 def test_split_concept_defaults_to_us_gaap() -> None:
     assert split_concept("Revenues") == ("us-gaap", "Revenues")
     assert split_concept("ifrs-full:Revenue") == ("ifrs-full", "Revenue")
+
+
+def test_split_group_lists_the_members_anchor_first() -> None:
+    assert split_group("us-gaap:CommercialPaper + LongTermDebtCurrent") == [
+        ("us-gaap", "CommercialPaper"),
+        ("us-gaap", "LongTermDebtCurrent"),
+    ]
+    assert split_group("Revenues") == [("us-gaap", "Revenues")]
+    assert split_group("A+B") == [("us-gaap", "A"), ("us-gaap", "B")]
 
 
 def test_load_canonical_items_reads_every_field(tmp_path: Path) -> None:
@@ -185,6 +195,44 @@ def test_duplicate_concept_within_a_code_is_rejected(tmp_path: Path) -> None:
     assert error.code == "cost_of_revenue"
 
 
+def test_a_summed_concept_is_qualified_member_by_member(tmp_path: Path) -> None:
+    text = VALID.replace(
+        "concepts: [CostOfRevenue]",
+        'concepts: [CostOfRevenue + OtherCost, "us-gaap:Foo +  Bar", CostOfRevenue]',
+    )
+
+    items = {i.code: i for i in load_canonical_items(write(tmp_path, text))}
+
+    assert items["cost_of_revenue"].concepts == (
+        "us-gaap:CostOfRevenue + us-gaap:OtherCost",
+        "us-gaap:Foo + us-gaap:Bar",
+        "us-gaap:CostOfRevenue",
+    )  # a concept may recur as a member of another group, or alone as the fallback
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        "CostOfRevenue + CostOfRevenue",  # a member twice
+        "CostOfRevenue + us-gaap:CostOfRevenue",
+        "CostOfRevenue + ",  # empty member
+        "+ CostOfRevenue",
+        "CostOfRevenue + + OtherCost",
+        "CostOfRevenue + aapl:OtherCost",  # the members of a sum share one taxonomy
+    ],
+)
+def test_a_malformed_summed_concept_is_rejected(tmp_path: Path, entry: str) -> None:
+    error = fail_with(tmp_path, VALID.replace("[CostOfRevenue]", f'["{entry}"]'))
+
+    assert error.code == "cost_of_revenue"
+
+
+def test_the_same_summed_concept_twice_is_rejected(tmp_path: Path) -> None:
+    text = VALID.replace("[CostOfRevenue]", "[A + B, us-gaap:A + B]")
+
+    assert fail_with(tmp_path, text).code == "cost_of_revenue"
+
+
 @pytest.mark.parametrize(
     "old, new",
     [
@@ -259,6 +307,26 @@ def test_load_overrides_qualifies_concepts(tmp_path: Path) -> None:
     assert load_overrides(tmp_path, "aapl") == {
         "revenue": ["us-gaap:RevenueFromContractWithCustomer", "custom:Rev"]
     }
+
+
+def test_load_overrides_qualifies_summed_concepts(tmp_path: Path) -> None:
+    (tmp_path / "AAPL.yaml").write_text(
+        'short_term_debt: ["CommercialPaper + LongTermDebtCurrent", LongTermDebtCurrent]\n'
+    )
+
+    assert load_overrides(tmp_path, "aapl") == {
+        "short_term_debt": [
+            "us-gaap:CommercialPaper + us-gaap:LongTermDebtCurrent",
+            "us-gaap:LongTermDebtCurrent",
+        ]
+    }
+
+
+def test_load_overrides_rejects_a_malformed_sum(tmp_path: Path) -> None:
+    (tmp_path / "X.yaml").write_text('revenue: ["A + A"]\n')
+
+    with pytest.raises(MappingConfigError):
+        load_overrides(tmp_path, "X")
 
 
 def test_load_overrides_without_a_file_is_empty(tmp_path: Path) -> None:

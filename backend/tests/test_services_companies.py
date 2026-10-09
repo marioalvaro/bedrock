@@ -84,9 +84,11 @@ def test_the_list_stats_match_stats_from_the_full_statements(db_session: Session
     assert view.stats.ev_ebitda is not None  # Costco maps every input
 
 
-def test_ev_ebitda_is_null_where_the_debt_line_is_unmapped(db_session: Session) -> None:
-    # Apple's short-term debt is not mapped (a partial number would understate leverage).
-    assert add_company(db_session, fake_sources(), "AAPL", NOW).stats.ev_ebitda is None
+def test_ev_ebitda_needs_every_input(db_session: Session) -> None:
+    # Apple's short-term debt is a summed concept, commercial paper + term debt: every input exists.
+    assert add_company(db_session, fake_sources(), "AAPL", NOW).stats.ev_ebitda is not None
+    # Microsoft's D&A line is a custom tag that companyfacts omits, so EBITDA is unknown.
+    assert add_company(db_session, fake_sources(), "MSFT", NOW).stats.ev_ebitda is None
 
 
 def test_adding_the_same_company_twice_is_a_conflict_without_any_network_call(
@@ -183,12 +185,13 @@ def test_removing_a_company_removes_all_its_data_and_overrides(db_session: Sessi
             .where(Company.ticker == "MSFT")
         ).scalar_one()
     )
-    overrides = (
-        select(func.count())
-        .select_from(ConceptMapping)
-        .where(ConceptMapping.company_id.is_not(None))
+    msft_id = db_session.execute(select(Company.id)).scalar_one()
+    owners = set(
+        db_session.execute(
+            select(ConceptMapping.company_id).where(ConceptMapping.company_id.is_not(None))
+        ).scalars()
     )
-    assert db_session.execute(overrides).scalar_one() == 0  # MSFT has none, AAPL's are gone
+    assert owners == {msft_id}  # Microsoft's overrides stay, Apple's are gone
 
 
 def test_removing_a_company_that_is_not_followed_is_an_error(db_session: Session) -> None:

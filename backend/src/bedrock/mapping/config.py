@@ -52,6 +52,12 @@ def split_concept(text: str) -> tuple[str, str]:
     return (taxonomy, concept) if sep else (DEFAULT_TAXONOMY, text)
 
 
+def split_group(entry: str) -> list[tuple[str, str]]:
+    """A concept entry `A + B` -> [(taxonomy, A), (taxonomy, B)]: the members of a summed concept,
+    anchor first. A plain concept is a group of one."""
+    return [split_concept(member.strip()) for member in entry.split("+")]
+
+
 def parse_formula(text: str) -> list[tuple[int, str]]:
     """`a - b + c` -> [(1, "a"), (-1, "b"), (1, "c")]."""
     if not _FORMULA.match(text):
@@ -149,10 +155,24 @@ def _item(entry: Any) -> CanonicalItemDef:
 
 
 def _qualify(code: str, concepts: list[str]) -> list[str]:
-    qualified = [":".join(split_concept(c)) for c in concepts]
+    """Each entry as `taxonomy:Concept`, or `taxonomy:A + taxonomy:B` for a summed concept. The
+    members of a sum are distinct and share one taxonomy; no entry may repeat (a concept may recur
+    as a member of another entry, which is how a sum falls back to its anchor alone)."""
+    qualified = [_qualify_entry(code, c) for c in concepts]
     if len(set(qualified)) != len(qualified):
         raise MappingConfigError("duplicate concept", code)
     return qualified
+
+
+def _qualify_entry(code: str, entry: str) -> str:
+    members = split_group(entry)
+    if any(not concept for _, concept in members):
+        raise MappingConfigError(f"empty member in {entry!r}", code)
+    if len(set(members)) != len(members):
+        raise MappingConfigError(f"duplicate member in {entry!r}", code)
+    if len({taxonomy for taxonomy, _ in members}) > 1:
+        raise MappingConfigError(f"members of {entry!r} must share a taxonomy", code)
+    return " + ".join(f"{taxonomy}:{concept}" for taxonomy, concept in members)
 
 
 def _validate(items: list[CanonicalItemDef]) -> None:

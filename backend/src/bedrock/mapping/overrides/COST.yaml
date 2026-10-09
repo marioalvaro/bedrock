@@ -3,3 +3,9 @@
 # or short-term borrowings on separate lines), which is why it is not a default.
 short_term_debt:
   - us-gaap:LongTermDebtCurrent
+# Until FY2011 Costco's cash flow has "Maturities of short-term investments" and "Sales of
+# investments" as two lines; one combined tag (the default) takes over in FY2012, with the same
+# total. The sales tag is also tagged ...OfAvailableForSaleSecurities with the same value, which
+# must not be added again.
+sales_maturities_of_investments:
+  - us-gaap:ProceedsFromMaturitiesPrepaymentsAndCallsOfShorttermInvestments + us-gaap:ProceedsFromSaleOfShortTermInvestments

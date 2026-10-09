@@ -23,6 +23,8 @@ annual:
     total_equity: 80083000000
     cfo: 29668000000                # restated in the FY2017 10-K (ASU 2016-09); the FY2015 10-K said 29,080
     capex: -5944000000
+    sga: 20324000000                # sales and marketing 15,713 + general and administrative 4,611
+    short_term_debt: 7484000000      # short-term debt 4,985 + current portion of long-term debt 2,499
   FY2020:
     revenue: 143015000000
     gross_profit: 96937000000
@@ -35,6 +37,8 @@ annual:
     total_equity: 118304000000
     cfo: 60675000000
     capex: -15441000000
+    sga: 24709000000                # 19,598 + 5,111
+    short_term_debt: 3749000000      # current portion of long-term debt only: no short-term debt line
   FY2026:
     revenue: 331839000000
     gross_profit: 225465000000
@@ -47,6 +51,8 @@ annual:
     total_equity: 442387000000
     cfo: 182935000000
     capex: -115948000000
+    sga: 34666000000                # 26,710 + 7,956
+    short_term_debt: 9227000000      # current portion of long-term debt only: no short-term debt line
 
 # Q4 of the latest FY = 10-K FY revenue minus the nine-month revenue of the Q3 10-Q
 # (accession 0001193125-26-191507, nine months ended 2026-03-31: 241,832 million).
@@ -59,7 +65,6 @@ quarterly:
 # `missing_items`; the reasons are for the reader. Early years: XBRL balance sheets start with FY2008-09
 # and the older columns only exist as comparatives.
 expected_missing:
-  sga: "sales and marketing and general and administrative are two lines: no single concept (see S3 log)"
   net_income_nci: "no noncontrolling interests"
   short_term_investments: "no XBRL fact before FY2009"
   receivables: "no XBRL fact before FY2009"
@@ -71,7 +76,7 @@ expected_missing:
   long_term_investments: "no XBRL fact before FY2009"
   total_assets: "no XBRL fact before FY2009"
   accounts_payable: "no XBRL fact before FY2009"
-  short_term_debt: "short-term debt and the current portion of long-term debt are separate lines: no single concept"
+  short_term_debt: "FY2008 balance sheet is not in XBRL"
   deferred_revenue_current: "no XBRL fact before FY2009"
   accrued_liabilities: "'accrued compensation' is the only accrued line (EmployeeRelatedLiabilitiesCurrent): not mapped"
   total_current_liabilities: "no XBRL fact before FY2009"
@@ -86,6 +91,34 @@ expected_missing:
   change_inventory: "no XBRL fact before FY2009"
   change_payables: "no XBRL fact before FY2009"
   acquisitions: "'acquisition of companies and intangibles' is a custom tag companyfacts omits (us-gaap tag only until FY2011)"
-  sales_maturities_of_investments: "maturities and sales are two lines: no single concept (see S3 log)"
+  sales_maturities_of_investments: "\"Sales of investments\" is a custom tag from FY2019 that companyfacts omits; a partial sum would break the other investing residual"
   debt_issued: "missing FY2008, FY2009, FY2021"
   debt_repaid: "no XBRL fact before FY2010"
+
+# Concepts of the latest 10-K that the edgartools table recognizes but Bedrock does not map, each a
+# decision (map-xbrl run of 2026-10-09). test_mapping_coverage.py fails on a concept not listed here and
+# on a listed one that is mapped or gone.
+acknowledged_unmapped:
+  us-gaap:AvailableForSaleSecuritiesDebtSecurities: "investments-note total of debt securities; the balance-sheet investment lines are mapped"
+  us-gaap:BuildingsAndImprovementsGross: "property-note component, gross of depreciation; ppe_net is the net balance-sheet line"
+  us-gaap:DebtInstrumentCarryingAmount: "debt-note amount of the notes (long-term total with its current part), not a balance-sheet line; the short- and long-term debt lines are mapped"
+  us-gaap:DebtInstrumentUnamortizedDiscountPremiumAndDebtIssuanceCostsNet: "debt-note deduction for discount and issuance costs, not a balance-sheet line"
+  us-gaap:EquitySecuritiesWithoutReadilyDeterminableFairValueAmount: "investments-note component inside the equity and other investments line"
+  us-gaap:FinanceLeaseInterestExpense: "lease-note component of interest; interest_expense is the total interest line"
+  us-gaap:FinanceLeaseLiabilityUndiscountedExcessAmount: "lease maturity-note detail (undiscounted excess), not a balance-sheet line"
+  us-gaap:FurnitureAndFixturesGross: "property-note component, gross of depreciation; ppe_net is the net balance-sheet line"
+  us-gaap:GoodwillImpairedAccumulatedImpairmentLoss: "accumulated impairment, a note deduction; goodwill is the balance-sheet line"
+  us-gaap:IncomeLossFromContinuingOperationsBeforeIncomeTaxesDomestic: "domestic part of income before taxes (tax note); pretax_income is the total"
+  us-gaap:InterestPaid: "supplemental cash disclosure of interest paid, not the expense"
+  us-gaap:Land: "property-note component; ppe_net is the net balance-sheet line"
+  us-gaap:LeaseholdImprovementsGross: "property-note component, gross of depreciation; ppe_net is the net balance-sheet line"
+  us-gaap:LongTermDebt: "total long-term debt including its current part (balance sheet: noncurrent line + current portion); long_term_debt is the noncurrent line"
+  us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalAfterYearFive: "debt maturity schedule, not a balance-sheet line"
+  us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInNextTwelveMonths: "debt maturity schedule, not a balance-sheet line"
+  us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInYearFive: "debt maturity schedule, not a balance-sheet line"
+  us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInYearFour: "debt maturity schedule, not a balance-sheet line"
+  us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInYearThree: "debt maturity schedule, not a balance-sheet line"
+  us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInYearTwo: "debt maturity schedule, not a balance-sheet line"
+  us-gaap:OperatingLeaseLiability: "current plus noncurrent operating lease liability; the canonical line is the noncurrent one"
+  us-gaap:ProceedsFromMaturitiesPrepaymentsAndCallsOfAvailableForSaleSecurities: "half of investment sales + maturities: the sales line is a custom tag from FY2019 that companyfacts omits, so no sum can cover the years (S3, map-xbrl run of 2026-10-09)"
+  us-gaap:RestrictedInvestments: "investments-note detail, not a balance-sheet line"

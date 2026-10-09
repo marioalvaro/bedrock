@@ -269,6 +269,30 @@ def test_replace_mappings_stores_items_defaults_and_followed_overrides(db_sessio
     assert not mappings_repo.mappings_for(db_session, msft.id)["is_override"].any()
 
 
+def test_a_summed_concept_is_stored_as_one_row_per_member_sharing_a_priority(
+    db_session: Session,
+) -> None:
+    aapl = _company(db_session)
+    items = load_canonical_items(DEFAULT_ITEMS_PATH)
+    summed = {
+        "short_term_debt": [
+            "us-gaap:CommercialPaper + us-gaap:LongTermDebtCurrent",
+            "us-gaap:LongTermDebtCurrent",
+        ]
+    }
+
+    mappings_repo.replace_mappings(db_session, items, {aapl.id: summed})
+    db_session.commit()
+
+    frame = mappings_repo.mappings_for(db_session, aapl.id)
+    override = frame[frame["is_override"] & (frame["canonical_code"] == "short_term_debt")]
+    assert list(zip(override["concept"], override["priority"], strict=True)) == [
+        ("CommercialPaper", 0),  # the anchor comes first: rows are read back in insertion order
+        ("LongTermDebtCurrent", 0),
+        ("LongTermDebtCurrent", 1),
+    ]
+
+
 def test_replace_mappings_twice_leaves_no_duplicates(db_session: Session) -> None:
     aapl = _company(db_session)
     items = load_canonical_items(DEFAULT_ITEMS_PATH)

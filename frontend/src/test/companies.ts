@@ -33,11 +33,21 @@ export function mappingGaps(): MappingGapsOut {
     unmapped_concepts: [
       {
         taxonomy: "us-gaap",
+        concept: "LongTermDebtCurrent",
+        unit: "USD",
+        latest_value: "12350000000",
+        latest_period_end: "2025-09-27",
+        facts: 2,
+        suggested_codes: ["short_term_debt", "long_term_debt"],
+      },
+      {
+        taxonomy: "us-gaap",
         concept: "IncreaseDecreaseInOtherOperatingCapitalNet",
         unit: "USD",
         latest_value: "-1200000000",
         latest_period_end: "2025-09-27",
         facts: 3,
+        suggested_codes: [],
       },
     ],
   };

@@ -794,6 +794,13 @@
             "title": "Latest Value",
             "type": "string"
           },
+          "suggested_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Suggested Codes",
+            "type": "array"
+          },
           "taxonomy": {
             "title": "Taxonomy",
             "type": "string"
@@ -809,7 +816,8 @@
           "unit",
           "latest_value",
           "latest_period_end",
-          "facts"
+          "facts",
+          "suggested_codes"
         ],
         "title": "UnmappedConceptOut",
         "type": "object"

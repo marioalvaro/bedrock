@@ -171,3 +171,40 @@ def test_a_10k_a_amendment_can_be_the_latest_annual_filing() -> None:
     )
 
     assert [u.concept for u in unmapped_concepts(amended, MAPS)] == ["New"]
+
+
+# --- suggested codes -----------------------------------------------------------------------
+
+INDEX = {
+    ("us-gaap", "RestructuringCharges"): ["other_operating_expenses"],
+    ("us-gaap", "ZebraLine"): ["short_term_debt", "long_term_debt"],
+    ("us-gaap", "Revenues"): ["revenue"],  # mapped: never reported, so never suggested
+}
+
+
+def test_an_unmapped_concept_carries_the_codes_the_candidate_index_suggests() -> None:
+    result = {u.concept: u for u in unmapped_concepts(unmapped_facts(), MAPS, INDEX)}
+
+    assert result["RestructuringCharges"].suggested_codes == ["other_operating_expenses"]
+    assert result["OddGain"].suggested_codes == []
+    assert "Revenues" not in result
+
+
+def test_concepts_with_a_suggestion_come_first_then_the_rest_in_name_order() -> None:
+    raw = unmapped_facts()
+    zebra = facts(
+        [fact("ZebraLine", date(2023, 7, 1), date(2024, 6, 30), 4, accession="K-24", filed=K24)]
+    )
+
+    result = unmapped_concepts(pd.concat([raw, zebra], ignore_index=True), MAPS, INDEX)
+
+    # aapl:OddGain sorts before every us-gaap name, yet comes after the two suggested ones
+    assert [u.concept for u in result] == ["RestructuringCharges", "ZebraLine", "OddGain"]
+    assert result[1].suggested_codes == ["short_term_debt", "long_term_debt"]
+
+
+def test_without_an_index_nothing_is_suggested_and_the_order_is_by_name() -> None:
+    result = unmapped_concepts(unmapped_facts(), MAPS)
+
+    assert [u.concept for u in result] == ["OddGain", "RestructuringCharges"]
+    assert all(u.suggested_codes == [] for u in result)

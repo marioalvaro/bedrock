@@ -141,3 +141,115 @@ def test_an_unknown_code_or_period_is_a_key_error(
 ) -> None:
     with pytest.raises(KeyError):
         explain(code, fiscal_year, fiscal_period)
+
+
+def test_a_q4_whose_year_to_date_disagrees_with_the_quarters_says_so() -> None:
+    # The 10-Q's nine-month figure was restated to 470, but Q1..Q3 as reported add up to 480:
+    # Q4 is the year less the quarters as displayed, and the formula names them.
+    vintages = pd.concat(
+        [
+            raw_facts(),
+            facts(
+                [
+                    fact(
+                        "Revenues",
+                        date(2022, 7, 1),
+                        date(2023, 3, 31),
+                        470,
+                        accession="Q3-2023-A",
+                        form="10-Q/A",
+                        filed=date(2023, 6, 1),
+                    )
+                ]
+            ),
+        ],
+        ignore_index=True,
+    )
+    canonical = map_facts(select_vintage(vintages), MAPS, ITEMS)
+
+    cell = explain_cell(canonical, vintages, ITEMS, "revenue", 2023, "Q4")
+
+    assert cell.value == 665 - 480
+    assert cell.derivation is not None
+    assert cell.derivation.formula == "FY - Q1 - Q2 - Q3"
+    assert cell.derivation.inputs == (
+        DerivationInput("revenue", "FY", Decimal(665)),
+        DerivationInput("revenue", "Q1", Decimal(150)),
+        DerivationInput("revenue", "Q2", Decimal(160)),
+        DerivationInput("revenue", "Q3", Decimal(170)),
+    )
+
+
+# --- Summed concepts: the vintages are the sum as of each filing --------------------------------
+
+DEBT_ITEMS = [item("revenue"), item("short_term_debt", "BS", kind="instant", sign=1)]
+DEBT_MAPS = mappings(
+    ("revenue", "Revenues", 0),
+    ("short_term_debt", "CommercialPaper", 0),
+    ("short_term_debt", "LongTermDebtCurrent", 0),
+    ("short_term_debt", "LongTermDebtCurrent", 1),
+)
+YEAR_END = date(2023, 6, 30)
+
+
+def explain_debt(rows: list[dict[str, object]]) -> CellExplanation:
+    vintages = facts(
+        flow_facts("Revenues", {2023: (1, 1, 1, 1)}) + rows
+    )  # the revenue sets the calendar
+    canonical = map_facts(select_vintage(vintages), DEBT_MAPS, DEBT_ITEMS)
+    return explain_cell(canonical, vintages, DEBT_ITEMS, "short_term_debt", 2023, "FY")
+
+
+def debt_fact(concept: str, value: int, accession: str, filed: date) -> dict[str, object]:
+    return fact(concept, None, YEAR_END, value, accession=accession, filed=filed)
+
+
+def test_a_summed_cell_names_every_member_and_its_vintages_add_them_per_filing() -> None:
+    cell = explain_debt(
+        [
+            debt_fact("CommercialPaper", 100, "K-2023", date(2023, 8, 1)),
+            debt_fact("LongTermDebtCurrent", 25, "K-2023", date(2023, 8, 1)),
+            # the next 10-K restates the commercial paper only
+            debt_fact("CommercialPaper", 90, "K-2024", date(2024, 8, 1)),
+        ]
+    )
+
+    assert cell.value == 90 + 25
+    assert cell.source is not None
+    assert (cell.source.taxonomy, cell.source.concept) == (
+        "us-gaap",
+        "CommercialPaper + LongTermDebtCurrent",
+    )
+    # As of K-2024 the other member still stands at its K-2023 value, so the last vintage is the
+    # value the cell shows.
+    assert [(v.accession_no, v.value) for v in cell.vintages] == [
+        ("K-2023", 125),
+        ("K-2024", 115),
+    ]
+
+
+def test_a_summed_cells_vintages_skip_filings_before_the_anchor_existed() -> None:
+    cell = explain_debt(
+        [
+            debt_fact("LongTermDebtCurrent", 25, "K-2023", date(2023, 8, 1)),
+            debt_fact("CommercialPaper", 100, "K-2024", date(2024, 8, 1)),
+        ]
+    )
+
+    assert cell.value == 125
+    assert [(v.accession_no, v.value) for v in cell.vintages] == [("K-2024", 125)]
+
+
+def test_vintages_of_a_summed_cell_use_the_sign_of_the_item() -> None:
+    vintages = facts([fact("PaymentsA", *FY23_YEAR, 30), fact("PaymentsB", *FY23_YEAR, 12)])
+    items = [item("capex", "CF", sign=-1)]
+    maps = mappings(("capex", "PaymentsA", 0), ("capex", "PaymentsB", 0))
+    canonical = map_facts(select_vintage(vintages), maps, items)
+
+    cell = explain_cell(canonical, vintages, items, "capex", 2023, "FY")
+
+    assert cell.value == -42
+    assert [v.value for v in cell.vintages] == [-42]
+
+
+FY23_YEAR = (date(2022, 7, 1), date(2023, 6, 30))

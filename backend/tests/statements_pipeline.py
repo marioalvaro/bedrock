@@ -19,7 +19,7 @@ from bedrock.mapping.config import (
     CanonicalItemDef,
     load_canonical_items,
     load_overrides,
-    split_concept,
+    split_group,
 )
 from bedrock.mapping.mapper import map_facts
 from bedrock.mapping.vintage import balance_snapshot, select_vintage
@@ -43,17 +43,17 @@ def mapping_frame(items: list[CanonicalItemDef], overrides: dict[str, list[str]]
     rows: list[dict[str, object]] = []
     for item in items:
         for is_override, concepts in ((False, item.concepts), (True, overrides.get(item.code, []))):
-            for priority, concept in enumerate(concepts):
-                taxonomy, name = split_concept(concept)
-                rows.append(
-                    {
-                        "canonical_code": item.code,
-                        "taxonomy": taxonomy,
-                        "concept": name,
-                        "priority": priority,
-                        "is_override": is_override,
-                    }
-                )
+            for priority, entry in enumerate(concepts):
+                for taxonomy, name in split_group(entry):  # a summed concept: one row per member
+                    rows.append(
+                        {
+                            "canonical_code": item.code,
+                            "taxonomy": taxonomy,
+                            "concept": name,
+                            "priority": priority,
+                            "is_override": is_override,
+                        }
+                    )
     return pd.DataFrame(
         rows, columns=["canonical_code", "taxonomy", "concept", "priority", "is_override"]
     )
@@ -94,6 +94,46 @@ def fact_frame(ticker: str, mappings: pd.DataFrame) -> pd.DataFrame:
             "filed_at",
         ],
     ).astype(
+        {"period_start": "object", "period_end": "object", "value": "object", "filed_at": "object"}
+    )
+
+
+FACT_COLUMNS = [
+    "taxonomy",
+    "concept",
+    "unit",
+    "period_start",
+    "period_end",
+    "value",
+    "accession_no",
+    "form",
+    "filed_at",
+]
+
+
+@cache
+def latest_10k_facts(ticker: str) -> pd.DataFrame:
+    """Every fact (any concept) of the newest 10-K, like `load_latest_annual_facts`."""
+    with gzip.open(FIXTURES / f"{ticker}.json.gz", "rt") as handle:
+        parsed = parse_companyfacts(json.load(handle))
+    annual = [f for f in parsed.filings if f.form.startswith("10-K")]
+    newest = max(annual, key=lambda f: (f.filed_at, f.accession_no))
+    rows = [
+        {
+            "taxonomy": f.taxonomy,
+            "concept": f.concept,
+            "unit": f.unit,
+            "period_start": f.period_start,
+            "period_end": f.period_end,
+            "value": f.value,
+            "accession_no": newest.accession_no,
+            "form": newest.form,
+            "filed_at": newest.filed_at,
+        }
+        for f in parsed.facts
+        if f.accession_no == newest.accession_no
+    ]
+    return pd.DataFrame(rows, columns=FACT_COLUMNS).astype(
         {"period_start": "object", "period_end": "object", "value": "object", "filed_at": "object"}
     )
 

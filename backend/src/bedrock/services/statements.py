@@ -8,6 +8,12 @@ import pandas as pd
 from sqlalchemy.orm import Session
 
 from bedrock.analysis.multiples import KeyStats, key_stats
+from bedrock.mapping.candidates import (
+    DEFAULT_CROSSWALK_PATH,
+    DEFAULT_VENDOR_PATH,
+    CandidateIndex,
+    load_candidate_index,
+)
 from bedrock.mapping.config import CanonicalItemDef, load_canonical_items, parse_formula
 from bedrock.mapping.gaps import MissingItem, UnmappedConcept, missing_items, unmapped_concepts
 from bedrock.mapping.mapper import map_facts
@@ -51,6 +57,11 @@ KEY_STAT_CODES = frozenset(
 @cache
 def canonical_items() -> tuple[CanonicalItemDef, ...]:
     return tuple(load_canonical_items())
+
+
+@cache
+def candidate_index() -> CandidateIndex:
+    return load_candidate_index(DEFAULT_VENDOR_PATH, DEFAULT_CROSSWALK_PATH, canonical_items())
 
 
 @dataclass(frozen=True)
@@ -108,7 +119,7 @@ def mapping_gaps(session: Session, company: Company) -> MappingGaps:
     latest_10k = facts_repo.load_latest_annual_facts(session, company.id)
     return MappingGaps(
         missing_items=missing_items(annual, loaded.items),
-        unmapped_concepts=unmapped_concepts(latest_10k, loaded.mappings),
+        unmapped_concepts=unmapped_concepts(latest_10k, loaded.mappings, candidate_index()),
     )
 
 

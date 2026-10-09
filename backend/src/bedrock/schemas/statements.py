@@ -211,6 +211,7 @@ class UnmappedConceptOut(BaseModel):
     latest_value: Decimal
     latest_period_end: date
     facts: int
+    suggested_codes: list[str]  # canonical codes it might belong to: a hint, not a mapping
 
 
 class MappingGapsOut(BaseModel):
@@ -237,6 +238,7 @@ class MappingGapsOut(BaseModel):
                     latest_value=u.latest_value,
                     latest_period_end=u.latest_period_end,
                     facts=u.facts,
+                    suggested_codes=u.suggested_codes,
                 )
                 for u in gaps.unmapped_concepts
             ],

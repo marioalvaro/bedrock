@@ -6,6 +6,13 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy.orm import Session
 
+from bedrock.mapping.candidates import (
+    DEFAULT_CROSSWALK_PATH,
+    DEFAULT_VENDOR_PATH,
+    candidate_codes,
+    load_candidate_index,
+)
+from bedrock.mapping.config import DEFAULT_ITEMS_PATH, load_canonical_items
 from bedrock.mapping.gaps import missing_items
 from bedrock.models.company import Company
 from bedrock.services.refresh import refresh_company
@@ -163,3 +170,20 @@ def test_unmapped_concepts_are_real_concepts_of_the_latest_10k_that_nothing_maps
     mappings = run_pipeline("AAPL").mappings
     mapped = set(zip(mappings["taxonomy"], mappings["concept"], strict=True))
     assert all((c.taxonomy, c.concept) not in mapped for c in gaps.unmapped_concepts)
+
+
+def test_unmapped_concepts_carry_the_suggested_codes_and_those_come_first(
+    db_session: Session, aapl: Company
+) -> None:
+    gaps = mapping_gaps(db_session, aapl)
+
+    index = load_candidate_index(
+        DEFAULT_VENDOR_PATH, DEFAULT_CROSSWALK_PATH, load_canonical_items(DEFAULT_ITEMS_PATH)
+    )
+    assert all(
+        c.suggested_codes == candidate_codes(index, c.taxonomy, c.concept)
+        for c in gaps.unmapped_concepts
+    )
+    has_suggestion = [bool(c.suggested_codes) for c in gaps.unmapped_concepts]
+    assert any(has_suggestion)
+    assert has_suggestion == sorted(has_suggestion, reverse=True)  # suggested first, then the rest

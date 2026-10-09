@@ -205,8 +205,12 @@ def test_mapping_gaps_list_missing_items_and_unmapped_concepts(aapl_client: Test
         "latest_value",
         "latest_period_end",
         "facts",
+        "suggested_codes",
     }
     assert isinstance(unmapped["latest_value"], str)
+    assert isinstance(unmapped["suggested_codes"], list)
+    suggested = [bool(u["suggested_codes"]) for u in gaps["unmapped_concepts"]]
+    assert suggested[0] and suggested == sorted(suggested, reverse=True)  # suggested ones first
 
 
 def test_the_openapi_schema_types_decimals_as_strings(app: FastAPI) -> None:

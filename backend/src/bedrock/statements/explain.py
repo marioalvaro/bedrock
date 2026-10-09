@@ -1,9 +1,10 @@
 """Cell details: where one statement value came from. Pure."""
 
-from collections.abc import Sequence
+from collections.abc import Hashable, Sequence
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 import pandas as pd
 
@@ -112,12 +113,38 @@ def _vintages(
     end: date,
     sign: int,
 ) -> list[Vintage]:
-    rows = [
-        r
-        for r in facts.to_dict("records")
-        if (r["taxonomy"], r["concept"], r["unit"], r["period_end"])
-        == (taxonomy, concept, unit, end)
-        and (r["period_start"] == start or (start is None and pd.isna(r["period_start"])))
-    ]
-    rows.sort(key=lambda r: (r["filed_at"], r["accession_no"]))
-    return [Vintage(r["value"] * sign, r["accession_no"], r["form"], r["filed_at"]) for r in rows]
+    """The cell's value as each filing reported it, oldest first. `concept` may be a summed
+    concept (`A + B`, see `map_facts`): its vintage at a filing is the sum of every member's latest
+    value filed on or before that filing, so the last vintage is the value the cell shows. A filing
+    counts when it carries any member and the anchor has a value by then."""
+    members = concept.split(" + ")
+    by_member: dict[str, list[dict[Hashable, Any]]] = {name: [] for name in members}
+    for r in facts.to_dict("records"):
+        if (
+            r["taxonomy"] == taxonomy
+            and r["concept"] in by_member
+            and (r["unit"], r["period_end"]) == (unit, end)
+            and (r["period_start"] == start or (start is None and pd.isna(r["period_start"])))
+        ):
+            by_member[r["concept"]].append(r)
+    for rows in by_member.values():
+        rows.sort(key=_filed_key)
+
+    filings = sorted({_filed_key(r): r for rows in by_member.values() for r in rows}.items())
+    vintages: list[Vintage] = []
+    for key, filing in filings:
+        known = [
+            [r for r in rows if _filed_key(r) <= key][-1:]  # the member's latest value as of then
+            for rows in by_member.values()
+        ]
+        if not known[0]:  # the anchor has no value yet
+            continue
+        total = sum((r["value"] for rows in known for r in rows), Decimal(0))
+        vintages.append(
+            Vintage(total * sign, filing["accession_no"], filing["form"], filing["filed_at"])
+        )
+    return vintages
+
+
+def _filed_key(row: dict[Hashable, Any]) -> tuple[date, str]:
+    return (row["filed_at"], row["accession_no"])

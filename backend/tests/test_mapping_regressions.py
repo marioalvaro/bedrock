@@ -148,14 +148,21 @@ def test_income_statement_mapping(ticker: str, code: str, period: str, expected:
     assert mapped(ticker, code, period) == expected
 
 
-def test_msft_has_no_single_sga_concept_so_the_residual_absorbs_sales_and_marketing_and_g_and_a() -> (
-    None
-):
-    # FY2020 10-K: sales and marketing 19,598 + general and administrative 5,111 = 24,709.
-    assert mapped("MSFT", "sga", "FY2020") is None
-    assert mapped("MSFT", "other_operating_expenses", "FY2020") == usd(24_709)
-    # FY2026: 26,710 + 7,956 = 34,666.
-    assert mapped("MSFT", "other_operating_expenses", "FY2026") == usd(34_666)
+def test_msft_sga_is_sales_and_marketing_plus_general_and_administrative() -> None:
+    # Microsoft shows the two lines separately and no total, so the override sums them (anchor: sales
+    # and marketing). 10-Ks: FY2015 15,713 + 4,611; FY2020 19,598 + 5,111; FY2026 26,710 + 7,956.
+    assert mapped("MSFT", "sga", "FY2015") == usd(20_324)
+    assert mapped("MSFT", "sga", "FY2020") == usd(24_709)
+    assert mapped("MSFT", "sga", "FY2026") == usd(34_666)
+    assert source_concept(run_pipeline("MSFT"), "sga", "2020-06-30") == (
+        "SellingAndMarketingExpense + GeneralAndAdministrativeExpense"
+    )
+    # Gross profit - R&D - SG&A = operating income, so nothing is left for the residual.
+    assert mapped("MSFT", "other_operating_expenses", "FY2020") == 0
+    assert mapped("MSFT", "other_operating_expenses", "FY2026") == 0
+    # Apple reports SG&A as one line, so its components in the notes (selling and marketing 19,524,
+    # general and administrative 8,077 in FY2025) are not mapped: they would double count.
+    assert mapped("AAPL", "sga", "FY2025") == usd(27_601)
 
 
 def test_costco_reports_no_research_and_development() -> None:
@@ -402,25 +409,78 @@ def test_companies_without_a_separate_line_leave_the_item_empty() -> None:
     assert mapped("COST", "long_term_investments", "FY2020") is None
 
 
-def test_short_term_debt_is_left_empty_where_no_single_concept_covers_it() -> None:
-    # A mapped concept must equal the canonical definition (current portion of long-term debt AND
-    # commercial paper / short-term borrowings): Apple and Microsoft report them on separate lines,
-    # so any one concept would understate the debt. Costco's only line is the current portion.
-    assert mapped("AAPL", "short_term_debt", "FY2020") is None
-    assert mapped("MSFT", "short_term_debt", "FY2020") is None
-    assert mapped("COST", "short_term_debt", "FY2020") == usd(95)
-    assert mapped("COST", "short_term_debt", "FY2015") == usd(1_283)
-    assert mapped("COST", "short_term_debt", "FY2026") == usd(2_248)
+SHORT_TERM_DEBT: list[tuple[str, str, str, Decimal]] = [
+    # AAPL, 10-Ks FY2015 (commercial paper 8,499 + current portion of long-term debt 2,500), FY2020
+    # (4,996 + 8,773), FY2024 (9,967 + 10,912), FY2025 (7,979 + 12,350).
+    ("AAPL", "short_term_debt", "FY2015", usd(10_999)),
+    ("AAPL", "short_term_debt", "FY2020", usd(13_769)),
+    ("AAPL", "short_term_debt", "FY2024", usd(20_879)),
+    ("AAPL", "short_term_debt", "FY2025", usd(20_329)),
+    # AAPL FY2014: commercial paper 6,308 and a current portion of 0.
+    ("AAPL", "short_term_debt", "FY2014", usd(6_308)),
+    # The FY2020 Q2 and Q3 10-Qs call the first line "Commercial paper and repurchase agreement(s)"
+    # and tag it OtherShortTermBorrowings (10,029 and 11,166), next to term debt 10,392 and 7,509.
+    ("AAPL", "short_term_debt", "FY2020Q2", usd(20_421)),
+    ("AAPL", "short_term_debt", "FY2020Q3", usd(18_675)),
+    # MSFT, 10-Ks: FY2015 short-term debt 4,985 + current portion 2,499; FY2017 9,072 + 1,049;
+    # FY2020 only the current portion, 3,749 (no short-term debt line); FY2024 6,693 + 2,249; FY2025
+    # 0 + 2,999; FY2026 9,227 (no line).
+    ("MSFT", "short_term_debt", "FY2015", usd(7_484)),
+    ("MSFT", "short_term_debt", "FY2017", usd(10_121)),
+    ("MSFT", "short_term_debt", "FY2020", usd(3_749)),
+    ("MSFT", "short_term_debt", "FY2024", usd(8_942)),
+    ("MSFT", "short_term_debt", "FY2025", usd(2_999)),
+    ("MSFT", "short_term_debt", "FY2026", usd(9_227)),
+    # MSFT 10-Qs without a short-term debt line: Sep 30 2025 and Mar 31 2026 show the current portion.
+    ("MSFT", "short_term_debt", "FY2026Q1", usd(7_832)),
+    ("MSFT", "short_term_debt", "FY2026Q3", usd(8_839)),
+    # COST: the current portion is its only line.
+    ("COST", "short_term_debt", "FY2015", usd(1_283)),
+    ("COST", "short_term_debt", "FY2020", usd(95)),
+    ("COST", "short_term_debt", "FY2026", usd(2_248)),
+]
+
+
+@pytest.mark.parametrize(("ticker", "code", "period", "expected"), SHORT_TERM_DEBT)
+def test_short_term_debt_is_the_whole_item(
+    ticker: str, code: str, period: str, expected: Decimal
+) -> None:
+    freq = "quarterly" if "Q" in period else "annual"
+    assert mapped(ticker, code, period, freq) == expected
+
+
+def test_a_summed_short_term_debt_names_all_its_sources() -> None:
+    aapl, msft = run_pipeline("AAPL"), run_pipeline("MSFT")
+    assert source_concept(aapl, "short_term_debt", "2025-09-27") == (
+        "CommercialPaper + LongTermDebtCurrent"
+    )
+    assert source_concept(msft, "short_term_debt", "2015-06-30") == (
+        "ShortTermBorrowings + LongTermDebtCurrent"
+    )
+    assert source_concept(msft, "short_term_debt", "2024-06-30") == (
+        "CommercialPaper + LongTermDebtCurrent"
+    )
+    assert source_concept(msft, "short_term_debt", "2026-06-30") == "LongTermDebtCurrent"
+
+
+def test_the_current_portion_alone_is_never_shown_for_apple() -> None:
+    # Apple's commercial paper moved to another tag in two 10-Qs; a bare LongTermDebtCurrent fallback
+    # would have shown 10,392 and 7,509 there, half of the debt. Without a fallback, a quarter whose
+    # first line has no known tag stays empty instead.
+    aapl = run_pipeline("AAPL")
+    frame = aapl.canonical
+    alone = frame[
+        (frame["code"] == "short_term_debt") & (frame["concept"] == "LongTermDebtCurrent")
+    ]
+    assert len(alone) == 0
 
 
 def test_residual_lines_absorb_the_components_that_have_no_concept() -> None:
-    # AAPL FY2020: other current liabilities = total (105,392) - payables (42,296) - deferred
-    # revenue (6,643) = 56,453. It holds the term debt (8,773), commercial paper (4,996) and the
-    # reported "other current liabilities" (42,684).
-    assert mapped("AAPL", "other_current_liabilities", "FY2020") == usd(56_453)
-    # MSFT FY2020: 72,310 - 12,530 - 36,000 = 23,780 (current debt 3,749, accrued compensation,
-    # taxes and other).
-    assert mapped("MSFT", "other_current_liabilities", "FY2020") == usd(23_780)
+    # AAPL FY2020: other current liabilities = total (105,392) - payables (42,296) - short-term debt
+    # (13,769) - deferred revenue (6,643) = 42,684, the reported "other current liabilities" line.
+    assert mapped("AAPL", "other_current_liabilities", "FY2020") == usd(42_684)
+    # MSFT FY2020: 72,310 - 12,530 - 3,749 - 36,000 = 20,031 (accrued compensation, taxes and other).
+    assert mapped("MSFT", "other_current_liabilities", "FY2020") == usd(20_031)
 
 
 def test_a_restated_balance_sheet_keeps_every_vintage() -> None:
@@ -613,8 +673,9 @@ def test_cash_flow_lines_without_a_matching_concept_stay_empty() -> None:
     # opposite sign of DeferredIncomeTaxExpenseBenefit (-306 for a 306 add-back): one sign cannot
     # fit both, so it is not mapped.
     assert mapped("COST", "deferred_taxes", "FY2026") is None
-    # Apple and Microsoft report investment maturities and sales on two lines: no single concept.
-    assert mapped("AAPL", "sales_maturities_of_investments", "FY2020") is None
+    # Microsoft reports investment maturities and sales on two lines, and the sales tag stops after
+    # FY2018 (the later "Sales of investments" is a custom tag companyfacts omits): see
+    # `test_microsoft_investment_sales_and_maturities_are_left_empty`.
     assert mapped("MSFT", "sales_maturities_of_investments", "FY2020") is None
     # Apple has no FX line and no receivables line at Costco.
     assert mapped("AAPL", "fx_effect", "FY2020") is None
@@ -622,14 +683,70 @@ def test_cash_flow_lines_without_a_matching_concept_stay_empty() -> None:
     assert mapped("AAPL", "cfo", "FY2020") == usd(80_674)  # the neighbours are mapped
 
 
-def test_other_investing_absorbs_the_investment_sales_and_maturities_it_has_no_concept_for() -> (
-    None
-):
-    # AAPL FY2020: the residual is cfi (-4,289) - capex (-7,309) - acquisitions (-1,524) - purchases
-    # (-114,938), with no sales/maturities line to subtract: 119,482, so the subtotal still foots.
-    assert mapped("AAPL", "other_investing_activities", "FY2020") == usd(
-        -4_289 + 7_309 + 1_524 + 114_938
+INVESTMENT_SALES_AND_MATURITIES: list[tuple[str, Decimal]] = [
+    # AAPL cash flow: "Proceeds from maturities of marketable securities" + "Proceeds from sales of
+    # marketable securities". 10-Ks FY2015 (14,538 + 107,447; its FY2014 and FY2013 columns 18,810 +
+    # 189,301 and 20,317 + 104,130), FY2020 (69,918 + 50,473; FY2018 55,881 + 47,838), FY2025
+    # (40,907 + 12,890).
+    ("FY2013", usd(124_447)),
+    ("FY2014", usd(208_111)),
+    ("FY2015", usd(121_985)),
+    ("FY2018", usd(103_719)),
+    ("FY2020", usd(120_391)),
+    ("FY2025", usd(53_797)),
+]
+
+
+@pytest.mark.parametrize(("period", "expected"), INVESTMENT_SALES_AND_MATURITIES)
+def test_apple_investment_sales_and_maturities_are_summed(period: str, expected: Decimal) -> None:
+    assert mapped("AAPL", "sales_maturities_of_investments", period) == expected
+
+
+def test_apple_investment_sales_follow_the_tag_switch_inside_the_sum() -> None:
+    # The sales tag changed in FY2017-18 (both tags carry the same figure there, so only one may
+    # count) and the maturities tag stayed; the group is anchored on the sales tag for that reason.
+    aapl = run_pipeline("AAPL")
+    assert source_concept(aapl, "sales_maturities_of_investments", "2015-09-26") == (
+        "ProceedsFromSaleOfAvailableForSaleSecurities"
+        " + ProceedsFromMaturitiesPrepaymentsAndCallsOfAvailableForSaleSecurities"
     )
+    assert source_concept(aapl, "sales_maturities_of_investments", "2018-09-29") == (
+        "ProceedsFromSaleOfAvailableForSaleSecuritiesDebt"
+        " + ProceedsFromMaturitiesPrepaymentsAndCallsOfAvailableForSaleSecurities"
+    )
+
+
+def test_costco_investment_sales_and_maturities_before_the_combined_line() -> None:
+    # COST 10-K FY2011 cash flow: "Maturities of short-term investments" 2,614 / 1,428 / 1,780 and
+    # "Sales of investments" 602 / 309 / 183 for FY2011 / FY2010 / FY2009. From FY2012 one combined
+    # tag carries the same total (FY2012: 1,821 + 482 = 2,303), which the summed override reproduces.
+    assert mapped("COST", "sales_maturities_of_investments", "FY2009") == usd(1_963)
+    assert mapped("COST", "sales_maturities_of_investments", "FY2010") == usd(1_737)
+    assert mapped("COST", "sales_maturities_of_investments", "FY2011") == usd(3_216)
+    assert mapped("COST", "sales_maturities_of_investments", "FY2012") == usd(2_303)
+    assert mapped("COST", "sales_maturities_of_investments", "FY2026") == usd(811)  # unchanged
+    cost = run_pipeline("COST")
+    assert source_concept(cost, "sales_maturities_of_investments", "2011-08-28") == (
+        "ProceedsFromMaturitiesPrepaymentsAndCallsOfShorttermInvestments"
+        " + ProceedsFromSaleOfShortTermInvestments"
+    )
+    assert source_concept(cost, "sales_maturities_of_investments", "2026-08-30") == (
+        "ProceedsFromSaleAndMaturityOfMarketableSecurities"
+    )
+
+
+def test_microsoft_investment_sales_and_maturities_are_left_empty() -> None:
+    # FY2019-26 "Sales of investments" (17,721 in FY2020) is not in companyfacts, so a sum could
+    # only cover FY2008-18, and the residual would then jump by the missing line between FY2018
+    # and FY2019. Neither tag alone is the whole item.
+    assert mapped("MSFT", "sales_maturities_of_investments", "FY2018") is None
+    assert mapped("MSFT", "sales_maturities_of_investments", "FY2020") is None
+
+
+def test_other_investing_absorbs_what_has_no_concept() -> None:
+    # AAPL FY2020: cfi (-4,289) - capex (-7,309) - acquisitions (-1,524) - purchases (-114,938) -
+    # sales and maturities (120,391) = -909: the non-marketable securities and "Other" lines.
+    assert mapped("AAPL", "other_investing_activities", "FY2020") == usd(-909)
 
 
 def test_a_cash_flow_total_equals_its_parts_where_all_are_mapped() -> None:

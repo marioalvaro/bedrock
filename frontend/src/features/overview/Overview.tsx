@@ -66,6 +66,16 @@ function DataGaps({ ticker }: { ticker: string }) {
             ) : (
               <div className="max-h-96 overflow-auto">
                 <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-muted-foreground text-left text-xs">
+                      <th className="py-1 pr-4 font-normal">Concept</th>
+                      <th className="py-1 pr-4 text-right font-normal">Latest value</th>
+                      <th className="py-1 pr-4 font-normal">Unit</th>
+                      <th className="py-1 pr-4 font-normal">Period end</th>
+                      <th className="py-1 pr-4 text-right font-normal">Facts</th>
+                      <th className="py-1 font-normal">Suggested</th>
+                    </tr>
+                  </thead>
                   <tbody>
                     {data.unmapped_concepts.map((concept) => (
                       <tr
@@ -84,7 +94,8 @@ function DataGaps({ ticker }: { ticker: string }) {
                         <td className="text-muted-foreground py-1 pr-4">
                           {concept.latest_period_end}
                         </td>
-                        <td className="num text-muted-foreground py-1">{concept.facts}</td>
+                        <td className="num text-muted-foreground py-1 pr-4">{concept.facts}</td>
+                        <td className="py-1">{concept.suggested_codes.join(", ")}</td>
                       </tr>
                     ))}
                   </tbody>
