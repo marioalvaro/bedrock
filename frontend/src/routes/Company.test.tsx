@@ -164,7 +164,7 @@ describe("tabs", () => {
     expect(await screen.findByText("Revenue")).toBeInTheDocument();
     expect(getStatementApiV1CompaniesTickerStatementsGet).toHaveBeenCalledWith({
       path: { ticker: "AAPL" },
-      query: { type, freq: "annual" },
+      query: { type, freq: "annual", common_size_base: "total" },
     });
     expect(screen.getByRole("link", { name })).toHaveAttribute("aria-current", "page");
   });

@@ -573,7 +573,7 @@
         "type": "object"
       },
       "RowOut": {
-        "description": "One line item. The arrays are aligned with the statement's `periods`; YoY and common-size\nare fractions (0.05 = 5 %), not percentages.",
+        "description": "One line item. The arrays are aligned with the statement's `periods`; YoY and common-size\nare fractions (0.05 = 5 %), not percentages. `common_size_base` is the label of the row\n`common_size` divides by (revenue, total assets or the row's parent).",
         "properties": {
           "code": {
             "title": "Code",
@@ -593,6 +593,17 @@
             },
             "title": "Common Size",
             "type": "array"
+          },
+          "common_size_base": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Common Size Base"
           },
           "depth": {
             "title": "Depth",
@@ -668,7 +679,8 @@
           "values",
           "provenance",
           "yoy",
-          "common_size"
+          "common_size",
+          "common_size_base"
         ],
         "title": "RowOut",
         "type": "object"
@@ -1244,6 +1256,20 @@
                 "normalized"
               ],
               "title": "Basis",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "common_size_base",
+            "required": false,
+            "schema": {
+              "default": "total",
+              "enum": [
+                "total",
+                "parent"
+              ],
+              "title": "Common Size Base",
               "type": "string"
             }
           }

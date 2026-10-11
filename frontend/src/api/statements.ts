@@ -10,15 +10,22 @@ import {
 
 export type StatementType = "IS" | "BS" | "CF";
 export type Freq = "annual" | "quarterly" | "ttm";
+// What common-size divides by: revenue / total assets, or each row's parent row.
+export type CommonSizeBase = "total" | "parent";
 
-export const statementQueryOptions = (ticker: string, type: StatementType, freq: Freq) =>
+export const statementQueryOptions = (
+  ticker: string,
+  type: StatementType,
+  freq: Freq,
+  commonSizeBase: CommonSizeBase = "total",
+) =>
   queryOptions({
-    queryKey: [...companyKey(ticker), "statements", type, freq],
+    queryKey: [...companyKey(ticker), "statements", type, freq, commonSizeBase],
     queryFn: async () => {
       const statement = await unwrap(
         getStatementApiV1CompaniesTickerStatementsGet({
           path: { ticker },
-          query: { type, freq },
+          query: { type, freq, common_size_base: commonSizeBase },
         }),
       );
       // A 200 proves only that something answered (the dev server's SPA fallback sends

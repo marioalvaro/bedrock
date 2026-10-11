@@ -18,6 +18,7 @@ from bedrock.statements.periods import (
 )
 
 Freq = Literal["annual", "quarterly", "ttm"]
+CommonSizeBase = Literal["total", "parent"]
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,7 @@ class Row:
     provenance: list[Provenance | None]
     yoy: list[Decimal | None]
     common_size: list[Decimal | None]
+    common_size_base: str | None = None  # label of the row `common_size` divides by
 
 
 @dataclass(frozen=True)
@@ -56,9 +58,16 @@ BALANCE_RELATIVE = Decimal("0.00001")
 
 
 def build_statement(
-    frame: pd.DataFrame, items: Sequence[CanonicalItemDef], statement: str, freq: Freq
+    frame: pd.DataFrame,
+    items: Sequence[CanonicalItemDef],
+    statement: str,
+    freq: Freq,
+    common_size_base: CommonSizeBase = "total",
 ) -> StatementTable:
-    """Evaluation order: discrete periods -> formulas -> TTM -> YoY / common-size."""
+    """Evaluation order: discrete periods -> formulas -> TTM -> YoY / common-size.
+
+    Common-size divides every row by one base row of the same period: `total` is revenue (IS, CF)
+    or total assets (BS); `parent` is the row's parent, and a row without one uses the total."""
     if statement == "BS" and freq == "ttm":
         raise ValueError("TTM is only defined for flow statements, not the balance sheet")
     calendar = fiscal_calendar(frame)
@@ -77,10 +86,11 @@ def build_statement(
                 )
 
     by_code = {i.code: i for i in items}
-    denominator = "total_assets" if statement == "BS" else "revenue"
-    base = [cells.get((denominator, p.key), EMPTY).value for p in periods]
+    total = by_code.get("total_assets" if statement == "BS" else "revenue")
     rows = [
-        _row(item, periods, cells, by_code, base) for item in items if item.statement == statement
+        _row(item, periods, cells, by_code, _base_item(item, by_code, total, common_size_base))
+        for item in items
+        if item.statement == statement
     ]
     balance = _balance_check(periods, cells) if statement == "BS" else None
     return StatementTable(statement, freq, periods, rows, balance, list(calendar.warnings))
@@ -100,9 +110,12 @@ def _row(
     periods: list[Period],
     cells: dict[CellKey, Cell],
     by_code: dict[str, CanonicalItemDef],
-    base: list[Decimal | None],
+    base: CanonicalItemDef | None,
 ) -> Row:
     series = [cells.get((item.code, p.key), EMPTY) for p in periods]
+    base_values = [
+        EMPTY.value if base is None else cells.get((base.code, p.key), EMPTY).value for p in periods
+    ]
     values = [c.value for c in series]
     position = {(p.fiscal_year, p.fiscal_period): i for i, p in enumerate(periods)}
     yoy: list[Decimal | None] = []
@@ -118,8 +131,20 @@ def _row(
         values=values,
         provenance=[c.provenance for c in series],
         yoy=yoy,
-        common_size=[_ratio(v, b) for v, b in zip(values, base, strict=True)],
+        common_size=[_ratio(v, b) for v, b in zip(values, base_values, strict=True)],
+        common_size_base=None if base is None else base.label,
     )
+
+
+def _base_item(
+    item: CanonicalItemDef,
+    by_code: dict[str, CanonicalItemDef],
+    total: CanonicalItemDef | None,
+    mode: CommonSizeBase,
+) -> CanonicalItemDef | None:
+    if mode == "parent" and item.parent is not None:
+        return by_code[item.parent]
+    return total
 
 
 def _growth(current: Decimal | None, prior: Decimal | None) -> Decimal | None:

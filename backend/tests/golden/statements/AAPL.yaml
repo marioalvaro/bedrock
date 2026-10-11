@@ -69,6 +69,8 @@ expected_missing:
   receivables: "no XBRL fact before FY2008"
   inventory: "no XBRL fact before FY2008"
   total_current_assets: "no XBRL fact before FY2008"
+  total_noncurrent_assets: "derived from total current assets, so absent where that is (FY2007)"
+  total_noncurrent_liabilities: "derived from total current liabilities, so absent where that is (FY2007)"
   ppe_net: "no XBRL fact before FY2011"
   operating_lease_rou: "no XBRL fact before FY2020"
   goodwill: "separate goodwill line only until FY2017"

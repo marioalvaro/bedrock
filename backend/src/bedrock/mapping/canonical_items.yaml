@@ -1,4 +1,4 @@
-# Canonical line items. File order is display order. `concepts` are filled per company by the map-xbrl skill (M1 S3).
+# Canonical line items. File order is display order, each subtotal above its breakdown. `concepts` are filled per company by the map-xbrl skill (M1 S3).
 # Format and rules: docs/erd/data.md, "Canonical mapping file".
 - code: revenue
   statement: IS
@@ -12,6 +12,17 @@
     - us-gaap:Revenues
     - us-gaap:SalesRevenueNet
   residual: false
+- code: gross_profit
+  statement: IS
+  label: Gross profit
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: null
+  concepts:
+    - us-gaap:GrossProfit
+  derive: revenue - cost_of_revenue
+  residual: false
 - code: cost_of_revenue
   statement: IS
   label: Cost of revenue
@@ -24,16 +35,15 @@
     - us-gaap:CostOfGoodsAndServicesSold
     - us-gaap:CostOfGoodsSold
   residual: false
-- code: gross_profit
+- code: total_operating_costs
   statement: IS
-  label: Gross profit
+  label: Total operating costs
   kind: flow
   unit: USD
   sign: 1
   parent: null
-  concepts:
-    - us-gaap:GrossProfit
-  derive: revenue - cost_of_revenue
+  concepts: []
+  derive: gross_profit - operating_income
   residual: false
 - code: rnd
   statement: IS
@@ -41,7 +51,7 @@
   kind: flow
   unit: USD
   sign: 1
-  parent: operating_income
+  parent: total_operating_costs
   concepts:
     - us-gaap:ResearchAndDevelopmentExpense
   residual: false
@@ -51,7 +61,7 @@
   kind: flow
   unit: USD
   sign: 1
-  parent: operating_income
+  parent: total_operating_costs
   concepts:
     - us-gaap:SellingGeneralAndAdministrativeExpense
   residual: false
@@ -61,7 +71,7 @@
   kind: flow
   unit: USD
   sign: 1
-  parent: operating_income
+  parent: total_operating_costs
   concepts: []
   derive: gross_profit - rnd - sga - operating_income
   residual: true
@@ -74,6 +84,17 @@
   parent: null
   concepts:
     - us-gaap:OperatingIncomeLoss
+  residual: false
+- code: pretax_income
+  statement: IS
+  label: Pre-tax income
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: null
+  concepts:
+    - us-gaap:IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest
+    - us-gaap:IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments
   residual: false
 - code: interest_expense
   statement: IS
@@ -96,27 +117,6 @@
   concepts: []
   derive: pretax_income - operating_income + interest_expense
   residual: true
-- code: pretax_income
-  statement: IS
-  label: Pre-tax income
-  kind: flow
-  unit: USD
-  sign: 1
-  parent: null
-  concepts:
-    - us-gaap:IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest
-    - us-gaap:IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments
-  residual: false
-- code: income_tax
-  statement: IS
-  label: Income tax
-  kind: flow
-  unit: USD
-  sign: 1
-  parent: net_income
-  concepts:
-    - us-gaap:IncomeTaxExpenseBenefit
-  residual: false
 - code: net_income
   statement: IS
   label: Net income
@@ -128,15 +128,15 @@
     - us-gaap:ProfitLoss
     - us-gaap:NetIncomeLoss
   residual: false
-- code: net_income_nci
+- code: income_tax
   statement: IS
-  label: Net income attributable to non-controlling interests
+  label: Income tax
   kind: flow
   unit: USD
   sign: 1
-  parent: net_income_common
+  parent: net_income
   concepts:
-    - us-gaap:NetIncomeLossAttributableToNoncontrollingInterest
+    - us-gaap:IncomeTaxExpenseBenefit
   residual: false
 - code: net_income_common
   statement: IS
@@ -148,6 +148,16 @@
   concepts:
     - us-gaap:NetIncomeLoss
   derive: net_income - net_income_nci
+  residual: false
+- code: net_income_nci
+  statement: IS
+  label: Net income attributable to non-controlling interests
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: net_income_common
+  concepts:
+    - us-gaap:NetIncomeLossAttributableToNoncontrollingInterest
   residual: false
 - code: eps_basic
   statement: IS
@@ -188,6 +198,26 @@
   parent: null
   concepts:
     - us-gaap:WeightedAverageNumberOfDilutedSharesOutstanding
+  residual: false
+- code: total_assets
+  statement: BS
+  label: Total assets
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: null
+  concepts:
+    - us-gaap:Assets
+  residual: false
+- code: total_current_assets
+  statement: BS
+  label: Total current assets
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_assets
+  concepts:
+    - us-gaap:AssetsCurrent
   residual: false
 - code: cash
   statement: BS
@@ -242,15 +272,15 @@
   concepts: []
   derive: total_current_assets - cash - short_term_investments - receivables - inventory
   residual: true
-- code: total_current_assets
+- code: total_noncurrent_assets
   statement: BS
-  label: Total current assets
+  label: Total non-current assets
   kind: instant
   unit: USD
   sign: 1
   parent: total_assets
-  concepts:
-    - us-gaap:AssetsCurrent
+  concepts: []
+  derive: total_assets - total_current_assets
   residual: false
 - code: ppe_net
   statement: BS
@@ -258,7 +288,7 @@
   kind: instant
   unit: USD
   sign: 1
-  parent: total_assets
+  parent: total_noncurrent_assets
   concepts:
     - us-gaap:PropertyPlantAndEquipmentNet
   residual: false
@@ -268,7 +298,7 @@
   kind: instant
   unit: USD
   sign: 1
-  parent: total_assets
+  parent: total_noncurrent_assets
   concepts:
     - us-gaap:OperatingLeaseRightOfUseAsset
   residual: false
@@ -278,7 +308,7 @@
   kind: instant
   unit: USD
   sign: 1
-  parent: total_assets
+  parent: total_noncurrent_assets
   concepts:
     - us-gaap:Goodwill
   residual: false
@@ -288,7 +318,7 @@
   kind: instant
   unit: USD
   sign: 1
-  parent: total_assets
+  parent: total_noncurrent_assets
   concepts:
     - us-gaap:IntangibleAssetsNetExcludingGoodwill
     - us-gaap:FiniteLivedIntangibleAssetsNet
@@ -299,7 +329,7 @@
   kind: instant
   unit: USD
   sign: 1
-  parent: total_assets
+  parent: total_noncurrent_assets
   concepts:
     - us-gaap:LongTermInvestments
     - us-gaap:MarketableSecuritiesNoncurrent
@@ -311,19 +341,30 @@
   kind: instant
   unit: USD
   sign: 1
-  parent: total_assets
+  parent: total_noncurrent_assets
   concepts: []
-  derive: total_assets - total_current_assets - ppe_net - operating_lease_rou - goodwill - intangibles - long_term_investments
+  derive: total_noncurrent_assets - ppe_net - operating_lease_rou - goodwill - intangibles - long_term_investments
   residual: true
-- code: total_assets
+- code: total_liabilities
   statement: BS
-  label: Total assets
+  label: Total liabilities
   kind: instant
   unit: USD
   sign: 1
   parent: null
   concepts:
-    - us-gaap:Assets
+    - us-gaap:Liabilities
+  derive: total_liabilities_and_equity - total_equity
+  residual: false
+- code: total_current_liabilities
+  statement: BS
+  label: Total current liabilities
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_liabilities
+  concepts:
+    - us-gaap:LiabilitiesCurrent
   residual: false
 - code: accounts_payable
   statement: BS
@@ -376,15 +417,15 @@
   concepts: []
   derive: total_current_liabilities - accounts_payable - short_term_debt - deferred_revenue_current - accrued_liabilities
   residual: true
-- code: total_current_liabilities
+- code: total_noncurrent_liabilities
   statement: BS
-  label: Total current liabilities
+  label: Total non-current liabilities
   kind: instant
   unit: USD
   sign: 1
   parent: total_liabilities
-  concepts:
-    - us-gaap:LiabilitiesCurrent
+  concepts: []
+  derive: total_liabilities - total_current_liabilities
   residual: false
 - code: long_term_debt
   statement: BS
@@ -392,7 +433,7 @@
   kind: instant
   unit: USD
   sign: 1
-  parent: total_liabilities
+  parent: total_noncurrent_liabilities
   concepts:
     - us-gaap:LongTermDebtNoncurrent
   residual: false
@@ -402,7 +443,7 @@
   kind: instant
   unit: USD
   sign: 1
-  parent: total_liabilities
+  parent: total_noncurrent_liabilities
   concepts:
     - us-gaap:OperatingLeaseLiabilityNoncurrent
   residual: false
@@ -412,20 +453,31 @@
   kind: instant
   unit: USD
   sign: 1
-  parent: total_liabilities
+  parent: total_noncurrent_liabilities
   concepts: []
-  derive: total_liabilities - total_current_liabilities - long_term_debt - operating_lease_liabilities_noncurrent
+  derive: total_noncurrent_liabilities - long_term_debt - operating_lease_liabilities_noncurrent
   residual: true
-- code: total_liabilities
+- code: total_equity
   statement: BS
-  label: Total liabilities
+  label: Total equity
   kind: instant
   unit: USD
   sign: 1
   parent: null
   concepts:
-    - us-gaap:Liabilities
-  derive: total_liabilities_and_equity - total_equity
+    - us-gaap:StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest
+    - us-gaap:StockholdersEquity
+  derive: equity_parent + nci
+  residual: false
+- code: equity_parent
+  statement: BS
+  label: Equity attributable to parent
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_equity
+  concepts:
+    - us-gaap:StockholdersEquity
   residual: false
 - code: common_stock_apic
   statement: BS
@@ -469,16 +521,6 @@
   concepts: []
   derive: equity_parent - common_stock_apic - retained_earnings - aoci
   residual: true
-- code: equity_parent
-  statement: BS
-  label: Equity attributable to parent
-  kind: instant
-  unit: USD
-  sign: 1
-  parent: total_equity
-  concepts:
-    - us-gaap:StockholdersEquity
-  residual: false
 - code: nci
   statement: BS
   label: Non-controlling interests
@@ -489,18 +531,6 @@
   concepts:
     - us-gaap:MinorityInterest
   residual: false
-- code: total_equity
-  statement: BS
-  label: Total equity
-  kind: instant
-  unit: USD
-  sign: 1
-  parent: null
-  concepts:
-    - us-gaap:StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest
-    - us-gaap:StockholdersEquity
-  derive: equity_parent + nci
-  residual: false
 - code: total_liabilities_and_equity
   statement: BS
   label: Total liabilities & equity
@@ -510,6 +540,17 @@
   parent: null
   concepts:
     - us-gaap:LiabilitiesAndStockholdersEquity
+  residual: false
+- code: cfo
+  statement: CF
+  label: Cash from operations
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: null
+  concepts:
+    - us-gaap:NetCashProvidedByUsedInOperatingActivities
+    - us-gaap:NetCashProvidedByUsedInOperatingActivitiesContinuingOperations
   residual: false
 - code: cf_net_income
   statement: CF
@@ -596,16 +637,16 @@
   concepts: []
   derive: cfo - cf_net_income - d_and_a - sbc - deferred_taxes - change_receivables - change_inventory - change_payables
   residual: true
-- code: cfo
+- code: cfi
   statement: CF
-  label: Cash from operations
+  label: Cash from investing
   kind: flow
   unit: USD
   sign: 1
   parent: null
   concepts:
-    - us-gaap:NetCashProvidedByUsedInOperatingActivities
-    - us-gaap:NetCashProvidedByUsedInOperatingActivitiesContinuingOperations
+    - us-gaap:NetCashProvidedByUsedInInvestingActivities
+    - us-gaap:NetCashProvidedByUsedInInvestingActivitiesContinuingOperations
   residual: false
 - code: capex
   statement: CF
@@ -663,16 +704,16 @@
   concepts: []
   derive: cfi - capex - acquisitions - purchases_of_investments - sales_maturities_of_investments
   residual: true
-- code: cfi
+- code: cff
   statement: CF
-  label: Cash from investing
+  label: Cash from financing
   kind: flow
   unit: USD
   sign: 1
   parent: null
   concepts:
-    - us-gaap:NetCashProvidedByUsedInInvestingActivities
-    - us-gaap:NetCashProvidedByUsedInInvestingActivitiesContinuingOperations
+    - us-gaap:NetCashProvidedByUsedInFinancingActivities
+    - us-gaap:NetCashProvidedByUsedInFinancingActivitiesContinuingOperations
   residual: false
 - code: debt_issued
   statement: CF
@@ -727,17 +768,6 @@
   concepts: []
   derive: cff - debt_issued - debt_repaid - buybacks - dividends_paid
   residual: true
-- code: cff
-  statement: CF
-  label: Cash from financing
-  kind: flow
-  unit: USD
-  sign: 1
-  parent: null
-  concepts:
-    - us-gaap:NetCashProvidedByUsedInFinancingActivities
-    - us-gaap:NetCashProvidedByUsedInFinancingActivitiesContinuingOperations
-  residual: false
 - code: fx_effect
   statement: CF
   label: FX effect on cash

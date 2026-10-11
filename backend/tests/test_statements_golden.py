@@ -175,3 +175,33 @@ def test_missing_items_equal_the_expected_missing_list(ticker: str) -> None:
     pipeline = run_pipeline(ticker)
     missing = sorted(m.code for m in missing_items(pipeline.annual, pipeline.items))
     assert missing == sorted(golden(ticker)["expected_missing"])
+
+
+SUBTOTAL_SPLITS = [
+    ("IS", "total_operating_costs", ["rnd", "sga", "other_operating_expenses"]),
+    ("BS", "total_assets", ["total_current_assets", "total_noncurrent_assets"]),
+    ("BS", "total_liabilities", ["total_current_liabilities", "total_noncurrent_liabilities"]),
+]
+
+
+@pytest.mark.parametrize("ticker", TICKERS)
+@pytest.mark.parametrize("freq", ["annual", "quarterly"])
+@pytest.mark.parametrize(("statement", "total", "parts"), SUBTOTAL_SPLITS)
+def test_a_subtotal_equals_the_sum_of_its_breakdown(
+    ticker: str, freq: str, statement: str, total: str, parts: list[str]
+) -> None:
+    pipeline = run_pipeline(ticker)
+    table = (pipeline.annual if freq == "annual" else pipeline.quarterly)[statement]
+    rows = {r.code: r for r in table.rows}
+    checked = 0
+    failures = []
+    for index, period in enumerate(table.periods):
+        whole = rows[total].values[index]
+        pieces = [rows[code].values[index] for code in parts]
+        if whole is None or all(p is None for p in pieces):
+            continue  # a missing part (Costco has no R&D) counts as zero, as in a residual
+        checked += 1
+        if abs(whole - sum((p for p in pieces if p is not None), Decimal(0))) > USD_TOLERANCE:
+            failures.append(period.key)
+    assert checked > 0, f"{total} never had a breakdown"
+    assert failures == []

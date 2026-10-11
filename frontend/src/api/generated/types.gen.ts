@@ -345,7 +345,8 @@ export type RefreshResultOut = {
  * RowOut
  *
  * One line item. The arrays are aligned with the statement's `periods`; YoY and common-size
- * are fractions (0.05 = 5 %), not percentages.
+ * are fractions (0.05 = 5 %), not percentages. `common_size_base` is the label of the row
+ * `common_size` divides by (revenue, total assets or the row's parent).
  */
 export type RowOut = {
     /**
@@ -356,6 +357,10 @@ export type RowOut = {
      * Common Size
      */
     common_size: Array<string | null>;
+    /**
+     * Common Size Base
+     */
+    common_size_base: string | null;
     /**
      * Depth
      */
@@ -767,6 +772,10 @@ export type GetStatementApiV1CompaniesTickerStatementsGetData = {
          * Basis
          */
         basis?: 'reported' | 'normalized';
+        /**
+         * Common Size Base
+         */
+        common_size_base?: 'total' | 'parent';
     };
     url: '/api/v1/companies/{ticker}/statements';
 };

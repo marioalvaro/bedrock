@@ -344,10 +344,10 @@ def test_load_overrides_rejects_unknown_codes_and_duplicates(tmp_path: Path) -> 
         load_overrides(tmp_path, "Y", items)
 
 
-def test_shipped_canonical_items_load_with_72_codes() -> None:
+def test_shipped_canonical_items_load_with_75_codes() -> None:
     items = load_canonical_items(DEFAULT_ITEMS_PATH)
 
-    assert len(items) == 72
+    assert len(items) == 75
     assert {i.statement for i in items} == {"IS", "BS", "CF"}
     by_code = {i.code: i for i in items}
     assert by_code["eps_diluted"].kind == "average"
@@ -356,6 +356,50 @@ def test_shipped_canonical_items_load_with_72_codes() -> None:
     assert by_code["other_current_assets"].residual is True
     assert by_code["cash"].parent == "total_current_assets"
     assert by_code["total_current_assets"].parent == "total_assets"
-    assert by_code["rnd"].parent == "operating_income"
+    assert by_code["rnd"].parent == "total_operating_costs"
     assert by_code["capex"].parent == "cfi"
     assert all(i.concepts == () for i in items if i.residual)  # residuals are always computed
+
+
+def test_shipped_items_put_every_parent_before_its_children() -> None:
+    """File order is display order: a subtotal is shown above its breakdown."""
+    items = load_canonical_items(DEFAULT_ITEMS_PATH)
+    position = {i.code: n for n, i in enumerate(items)}
+
+    misplaced = [
+        i.code for i in items if i.parent is not None and position[i.parent] > position[i.code]
+    ]
+
+    assert misplaced == []
+
+
+def test_shipped_items_split_the_balance_sheet_into_current_and_noncurrent() -> None:
+    by_code = {i.code: i for i in load_canonical_items(DEFAULT_ITEMS_PATH)}
+
+    assert by_code["total_noncurrent_assets"].parent == "total_assets"
+    assert by_code["total_noncurrent_assets"].derive == "total_assets - total_current_assets"
+    assert by_code["total_noncurrent_liabilities"].parent == "total_liabilities"
+    assert (
+        by_code["total_noncurrent_liabilities"].derive
+        == "total_liabilities - total_current_liabilities"
+    )
+    for code in ("ppe_net", "goodwill", "other_noncurrent_assets"):
+        assert by_code[code].parent == "total_noncurrent_assets"
+    for code in ("long_term_debt", "other_noncurrent_liabilities"):
+        assert by_code[code].parent == "total_noncurrent_liabilities"
+
+
+def test_shipped_items_total_the_operating_costs_from_gross_profit() -> None:
+    by_code = {i.code: i for i in load_canonical_items(DEFAULT_ITEMS_PATH)}
+    total = by_code["total_operating_costs"]
+
+    assert total.statement == "IS"
+    assert total.label == "Total operating costs"
+    assert total.derive == "gross_profit - operating_income"
+    assert total.parent is None
+    assert total.concepts == ()
+    assert {c for c, i in by_code.items() if i.parent == "total_operating_costs"} == {
+        "rnd",
+        "sga",
+        "other_operating_expenses",
+    }

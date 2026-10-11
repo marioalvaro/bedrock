@@ -23,7 +23,7 @@ from bedrock.repositories import facts as facts_repo
 from bedrock.repositories import mappings as mappings_repo
 from bedrock.repositories import prices as prices_repo
 from bedrock.services.errors import CellNotFound
-from bedrock.statements.build import Freq, StatementTable, build_statement
+from bedrock.statements.build import CommonSizeBase, Freq, StatementTable, build_statement
 from bedrock.statements.explain import CellExplanation, explain_cell
 from bedrock.statements.view import trim_periods
 
@@ -84,15 +84,19 @@ def build_statements(
     statement: str,
     freq: Freq,
     basis: Basis = "reported",
+    common_size_base: CommonSizeBase = "total",
 ) -> StatementTable:
     """One statement as periods x items. `normalized` is the reported table until adjustments
-    exist (M2). Raises ValueError for a TTM balance sheet."""
+    exist (M2). `common_size_base` picks the common-size denominator (see `build_statement`).
+    Raises ValueError for a TTM balance sheet."""
     if statement == "BS" and freq == "ttm":
         raise ValueError("TTM is only defined for flow statements, not the balance sheet")
     loaded = _load(session, company)
     if loaded.canonical.empty:
         return StatementTable(statement, freq, [], [], None, [])
-    return trim_periods(build_statement(loaded.canonical, loaded.items, statement, freq))
+    return trim_periods(
+        build_statement(loaded.canonical, loaded.items, statement, freq, common_size_base)
+    )
 
 
 def cell_detail(

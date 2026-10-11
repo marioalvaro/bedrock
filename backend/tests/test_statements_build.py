@@ -82,9 +82,10 @@ def build(
     maps: object,
     statement: str,
     freq: str,
+    common_size_base: str = "total",
 ) -> StatementTable:
     canonical = map_facts(select_vintage(facts(raw)), maps, items)  # type: ignore[arg-type]
-    return build_statement(canonical, items, statement, freq)  # type: ignore[arg-type]
+    return build_statement(canonical, items, statement, freq, common_size_base)  # type: ignore[arg-type]
 
 
 def row(table: StatementTable, code: str) -> Row:
@@ -279,6 +280,7 @@ def balance_sheet(
     receivables: int | None = 20,
     current: int | None = 100,
     assets: int | None = 500,
+    common_size_base: str = "total",
 ) -> StatementTable:
     raw = flow_facts("Revenues", {2023: (1, 1, 1, 1)})  # defines the calendar
     for concept, value in (
@@ -289,7 +291,7 @@ def balance_sheet(
     ):
         if value is not None:
             raw += instant_facts(concept, {2023: (value, value, value, value)})
-    return build(raw, BS_ITEMS + IS_ITEMS, IS_BS_MAP, "BS", "annual")
+    return build(raw, BS_ITEMS + IS_ITEMS, IS_BS_MAP, "BS", "annual", common_size_base)
 
 
 def test_a_residual_absorbs_what_the_other_components_do_not_explain() -> None:
@@ -537,6 +539,74 @@ def test_common_size_is_null_without_a_denominator() -> None:
         "CostOfRevenue", {2023: (1, 1, 1, 1)}
     )
     assert row(revenue_table("annual", zero_revenue), "cost_of_revenue").common_size == [None]
+
+
+def test_common_size_names_its_base_on_every_row() -> None:
+    income = revenue_table("annual")
+    balance = balance_sheet()
+    cash_flow = build(
+        flow_facts("Revenues", REVENUE) + flow_facts("NetCashFromOps", {2023: (1, 1, 1, 1)}),
+        IS_ITEMS + CF_ITEMS,
+        pd.concat([IS_MAP, CF_MAP], ignore_index=True),
+        "CF",
+        "annual",
+    )
+
+    assert {r.common_size_base for r in income.rows} == {"Revenue"}
+    assert {r.common_size_base for r in balance.rows} == {"Total assets"}
+    assert {r.common_size_base for r in cash_flow.rows} == {"Revenue"}
+
+
+def test_parent_common_size_divides_a_row_by_its_parent() -> None:
+    table = balance_sheet(common_size_base="parent")
+
+    assert row(table, "cash").common_size == [Decimal("0.100000")]  # 10 / 100 current assets
+    assert row(table, "receivables").common_size == [Decimal("0.200000")]
+    assert row(table, "total_current_assets").common_size == [Decimal("0.200000")]  # 100 / 500
+    assert row(table, "cash").common_size_base == "Total current assets"
+    assert row(table, "total_current_assets").common_size_base == "Total assets"
+
+
+def test_parent_common_size_falls_back_to_the_total_base_for_a_root_row() -> None:
+    balance = balance_sheet(common_size_base="parent")
+    raw = flow_facts("Revenues", REVENUE) + flow_facts(
+        "CostOfRevenue", {2022: (40, 40, 40, 40), 2023: (50, 50, 50, 50)}
+    )
+    income = build(raw, IS_ITEMS, IS_MAP, "IS", "annual", "parent")
+
+    assert row(balance, "total_assets").common_size == [Decimal("1.000000")]
+    assert row(balance, "total_assets").common_size_base == "Total assets"
+    assert row(income, "revenue").common_size_base == "Revenue"
+    # cost_of_revenue is a child of gross_profit (revenue - cost): 160 / 300 and 200 / 460
+    assert row(income, "cost_of_revenue").common_size_base == "Gross profit"
+    assert row(income, "cost_of_revenue").common_size == [Decimal("0.533333"), Decimal("0.434783")]
+
+
+def test_parent_common_size_is_null_when_the_parent_has_no_value() -> None:
+    table = balance_sheet(current=None, common_size_base="parent")
+
+    assert row(table, "cash").common_size == [None]
+
+
+def test_parent_common_size_of_a_cash_flow_row_is_its_section_total() -> None:
+    raw = (
+        flow_facts("Revenues", REVENUE)
+        + flow_facts("NetCashFromOps", {2023: (10, 10, 10, 10)})
+        + flow_facts("PaymentsToAcquirePPE", {2023: (4, 4, 4, 4)})
+    )
+
+    table = build(
+        raw,
+        IS_ITEMS + CF_ITEMS,
+        pd.concat([IS_MAP, CF_MAP], ignore_index=True),
+        "CF",
+        "annual",
+        "parent",
+    )
+
+    assert row(table, "capex").common_size_base == "Cfo"  # the test item's label
+    assert row(table, "capex").common_size == [None, Decimal("-0.400000")]  # an outflow
+    assert row(table, "cfo").common_size_base == "Revenue"  # cfo is a root: the total base
 
 
 # --- balance check -------------------------------------------------------------------------

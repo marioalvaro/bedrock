@@ -25,11 +25,12 @@ def get_statement(
     statement: Literal["IS", "BS", "CF"] = Query(alias="type"),
     freq: Literal["annual", "quarterly", "ttm"] = Query(),
     basis: Literal["reported", "normalized"] = "reported",
+    common_size_base: Literal["total", "parent"] = "total",
     company: Company = Depends(followed_company),
     session: Session = Depends(get_session),
 ) -> StatementOut:
     try:
-        table = service.build_statements(session, company, statement, freq, basis)
+        table = service.build_statements(session, company, statement, freq, basis, common_size_base)
     except ValueError as error:  # a TTM balance sheet
         raise HTTPException(status_code=422, detail=str(error)) from error
     return StatementOut.from_table(

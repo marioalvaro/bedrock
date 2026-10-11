@@ -167,7 +167,7 @@ unmapped:
   NetInterestIncome: "bank-specific"
   NetInterestIncomeAfterProvision: "bank-specific"
   NetLoansAndLeases: "bank-specific"
-  NonCurrentAssetsTotal: "no canonical total; other_noncurrent_assets is a residual"
+  NonCurrentAssetsTotal: "total_noncurrent_assets is derived (total_assets - total_current_assets), never mapped"
   NonCurrentLiabilitiesTotal: "no canonical total; other_noncurrent_liabilities is a residual"
   NonInterestExpense: "bank-specific"
   NonInterestIncome: "bank-specific"

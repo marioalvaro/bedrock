@@ -1,16 +1,26 @@
 import { describe, expect, it } from "vitest";
 
+import type { StatementOut } from "@/api/generated/types.gen";
 import { balanceStatement, incomeStatement } from "@/test/statements";
 
-import { canExplain, csvLabel, rowUnitHint, toGridRows } from "./grid";
+import { canExplain, csvLabel, expandableCodes, rowUnitHint, toGridRows } from "./grid";
 
-const OFF = { yoy: false, commonSize: false };
+const NONE: ReadonlySet<string> = new Set();
+const OFF = { yoy: false, commonSize: false, expanded: NONE };
+// Everything open: the detail rows are the subject of most tests.
+const all = (payload: StatementOut) => new Set(expandableCodes(payload));
+const OPEN = { ...OFF, expanded: all(incomeStatement()) };
 
 describe("toGridRows", () => {
   it("makes one row per line item, keyed by period", () => {
-    const rows = toGridRows(incomeStatement(), OFF);
+    const rows = toGridRows(incomeStatement(), OPEN);
 
-    expect(rows.map((row) => row.id)).toEqual(["revenue", "cost_of_revenue", "eps_diluted"]);
+    expect(rows.map((row) => row.id)).toEqual([
+      "revenue",
+      "gross_profit",
+      "cost_of_revenue",
+      "eps_diluted",
+    ]);
     expect(rows[0]).toMatchObject({
       code: "revenue",
       label: "Revenue",
@@ -28,17 +38,19 @@ describe("toGridRows", () => {
   });
 
   it("drops line items with no value in any period", () => {
-    const rows = toGridRows(incomeStatement(), OFF);
+    const rows = toGridRows(incomeStatement(), OPEN);
 
     expect(rows.find((row) => row.code === "rnd")).toBeUndefined();
   });
 
   it("inserts a YoY sub-row under each line when toggled", () => {
-    const rows = toGridRows(incomeStatement(), { yoy: true, commonSize: false });
+    const rows = toGridRows(incomeStatement(), { ...OPEN, yoy: true });
 
     expect(rows.map((row) => row.id)).toEqual([
       "revenue",
       "revenue:yoy",
+      "gross_profit",
+      "gross_profit:yoy",
       "cost_of_revenue",
       "cost_of_revenue:yoy",
       "eps_diluted",
@@ -55,20 +67,22 @@ describe("toGridRows", () => {
   });
 
   it("inserts a common-size sub-row only for lines that have one", () => {
-    const rows = toGridRows(incomeStatement(), { yoy: false, commonSize: true });
+    const rows = toGridRows(incomeStatement(), { ...OPEN, commonSize: true });
 
     expect(rows.map((row) => row.id)).toEqual([
       "revenue",
       "revenue:common_size",
+      "gross_profit",
+      "gross_profit:common_size",
       "cost_of_revenue",
       "cost_of_revenue:common_size",
       "eps_diluted",
     ]);
-    expect(rows[3]?.values).toEqual({ FY2023: "0.558700", FY2024: "0.537900" });
+    expect(rows[5]?.values).toEqual({ FY2023: "0.558700", FY2024: "0.537900" });
   });
 
   it("puts YoY before common-size when both are on", () => {
-    const rows = toGridRows(incomeStatement(), { yoy: true, commonSize: true });
+    const rows = toGridRows(incomeStatement(), { ...OPEN, yoy: true, commonSize: true });
 
     expect(rows.slice(0, 3).map((row) => row.id)).toEqual([
       "revenue",
@@ -78,9 +92,15 @@ describe("toGridRows", () => {
   });
 
   it("indents a sub-row one level below its line", () => {
-    const rows = toGridRows(incomeStatement(), { yoy: true, commonSize: false });
+    const rows = toGridRows(incomeStatement(), { ...OPEN, yoy: true });
 
     expect(rows.find((row) => row.id === "cost_of_revenue:yoy")?.depth).toBe(2);
+  });
+
+  it("labels a common-size sub-row with the row it divides by", () => {
+    const rows = toGridRows(incomeStatement(), { ...OPEN, commonSize: true });
+
+    expect(rows[1]).toMatchObject({ kind: "common_size", label: "% of Revenue" });
   });
 
   it("appends the balance check row for a balance sheet", () => {
@@ -104,9 +124,82 @@ describe("toGridRows", () => {
   });
 });
 
+describe("toGridRows hierarchy", () => {
+  const ids = (rows: { id: string }[]) => rows.map((row) => row.id);
+
+  it("shows only the top-level rows while everything is collapsed", () => {
+    const rows = toGridRows(incomeStatement(), OFF);
+
+    expect(ids(rows)).toEqual(["revenue", "gross_profit", "eps_diluted"]);
+  });
+
+  it("marks the rows that have a breakdown and whether it is open", () => {
+    const closed = toGridRows(incomeStatement(), OFF);
+    const open = toGridRows(incomeStatement(), { ...OFF, expanded: new Set(["gross_profit"]) });
+
+    expect(closed.map((row) => [row.id, row.hasChildren, row.expanded])).toEqual([
+      ["revenue", false, false],
+      ["gross_profit", true, false],
+      ["eps_diluted", false, false],
+    ]);
+    expect(open.find((row) => row.id === "gross_profit")).toMatchObject({
+      hasChildren: true,
+      expanded: true,
+    });
+    expect(ids(open)).toContain("cost_of_revenue");
+  });
+
+  it("opens a nested breakdown one level at a time", () => {
+    const bs = balanceStatement();
+
+    expect(ids(toGridRows(bs, OFF)).slice(0, 1)).toEqual(["total_assets"]);
+    expect(ids(toGridRows(bs, { ...OFF, expanded: new Set(["total_assets"]) }))).toEqual([
+      "total_assets",
+      "total_current_assets",
+      "total_noncurrent_assets",
+      "balance_check",
+    ]);
+    expect(
+      ids(toGridRows(bs, { ...OFF, expanded: new Set(["total_assets", "total_current_assets"]) })),
+    ).toEqual([
+      "total_assets",
+      "total_current_assets",
+      "cash",
+      "total_noncurrent_assets",
+      "balance_check",
+    ]);
+  });
+
+  it("keeps a nested breakdown hidden when an ancestor is collapsed", () => {
+    const rows = toGridRows(balanceStatement(), {
+      ...OFF,
+      expanded: new Set(["total_current_assets"]),
+    });
+
+    expect(ids(rows)).toEqual(["total_assets", "balance_check"]);
+  });
+
+  it("hides the sub-rows of a hidden line and keeps those of a visible one", () => {
+    const rows = toGridRows(incomeStatement(), { ...OFF, yoy: true, commonSize: true });
+
+    expect(ids(rows)).toContain("gross_profit:yoy");
+    expect(ids(rows)).not.toContain("cost_of_revenue:yoy");
+    expect(ids(rows)).not.toContain("cost_of_revenue:common_size");
+  });
+
+  it("lists the codes that can be expanded, ignoring rows that are not shown", () => {
+    expect(expandableCodes(incomeStatement())).toEqual(["gross_profit"]);
+    expect(expandableCodes(balanceStatement())).toEqual([
+      "total_assets",
+      "total_current_assets",
+      "total_noncurrent_assets",
+    ]);
+  });
+});
+
 describe("canExplain", () => {
-  const [revenue] = toGridRows(incomeStatement(), { yoy: true, commonSize: false });
-  const yoy = toGridRows(incomeStatement(), { yoy: true, commonSize: false })[1];
+  const [revenue] = toGridRows(incomeStatement(), { ...OFF, yoy: true });
+  const yoy = toGridRows(incomeStatement(), { ...OFF, yoy: true })[1];
   const annual = incomeStatement().periods[1]!;
 
   it("allows a value cell of a line item", () => {
@@ -144,10 +237,10 @@ describe("rowUnitHint", () => {
 
 describe("csvLabel", () => {
   it("names a sub-row after its line item, so the export is self-describing", () => {
-    const rows = toGridRows(incomeStatement(), { yoy: true, commonSize: true });
+    const rows = toGridRows(incomeStatement(), { ...OPEN, yoy: true, commonSize: true });
 
     expect(csvLabel(rows[0]!)).toBe("Revenue");
     expect(csvLabel(rows[1]!)).toBe("Revenue YoY");
-    expect(csvLabel(rows[2]!)).toBe("Revenue Common size");
+    expect(csvLabel(rows[2]!)).toBe("Revenue % of Revenue");
   });
 });

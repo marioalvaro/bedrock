@@ -18,11 +18,14 @@ export interface GridRow {
   provenance: Record<string, Provenance | null>;
   ok?: Record<string, boolean>;
   parentLabel?: string;
+  hasChildren: boolean; // a line item with a breakdown under it
+  expanded: boolean; // whether that breakdown is shown
 }
 
 export interface GridOptions {
   yoy: boolean;
   commonSize: boolean;
+  expanded: ReadonlySet<string>; // codes whose breakdown is open
 }
 
 function byPeriod<T>(keys: string[], items: T[]): Record<string, T> {
@@ -31,6 +34,23 @@ function byPeriod<T>(keys: string[], items: T[]): Record<string, T> {
 
 function hasValue(values: (string | null)[]): boolean {
   return values.some((value) => value !== null);
+}
+
+// The line items a statement shows. The payload is a flat list in display order with a depth,
+// each subtotal above its breakdown, so a line has a breakdown when the next shown line is deeper.
+function shownLines(payload: StatementOut): RowOut[] {
+  return payload.rows.filter((line) => hasValue(line.values));
+}
+
+function hasBreakdown(lines: RowOut[], index: number): boolean {
+  const next = lines[index + 1];
+  return next !== undefined && next.depth > (lines[index] as RowOut).depth;
+}
+
+// The codes whose breakdown can be opened, for "expand all".
+export function expandableCodes(payload: StatementOut): string[] {
+  const lines = shownLines(payload);
+  return lines.filter((_, index) => hasBreakdown(lines, index)).map((line) => line.code);
 }
 
 function subRow(
@@ -54,18 +74,30 @@ function subRow(
       keys,
       keys.map(() => null),
     ),
+    hasChildren: false,
+    expanded: false,
   };
 }
 
 // Reshapes a statement payload into grid rows. Line items with no value in any period
-// are dropped (the Data gaps report lists them); YoY and common-size sub-rows follow
-// their line when toggled on, and only where the API sent a value.
+// are dropped (the Data gaps report lists them); a line under a collapsed ancestor is hidden;
+// YoY and common-size sub-rows follow their line when toggled on, and only where the API
+// sent a value.
 export function toGridRows(payload: StatementOut, options: GridOptions): GridRow[] {
   const keys = payload.periods.map((period) => period.key);
   const rows: GridRow[] = [];
 
-  for (const line of payload.rows) {
-    if (!hasValue(line.values)) continue;
+  const lines = shownLines(payload);
+  const open: { depth: number; expanded: boolean }[] = []; // the ancestors of the current line
+
+  lines.forEach((line, index) => {
+    while (open.length > 0 && (open.at(-1) as { depth: number }).depth >= line.depth) open.pop();
+    const visible = open.every((ancestor) => ancestor.expanded);
+    const hasChildren = hasBreakdown(lines, index);
+    const expanded = hasChildren && options.expanded.has(line.code);
+    if (hasChildren) open.push({ depth: line.depth, expanded });
+    if (!visible) return;
+
     rows.push({
       id: line.code,
       code: line.code,
@@ -75,16 +107,19 @@ export function toGridRows(payload: StatementOut, options: GridOptions): GridRow
       kind: "line",
       values: byPeriod(keys, line.values),
       provenance: byPeriod(keys, line.provenance),
+      hasChildren,
+      expanded,
     });
     if (options.yoy) {
       const yoy = subRow(line, keys, "yoy", "YoY", line.yoy);
       if (yoy) rows.push(yoy);
     }
     if (options.commonSize) {
-      const common = subRow(line, keys, "common_size", "Common size", line.common_size);
+      const label = line.common_size_base ? `% of ${line.common_size_base}` : "Common size";
+      const common = subRow(line, keys, "common_size", label, line.common_size);
       if (common) rows.push(common);
     }
-  }
+  });
 
   if (payload.balance_check) {
     const checks = new Map(payload.balance_check.map((check) => [check.period_key, check]));
@@ -101,6 +136,8 @@ export function toGridRows(payload: StatementOut, options: GridOptions): GridRow
         keys.map(() => null),
       ),
       ok: Object.fromEntries(keys.map((key) => [key, checks.get(key)?.ok ?? false])),
+      hasChildren: false,
+      expanded: false,
     });
   }
 

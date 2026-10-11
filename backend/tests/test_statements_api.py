@@ -59,6 +59,7 @@ def test_annual_income_statement_has_the_documented_shape(aapl_client: TestClien
         "provenance",
         "yoy",
         "common_size",
+        "common_size_base",
     }
     for field in ("values", "provenance", "yoy", "common_size"):
         assert len(revenue[field]) == len(periods)  # type: ignore[arg-type]
@@ -120,6 +121,37 @@ def test_a_ttm_balance_sheet_is_a_422(aapl_client: TestClient) -> None:
 )
 def test_bad_query_values_are_a_422(aapl_client: TestClient, params: dict[str, str]) -> None:
     assert aapl_client.get(STATEMENTS, params=params).status_code == 422
+
+
+def test_common_size_defaults_to_revenue_and_total_assets(aapl_client: TestClient) -> None:
+    income = _statement(aapl_client, "IS", "annual")
+    balance = _statement(aapl_client, "BS", "annual")
+
+    assert {r["common_size_base"] for r in income["rows"]} == {"Revenue"}  # type: ignore[attr-defined,union-attr]
+    assert {r["common_size_base"] for r in balance["rows"]} == {"Total assets"}  # type: ignore[attr-defined,union-attr]
+    assert _row(income, "revenue")["common_size"][-1] == "1.000000"  # type: ignore[index]
+
+
+def test_common_size_base_parent_divides_by_the_parent_row(aapl_client: TestClient) -> None:
+    income = _statement(aapl_client, "IS", "annual", common_size_base="parent")
+    balance = _statement(aapl_client, "BS", "annual", common_size_base="parent")
+
+    assert _row(income, "rnd")["common_size_base"] == "Total operating costs"
+    assert _row(income, "revenue")["common_size_base"] == "Revenue"  # a root keeps the total base
+    assert _row(balance, "cash")["common_size_base"] == "Total current assets"
+    assert _row(balance, "total_current_assets")["common_size_base"] == "Total assets"
+    total_assets = _row(balance, "total_assets")["common_size"]
+    assert total_assets[-1] == "1.000000"  # type: ignore[index]
+    cash = Decimal(_row(balance, "cash")["common_size"][-1])  # type: ignore[index,arg-type]
+    assert 0 < cash < 1
+
+
+def test_a_bad_common_size_base_is_a_422(aapl_client: TestClient) -> None:
+    response = aapl_client.get(
+        STATEMENTS, params={"type": "IS", "freq": "annual", "common_size_base": "peers"}
+    )
+
+    assert response.status_code == 422
 
 
 def test_normalized_equals_reported_until_adjustments_exist(aapl_client: TestClient) -> None:

@@ -70,6 +70,8 @@ expected_missing:
   receivables: "no XBRL fact before FY2009"
   inventory: "no XBRL fact before FY2009"
   total_current_assets: "no XBRL fact before FY2009"
+  total_noncurrent_assets: "derived from total current assets, so absent where that is (FY2008)"
+  total_noncurrent_liabilities: "derived from total current liabilities, so absent where that is (FY2008)"
   ppe_net: "no XBRL fact before FY2009"
   operating_lease_rou: "no XBRL fact before FY2016"
   intangibles: "no XBRL fact before FY2009"

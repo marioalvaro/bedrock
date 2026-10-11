@@ -23,7 +23,8 @@ class PeriodOut(BaseModel):
 
 class RowOut(BaseModel):
     """One line item. The arrays are aligned with the statement's `periods`; YoY and common-size
-    are fractions (0.05 = 5 %), not percentages."""
+    are fractions (0.05 = 5 %), not percentages. `common_size_base` is the label of the row
+    `common_size` divides by (revenue, total assets or the row's parent)."""
 
     code: str
     label: str
@@ -34,6 +35,7 @@ class RowOut(BaseModel):
     provenance: list[Provenance | None]
     yoy: list[Decimal | None]
     common_size: list[Decimal | None]
+    common_size_base: str | None
 
 
 class BalanceCheckOut(BaseModel):
@@ -92,6 +94,7 @@ class StatementOut(BaseModel):
                     provenance=r.provenance,
                     yoy=r.yoy,
                     common_size=r.common_size,
+                    common_size_base=r.common_size_base,
                 )
                 for r in table.rows
             ],

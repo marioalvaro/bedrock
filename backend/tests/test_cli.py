@@ -165,5 +165,5 @@ def test_sync_mappings_stores_the_canonical_items(cli_db: Path) -> None:
     assert result.exit_code == 0, result.output
     engine = make_engine(f"sqlite:///{cli_db}")
     with Session(engine) as session:
-        assert session.execute(select(func.count()).select_from(CanonicalItem)).scalar_one() == 72
+        assert session.execute(select(func.count()).select_from(CanonicalItem)).scalar_one() == 75
     engine.dispose()
