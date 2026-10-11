@@ -1,0 +1,18 @@
+# Apple tags the combined "common stock and additional paid-in capital" line CommonStockValue until
+# FY2013 (CommonStocksIncludingAdditionalPaidInCapital from then on); elsewhere CommonStockValue is par value.
+common_stock_apic:
+  - us-gaap:CommonStockValue
+# Apple's short-term debt is two balance-sheet lines, commercial paper and the current term debt, so
+# the item is their sum (anchor: commercial paper; companyfacts omits a zero line). In the FY2020 Q2
+# and Q3 10-Qs the first line is "Commercial paper and repurchase agreement(s)", tagged
+# OtherShortTermBorrowings. There is no bare LongTermDebtCurrent fallback: it would show only half
+# of the debt in a quarter whose first line has another tag.
+short_term_debt:
+  - us-gaap:CommercialPaper + us-gaap:LongTermDebtCurrent
+  - us-gaap:OtherShortTermBorrowings + us-gaap:LongTermDebtCurrent
+# Apple's cash flow shows sales and maturities of marketable securities on two lines. The sum is
+# anchored on the sales line, whose tag changed (…SecuritiesDebt from FY2017, with both tags carrying
+# the figure in FY2017-18 and FY2009-10), so a year is never counted twice and never loses its sales.
+sales_maturities_of_investments:
+  - us-gaap:ProceedsFromSaleOfAvailableForSaleSecuritiesDebt + us-gaap:ProceedsFromMaturitiesPrepaymentsAndCallsOfAvailableForSaleSecurities
+  - us-gaap:ProceedsFromSaleOfAvailableForSaleSecurities + us-gaap:ProceedsFromMaturitiesPrepaymentsAndCallsOfAvailableForSaleSecurities

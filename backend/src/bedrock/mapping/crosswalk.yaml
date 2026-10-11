@@ -1,0 +1,249 @@
+# Crosswalk from the edgartools standard concepts (vendor/edgartools_gaap_mappings.json) to Bedrock
+# canonical codes. It feeds the *candidates* layer only (mapping/candidates.py): a hint in the Data gaps
+# report and a prompt for the map-xbrl skill. It is never applied to statements, because an edgartools
+# concept is coarser than a Bedrock line (see docs/erd/data.md, "Mapping principles").
+#
+# Every standard concept of the vendored table must appear in exactly one section:
+#   codes:    the concept is the same kind of line as these Bedrock codes (a hint, not a mapping)
+#   unmapped: no canonical code matches, with the reason; "no canonical line" means the value is
+#             absorbed by a residual item or not shown
+# Loading fails on a concept that is missing, listed twice, or points at an unknown or residual code.
+
+codes:
+  AccumulatedOtherComprehensiveIncome: aoci
+  AcquisitionsNet: acquisitions
+  AdditionalPaidInCapital: common_stock_apic
+  AllEquityBalance: equity_parent
+  AllEquityBalanceIncludingMinorityInterest: total_equity
+  Assets: total_assets
+  CapitalExpenses: capex
+  ChangeInInventory: change_inventory
+  ChangeInPayables: change_payables
+  ChangeInReceivables: change_receivables
+  CostOfGoodsAndServicesSold: cost_of_revenue
+  CurrentAssetsTotal: total_current_assets
+  CurrentLiabilitiesTotal: total_current_liabilities
+  CurrentPortionOfLongTermDebt: short_term_debt
+  DebtProceeds: debt_issued
+  DebtRepayments: debt_repaid
+  DeferredIncomeTaxCF: deferred_taxes
+  DeferredRevenueCurrent: deferred_revenue_current
+  DepreciationAmortizationCF: d_and_a
+  EarningsPerShareBasic: eps_basic
+  EarningsPerShareDiluted: eps_diluted
+  ForeignExchangeEffectOnCash: fx_effect
+  Goodwill: goodwill
+  GrossProfit: gross_profit
+  IntangibleAssets: intangibles
+  InterestExpense: interest_expense
+  Inventories: inventory
+  InvestmentProceeds: sales_maturities_of_investments
+  InvestmentPurchases: purchases_of_investments
+  Liabilities: total_liabilities
+  LiabilitiesAndEquity: total_liabilities_and_equity
+  LongTermDebt: long_term_debt
+  LongtermInvestments: long_term_investments
+  MinorityInterestBS: nci
+  MinorityInterestBalance: nci
+  MinorityInterestIncomeExpense: net_income_nci
+  NetIncome: net_income_common
+  OperatingIncomeLoss: operating_income
+  OperatingLeaseNonCurrentDebtEquivalent: operating_lease_liabilities_noncurrent
+  OperatingLeaseRightOfUseAsset: operating_lease_rou
+  PlantPropertyEquipmentNet: ppe_net
+  PretaxIncomeLoss: pretax_income
+  ProceedsFromMaturitiesOfInvestments: sales_maturities_of_investments
+  ProfitLoss: [net_income, cf_net_income]
+  ResearchAndDevelopmentExpenses: rnd
+  RetainedEarnings: retained_earnings
+  Revenue: revenue
+  SellingGeneralAndAdminExpenses: sga
+  SharesAverage: shares_basic
+  SharesFullyDilutedAverage: shares_diluted
+  ShortTermDebt: short_term_debt
+  ShortTermInvestments: short_term_investments
+  StockBasedCompensationCF: sbc
+  StockBasedCompensationExpense: sbc
+  StockRepurchasePayments: buybacks
+  TradePayables: accounts_payable
+  TradeReceivables: receivables
+
+unmapped:
+  AOCIReclassifications: "OCI reclassification detail, not a balance or a line item"
+  AccountsReceivableGross: "gross of the allowance; receivables is the net line"
+  AccruedCompensation: "a component of accrued liabilities, which maps one line only"
+  AccruedIncomeTaxes: "a tax-payable component, no canonical line"
+  AccumulatedAmortizationIntangibles: "contra-account detail"
+  AccumulatedDepreciation: "contra-account detail"
+  AdvertisingExpense: "an expense detail inside SG&A, no canonical line"
+  AdvertisingRevenueIS: "a revenue breakdown, no canonical line"
+  AllowanceForDoubtfulAccounts: "contra-account detail"
+  AmortizationOfIntangibles: "mixes amortization with impairment charges; no canonical line"
+  AssetImpairmentChargesIS: "impairment charges, no canonical line"
+  AssetRetirementObligations: "inside other noncurrent liabilities"
+  AssetsHeldForSale: "inside other current assets"
+  BadDebtExpense: "write-offs detail, no canonical line"
+  BookValuePerShare: "a ratio, computed by the analysis layer"
+  CapitalLeasePaymentsCF: "finance-lease repayments, inside other financing"
+  CashAndCashEquivalents: "the cash-flow ending balance includes restricted cash; cash is the balance-sheet line"
+  CashAndMarketableSecurities: "cash plus short-term and long-term investments combined, three canonical lines"
+  ChangeInAccruedLiabilities: "no canonical line, absorbed by other operating activities"
+  ChangeInDeferredRevenue: "no canonical line, absorbed by other operating activities"
+  ChangeInOtherWorkingCapital: "no canonical line, absorbed by other operating activities"
+  CommissionsRevenue: "a revenue breakdown, no canonical line"
+  CommonDividendsPaid: "mixes dividends declared (equity statement) with dividends paid"
+  CommonDividendsPerShare: "per-share dividend, no canonical line"
+  CommonEquity: "mixes par value, treasury stock and partners' capital; not one line"
+  CommunicationAndTechnologyExpense: "an expense detail inside SG&A, no canonical line"
+  ComprehensiveIncomeNet: "comprehensive income, no canonical line"
+  ContractAssets: "inside other assets"
+  ContractLiabilities: "mixes current, noncurrent and total contract liabilities"
+  ConvertibleDebtNonCurrent: "a component of long-term debt"
+  CostsSubtotal: "total costs and expenses, no canonical line"
+  CurrentIncomeTaxExpense: "a component of income tax"
+  CustomerAdvances: "refund liabilities and deposits, inside other current liabilities"
+  DeferredCompensationNonCurrent: "inside other noncurrent liabilities"
+  DeferredIncomeTaxExpense: "tax-note components (federal, state), not the cash-flow add-back"
+  DeferredPolicyAcquisitionCosts: "insurance-specific"
+  DeferredRevenueNonCurrent: "noncurrent deferred revenue, no canonical line"
+  DeferredTaxCurrentAssets: "deferred-tax detail, no canonical line"
+  DeferredTaxCurrentLiabilities: "deferred-tax detail, no canonical line"
+  DeferredTaxNonCurrentLiabilities: "deferred-tax detail, no canonical line"
+  DeferredTaxNoncurrentAssets: "deferred-tax detail, no canonical line"
+  DefinedBenefitPlanAssets: "pension note detail"
+  DefinedBenefitPlanObligations: "pension note detail"
+  DefiniteLivedOperatingProvisions(DecommissioningEtc): "provisions, inside other noncurrent liabilities"
+  DepreciationExpense: "mixes total D&A with depreciation-only and cost-of-sales components; d_and_a needs the total"
+  DiscontinuedOperationsIncome: "discontinued operations, no canonical line"
+  DistributionsToMinorityInterests: "mixes dividends to owners and to minorities"
+  DivestitureProceeds: "inside other investing"
+  DividendsEquity: "equity-statement dividends, not cash paid"
+  DividendsPayable: "inside other current liabilities"
+  ElectricUtilityRevenue: "a revenue breakdown, no canonical line"
+  EquityExpenseIncome(BuybackIssued): "mixes share issuance proceeds and repurchases"
+  EquityMethodInvestmentIncome: "inside other non-operating income"
+  ExtraordinaryItemsIncomeExpense(PostTax): "discontinued-operation detail, no canonical line"
+  FinanceLeaseExpense: "lease detail, no canonical line"
+  FinanceLeasePayments: "finance-lease repayments, inside other financing"
+  FinancialServicesRevenue: "a revenue breakdown, no canonical line"
+  ForecastedIntangibleAmortizationAfterYear5: "maturity table, no canonical line"
+  ForecastedIntangibleAmortizationYear1: "maturity table, no canonical line"
+  ForecastedIntangibleAmortizationYear2: "maturity table, no canonical line"
+  ForecastedIntangibleAmortizationYear3: "maturity table, no canonical line"
+  ForecastedIntangibleAmortizationYear4: "maturity table, no canonical line"
+  ForecastedIntangibleAmortizationYear5: "maturity table, no canonical line"
+  ForeignCurrencyGainLoss: "inside other non-operating income"
+  ForeignCurrencyTranslation: "other comprehensive income detail"
+  FranchiseRevenue: "a revenue breakdown, no canonical line"
+  GainLossOnAssetSalesCF: "inside other operating activities"
+  GainLossOnDispositions: "inside other non-operating income"
+  GainLossOnInvestmentsIS: "inside other non-operating income"
+  GoodwillAndIntangiblesNet: "goodwill and intangibles combined; the canonical lines are separate"
+  GoodwillWriteoffs: "impairment and amortization detail, no canonical line"
+  GovernmentContractsRevenue: "a revenue breakdown, no canonical line"
+  GrossPropertyPlantEquipment: "gross of depreciation; ppe_net is net"
+  HealthCareRevenue: "a revenue breakdown, no canonical line"
+  HedgingGainsLosses: "other comprehensive income detail"
+  ImpairmentChargesCF: "inside other operating activities"
+  IncomeLossContinuingOperations: "income from continuing operations, no canonical line"
+  IncomeTaxReceivable: "inside other assets"
+  IncomeTaxes: "mixes tax expense, taxes paid and deferred-tax detail; income_tax needs the expense line"
+  IntangibleAssetsGross: "gross of amortization; intangibles is net"
+  InterestAndDividendIncome: "inside other non-operating income"
+  InterestExpenseDeposits: "bank-specific"
+  InterestIncome: "inside other non-operating income"
+  InvestmentsEquityMethod: "inside other noncurrent assets"
+  LaborExpenses: "an expense detail, no canonical line"
+  LicensingRevenue: "a revenue breakdown, no canonical line"
+  LoanLossReserve: "bank-specific"
+  LossOnDebtExtinguishment: "inside other non-operating income"
+  ManagementFeeRevenue: "a revenue breakdown, no canonical line"
+  MarketingExpenses: "an expense detail inside SG&A, no canonical line"
+  NetCashFromFinancingActivities: "the total mixed with component financing lines"
+  NetCashFromInvestingActivities: "the total mixed with component investing lines"
+  NetCashFromOperatingActivities: "the total mixed with component operating lines"
+  NetChangeInCash: "mixes the change including and excluding the exchange-rate effect"
+  NetIncomeToCommonShareholders: "after preferred dividends; net_income_common is attributable to the parent"
+  NetInterestIncome: "bank-specific"
+  NetInterestIncomeAfterProvision: "bank-specific"
+  NetLoansAndLeases: "bank-specific"
+  NonCurrentAssetsTotal: "total_noncurrent_assets is derived (total_assets - total_current_assets), never mapped"
+  NonCurrentLiabilitiesTotal: "no canonical total; other_noncurrent_liabilities is a residual"
+  NonInterestExpense: "bank-specific"
+  NonInterestIncome: "bank-specific"
+  NonoperatingIncomeExpense: "other_nonoperating_income is a residual, never mapped"
+  NotesReceivableNonCurrent: "inside other noncurrent assets"
+  OccupancyExpense: "an expense detail, no canonical line"
+  OilAndGasRevenue: "a revenue breakdown, no canonical line"
+  OngoingOperatingProvisions(WarrantiesEtc): "provisions and deferred revenue, inside other liabilities"
+  OperatingLeaseCommitmentAfterYear5: "maturity table, no canonical line"
+  OperatingLeaseCommitmentYear1: "maturity table, no canonical line"
+  OperatingLeaseCommitmentYear2: "maturity table, no canonical line"
+  OperatingLeaseCommitmentYear3: "maturity table, no canonical line"
+  OperatingLeaseCommitmentYear4: "maturity table, no canonical line"
+  OperatingLeaseCommitmentYear5: "maturity table, no canonical line"
+  OperatingLeaseCurrentDebtEquivalent: "current lease liability, inside other current liabilities"
+  OperatingLeaseExpense: "lease cost detail, no canonical line"
+  OperatingLeasePayments: "lease payments detail, no canonical line"
+  OtherComprehensiveIncomeLoss: "other comprehensive income, no canonical line"
+  OtherExpenseIS: "other expense, absorbed by the other_* residuals"
+  OtherIncomeIS: "other income, absorbed by the other_* residuals"
+  OtherNonCashItemsCF: "absorbed by other_operating_activities, a residual"
+  OtherNonOperatingCurrentAssets: "other_current_assets is a residual, never mapped"
+  OtherNonOperatingCurrentLiabilities: "other_current_liabilities is a residual, never mapped"
+  OtherNonOperatingNonCurrentAssets: "other_noncurrent_assets is a residual, never mapped"
+  OtherNonOperatingNonCurrentLiabilities: "other_noncurrent_liabilities is a residual, never mapped"
+  OtherOperatingCurrentAssets: "other_current_assets is a residual, never mapped"
+  OtherOperatingCurrentLiabilities: "other_current_liabilities is a residual, never mapped"
+  OtherOperatingExpense: "other_operating_expenses is a residual, never mapped"
+  OtherOperatingNonCurrentAssets: "other_noncurrent_assets is a residual, never mapped"
+  OtherOperatingNonCurrentLiabilities: "other_noncurrent_liabilities is a residual, never mapped"
+  PaymentsOfDebtIssuanceCosts: "inside other financing"
+  PensionAndRetirementAdjustments: "other comprehensive income detail"
+  PensionExpense: "pension detail, no canonical line"
+  PensionObligations: "inside other noncurrent liabilities"
+  PolicyBenefitsAndClaims: "insurance-specific"
+  PreferredDividendExpense: "preferred dividends, no canonical line"
+  PreferredStock: "inside other equity"
+  PrepaidExpenses: "inside other current assets"
+  ProceedsFromSaleOfPPE: "inside other investing"
+  ProductRevenue: "a revenue breakdown, no canonical line"
+  ProfessionalFees: "an expense detail inside SG&A, no canonical line"
+  ProvisionForCreditLosses: "bank-specific"
+  ProvisionForDoubtfulAccountsCF: "inside other operating activities"
+  PurchaseOfIntangibleAssets: "inside other investing"
+  RealEstateInvestments: "inside other noncurrent assets"
+  RegulatedAssets: "utility-specific"
+  RegulatedLiabilities: "utility-specific"
+  RentalAndLeasingRevenue: "a revenue breakdown, no canonical line"
+  RestrictedCashCurrent: "inside other current assets"
+  RestrictedCashNonCurrent: "inside other noncurrent assets"
+  RestructuringExpenseBenefit: "restructuring and impairment items, no canonical line"
+  RestructuringProvisions: "inside other liabilities"
+  RetirementRelatedCurrentAssets: "pension detail"
+  RetirementRelatedCurrentLiabilities: "inside other current liabilities"
+  RetirementRelatedNonCurrentAssets: "inside other noncurrent assets"
+  RetirementRelatedNonCurrentLiabilities: "inside other noncurrent liabilities"
+  RoyaltyRevenue: "a revenue breakdown, no canonical line"
+  SecurityDepositsAsset: "inside other noncurrent assets"
+  SelfInsuranceReserve: "inside other liabilities"
+  SharesDilutionAdjustment: "dilution detail, no canonical line"
+  SharesIssued: "issued share counts, no canonical line"
+  SharesYearEnd: "period-end share counts; the key stats read dei shares outstanding"
+  SpecialItemsIncomeExpense(Pretax): "unusual items, no canonical line"
+  StockCompensationEquityImpact: "equity-statement detail, not the cash-flow add-back"
+  StockIssuanceProceeds: "inside other financing"
+  StockIssuancesEquity: "equity-statement detail"
+  StockRepurchasesEquity: "equity-statement detail, not cash paid"
+  SubscriptionRevenue: "a revenue breakdown, no canonical line"
+  TaxesPayable: "inside other current liabilities"
+  TechnologyServicesRevenue: "a revenue breakdown, no canonical line"
+  TemporaryAndMezzanineFinancing: "temporary equity, inside other equity"
+  TenantReimbursementsRevenue: "a revenue breakdown, no canonical line"
+  TotalDeposits: "bank-specific"
+  TotalInterestIncomeOperating: "bank-specific"
+  TotalOperatingExpenses: "no canonical total; other_operating_expenses is a residual"
+  TreasuryShares: "inside other equity"
+  UnearnedRevenue: "not split between current and noncurrent"
+  UnrealizedGainsLossesSecurities: "other comprehensive income detail"
+  ValuationAllowanceDTA: "deferred-tax detail"

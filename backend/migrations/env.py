@@ -4,8 +4,15 @@ from alembic import context
 
 from bedrock.core.config import load_settings
 from bedrock.core.db import make_engine
+from bedrock.models import (  # noqa: F401  ensure models are registered
+    canonical_item,
+    company,
+    concept_mapping,
+    filing,
+    price_daily,
+    raw_fact,
+)
 from bedrock.models.base import Base
-from bedrock.models.company import Company  # noqa: F401  ensure models are registered
 
 config = context.config
 

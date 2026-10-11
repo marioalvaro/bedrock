@@ -5,6 +5,26 @@ export type ClientOptions = {
 };
 
 /**
+ * AdjustmentOut
+ *
+ * Placeholder until M2's adjustments; the list is always empty in M1.
+ */
+export type AdjustmentOut = {
+    /**
+     * Amount
+     */
+    amount: string;
+    /**
+     * Category
+     */
+    category: string;
+    /**
+     * Reason
+     */
+    reason: string;
+};
+
+/**
  * AuthStatus
  */
 export type AuthStatus = {
@@ -15,9 +35,80 @@ export type AuthStatus = {
 };
 
 /**
- * CompanyOut
+ * BalanceCheckOut
  */
-export type CompanyOut = {
+export type BalanceCheckOut = {
+    /**
+     * Difference
+     */
+    difference: string | null;
+    /**
+     * Ok
+     */
+    ok: boolean;
+    /**
+     * Period Key
+     */
+    period_key: string;
+};
+
+/**
+ * CellDetailOut
+ */
+export type CellDetailOut = {
+    /**
+     * Adjustments
+     */
+    adjustments: Array<AdjustmentOut>;
+    /**
+     * Code
+     */
+    code: string;
+    derivation: DerivationOut | null;
+    filing: FilingOut | null;
+    /**
+     * Fiscal Period
+     */
+    fiscal_period: string;
+    /**
+     * Fiscal Year
+     */
+    fiscal_year: number;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Provenance
+     */
+    provenance: 'reported' | 'derived' | null;
+    source: SourceOut | null;
+    /**
+     * Value
+     */
+    value: string | null;
+    /**
+     * Vintages
+     */
+    vintages: Array<VintageOut>;
+};
+
+/**
+ * CompanyCreate
+ */
+export type CompanyCreate = {
+    /**
+     * Ticker
+     */
+    ticker: string;
+};
+
+/**
+ * CompanyListItem
+ *
+ * A company with its key stats (erd/workspace.md), each null when it cannot be computed.
+ */
+export type CompanyListItem = {
     /**
      * Cik
      */
@@ -26,6 +117,10 @@ export type CompanyOut = {
      * Currency
      */
     currency: string;
+    /**
+     * Ev Ebitda
+     */
+    ev_ebitda: string | null;
     /**
      * Fiscal Year End Month
      */
@@ -39,9 +134,33 @@ export type CompanyOut = {
      */
     last_refreshed_at: string | null;
     /**
+     * Market Cap
+     */
+    market_cap: string | null;
+    /**
      * Name
      */
     name: string;
+    /**
+     * Pe
+     */
+    pe: string | null;
+    /**
+     * Price
+     *
+     * Latest close
+     */
+    price: string | null;
+    /**
+     * Price Date
+     */
+    price_date: string | null;
+    /**
+     * Revenue Growth
+     *
+     * TTM revenue growth, as a fraction
+     */
+    revenue_growth: string | null;
     /**
      * Sic
      */
@@ -50,6 +169,56 @@ export type CompanyOut = {
      * Ticker
      */
     ticker: string;
+};
+
+/**
+ * DerivationInputOut
+ */
+export type DerivationInputOut = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Fiscal Period
+     */
+    fiscal_period: string;
+    /**
+     * Value
+     */
+    value: string;
+};
+
+/**
+ * DerivationOut
+ */
+export type DerivationOut = {
+    /**
+     * Formula
+     */
+    formula: string;
+    /**
+     * Inputs
+     */
+    inputs: Array<DerivationInputOut>;
+};
+
+/**
+ * FilingOut
+ */
+export type FilingOut = {
+    /**
+     * Accession No
+     */
+    accession_no: string;
+    /**
+     * Filed At
+     */
+    filed_at: string;
+    /**
+     * Form
+     */
+    form: string;
 };
 
 /**
@@ -70,6 +239,246 @@ export type LoginRequest = {
      * Password
      */
     password: string;
+};
+
+/**
+ * MappingGapsOut
+ */
+export type MappingGapsOut = {
+    /**
+     * Missing Items
+     */
+    missing_items: Array<MissingItemOut>;
+    /**
+     * Unmapped Concepts
+     */
+    unmapped_concepts: Array<UnmappedConceptOut>;
+};
+
+/**
+ * MissingItemOut
+ */
+export type MissingItemOut = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Missing Periods
+     */
+    missing_periods: Array<string>;
+    /**
+     * Statement
+     */
+    statement: string;
+};
+
+/**
+ * PeriodOut
+ */
+export type PeriodOut = {
+    /**
+     * Fiscal Period
+     */
+    fiscal_period: string;
+    /**
+     * Fiscal Year
+     */
+    fiscal_year: number;
+    /**
+     * Is Forecast
+     */
+    is_forecast: boolean;
+    /**
+     * Key
+     */
+    key: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Period End
+     */
+    period_end: string;
+    /**
+     * Period Start
+     */
+    period_start: string;
+};
+
+/**
+ * RefreshResultOut
+ */
+export type RefreshResultOut = {
+    /**
+     * Last Refreshed At
+     */
+    last_refreshed_at: string;
+    /**
+     * New Facts
+     */
+    new_facts: number;
+    /**
+     * New Filings
+     */
+    new_filings: number;
+    /**
+     * New Prices
+     */
+    new_prices: number;
+    /**
+     * Ticker
+     */
+    ticker: string;
+    /**
+     * Warnings
+     */
+    warnings: Array<string>;
+};
+
+/**
+ * RowOut
+ *
+ * One line item. The arrays are aligned with the statement's `periods`; YoY and common-size
+ * are fractions (0.05 = 5 %), not percentages. `common_size_base` is the label of the row
+ * `common_size` divides by (revenue, total assets or the row's parent).
+ */
+export type RowOut = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Common Size
+     */
+    common_size: Array<string | null>;
+    /**
+     * Common Size Base
+     */
+    common_size_base: string | null;
+    /**
+     * Depth
+     */
+    depth: number;
+    /**
+     * Kind
+     */
+    kind: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Provenance
+     */
+    provenance: Array<'reported' | 'derived' | null>;
+    /**
+     * Unit
+     */
+    unit: string;
+    /**
+     * Values
+     */
+    values: Array<string | null>;
+    /**
+     * Yoy
+     */
+    yoy: Array<string | null>;
+};
+
+/**
+ * SourceOut
+ */
+export type SourceOut = {
+    /**
+     * Concept
+     */
+    concept: string;
+    /**
+     * Taxonomy
+     */
+    taxonomy: string;
+    /**
+     * Unit
+     */
+    unit: string;
+};
+
+/**
+ * StatementOut
+ */
+export type StatementOut = {
+    /**
+     * Balance Check
+     */
+    balance_check: Array<BalanceCheckOut> | null;
+    /**
+     * Basis
+     */
+    basis: 'reported' | 'normalized';
+    /**
+     * Currency
+     */
+    currency: string;
+    /**
+     * Freq
+     */
+    freq: 'annual' | 'quarterly' | 'ttm';
+    /**
+     * Periods
+     */
+    periods: Array<PeriodOut>;
+    /**
+     * Rows
+     */
+    rows: Array<RowOut>;
+    /**
+     * Statement
+     */
+    statement: 'IS' | 'BS' | 'CF';
+    /**
+     * Ticker
+     */
+    ticker: string;
+};
+
+/**
+ * UnmappedConceptOut
+ */
+export type UnmappedConceptOut = {
+    /**
+     * Concept
+     */
+    concept: string;
+    /**
+     * Facts
+     */
+    facts: number;
+    /**
+     * Latest Period End
+     */
+    latest_period_end: string;
+    /**
+     * Latest Value
+     */
+    latest_value: string;
+    /**
+     * Suggested Codes
+     */
+    suggested_codes: Array<string>;
+    /**
+     * Taxonomy
+     */
+    taxonomy: string;
+    /**
+     * Unit
+     */
+    unit: string;
 };
 
 /**
@@ -98,6 +507,28 @@ export type ValidationError = {
      * Error Type
      */
     type: string;
+};
+
+/**
+ * VintageOut
+ */
+export type VintageOut = {
+    /**
+     * Accession No
+     */
+    accession_no: string;
+    /**
+     * Filed At
+     */
+    filed_at: string;
+    /**
+     * Form
+     */
+    form: string;
+    /**
+     * Value
+     */
+    value: string;
 };
 
 export type LoginApiV1AuthLoginPostData = {
@@ -170,10 +601,245 @@ export type GetCompaniesApiV1CompaniesGetResponses = {
      *
      * Successful Response
      */
-    200: Array<CompanyOut>;
+    200: Array<CompanyListItem>;
 };
 
 export type GetCompaniesApiV1CompaniesGetResponse = GetCompaniesApiV1CompaniesGetResponses[keyof GetCompaniesApiV1CompaniesGetResponses];
+
+export type AddCompanyApiV1CompaniesPostData = {
+    body: CompanyCreate;
+    path?: never;
+    query?: never;
+    url: '/api/v1/companies';
+};
+
+export type AddCompanyApiV1CompaniesPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AddCompanyApiV1CompaniesPostError = AddCompanyApiV1CompaniesPostErrors[keyof AddCompanyApiV1CompaniesPostErrors];
+
+export type AddCompanyApiV1CompaniesPostResponses = {
+    /**
+     * Successful Response
+     */
+    201: CompanyListItem;
+};
+
+export type AddCompanyApiV1CompaniesPostResponse = AddCompanyApiV1CompaniesPostResponses[keyof AddCompanyApiV1CompaniesPostResponses];
+
+export type RemoveCompanyApiV1CompaniesTickerDeleteData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}';
+};
+
+export type RemoveCompanyApiV1CompaniesTickerDeleteErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type RemoveCompanyApiV1CompaniesTickerDeleteError = RemoveCompanyApiV1CompaniesTickerDeleteErrors[keyof RemoveCompanyApiV1CompaniesTickerDeleteErrors];
+
+export type RemoveCompanyApiV1CompaniesTickerDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type RemoveCompanyApiV1CompaniesTickerDeleteResponse = RemoveCompanyApiV1CompaniesTickerDeleteResponses[keyof RemoveCompanyApiV1CompaniesTickerDeleteResponses];
+
+export type GetCompanyApiV1CompaniesTickerGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}';
+};
+
+export type GetCompanyApiV1CompaniesTickerGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetCompanyApiV1CompaniesTickerGetError = GetCompanyApiV1CompaniesTickerGetErrors[keyof GetCompanyApiV1CompaniesTickerGetErrors];
+
+export type GetCompanyApiV1CompaniesTickerGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: CompanyListItem;
+};
+
+export type GetCompanyApiV1CompaniesTickerGetResponse = GetCompanyApiV1CompaniesTickerGetResponses[keyof GetCompanyApiV1CompaniesTickerGetResponses];
+
+export type GetMappingGapsApiV1CompaniesTickerMappingGapsGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/mapping-gaps';
+};
+
+export type GetMappingGapsApiV1CompaniesTickerMappingGapsGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetMappingGapsApiV1CompaniesTickerMappingGapsGetError = GetMappingGapsApiV1CompaniesTickerMappingGapsGetErrors[keyof GetMappingGapsApiV1CompaniesTickerMappingGapsGetErrors];
+
+export type GetMappingGapsApiV1CompaniesTickerMappingGapsGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: MappingGapsOut;
+};
+
+export type GetMappingGapsApiV1CompaniesTickerMappingGapsGetResponse = GetMappingGapsApiV1CompaniesTickerMappingGapsGetResponses[keyof GetMappingGapsApiV1CompaniesTickerMappingGapsGetResponses];
+
+export type RefreshApiV1CompaniesTickerRefreshPostData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/refresh';
+};
+
+export type RefreshApiV1CompaniesTickerRefreshPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type RefreshApiV1CompaniesTickerRefreshPostError = RefreshApiV1CompaniesTickerRefreshPostErrors[keyof RefreshApiV1CompaniesTickerRefreshPostErrors];
+
+export type RefreshApiV1CompaniesTickerRefreshPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: RefreshResultOut;
+};
+
+export type RefreshApiV1CompaniesTickerRefreshPostResponse = RefreshApiV1CompaniesTickerRefreshPostResponses[keyof RefreshApiV1CompaniesTickerRefreshPostResponses];
+
+export type GetStatementApiV1CompaniesTickerStatementsGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query: {
+        /**
+         * Type
+         */
+        type: 'IS' | 'BS' | 'CF';
+        /**
+         * Freq
+         */
+        freq: 'annual' | 'quarterly' | 'ttm';
+        /**
+         * Basis
+         */
+        basis?: 'reported' | 'normalized';
+        /**
+         * Common Size Base
+         */
+        common_size_base?: 'total' | 'parent';
+    };
+    url: '/api/v1/companies/{ticker}/statements';
+};
+
+export type GetStatementApiV1CompaniesTickerStatementsGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetStatementApiV1CompaniesTickerStatementsGetError = GetStatementApiV1CompaniesTickerStatementsGetErrors[keyof GetStatementApiV1CompaniesTickerStatementsGetErrors];
+
+export type GetStatementApiV1CompaniesTickerStatementsGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: StatementOut;
+};
+
+export type GetStatementApiV1CompaniesTickerStatementsGetResponse = GetStatementApiV1CompaniesTickerStatementsGetResponses[keyof GetStatementApiV1CompaniesTickerStatementsGetResponses];
+
+export type GetCellApiV1CompaniesTickerStatementsCellGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query: {
+        /**
+         * Code
+         */
+        code: string;
+        /**
+         * Fiscal Year
+         */
+        fiscal_year: number;
+        /**
+         * Fiscal Period
+         */
+        fiscal_period: string;
+    };
+    url: '/api/v1/companies/{ticker}/statements/cell';
+};
+
+export type GetCellApiV1CompaniesTickerStatementsCellGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetCellApiV1CompaniesTickerStatementsCellGetError = GetCellApiV1CompaniesTickerStatementsCellGetErrors[keyof GetCellApiV1CompaniesTickerStatementsCellGetErrors];
+
+export type GetCellApiV1CompaniesTickerStatementsCellGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: CellDetailOut;
+};
+
+export type GetCellApiV1CompaniesTickerStatementsCellGetResponse = GetCellApiV1CompaniesTickerStatementsCellGetResponses[keyof GetCellApiV1CompaniesTickerStatementsCellGetResponses];
 
 export type HealthApiV1HealthGetData = {
     body?: never;

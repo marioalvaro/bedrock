@@ -8,8 +8,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from bedrock.core.config import Settings
+from bedrock.ingest.sources import Sources
 from bedrock.main import create_app
 from bedrock.models.base import Base
+
+from .fakes import FakeEdgar, FakePrices
 
 TEST_PASSWORD = "test-password"
 
@@ -33,8 +36,18 @@ def settings(tmp_path: Path) -> Settings:
 
 
 @pytest.fixture
-def app(settings: Settings) -> FastAPI:
-    return create_app(settings=settings)
+def fake_edgar() -> FakeEdgar:
+    return FakeEdgar()
+
+
+@pytest.fixture
+def fake_prices() -> FakePrices:
+    return FakePrices()
+
+
+@pytest.fixture
+def app(settings: Settings, fake_edgar: FakeEdgar, fake_prices: FakePrices) -> FastAPI:
+    return create_app(settings=settings, sources=Sources(edgar=fake_edgar, prices=fake_prices))
 
 
 @pytest.fixture

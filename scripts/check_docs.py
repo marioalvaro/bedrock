@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Structural integrity check for Bedrock docs. Exit 1 on any problem.
+r"""Structural integrity check for Bedrock docs. Exit 1 on any problem.
 
 Checks:
   1. Every relative markdown link and #anchor resolves.

@@ -1,6 +1,31 @@
 {
   "components": {
     "schemas": {
+      "AdjustmentOut": {
+        "description": "Placeholder until M2's adjustments; the list is always empty in M1.",
+        "properties": {
+          "amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount",
+            "type": "string"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount",
+          "category",
+          "reason"
+        ],
+        "title": "AdjustmentOut",
+        "type": "object"
+      },
       "AuthStatus": {
         "properties": {
           "authenticated": {
@@ -14,7 +39,160 @@
         "title": "AuthStatus",
         "type": "object"
       },
-      "CompanyOut": {
+      "BalanceCheckOut": {
+        "properties": {
+          "difference": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Difference"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "period_key": {
+            "title": "Period Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "period_key",
+          "difference",
+          "ok"
+        ],
+        "title": "BalanceCheckOut",
+        "type": "object"
+      },
+      "CellDetailOut": {
+        "properties": {
+          "adjustments": {
+            "items": {
+              "$ref": "#/components/schemas/AdjustmentOut"
+            },
+            "title": "Adjustments",
+            "type": "array"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "derivation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DerivationOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "filing": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FilingOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fiscal_period": {
+            "title": "Fiscal Period",
+            "type": "string"
+          },
+          "fiscal_year": {
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "provenance": {
+            "anyOf": [
+              {
+                "enum": [
+                  "reported",
+                  "derived"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provenance"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "value": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "vintages": {
+            "items": {
+              "$ref": "#/components/schemas/VintageOut"
+            },
+            "title": "Vintages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "code",
+          "label",
+          "fiscal_year",
+          "fiscal_period",
+          "value",
+          "provenance",
+          "source",
+          "filing",
+          "derivation",
+          "vintages",
+          "adjustments"
+        ],
+        "title": "CellDetailOut",
+        "type": "object"
+      },
+      "CompanyCreate": {
+        "properties": {
+          "ticker": {
+            "maxLength": 12,
+            "minLength": 1,
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticker"
+        ],
+        "title": "CompanyCreate",
+        "type": "object"
+      },
+      "CompanyListItem": {
+        "description": "A company with its key stats (erd/workspace.md), each null when it cannot be computed.",
         "properties": {
           "cik": {
             "title": "Cik",
@@ -23,6 +201,18 @@
           "currency": {
             "title": "Currency",
             "type": "string"
+          },
+          "ev_ebitda": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ev Ebitda"
           },
           "fiscal_year_end_month": {
             "title": "Fiscal Year End Month",
@@ -44,9 +234,71 @@
             ],
             "title": "Last Refreshed At"
           },
+          "market_cap": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Market Cap"
+          },
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "pe": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pe"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Latest close",
+            "title": "Price"
+          },
+          "price_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Date"
+          },
+          "revenue_growth": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "TTM revenue growth, as a fraction",
+            "title": "Revenue Growth"
           },
           "sic": {
             "anyOf": [
@@ -72,9 +324,84 @@
           "fiscal_year_end_month",
           "currency",
           "sic",
-          "last_refreshed_at"
+          "last_refreshed_at",
+          "price",
+          "price_date",
+          "market_cap",
+          "pe",
+          "ev_ebitda",
+          "revenue_growth"
         ],
-        "title": "CompanyOut",
+        "title": "CompanyListItem",
+        "type": "object"
+      },
+      "DerivationInputOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "fiscal_period": {
+            "title": "Fiscal Period",
+            "type": "string"
+          },
+          "value": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "fiscal_period",
+          "value"
+        ],
+        "title": "DerivationInputOut",
+        "type": "object"
+      },
+      "DerivationOut": {
+        "properties": {
+          "formula": {
+            "title": "Formula",
+            "type": "string"
+          },
+          "inputs": {
+            "items": {
+              "$ref": "#/components/schemas/DerivationInputOut"
+            },
+            "title": "Inputs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "formula",
+          "inputs"
+        ],
+        "title": "DerivationOut",
+        "type": "object"
+      },
+      "FilingOut": {
+        "properties": {
+          "accession_no": {
+            "title": "Accession No",
+            "type": "string"
+          },
+          "filed_at": {
+            "format": "date",
+            "title": "Filed At",
+            "type": "string"
+          },
+          "form": {
+            "title": "Form",
+            "type": "string"
+          }
+        },
+        "required": [
+          "accession_no",
+          "form",
+          "filed_at"
+        ],
+        "title": "FilingOut",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -101,6 +428,410 @@
           "password"
         ],
         "title": "LoginRequest",
+        "type": "object"
+      },
+      "MappingGapsOut": {
+        "properties": {
+          "missing_items": {
+            "items": {
+              "$ref": "#/components/schemas/MissingItemOut"
+            },
+            "title": "Missing Items",
+            "type": "array"
+          },
+          "unmapped_concepts": {
+            "items": {
+              "$ref": "#/components/schemas/UnmappedConceptOut"
+            },
+            "title": "Unmapped Concepts",
+            "type": "array"
+          }
+        },
+        "required": [
+          "missing_items",
+          "unmapped_concepts"
+        ],
+        "title": "MappingGapsOut",
+        "type": "object"
+      },
+      "MissingItemOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "missing_periods": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Periods",
+            "type": "array"
+          },
+          "statement": {
+            "title": "Statement",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "label",
+          "statement",
+          "missing_periods"
+        ],
+        "title": "MissingItemOut",
+        "type": "object"
+      },
+      "PeriodOut": {
+        "properties": {
+          "fiscal_period": {
+            "title": "Fiscal Period",
+            "type": "string"
+          },
+          "fiscal_year": {
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "is_forecast": {
+            "title": "Is Forecast",
+            "type": "boolean"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "period_end": {
+            "format": "date",
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "format": "date",
+            "title": "Period Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "fiscal_year",
+          "fiscal_period",
+          "period_start",
+          "period_end",
+          "is_forecast"
+        ],
+        "title": "PeriodOut",
+        "type": "object"
+      },
+      "RefreshResultOut": {
+        "properties": {
+          "last_refreshed_at": {
+            "format": "date-time",
+            "title": "Last Refreshed At",
+            "type": "string"
+          },
+          "new_facts": {
+            "title": "New Facts",
+            "type": "integer"
+          },
+          "new_filings": {
+            "title": "New Filings",
+            "type": "integer"
+          },
+          "new_prices": {
+            "title": "New Prices",
+            "type": "integer"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ticker",
+          "new_filings",
+          "new_facts",
+          "new_prices",
+          "last_refreshed_at",
+          "warnings"
+        ],
+        "title": "RefreshResultOut",
+        "type": "object"
+      },
+      "RowOut": {
+        "description": "One line item. The arrays are aligned with the statement's `periods`; YoY and common-size\nare fractions (0.05 = 5 %), not percentages. `common_size_base` is the label of the row\n`common_size` divides by (revenue, total assets or the row's parent).",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "common_size": {
+            "items": {
+              "anyOf": [
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Common Size",
+            "type": "array"
+          },
+          "common_size_base": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Common Size Base"
+          },
+          "depth": {
+            "title": "Depth",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "provenance": {
+            "items": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "reported",
+                    "derived"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Provenance",
+            "type": "array"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          },
+          "values": {
+            "items": {
+              "anyOf": [
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Values",
+            "type": "array"
+          },
+          "yoy": {
+            "items": {
+              "anyOf": [
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Yoy",
+            "type": "array"
+          }
+        },
+        "required": [
+          "code",
+          "label",
+          "unit",
+          "kind",
+          "depth",
+          "values",
+          "provenance",
+          "yoy",
+          "common_size",
+          "common_size_base"
+        ],
+        "title": "RowOut",
+        "type": "object"
+      },
+      "SourceOut": {
+        "properties": {
+          "concept": {
+            "title": "Concept",
+            "type": "string"
+          },
+          "taxonomy": {
+            "title": "Taxonomy",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "taxonomy",
+          "concept",
+          "unit"
+        ],
+        "title": "SourceOut",
+        "type": "object"
+      },
+      "StatementOut": {
+        "properties": {
+          "balance_check": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/BalanceCheckOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Balance Check"
+          },
+          "basis": {
+            "enum": [
+              "reported",
+              "normalized"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "freq": {
+            "enum": [
+              "annual",
+              "quarterly",
+              "ttm"
+            ],
+            "title": "Freq",
+            "type": "string"
+          },
+          "periods": {
+            "items": {
+              "$ref": "#/components/schemas/PeriodOut"
+            },
+            "title": "Periods",
+            "type": "array"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/RowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "statement": {
+            "enum": [
+              "IS",
+              "BS",
+              "CF"
+            ],
+            "title": "Statement",
+            "type": "string"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticker",
+          "statement",
+          "freq",
+          "basis",
+          "currency",
+          "periods",
+          "rows",
+          "balance_check"
+        ],
+        "title": "StatementOut",
+        "type": "object"
+      },
+      "UnmappedConceptOut": {
+        "properties": {
+          "concept": {
+            "title": "Concept",
+            "type": "string"
+          },
+          "facts": {
+            "title": "Facts",
+            "type": "integer"
+          },
+          "latest_period_end": {
+            "format": "date",
+            "title": "Latest Period End",
+            "type": "string"
+          },
+          "latest_value": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Latest Value",
+            "type": "string"
+          },
+          "suggested_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Suggested Codes",
+            "type": "array"
+          },
+          "taxonomy": {
+            "title": "Taxonomy",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "taxonomy",
+          "concept",
+          "unit",
+          "latest_value",
+          "latest_period_end",
+          "facts",
+          "suggested_codes"
+        ],
+        "title": "UnmappedConceptOut",
         "type": "object"
       },
       "ValidationError": {
@@ -141,6 +872,36 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "VintageOut": {
+        "properties": {
+          "accession_no": {
+            "title": "Accession No",
+            "type": "string"
+          },
+          "filed_at": {
+            "format": "date",
+            "title": "Filed At",
+            "type": "string"
+          },
+          "form": {
+            "title": "Form",
+            "type": "string"
+          },
+          "value": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "accession_no",
+          "form",
+          "filed_at"
+        ],
+        "title": "VintageOut",
         "type": "object"
       }
     }
@@ -229,7 +990,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/CompanyOut"
+                    "$ref": "#/components/schemas/CompanyListItem"
                   },
                   "title": "Response Get Companies Api V1 Companies Get",
                   "type": "array"
@@ -242,6 +1003,371 @@
         "summary": "Get Companies",
         "tags": [
           "companies"
+        ]
+      },
+      "post": {
+        "operationId": "add_company_api_v1_companies_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompanyCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompanyListItem"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Company",
+        "tags": [
+          "companies"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}": {
+      "delete": {
+        "operationId": "remove_company_api_v1_companies__ticker__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Company",
+        "tags": [
+          "companies"
+        ]
+      },
+      "get": {
+        "operationId": "get_company_api_v1_companies__ticker__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompanyListItem"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Company",
+        "tags": [
+          "companies"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/mapping-gaps": {
+      "get": {
+        "operationId": "get_mapping_gaps_api_v1_companies__ticker__mapping_gaps_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MappingGapsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Mapping Gaps",
+        "tags": [
+          "statements"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/refresh": {
+      "post": {
+        "operationId": "refresh_api_v1_companies__ticker__refresh_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshResultOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refresh",
+        "tags": [
+          "companies"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/statements": {
+      "get": {
+        "operationId": "get_statement_api_v1_companies__ticker__statements_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "type",
+            "required": true,
+            "schema": {
+              "enum": [
+                "IS",
+                "BS",
+                "CF"
+              ],
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "freq",
+            "required": true,
+            "schema": {
+              "enum": [
+                "annual",
+                "quarterly",
+                "ttm"
+              ],
+              "title": "Freq",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "basis",
+            "required": false,
+            "schema": {
+              "default": "reported",
+              "enum": [
+                "reported",
+                "normalized"
+              ],
+              "title": "Basis",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "common_size_base",
+            "required": false,
+            "schema": {
+              "default": "total",
+              "enum": [
+                "total",
+                "parent"
+              ],
+              "title": "Common Size Base",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatementOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Statement",
+        "tags": [
+          "statements"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/statements/cell": {
+      "get": {
+        "operationId": "get_cell_api_v1_companies__ticker__statements_cell_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fiscal_year",
+            "required": true,
+            "schema": {
+              "title": "Fiscal Year",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fiscal_period",
+            "required": true,
+            "schema": {
+              "title": "Fiscal Period",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CellDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Cell",
+        "tags": [
+          "statements"
         ]
       }
     },

@@ -1,0 +1,32 @@
+{
+ "1": {
+  "cik_str": 320193,
+  "ticker": "AAPL",
+  "title": "Apple Inc."
+ },
+ "26": {
+  "cik_str": 909832,
+  "ticker": "COST",
+  "title": "COSTCO WHOLESALE CORP /NEW"
+ },
+ "3": {
+  "cik_str": 789019,
+  "ticker": "MSFT",
+  "title": "MICROSOFT CORP"
+ },
+ "320193": {
+  "cik_str": 320193,
+  "ticker": "AAPL",
+  "title": "Apple Inc."
+ },
+ "789019": {
+  "cik_str": 789019,
+  "ticker": "MSFT",
+  "title": "MICROSOFT CORP"
+ },
+ "909832": {
+  "cik_str": 909832,
+  "ticker": "COST",
+  "title": "COSTCO WHOLESALE CORP /NEW"
+ }
+}

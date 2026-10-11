@@ -1,0 +1,443 @@
+from pathlib import Path
+
+import pytest
+
+from bedrock.mapping.config import (
+    DEFAULT_ITEMS_PATH,
+    CanonicalItemDef,
+    MappingConfigError,
+    formula_order,
+    load_canonical_items,
+    load_overrides,
+    parse_formula,
+    split_concept,
+    split_group,
+)
+
+
+def write(tmp_path: Path, text: str) -> Path:
+    path = tmp_path / "items.yaml"
+    path.write_text(text)
+    return path
+
+
+VALID = """
+- code: revenue
+  statement: IS
+  label: Revenue
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: null
+  concepts: [Revenues, us-gaap:SalesRevenueNet, ifrs-full:Revenue]
+- code: cost_of_revenue
+  statement: IS
+  label: Cost of revenue
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: gross_profit
+  concepts: [CostOfRevenue]
+- code: gross_profit
+  statement: IS
+  label: Gross profit
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: null
+  concepts: [GrossProfit]
+  derive: revenue - cost_of_revenue
+"""
+
+
+def test_parse_formula_returns_signed_codes() -> None:
+    assert parse_formula("a - b + c_2") == [(1, "a"), (-1, "b"), (1, "c_2")]
+
+
+def test_parse_formula_single_code() -> None:
+    assert parse_formula("total_assets") == [(1, "total_assets")]
+
+
+@pytest.mark.parametrize("text", ["", "a -", "a b", "+ + a", "A - b", "a - 1b"])
+def test_parse_formula_rejects_malformed_text(text: str) -> None:
+    with pytest.raises(MappingConfigError):
+        parse_formula(text)
+
+
+def test_split_concept_defaults_to_us_gaap() -> None:
+    assert split_concept("Revenues") == ("us-gaap", "Revenues")
+    assert split_concept("ifrs-full:Revenue") == ("ifrs-full", "Revenue")
+
+
+def test_split_group_lists_the_members_anchor_first() -> None:
+    assert split_group("us-gaap:CommercialPaper + LongTermDebtCurrent") == [
+        ("us-gaap", "CommercialPaper"),
+        ("us-gaap", "LongTermDebtCurrent"),
+    ]
+    assert split_group("Revenues") == [("us-gaap", "Revenues")]
+    assert split_group("A+B") == [("us-gaap", "A"), ("us-gaap", "B")]
+
+
+def test_load_canonical_items_reads_every_field(tmp_path: Path) -> None:
+    items = load_canonical_items(write(tmp_path, VALID))
+
+    assert [i.code for i in items] == ["revenue", "cost_of_revenue", "gross_profit"]
+    revenue, _, gross_profit = items
+    assert revenue == CanonicalItemDef(
+        code="revenue",
+        statement="IS",
+        label="Revenue",
+        kind="flow",
+        unit="USD",
+        sign=1,
+        parent=None,
+        concepts=("us-gaap:Revenues", "us-gaap:SalesRevenueNet", "ifrs-full:Revenue"),
+        derive=None,
+        residual=False,
+    )
+    assert gross_profit.derive == "revenue - cost_of_revenue"
+
+
+def test_optional_fields_default(tmp_path: Path) -> None:
+    text = """
+- code: cash
+  statement: BS
+  label: Cash
+  kind: instant
+  unit: USD
+  sign: 1
+"""
+    (item,) = load_canonical_items(write(tmp_path, text))
+
+    assert item.parent is None
+    assert item.concepts == ()
+    assert item.derive is None
+    assert item.residual is False
+
+
+def fail_with(tmp_path: Path, text: str) -> MappingConfigError:
+    with pytest.raises(MappingConfigError) as info:
+        load_canonical_items(write(tmp_path, text))
+    return info.value
+
+
+def test_unknown_parent_names_the_code(tmp_path: Path) -> None:
+    error = fail_with(tmp_path, VALID.replace("parent: gross_profit", "parent: nowhere"))
+
+    assert error.code == "cost_of_revenue"
+    assert "cost_of_revenue" in str(error)
+
+
+def test_parent_on_another_statement_is_rejected(tmp_path: Path) -> None:
+    text = (
+        VALID
+        + """
+- code: cash
+  statement: BS
+  label: Cash
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: revenue
+"""
+    )
+    assert fail_with(tmp_path, text).code == "cash"
+
+
+def test_parent_cycle_is_rejected(tmp_path: Path) -> None:
+    text = VALID.replace(
+        "parent: null\n  concepts: [GrossProfit]",
+        "parent: cost_of_revenue\n  concepts: [GrossProfit]",
+    )
+    assert fail_with(tmp_path, text).code in {"cost_of_revenue", "gross_profit"}
+
+
+def test_unknown_formula_code_is_rejected(tmp_path: Path) -> None:
+    error = fail_with(tmp_path, VALID.replace("revenue - cost_of_revenue", "revenue - ghost"))
+
+    assert error.code == "gross_profit"
+    assert "ghost" in str(error)
+
+
+def test_formula_cycle_is_rejected(tmp_path: Path) -> None:
+    text = VALID.replace(
+        "concepts: [Revenues, us-gaap:SalesRevenueNet, ifrs-full:Revenue]",
+        "concepts: []\n  derive: gross_profit",
+    )
+    assert fail_with(tmp_path, text).code in {"revenue", "gross_profit"}
+
+
+def test_formula_across_statements_is_rejected(tmp_path: Path) -> None:
+    text = (
+        VALID
+        + """
+- code: cash
+  statement: BS
+  label: Cash
+  kind: instant
+  unit: USD
+  sign: 1
+  derive: revenue
+"""
+    )
+    assert fail_with(tmp_path, text).code == "cash"
+
+
+def test_duplicate_code_is_rejected(tmp_path: Path) -> None:
+    assert fail_with(tmp_path, VALID + VALID).code == "revenue"
+
+
+def test_duplicate_concept_within_a_code_is_rejected(tmp_path: Path) -> None:
+    error = fail_with(
+        tmp_path, VALID.replace("[CostOfRevenue]", "[CostOfRevenue, us-gaap:CostOfRevenue]")
+    )
+
+    assert error.code == "cost_of_revenue"
+
+
+def test_a_summed_concept_is_qualified_member_by_member(tmp_path: Path) -> None:
+    text = VALID.replace(
+        "concepts: [CostOfRevenue]",
+        'concepts: [CostOfRevenue + OtherCost, "us-gaap:Foo +  Bar", CostOfRevenue]',
+    )
+
+    items = {i.code: i for i in load_canonical_items(write(tmp_path, text))}
+
+    assert items["cost_of_revenue"].concepts == (
+        "us-gaap:CostOfRevenue + us-gaap:OtherCost",
+        "us-gaap:Foo + us-gaap:Bar",
+        "us-gaap:CostOfRevenue",
+    )  # a concept may recur as a member of another group, or alone as the fallback
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        "CostOfRevenue + CostOfRevenue",  # a member twice
+        "CostOfRevenue + us-gaap:CostOfRevenue",
+        "CostOfRevenue + ",  # empty member
+        "+ CostOfRevenue",
+        "CostOfRevenue + + OtherCost",
+        "CostOfRevenue + aapl:OtherCost",  # the members of a sum share one taxonomy
+    ],
+)
+def test_a_malformed_summed_concept_is_rejected(tmp_path: Path, entry: str) -> None:
+    error = fail_with(tmp_path, VALID.replace("[CostOfRevenue]", f'["{entry}"]'))
+
+    assert error.code == "cost_of_revenue"
+
+
+def test_the_same_summed_concept_twice_is_rejected(tmp_path: Path) -> None:
+    text = VALID.replace("[CostOfRevenue]", "[A + B, us-gaap:A + B]")
+
+    assert fail_with(tmp_path, text).code == "cost_of_revenue"
+
+
+@pytest.mark.parametrize(
+    "old, new",
+    [
+        ("statement: IS\n  label: Revenue", "statement: XX\n  label: Revenue"),
+        (
+            "kind: flow\n  unit: USD\n  sign: 1\n  parent: null",
+            "kind: stock\n  unit: USD\n  sign: 1\n  parent: null",
+        ),
+        ("unit: USD\n  sign: 1\n  parent: null", "unit: EUR\n  sign: 1\n  parent: null"),
+        ("sign: 1\n  parent: null", "sign: 2\n  parent: null"),
+    ],
+)
+def test_bad_enum_value_is_rejected(tmp_path: Path, old: str, new: str) -> None:
+    assert old in VALID
+    assert fail_with(tmp_path, VALID.replace(old, new, 1)).code == "revenue"
+
+
+def test_missing_required_field_is_rejected(tmp_path: Path) -> None:
+    assert fail_with(tmp_path, VALID.replace("  label: Revenue\n", "")).code == "revenue"
+
+
+def test_residual_needs_derive_and_no_concepts(tmp_path: Path) -> None:
+    residual = """
+- code: other_current_assets
+  statement: BS
+  label: Other
+  kind: instant
+  unit: USD
+  sign: 1
+  residual: true
+  derive: total_current_assets - cash
+- code: cash
+  statement: BS
+  label: Cash
+  kind: instant
+  unit: USD
+  sign: 1
+- code: total_current_assets
+  statement: BS
+  label: TCA
+  kind: instant
+  unit: USD
+  sign: 1
+"""
+    assert len(load_canonical_items(write(tmp_path, residual))) == 3
+    no_derive = residual.replace("  derive: total_current_assets - cash\n", "")
+    assert fail_with(tmp_path, no_derive).code == "other_current_assets"
+    with_concepts = residual.replace(
+        "residual: true", "residual: true\n  concepts: [OtherAssetsCurrent]"
+    )
+    assert fail_with(tmp_path, with_concepts).code == "other_current_assets"
+
+
+def test_formula_order_puts_operands_first(tmp_path: Path) -> None:
+    items = load_canonical_items(write(tmp_path, VALID))
+
+    assert [i.code for i in formula_order(items)] == ["gross_profit"]
+
+
+def test_formula_order_handles_chains() -> None:
+    def item(code: str, derive: str | None) -> CanonicalItemDef:
+        return CanonicalItemDef(code, "BS", code, "instant", "USD", 1, None, (), derive, False)
+
+    ordered = formula_order([item("c", "b + a"), item("b", "a"), item("a", None)])
+
+    assert [i.code for i in ordered] == ["b", "c"]
+
+
+def test_load_overrides_qualifies_concepts(tmp_path: Path) -> None:
+    (tmp_path / "AAPL.yaml").write_text("revenue: [RevenueFromContractWithCustomer, custom:Rev]\n")
+
+    assert load_overrides(tmp_path, "aapl") == {
+        "revenue": ["us-gaap:RevenueFromContractWithCustomer", "custom:Rev"]
+    }
+
+
+def test_load_overrides_qualifies_summed_concepts(tmp_path: Path) -> None:
+    (tmp_path / "AAPL.yaml").write_text(
+        'short_term_debt: ["CommercialPaper + LongTermDebtCurrent", LongTermDebtCurrent]\n'
+    )
+
+    assert load_overrides(tmp_path, "aapl") == {
+        "short_term_debt": [
+            "us-gaap:CommercialPaper + us-gaap:LongTermDebtCurrent",
+            "us-gaap:LongTermDebtCurrent",
+        ]
+    }
+
+
+def test_load_overrides_rejects_a_malformed_sum(tmp_path: Path) -> None:
+    (tmp_path / "X.yaml").write_text('revenue: ["A + A"]\n')
+
+    with pytest.raises(MappingConfigError):
+        load_overrides(tmp_path, "X")
+
+
+def test_load_overrides_without_a_file_is_empty(tmp_path: Path) -> None:
+    assert load_overrides(tmp_path, "MSFT") == {}
+    assert load_overrides(tmp_path / "missing", "MSFT") == {}
+
+
+def test_load_overrides_rejects_unknown_codes_and_duplicates(tmp_path: Path) -> None:
+    items = load_canonical_items(write(tmp_path, VALID))
+    (tmp_path / "X.yaml").write_text("ghost: [A]\n")
+    with pytest.raises(MappingConfigError):
+        load_overrides(tmp_path, "X", items)
+    (tmp_path / "Y.yaml").write_text("revenue: [A, us-gaap:A]\n")
+    with pytest.raises(MappingConfigError):
+        load_overrides(tmp_path, "Y", items)
+
+
+def test_shipped_canonical_items_load_with_78_codes() -> None:
+    items = load_canonical_items(DEFAULT_ITEMS_PATH)
+
+    assert len(items) == 78
+    assert {i.statement for i in items} == {"IS", "BS", "CF"}
+    by_code = {i.code: i for i in items}
+    assert by_code["eps_diluted"].kind == "average"
+    assert by_code["eps_diluted"].unit == "USD/shares"
+    assert by_code["capex"].sign == -1
+    assert by_code["other_current_assets"].residual is True
+    assert by_code["cash"].parent == "total_current_assets"
+    assert by_code["total_current_assets"].parent == "total_assets"
+    assert by_code["rnd"].parent == "total_operating_costs"
+    assert by_code["capex"].parent == "cfi"
+    assert all(i.concepts == () for i in items if i.residual)  # residuals are always computed
+
+
+def test_shipped_items_put_every_parent_before_its_children() -> None:
+    """File order is display order: a subtotal is shown above its breakdown."""
+    items = load_canonical_items(DEFAULT_ITEMS_PATH)
+    position = {i.code: n for n, i in enumerate(items)}
+
+    misplaced = [
+        i.code for i in items if i.parent is not None and position[i.parent] > position[i.code]
+    ]
+
+    assert misplaced == []
+
+
+def test_shipped_items_split_the_balance_sheet_into_current_and_noncurrent() -> None:
+    by_code = {i.code: i for i in load_canonical_items(DEFAULT_ITEMS_PATH)}
+
+    assert by_code["total_noncurrent_assets"].parent == "total_assets"
+    assert by_code["total_noncurrent_assets"].derive == "total_assets - total_current_assets"
+    assert by_code["total_noncurrent_liabilities"].parent == "total_liabilities"
+    assert (
+        by_code["total_noncurrent_liabilities"].derive
+        == "total_liabilities - total_current_liabilities"
+    )
+    for code in ("ppe_net", "goodwill", "other_noncurrent_assets"):
+        assert by_code[code].parent == "total_noncurrent_assets"
+    for code in ("long_term_debt", "other_noncurrent_liabilities"):
+        assert by_code[code].parent == "total_noncurrent_liabilities"
+
+
+def test_shipped_items_total_the_operating_costs_from_gross_profit() -> None:
+    by_code = {i.code: i for i in load_canonical_items(DEFAULT_ITEMS_PATH)}
+    total = by_code["total_operating_costs"]
+
+    assert total.statement == "IS"
+    assert total.label == "Total operating costs"
+    assert total.derive == "gross_profit - operating_income"
+    assert total.parent is None
+    assert total.concepts == ()
+    assert {c for c, i in by_code.items() if i.parent == "total_operating_costs"} == {
+        "rnd",
+        "sga",
+        "other_operating_expenses",
+    }
+
+
+def test_shipped_items_show_cost_of_revenue_as_its_own_row_above_gross_profit() -> None:
+    items = load_canonical_items(DEFAULT_ITEMS_PATH)
+    position = {i.code: n for n, i in enumerate(items)}
+    by_code = {i.code: i for i in items}
+
+    assert by_code["cost_of_revenue"].parent is None
+    assert by_code["gross_profit"].derive == "revenue - cost_of_revenue"
+    assert position["revenue"] < position["cost_of_revenue"] < position["gross_profit"]
+    assert not [i.code for i in items if i.parent == "gross_profit"]
+
+
+def test_shipped_items_compute_free_cash_flow_from_operating_cash_and_capex() -> None:
+    by_code = {i.code: i for i in load_canonical_items(DEFAULT_ITEMS_PATH)}
+    fcf = by_code["free_cash_flow"]
+
+    assert fcf.statement == "CF"
+    assert fcf.label == "Free cash flow"
+    assert fcf.kind == "flow"
+    assert fcf.derive == "cfo + capex"  # capex is displayed negative
+    assert fcf.parent is None
+    assert fcf.concepts == ()
+    assert fcf.residual is False
+
+
+def test_shipped_items_compute_total_debt_and_net_debt_on_the_balance_sheet() -> None:
+    by_code = {i.code: i for i in load_canonical_items(DEFAULT_ITEMS_PATH)}
+    debt, net_debt = by_code["total_debt"], by_code["net_debt"]
+
+    assert (debt.statement, debt.kind, debt.label) == ("BS", "instant", "Total debt")
+    assert debt.derive == "short_term_debt + long_term_debt"
+    assert (net_debt.statement, net_debt.kind, net_debt.label) == ("BS", "instant", "Net debt")
+    assert net_debt.derive == "total_debt - cash - short_term_investments"
+    for item in (debt, net_debt):
+        assert item.parent is None
+        assert item.concepts == ()
+        assert item.residual is False

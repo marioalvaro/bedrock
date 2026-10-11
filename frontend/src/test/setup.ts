@@ -1,6 +1,10 @@
 import "@testing-library/jest-dom/vitest";
+import { AllCommunityModule, ModuleRegistry } from "ag-grid-community";
 import { cleanup } from "@testing-library/react";
 import { afterEach } from "vitest";
+
+// main.tsx registers these for the app; without them AG Grid ignores cellClass and more.
+ModuleRegistry.registerModules([AllCommunityModule]);
 
 if (!window.matchMedia) {
   window.matchMedia = (query: string) =>
