@@ -205,3 +205,47 @@ def test_a_subtotal_equals_the_sum_of_its_breakdown(
             failures.append(period.key)
     assert checked > 0, f"{total} never had a breakdown"
     assert failures == []
+
+
+COMPUTED_TOTALS = [
+    ("CF", "free_cash_flow", [(1, "cfo"), (1, "capex")]),
+    ("BS", "total_debt", [(1, "short_term_debt"), (1, "long_term_debt")]),
+    (
+        "BS",
+        "net_debt",
+        [
+            (1, "short_term_debt"),
+            (1, "long_term_debt"),
+            (-1, "cash"),
+            (-1, "short_term_investments"),
+        ],
+    ),
+]
+
+
+@pytest.mark.parametrize("ticker", TICKERS)
+@pytest.mark.parametrize("freq", ["annual", "quarterly"])
+@pytest.mark.parametrize(("statement", "code", "terms"), COMPUTED_TOTALS)
+def test_free_cash_flow_total_debt_and_net_debt_follow_their_lines(
+    ticker: str, freq: str, statement: str, code: str, terms: list[tuple[int, str]]
+) -> None:
+    pipeline = run_pipeline(ticker)
+    table = (pipeline.annual if freq == "annual" else pipeline.quarterly)[statement]
+    rows = {r.code: r for r in table.rows}
+    checked = 0
+    failures = []
+    for index, period in enumerate(table.periods):
+        operands = [rows[c].values[index] for _, c in terms]
+        actual = rows[code].values[index]
+        if any(o is None for o in operands):
+            assert actual is None, f"{code} {period.key} has a value with a missing operand"
+            continue
+        checked += 1
+        expected = sum(
+            (sign * (o or Decimal(0)) for (sign, _), o in zip(terms, operands, strict=True)),
+            Decimal(0),
+        )
+        if actual != expected:
+            failures.append(f"{code} {period.key}: {actual} != {expected}")
+    assert checked > 0, f"{code} never had all its operands"
+    assert failures == []

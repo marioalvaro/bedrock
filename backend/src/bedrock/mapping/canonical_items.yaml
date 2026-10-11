@@ -12,6 +12,18 @@
     - us-gaap:Revenues
     - us-gaap:SalesRevenueNet
   residual: false
+- code: cost_of_revenue
+  statement: IS
+  label: Cost of revenue
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: null
+  concepts:
+    - us-gaap:CostOfRevenue
+    - us-gaap:CostOfGoodsAndServicesSold
+    - us-gaap:CostOfGoodsSold
+  residual: false
 - code: gross_profit
   statement: IS
   label: Gross profit
@@ -22,18 +34,6 @@
   concepts:
     - us-gaap:GrossProfit
   derive: revenue - cost_of_revenue
-  residual: false
-- code: cost_of_revenue
-  statement: IS
-  label: Cost of revenue
-  kind: flow
-  unit: USD
-  sign: 1
-  parent: gross_profit
-  concepts:
-    - us-gaap:CostOfRevenue
-    - us-gaap:CostOfGoodsAndServicesSold
-    - us-gaap:CostOfGoodsSold
   residual: false
 - code: total_operating_costs
   statement: IS
@@ -541,6 +541,26 @@
   concepts:
     - us-gaap:LiabilitiesAndStockholdersEquity
   residual: false
+- code: total_debt
+  statement: BS
+  label: Total debt
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: null
+  concepts: []
+  derive: short_term_debt + long_term_debt
+  residual: false
+- code: net_debt
+  statement: BS
+  label: Net debt
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: null
+  concepts: []
+  derive: total_debt - cash - short_term_investments
+  residual: false
 - code: cfo
   statement: CF
   label: Cash from operations
@@ -791,4 +811,14 @@
     - us-gaap:CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalentsPeriodIncreaseDecreaseIncludingExchangeRateEffect
     - us-gaap:CashAndCashEquivalentsPeriodIncreaseDecrease
   derive: cfo + cfi + cff + fx_effect
+  residual: false
+- code: free_cash_flow
+  statement: CF
+  label: Free cash flow
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: null
+  concepts: []
+  derive: cfo + capex
   residual: false

@@ -251,7 +251,7 @@ def test_replace_mappings_stores_items_defaults_and_followed_overrides(db_sessio
     )
     db_session.commit()
 
-    assert _count_rows(db_session, CanonicalItem) == len(items) == 75
+    assert _count_rows(db_session, CanonicalItem) == len(items) == 78
     frame = mappings_repo.mappings_for(db_session, aapl.id)
     assert list(frame.columns) == [
         "canonical_code",

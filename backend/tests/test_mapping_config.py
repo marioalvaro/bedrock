@@ -344,10 +344,10 @@ def test_load_overrides_rejects_unknown_codes_and_duplicates(tmp_path: Path) -> 
         load_overrides(tmp_path, "Y", items)
 
 
-def test_shipped_canonical_items_load_with_75_codes() -> None:
+def test_shipped_canonical_items_load_with_78_codes() -> None:
     items = load_canonical_items(DEFAULT_ITEMS_PATH)
 
-    assert len(items) == 75
+    assert len(items) == 78
     assert {i.statement for i in items} == {"IS", "BS", "CF"}
     by_code = {i.code: i for i in items}
     assert by_code["eps_diluted"].kind == "average"
@@ -403,3 +403,41 @@ def test_shipped_items_total_the_operating_costs_from_gross_profit() -> None:
         "sga",
         "other_operating_expenses",
     }
+
+
+def test_shipped_items_show_cost_of_revenue_as_its_own_row_above_gross_profit() -> None:
+    items = load_canonical_items(DEFAULT_ITEMS_PATH)
+    position = {i.code: n for n, i in enumerate(items)}
+    by_code = {i.code: i for i in items}
+
+    assert by_code["cost_of_revenue"].parent is None
+    assert by_code["gross_profit"].derive == "revenue - cost_of_revenue"
+    assert position["revenue"] < position["cost_of_revenue"] < position["gross_profit"]
+    assert not [i.code for i in items if i.parent == "gross_profit"]
+
+
+def test_shipped_items_compute_free_cash_flow_from_operating_cash_and_capex() -> None:
+    by_code = {i.code: i for i in load_canonical_items(DEFAULT_ITEMS_PATH)}
+    fcf = by_code["free_cash_flow"]
+
+    assert fcf.statement == "CF"
+    assert fcf.label == "Free cash flow"
+    assert fcf.kind == "flow"
+    assert fcf.derive == "cfo + capex"  # capex is displayed negative
+    assert fcf.parent is None
+    assert fcf.concepts == ()
+    assert fcf.residual is False
+
+
+def test_shipped_items_compute_total_debt_and_net_debt_on_the_balance_sheet() -> None:
+    by_code = {i.code: i for i in load_canonical_items(DEFAULT_ITEMS_PATH)}
+    debt, net_debt = by_code["total_debt"], by_code["net_debt"]
+
+    assert (debt.statement, debt.kind, debt.label) == ("BS", "instant", "Total debt")
+    assert debt.derive == "short_term_debt + long_term_debt"
+    assert (net_debt.statement, net_debt.kind, net_debt.label) == ("BS", "instant", "Net debt")
+    assert net_debt.derive == "total_debt - cash - short_term_investments"
+    for item in (debt, net_debt):
+        assert item.parent is None
+        assert item.concepts == ()
+        assert item.residual is False

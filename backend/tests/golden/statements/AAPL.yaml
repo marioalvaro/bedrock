@@ -83,6 +83,8 @@ expected_missing:
   accrued_liabilities: "'Accrued expenses' until FY2017, then relabelled 'other current liabilities' (residual)"
   total_current_liabilities: "no XBRL fact before FY2008"
   long_term_debt: "no debt before FY2014 (FY2013's single LongTermDebt tag is not mapped: it includes the current part)"
+  total_debt: "derived from short-term and long-term debt, so absent where either is (before FY2014)"
+  net_debt: "derived from total debt, so absent where that is (before FY2014)"
   operating_lease_liabilities_noncurrent: "no XBRL fact before FY2020"
   total_liabilities: "no XBRL fact before FY2008"
   common_stock_apic: "no XBRL fact before FY2008"

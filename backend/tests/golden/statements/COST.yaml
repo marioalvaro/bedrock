@@ -82,6 +82,8 @@ expected_missing:
   accrued_liabilities: "'accrued member rewards' tagged from FY2020"
   total_current_liabilities: "no XBRL fact before FY2009"
   long_term_debt: "no XBRL fact before FY2009"
+  total_debt: "derived from short-term and long-term debt, so absent where either is (FY2008)"
+  net_debt: "derived from total debt, so absent where that is (FY2008)"
   operating_lease_liabilities_noncurrent: "no XBRL fact before FY2019"
   total_liabilities: "no XBRL fact before FY2009"
   common_stock_apic: "no XBRL fact before FY2009"
