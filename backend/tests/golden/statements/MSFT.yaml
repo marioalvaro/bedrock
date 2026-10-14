@@ -98,6 +98,8 @@ expected_missing:
   sales_maturities_of_investments: "\"Sales of investments\" is a custom tag from FY2019 that companyfacts omits; a partial sum would break the other investing residual"
   debt_issued: "missing FY2008, FY2009, FY2021"
   debt_repaid: "no XBRL fact before FY2010"
+  goodwill_impairment: "tagged only FY2010-14 (0 except FY2012's 6,193 M) and FY2025 (0); companyfacts omits zero lines"
+  temporary_equity: "no temporary equity"
 
 # Concepts of the latest 10-K that the edgartools table recognizes but Bedrock does not map, each a
 # decision (map-xbrl run of 2026-10-09). test_mapping_coverage.py fails on a concept not listed here and

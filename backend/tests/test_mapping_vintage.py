@@ -281,3 +281,86 @@ def test_balance_snapshot_builds_one_anchor_per_total_from_the_mapped_concepts()
 def test_balance_snapshot_is_empty_when_a_total_is_not_mapped() -> None:
     # Without a mapped total the snapshot cannot be told apart from any filing: the rule stays off.
     assert balance_snapshot(mappings(("total_assets", "Assets", 0), ("cash", "Cash", 0))) == []
+
+
+# Balance dates a few days apart are one balance date: Deere dates its FY2015 balance sheet
+# 2015-10-31 in the 10-Ks that carry it in full, while its fiscal year ends 2015-11-01 and the
+# FY2017 10-K's partial comparative column says so. The group is read at its latest date, and the
+# latest filing that is complete for the group supplies the totals.
+SHIFTED_DATE = date(2014, 9, 1)  # one day after BALANCE_DATE
+
+
+def test_balance_dates_one_day_apart_are_one_date_and_the_complete_older_filing_wins() -> None:
+    partial = [fact("Assets", None, SHIFTED_DATE, 95, **LATER)]
+
+    snapshot = select_vintage(facts(original_balance_sheet() + partial), snapshot=SNAPSHOT)
+
+    assert values(snapshot) == {
+        "Assets": 100,
+        "Liabilities": 60,
+        "StockholdersEquity": 40,
+        "Cash": 5,
+    }
+    assert set(snapshot["accession_no"]) == {"K-14"}
+    assert set(snapshot["period_end"]) == {SHIFTED_DATE}  # read at the group's latest date
+
+
+def test_the_latest_complete_filing_of_the_group_wins_whichever_date_it_used() -> None:
+    restated = [
+        fact("Assets", None, SHIFTED_DATE, 95, **LATER),
+        fact("LiabilitiesAndStockholdersEquity", None, SHIFTED_DATE, 95, **LATER),
+        fact("StockholdersEquity", None, SHIFTED_DATE, 38, **LATER),
+    ]
+
+    snapshot = select_vintage(facts(original_balance_sheet() + restated), snapshot=SNAPSHOT)
+
+    assert values(snapshot)["Assets"] == 95
+    assert values(snapshot)["Cash"] == 5  # a detail the later filing lacks keeps its latest value
+    assert "Liabilities" not in values(snapshot)
+    assert set(snapshot["period_end"]) == {SHIFTED_DATE}
+
+
+def test_a_later_detail_value_on_the_exact_date_beats_an_older_one_on_the_shifted_date() -> None:
+    rows = original_balance_sheet() + [fact("Cash", None, SHIFTED_DATE, 7, **LATER)]
+
+    assert values(select_vintage(facts(rows), snapshot=SNAPSHOT))["Cash"] == 7
+
+
+def test_balance_dates_a_week_apart_are_grouped_but_eight_days_apart_are_not() -> None:
+    week = [fact("Assets", None, date(2014, 9, 7), 95, **LATER)]
+    eight = [fact("Assets", None, date(2014, 9, 8), 95, **LATER)]
+
+    grouped = select_vintage(facts(original_balance_sheet() + week), snapshot=SNAPSHOT)
+    apart = select_vintage(facts(original_balance_sheet() + eight), snapshot=SNAPSHOT)
+
+    assert set(grouped["period_end"]) == {date(2014, 9, 7)}
+    assert values(grouped)["Assets"] == 100
+    assert set(apart["period_end"]) == {BALANCE_DATE, date(2014, 9, 8)}
+    assert len(apart) == 5  # the second date keeps its lone fact
+
+
+def test_a_balance_date_with_no_neighbour_keeps_its_date() -> None:
+    snapshot = select_vintage(facts(original_balance_sheet()), snapshot=SNAPSHOT)
+
+    assert set(snapshot["period_end"]) == {BALANCE_DATE}
+
+
+def test_shifting_dates_leaves_flows_and_unrelated_instants_alone() -> None:
+    rows = original_balance_sheet() + [
+        fact("Assets", None, SHIFTED_DATE, 95, **LATER),
+        fact("Revenues", date(2013, 9, 1), BALANCE_DATE, 10, **ORIGINAL),
+        fact("Revenues", date(2013, 9, 2), SHIFTED_DATE, 11, **LATER),
+        fact("Shares", None, date(2014, 9, 3), 3, **LATER),  # a cover-page style date
+    ]
+
+    out = select_vintage(facts(rows), snapshot=SNAPSHOT)
+
+    flows = out[out["concept"] == "Revenues"]
+    assert sorted(flows["period_end"]) == [BALANCE_DATE, SHIFTED_DATE]
+    assert list(out[out["concept"] == "Shares"]["period_end"]) == [date(2014, 9, 3)]
+
+
+def test_without_a_snapshot_dates_are_not_shifted() -> None:
+    rows = original_balance_sheet() + [fact("Assets", None, SHIFTED_DATE, 95, **LATER)]
+
+    assert set(select_vintage(facts(rows))["period_end"]) == {BALANCE_DATE, SHIFTED_DATE}

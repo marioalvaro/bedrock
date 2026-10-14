@@ -1,0 +1,150 @@
+# Deere & Company (CIK 315189) — golden figures from the 10-K documents on sec.gov, never from companyfacts.
+# Values are USD (EPS: USD per share) in the displayed sign convention: expenses positive,
+# capex negative (an outflow). Read from the filings' R pages (XBRL viewer renderings of the statements).
+#   FY2015: 10-K filed 2015-12-18, accession 0001047469-15-009300 (FYE 2015-11-01, tagged 2015-10-31)
+#   FY2020: 10-K filed 2020-12-17, accession 0001558370-20-014436 (FYE 2020-11-01)
+#   FY2025: 10-K filed 2025-12-18, accession 0001104659-25-122321 (FYE 2025-11-02)
+# Consolidated figures only (the "consolidated-only" decision): "revenue" is the income statement's "Net sales and
+# revenues" total (equipment net sales + finance and interest income + other income). The supplemental
+# Equipment Operations / Financial Services columns are not used.
+# Each 10-K was checked for total liabilities + redeemable NCI + total equity = total assets.
+# FY2015 balance sheet: from the FY2016 10-K (accession 0001047469-16-017244, filed 2016-12-19), whose
+# balance sheet is dated Oct. 31, 2015 although the fiscal year ended Nov. 1, 2015 (income statement and
+# cash flow of the FY2017 10-K are dated Nov. 1). Balance dates within 7 days are one date, so this
+# complete sheet is used; the FY2017 10-K's comparative column dated Nov. 1 is partial (restated total
+# assets 57,883, no total liabilities) and no longer wins. FY2015 income and cash flow figures come from
+# the FY2017 10-K (accession 0001047469-17-007719, filed 2017-12-18, the newest carrying them, G13):
+# its cash from operations is the restated 3,758.8 (3,740.3 in the FY2016 10-K).
+annual:
+  FY2015:
+    revenue: 28862800000
+    pretax_income: 2780100000
+    net_income: 1940900000
+    eps_diluted: 5.77
+    cash: 4162200000
+    total_assets: 57947600000  # FY2016 10-K sheet dated Oct. 31, 2015 (the FY2017 10-K's partial column says 57,883)
+    total_liabilities: 51190000000
+    total_equity: 6757600000
+    cfo: 3758800000            # restated in the FY2017 10-K; the FY2015 10-K said 3,740.3
+    capex: -694000000
+  FY2020:
+    revenue: 35540000000
+    pretax_income: 3883000000
+    net_income: 2753000000
+    eps_diluted: 8.69
+    cash: 7066000000
+    total_assets: 75091000000
+    total_liabilities: 62147000000
+    total_equity: 12944000000
+    cfo: 7483000000
+    capex: -820000000
+    short_term_debt: 13264000000      # short-term borrowings 8,582 + short-term securitization borrowings 4,682
+    long_term_debt: 32734000000
+  FY2025:
+    revenue: 45684000000
+    pretax_income: 6257000000
+    net_income: 4998000000
+    eps_diluted: 18.50
+    cash: 8276000000
+    total_assets: 105996000000
+    total_liabilities: 79989000000
+    temporary_equity: 51000000  # redeemable noncontrolling interest, between liabilities and equity
+    total_equity: 25956000000
+    cfo: 7459000000
+    capex: -1360000000
+    dividends_per_share: 6.48   # declared; paid was 6.33
+    interest_expense: 3170000000
+    short_term_debt: 20392000000      # short-term borrowings 13,796 + short-term securitization borrowings 6,596
+
+# Q4 of the latest FY = 10-K FY revenue minus the nine-month revenue of the Q3 10-Q
+# (accession 0001558370-25-011789, nine months ended 2025-07-27: 33,290 million).
+# 45,684 - 33,290 = 12,394 million. The statement shows Q4 as the year less the three displayed quarters
+# (8,508 + 12,763 + 12,018 = 33,289, one million under the nine-month figure because each is rounded),
+# so it is 12,395 million; the test tolerance is 0.5 million, so the figure below is the displayed one.
+quarterly:
+  FY2025Q4:
+    revenue: 12395000000
+
+# Non-residual codes with no value in some fiscal year, and why. The test compares the codes with
+# `missing_items`; the reasons are for the reader. Deere's balance sheet is unclassified (no current
+# totals) and it files cost of sales (from FY2018), property and equipment (from FY2021) and long-term
+# borrowings (from FY2022) under `de:` extension tags that companyfacts omits (consolidated-only decision,
+# mapping principle 1: never fill an item with a component).
+expected_missing:
+  accounts_payable: "one balance-sheet line, 'Accounts payable and accrued expenses'; mapping it as payables would include accruals"
+  accrued_liabilities: "inside 'Accounts payable and accrued expenses', no separate line"
+  acquisitions: "no acquisition line in years without a purchase (the cash flow omits zero lines)"
+  aoci: "no XBRL balance sheet before FY2008"
+  change_payables: "the cash flow line is 'Accounts payable and accrued expenses' (tagged with accruals), not payables"
+  change_receivables: "'Receivables related to sales' includes financing receivables, not trade receivables alone"
+  cost_of_revenue: "us-gaap tag until FY2017; from FY2018 a `de:` fact that companyfacts omits"
+  deferred_revenue_current: "no balance-sheet line (contract liabilities sit inside accrued expenses)"
+  equity_parent: "no XBRL balance sheet before FY2008"
+  goodwill: "no XBRL balance sheet before FY2008"
+  goodwill_impairment: "tagged only in the years with a charge (FY2009-10, FY2012) and a 0 in FY2025; companyfacts omits zero lines"
+  gross_profit: "derived from cost of revenue, so absent from FY2018 with the `de:` cost of sales"
+  intangibles: "no XBRL balance sheet before FY2008"
+  inventory: "no XBRL balance sheet before FY2008"
+  long_term_debt: "'Long-term borrowings' is a `de:` fact from FY2022 (us-gaap until FY2021); no XBRL balance sheet before FY2008"
+  long_term_investments: "no balance-sheet line (investments in unconsolidated affiliates are equity-method, not mapped)"
+  net_debt: "derived from short-term and long-term debt, so present only in FY2020-21"
+  net_income_common: "no tagged fact in FY2007"
+  net_income_nci: "no tagged fact in FY2007"
+  nci: "no XBRL balance sheet before FY2008; none reported until FY2009"
+  operating_income: "no operating income line in the income statement; the segment note's total operating profit (OperatingIncomeLoss, FY2020 4,305 against pretax 3,883) is excluded in the DE override"
+  operating_lease_liabilities_noncurrent: "only the total operating lease liability is tagged (314 in FY2025), not its noncurrent part"
+  operating_lease_rou: "tagged from FY2020 (ASC 842)"
+  ppe_net: "us-gaap tag until FY2020; from FY2021 a `de:` fact; no fact in FY2007 and FY2010"
+  receivables: "no XBRL balance sheet before FY2008"
+  retained_earnings: "no XBRL balance sheet before FY2008"
+  shares_outstanding: "period-end shares are tagged from FY2023 only (earlier 10-Ks show issued and treasury shares)"
+  short_term_debt: "'Short-term borrowings' is a `de:` fact before FY2020"
+  short_term_investments: "no XBRL balance sheet before FY2008"
+  temporary_equity: "redeemable noncontrolling interest only FY2016-19 and FY2022+ (none in FY2020-21)"
+  total_assets: "no XBRL balance sheet before FY2008"
+  total_current_assets: "unclassified balance sheet: Deere shows no current totals"
+  total_current_liabilities: "unclassified balance sheet: Deere shows no current totals"
+  total_debt: "derived from short-term and long-term debt, so present only in FY2020-21"
+  total_liabilities: "no XBRL balance sheet before FY2008"
+  total_liabilities_and_equity: "no XBRL balance sheet before FY2008"
+  total_noncurrent_assets: "derived from total current assets, which Deere does not show"
+  total_noncurrent_liabilities: "derived from total current liabilities, which Deere does not show"
+  total_operating_costs: "derived from gross profit and operating income, which is empty in every year"
+
+# Concepts of the latest 10-K that the edgartools table recognizes but Bedrock does not map, each a
+# decision (map-xbrl run of 2026-10-14). test_mapping_coverage.py fails on a concept not listed here and
+# on a listed one that is mapped or gone.
+acknowledged_unmapped:
+  us-gaap:AccountsPayableAndAccruedLiabilitiesCurrentAndNoncurrent: "the balance-sheet line combines payables and accruals (13,909 in FY2025), so it is not accounts payable"
+  us-gaap:AvailableForSaleSecuritiesDebtMaturitiesWithoutSingleMaturityDateFairValue: "investment-note maturity bucket (234 in FY2025), not a balance-sheet line"
+  us-gaap:CapitalExpendituresIncurredButNotYetPaid: "non-cash disclosure of unpaid capital expenditures, not the cash flow line (capex is mapped)"
+  us-gaap:ComprehensiveIncomeNetOfTaxAttributableToNoncontrollingInterest: "comprehensive income of the noncontrolling interests, not their net income (mapped)"
+  us-gaap:DebtInstrumentUnamortizedDiscountPremiumAndDebtIssuanceCostsNet: "debt-note deduction for discount and issuance costs, not a balance-sheet line"
+  us-gaap:FIFOInventoryAmount: "inventory note figure before the LIFO reserve (10,127 against 7,406 on the balance sheet)"
+  us-gaap:FinanceLeaseInterestExpense: "lease-note component (5 in FY2025) of interest expense, which is mapped as the whole line"
+  us-gaap:FinanceLeaseLiabilityCurrent: "lease-note detail; the borrowings lines on the balance sheet are the debt items"
+  us-gaap:FinanceLeaseLiabilityNoncurrent: "lease-note detail; the borrowings lines on the balance sheet are the debt items"
+  us-gaap:FinanceLeaseLiabilityUndiscountedExcessAmount: "lease maturity-note detail (undiscounted excess), not a balance-sheet line"
+  us-gaap:IncomeLossFromContinuingOperationsBeforeIncomeTaxesDomestic: "domestic part of pretax income (2,700 against 6,257 consolidated), mapped as the total"
+  us-gaap:IncreaseDecreaseInAccountsPayableAndAccruedLiabilities: "cash flow line combines payables with accruals, not the change in accounts payable"
+  us-gaap:IncreaseDecreaseInIncomeTaxesPayableNetOfIncomeTaxesReceivable: "change in income taxes payable or receivable, a separate cash-flow line, not trade receivables"
+  us-gaap:IncreaseDecreaseInReceivables: "'Receivables related to sales' includes financing receivables, broader than trade accounts receivable"
+  us-gaap:InterestPaidNet: "cash paid for interest (3,080 in FY2025), a supplemental disclosure, not the expense line (3,170, mapped)"
+  us-gaap:InventoryFinishedGoodsNetOfReserves: "component of inventories in the inventory note; the total is mapped"
+  us-gaap:InventoryLIFOReserve: "inventory-note adjustment (2,721 in FY2025), not a balance-sheet line"
+  us-gaap:InventoryRawMaterialsAndSuppliesNetOfReserves: "component of inventories in the inventory note; the total is mapped"
+  us-gaap:InventoryWorkInProcessNetOfReserves: "component of inventories in the inventory note; the total is mapped"
+  us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInNextTwelveMonths: "debt-note maturity schedule (8,921 in FY2025), not the short-term borrowings line"
+  us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInYearFive: "debt-note maturity schedule, not a balance-sheet line"
+  us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInYearFour: "debt-note maturity schedule, not a balance-sheet line"
+  us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInYearThree: "debt-note maturity schedule, not a balance-sheet line"
+  us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInYearTwo: "debt-note maturity schedule, not a balance-sheet line"
+  us-gaap:OperatingLeaseLeaseIncomeLeasePayments: "lease income of the equipment on operating leases (1,472 in FY2025), a part of revenue; revenue is the total line"
+  us-gaap:OperatingLeaseLiability: "total operating lease liability (314 in FY2025) including its current part; the noncurrent line is not tagged"
+  us-gaap:OtherCostOfOperatingRevenue: "cost-of-revenue note component (82 in FY2025), not the cost of sales line (a `de:` fact)"
+  us-gaap:PropertySubjectToOrAvailableForOperatingLeaseAccumulatedDepreciation: "accumulated depreciation of equipment on operating leases (note), not inventory"
+  us-gaap:PropertySubjectToOrAvailableForOperatingLeaseGross: "gross equipment on operating leases (9,270 in FY2025), a note figure, not property and equipment"
+  us-gaap:PropertySubjectToOrAvailableForOperatingLeaseNet: "'Equipment on operating leases - net' (7,600 in FY2025) is its own asset line, not inventory"
+  us-gaap:TemporaryEquityForeignCurrencyTranslationAdjustments: "translation adjustment of the redeemable noncontrolling interest, a component of its roll-forward"
+  us-gaap:TemporaryEquityNetIncome: "net loss of the redeemable noncontrolling interest (-31 in FY2025), part of net income attributable to noncontrolling interests"
+  us-gaap:TransfersAccountedForAsSecuredBorrowingsAssociatedLiabilitiesCarryingAmount: "securitization-note liability (6,611 in FY2025), a note total of secured borrowings across the balance sheet lines"

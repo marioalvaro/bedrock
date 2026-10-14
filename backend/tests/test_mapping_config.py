@@ -8,6 +8,7 @@ from bedrock.mapping.config import (
     MappingConfigError,
     formula_order,
     load_canonical_items,
+    load_excludes,
     load_overrides,
     parse_formula,
     split_concept,
@@ -344,10 +345,10 @@ def test_load_overrides_rejects_unknown_codes_and_duplicates(tmp_path: Path) -> 
         load_overrides(tmp_path, "Y", items)
 
 
-def test_shipped_canonical_items_load_with_78_codes() -> None:
+def test_shipped_canonical_items_load_with_82_codes() -> None:
     items = load_canonical_items(DEFAULT_ITEMS_PATH)
 
-    assert len(items) == 78
+    assert len(items) == 82
     assert {i.statement for i in items} == {"IS", "BS", "CF"}
     by_code = {i.code: i for i in items}
     assert by_code["eps_diluted"].kind == "average"
@@ -441,3 +442,123 @@ def test_shipped_items_compute_total_debt_and_net_debt_on_the_balance_sheet() ->
         assert item.parent is None
         assert item.concepts == ()
         assert item.residual is False
+
+
+def test_shipped_items_add_the_four_m2_lines_where_the_erd_puts_them() -> None:
+    items = load_canonical_items(DEFAULT_ITEMS_PATH)
+    codes = [i.code for i in items]
+    by_code = {i.code: i for i in items}
+
+    for code, statement, kind, unit in (
+        ("dividends_per_share", "IS", "flow", "USD/shares"),
+        ("goodwill_impairment", "IS", "flow", "USD"),
+        ("temporary_equity", "BS", "instant", "USD"),
+        ("shares_outstanding", "BS", "instant", "shares"),
+    ):
+        item = by_code[code]
+        assert (item.statement, item.kind, item.unit) == (statement, kind, unit), code
+        assert item.sign == 1 and item.parent is None, code
+        assert item.concepts and not item.residual and item.derive is None, code
+    assert codes.index("dividends_per_share") == codes.index("eps_diluted") + 1
+    assert codes.index("goodwill_impairment") == codes.index("shares_diluted") + 1
+    assert codes.index("temporary_equity") == codes.index("total_equity") - 1
+    assert codes.index("shares_outstanding") == codes.index("net_debt") + 1
+    assert by_code["dividends_per_share"].concepts == (
+        "us-gaap:CommonStockDividendsPerShareDeclared",
+        "us-gaap:CommonStockDividendsPerShareCashPaid",
+    )
+
+
+# Overrides can switch defaults off with the mapping form `code: {concepts: [...], exclude: ...}`.
+
+
+def test_the_mapping_form_adds_concepts_and_excludes_defaults(tmp_path: Path) -> None:
+    items = load_canonical_items(write(tmp_path, VALID))
+    (tmp_path / "X.yaml").write_text(
+        "revenue: {concepts: [Custom], exclude: [SalesRevenueNet]}\n"
+        "gross_profit: {exclude: [us-gaap:GrossProfit]}\n"
+        "cost_of_revenue: [OtherCost]\n"
+    )
+
+    assert load_overrides(tmp_path, "X", items) == {
+        "revenue": ["us-gaap:Custom"],
+        "cost_of_revenue": ["us-gaap:OtherCost"],
+    }
+    assert load_excludes(tmp_path, "X", items) == {
+        "revenue": ["us-gaap:SalesRevenueNet"],
+        "gross_profit": ["us-gaap:GrossProfit"],
+    }
+
+
+def test_exclude_all_drops_every_default_of_the_item(tmp_path: Path) -> None:
+    items = load_canonical_items(write(tmp_path, VALID))
+    (tmp_path / "X.yaml").write_text("revenue: {concepts: [], exclude: all}\n")
+
+    assert load_excludes(tmp_path, "X", items) == {
+        "revenue": ["us-gaap:Revenues", "us-gaap:SalesRevenueNet", "ifrs-full:Revenue"]
+    }
+    assert load_overrides(tmp_path, "X", items) == {}
+
+
+def test_the_plain_list_form_excludes_nothing(tmp_path: Path) -> None:
+    items = load_canonical_items(write(tmp_path, VALID))
+    (tmp_path / "X.yaml").write_text("revenue: [Custom]\n")
+
+    assert load_excludes(tmp_path, "X", items) == {}
+    assert load_excludes(tmp_path / "missing", "X", items) == {}
+
+
+def test_excluding_a_summed_default_matches_the_whole_entry(tmp_path: Path) -> None:
+    summed = VALID.replace(
+        "concepts: [CostOfRevenue]", 'concepts: ["CostOfRevenue + OtherCost", CostOfRevenue]'
+    )
+    items = load_canonical_items(write(tmp_path, summed))
+    (tmp_path / "X.yaml").write_text('cost_of_revenue: {exclude: ["CostOfRevenue + OtherCost"]}\n')
+
+    assert load_excludes(tmp_path, "X", items) == {
+        "cost_of_revenue": ["us-gaap:CostOfRevenue + us-gaap:OtherCost"]
+    }
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "revenue: {exclude: [Ghost]}\n",  # not a default of the item: a stale exclude
+        "revenue: {exclude: [Revenues, us-gaap:Revenues]}\n",  # duplicate
+        "revenue: {exclude: Revenues}\n",  # a string other than `all`
+        "revenue: {exclude: [1]}\n",  # not a string
+        "revenue: {exclude: []}\n",  # nothing to do
+        "revenue: {concepts: [Revenues], exclude: [Revenues]}\n",  # added and excluded
+        "revenue: {concept: [A]}\n",  # unknown key
+        "revenue: {concepts: A}\n",  # concepts not a list
+        "revenue: {}\n",  # empty mapping
+        "revenue: 5\n",
+        "ghost: {exclude: all}\n",  # unknown code
+    ],
+)
+def test_malformed_or_stale_excludes_are_rejected(tmp_path: Path, text: str) -> None:
+    items = load_canonical_items(write(tmp_path, VALID))
+    (tmp_path / "X.yaml").write_text(text)
+
+    with pytest.raises(MappingConfigError):
+        load_excludes(tmp_path, "X", items)
+
+
+def test_residual_codes_cannot_be_excluded(tmp_path: Path) -> None:
+    residual = VALID + (
+        "- code: other_costs\n  statement: IS\n  label: Other\n  kind: flow\n  unit: USD\n"
+        "  sign: 1\n  parent: null\n  derive: revenue - cost_of_revenue\n  residual: true\n"
+    )
+    items = load_canonical_items(write(tmp_path, residual))
+    (tmp_path / "X.yaml").write_text("other_costs: {exclude: all}\n")
+
+    with pytest.raises(MappingConfigError):
+        load_excludes(tmp_path, "X", items)
+
+
+def test_exclude_all_needs_a_default_to_drop(tmp_path: Path) -> None:
+    items = load_canonical_items(write(tmp_path, VALID.replace("  concepts: [GrossProfit]\n", "")))
+    (tmp_path / "X.yaml").write_text("gross_profit: {exclude: all}\n")
+
+    with pytest.raises(MappingConfigError):
+        load_excludes(tmp_path, "X", items)

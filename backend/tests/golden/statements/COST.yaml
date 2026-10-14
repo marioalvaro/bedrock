@@ -96,6 +96,10 @@ expected_missing:
   change_receivables: "no receivables line in Costco's cash flow statement"
   acquisitions: "acquisitions only in FY2019-22"
   sales_maturities_of_investments: "FY2008: maturities are not tagged (FY2009-11 are summed from two tags)"
+  dividends_per_share: "no per-share tag in the FY2020-22 10-Ks (they show dividend totals only)"
+  goodwill_impairment: "tagged (0) only FY2010-11; no line otherwise"
+  temporary_equity: "no temporary equity"
+  shares_outstanding: "no XBRL fact before FY2009"
 
 # Concepts of the latest 10-K that the edgartools table recognizes but Bedrock does not map, each a
 # decision (map-xbrl run of 2026-10-09). test_mapping_coverage.py fails on a concept not listed here and

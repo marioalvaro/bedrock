@@ -169,7 +169,8 @@ def _balance_check(periods: list[Period], cells: dict[CellKey, Cell]) -> list[Ba
         if assets is None or liabilities is None or equity is None:
             checks.append(BalanceCheck(p.key, None, False))
             continue
-        difference = assets - (liabilities + equity)
+        temporary = cells.get(("temporary_equity", p.key), EMPTY).value or Decimal(0)
+        difference = assets - (liabilities + temporary + equity)
         tolerance = max(BALANCE_FLOOR, BALANCE_RELATIVE * assets)
         checks.append(BalanceCheck(p.key, difference, abs(difference) <= tolerance))
     return checks

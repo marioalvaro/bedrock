@@ -8,13 +8,14 @@ cells, so what the grid shows and what the cell details say cannot drift apart.
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Literal
 
 import pandas as pd
 
 from bedrock.mapping.config import CanonicalItemDef, formula_order, parse_formula
+from bedrock.mapping.vintage import BALANCE_DATE_TOLERANCE
 from bedrock.statements.periods import (
     START_TOLERANCE,
     Calendar,
@@ -106,7 +107,19 @@ class _Index:
             )
 
     def instant(self, code: str, end: date) -> _Fact | None:
-        return next((f for f in self._by_end.get((code, end), []) if f.start is None), None)
+        """The instant at `end`, else the nearest one within a week of it (a balance sheet dated
+        a day off the fiscal period end). Exact dates always win."""
+        exact = next((f for f in self._by_end.get((code, end), []) if f.start is None), None)
+        if exact is not None:
+            return exact
+        for gap in range(1, BALANCE_DATE_TOLERANCE.days + 1):  # nearest first, earlier on a tie
+            for when in (end - timedelta(days=gap), end + timedelta(days=gap)):
+                found = next(
+                    (f for f in self._by_end.get((code, when), []) if f.start is None), None
+                )
+                if found is not None:
+                    return found
+        return None
 
     def duration(self, code: str, start: date, end: date) -> _Fact | None:
         """The duration fact ending at `end` whose start is within a week of `start`."""
@@ -135,10 +148,11 @@ def compute_cells(
             )
 
     for item in formula_order(items):
+        siblings = frozenset(i.code for i in items if item.residual and i.parent == item.parent)
         for period in periods:
             current = cells.get((item.code, period.key), EMPTY)
             if item.residual or current.value is None:
-                cells[(item.code, period.key)] = _formula_cell(item, period, cells)
+                cells[(item.code, period.key)] = _formula_cell(item, period, cells, siblings)
     return cells
 
 
@@ -254,12 +268,21 @@ def _fy_less_ytd(code: str, fiscal: Decimal, ytd_q3: Decimal) -> Cell:
     )
 
 
-def _formula_cell(item: CanonicalItemDef, period: Period, cells: dict[CellKey, Cell]) -> Cell:
+def _formula_cell(
+    item: CanonicalItemDef,
+    period: Period,
+    cells: dict[CellKey, Cell],
+    siblings: frozenset[str] = frozenset(),
+) -> Cell:
+    """A residual treats a missing component of its own breakdown (`siblings`, the lines that
+    share its parent) as 0; any other operand (the subtotal it completes, or a line outside the
+    breakdown such as operating income) is required, or the residual is a number under the wrong
+    label."""
     assert item.derive is not None
     terms = parse_formula(item.derive)
     operands = [(sign, code, cells.get((code, period.key), EMPTY).value) for sign, code in terms]
     if item.residual:
-        if operands[0][2] is None:  # the subtotal this residual completes
+        if any(value is None and code not in siblings for _, code, value in operands):
             return EMPTY
     elif any(value is None for _, _, value in operands):
         return EMPTY

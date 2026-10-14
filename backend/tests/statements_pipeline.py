@@ -21,6 +21,7 @@ from bedrock.mapping.config import (
     DEFAULT_OVERRIDES_DIR,
     CanonicalItemDef,
     load_canonical_items,
+    load_excludes,
     load_overrides,
     split_group,
 )
@@ -44,11 +45,19 @@ class Pipeline:
     quarterly: dict[str, StatementTable]
 
 
-def mapping_frame(items: list[CanonicalItemDef], overrides: dict[str, list[str]]) -> pd.DataFrame:
+def mapping_frame(
+    items: list[CanonicalItemDef],
+    overrides: dict[str, list[str]],
+    excludes: dict[str, list[str]] | None = None,
+) -> pd.DataFrame:
+    """Defaults (less the company's `excludes`; priorities keep their place) and its overrides."""
     rows: list[dict[str, object]] = []
+    dropped = excludes or {}
     for item in items:
         for is_override, concepts in ((False, item.concepts), (True, overrides.get(item.code, []))):
             for priority, entry in enumerate(concepts):
+                if not is_override and entry in dropped.get(item.code, []):
+                    continue
                 for taxonomy, name in split_group(entry):  # a summed concept: one row per member
                     rows.append(
                         {
@@ -165,7 +174,8 @@ def fixture_splits(ticker: str) -> list[FixtureSplit]:
 def run_pipeline(ticker: str) -> Pipeline:
     items = load_canonical_items(DEFAULT_ITEMS_PATH)
     overrides = load_overrides(DEFAULT_OVERRIDES_DIR, ticker, items)
-    mappings = mapping_frame(items, overrides)
+    excludes = load_excludes(DEFAULT_OVERRIDES_DIR, ticker, items)
+    mappings = mapping_frame(items, overrides, excludes)
     facts = fact_frame(ticker, mappings)
     latest = select_vintage(facts, snapshot=balance_snapshot(mappings))
     canonical = split_adjust(map_facts(latest, mappings, items), fixture_splits(ticker))

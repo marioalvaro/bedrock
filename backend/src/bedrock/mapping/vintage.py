@@ -1,7 +1,7 @@
 """Latest and point-in-time views over all filing vintages of a fact. Pure."""
 
 from collections.abc import Collection, Sequence
-from datetime import date
+from datetime import date, timedelta
 
 import pandas as pd
 
@@ -17,6 +17,10 @@ BALANCE_TOTALS = (
     ("total_liabilities", "total_liabilities_and_equity"),
     ("total_equity", "equity_parent"),
 )
+
+# Balance dates this close are one date: a company may date its balance sheet a day off its fiscal
+# year end (Deere: 31 Oct for the year ending 1 Nov), and quarter ends are ~13 weeks apart.
+BALANCE_DATE_TOLERANCE = timedelta(days=7)
 
 
 def balance_snapshot(mappings: pd.DataFrame) -> list[set[tuple[str, str]]]:
@@ -48,15 +52,52 @@ def select_vintage(
     instants of a balance date follow the latest filing that carries all the totals for it: the
     totals come from that filing alone, its other values win over later partial filings, and an
     item it does not carry (a footnote line, say) keeps its latest value. A date no filing covers
-    completely keeps the latest value of each fact."""
+    completely keeps the latest value of each fact.
+
+    Balance dates within `BALANCE_DATE_TOLERANCE` of each other are one balance date, read at the
+    latest of them (the fiscal period end): the group's complete filing supplies the totals, and
+    an exact-date fact wins only when it comes from the same or a later filing."""
     if as_of is not None:
         facts = facts[facts["filed_at"] <= as_of]
     ordered = facts.sort_values(["filed_at", "accession_no"], kind="stable")
+    if snapshot:
+        ordered = _group_balance_dates(ordered, snapshot)
     # drop_duplicates treats two NULL period_starts (instants) as equal, unlike SQL UNIQUE.
     latest = ordered.drop_duplicates(subset=NATURAL_KEY, keep="last").reset_index(drop=True)
     if not snapshot or latest.empty:
         return latest
     return _with_snapshots(ordered, latest, snapshot)
+
+
+def _group_balance_dates(ordered: pd.DataFrame, snapshot: Sequence[Anchor]) -> pd.DataFrame:
+    """Move the instants of nearby balance dates to the latest date of their group. A balance date
+    is one on which some filing reports a total; chains of dates each within the tolerance of the
+    next form one group. Flows and instants on other dates are untouched."""
+    totals = {pair for anchor in snapshot for pair in anchor}
+    instants = ordered[ordered["period_start"].isna()]
+    balance_dates = sorted(
+        {
+            end
+            for end, taxonomy, concept in zip(
+                instants["period_end"], instants["taxonomy"], instants["concept"], strict=True
+            )
+            if (taxonomy, concept) in totals
+        }
+    )
+    latest_of: dict[date, date] = {}
+    group: list[date] = []
+    for end in [*balance_dates, None]:
+        if group and (end is None or end - group[-1] > BALANCE_DATE_TOLERANCE):
+            latest_of.update({d: group[-1] for d in group if d != group[-1]})
+            group = []
+        if end is not None:
+            group.append(end)
+    if not latest_of:
+        return ordered
+    ordered = ordered.copy()
+    moved = ordered["period_start"].isna() & ordered["period_end"].isin(list(latest_of))
+    ordered.loc[moved, "period_end"] = ordered.loc[moved, "period_end"].map(latest_of)
+    return ordered
 
 
 def _with_snapshots(

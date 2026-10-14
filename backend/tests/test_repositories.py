@@ -19,6 +19,7 @@ from bedrock.ingest.protocol import PriceRow, SplitRow
 from bedrock.mapping.config import (
     DEFAULT_ITEMS_PATH,
     DEFAULT_OVERRIDES_DIR,
+    CanonicalItemDef,
     load_canonical_items,
     load_overrides,
 )
@@ -257,7 +258,7 @@ def test_replace_mappings_stores_items_defaults_and_followed_overrides(db_sessio
     )
     db_session.commit()
 
-    assert _count_rows(db_session, CanonicalItem) == len(items) == 78
+    assert _count_rows(db_session, CanonicalItem) == len(items) == 82
     frame = mappings_repo.mappings_for(db_session, aapl.id)
     assert list(frame.columns) == [
         "canonical_code",
@@ -464,3 +465,74 @@ def test_splits_are_deleted_with_their_company(db_session: Session) -> None:
     db_session.commit()
 
     assert actions_repo.list_for(db_session, company.id) == []
+
+
+def test_excluded_defaults_are_dropped_for_that_company_only(db_session: Session) -> None:
+    aapl = _company(db_session)
+    msft = _company(db_session, "MSFT", "0000789019")
+    items = load_canonical_items(DEFAULT_ITEMS_PATH)
+    by_code = {i.code: i for i in items}
+    gross = by_code["gross_profit"].concepts
+    mappings_repo.replace_mappings(
+        db_session,
+        items,
+        {aapl.id: {"revenue": ["us-gaap:Custom"]}},
+        {aapl.id: {"gross_profit": list(gross)}},
+    )
+    db_session.commit()
+
+    mine = mappings_repo.mappings_for(db_session, aapl.id)
+    other = mappings_repo.mappings_for(db_session, msft.id)
+
+    assert "gross_profit" not in set(mine["canonical_code"])  # all its defaults are gone
+    assert "gross_profit" in set(other["canonical_code"])
+    assert "Revenues" in set(mine["concept"])  # an add-only override keeps the defaults
+    assert list(mine.columns) == mappings_repo.MAPPING_COLUMNS  # no marker rows leak out
+    assert (mine["priority"] >= 0).all()
+
+
+def test_excluding_a_summed_default_leaves_the_entry_that_shares_its_anchor(
+    db_session: Session,
+) -> None:
+    aapl = _company(db_session)
+    summed = "us-gaap:CommercialPaper + us-gaap:LongTermDebtCurrent"
+    item = CanonicalItemDef(
+        "short_term_debt",
+        "BS",
+        "Short-term debt",
+        "instant",
+        "USD",
+        1,
+        None,
+        (summed, "us-gaap:LongTermDebtCurrent"),
+        None,
+        False,
+    )
+    mappings_repo.replace_mappings(db_session, [item], {}, {aapl.id: {item.code: [summed]}})
+    db_session.commit()
+
+    frame = mappings_repo.mappings_for(db_session, aapl.id)
+
+    assert list(zip(frame["concept"], frame["priority"], strict=True)) == [
+        ("LongTermDebtCurrent", 1)
+    ]
+
+
+def test_the_mapping_frame_with_excludes_matches_the_one_the_engine_tests_build(
+    db_session: Session,
+) -> None:
+    aapl = _company(db_session)
+    items = load_canonical_items(DEFAULT_ITEMS_PATH)
+    overrides = {"revenue": ["us-gaap:Custom"]}
+    excludes = {"gross_profit": ["us-gaap:GrossProfit"]}
+    mappings_repo.replace_mappings(db_session, items, {aapl.id: overrides}, {aapl.id: excludes})
+    db_session.commit()
+
+    stored = mappings_repo.mappings_for(db_session, aapl.id)
+    expected = mapping_frame(items, overrides, excludes)
+
+    def key(frame: pd.DataFrame) -> list[tuple[object, ...]]:
+        return sorted(tuple(r) for r in frame.itertuples(index=False))
+
+    assert key(stored) == key(expected)
+    assert "GrossProfit" not in set(expected["concept"])

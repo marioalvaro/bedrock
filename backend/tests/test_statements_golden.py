@@ -17,10 +17,16 @@ from bedrock.statements.build import StatementTable
 from tests.statements_pipeline import Pipeline, run_pipeline
 
 GOLDEN_DIR = Path(__file__).parent / "golden" / "statements"
-TICKERS = ["AAPL", "MSFT", "COST"]
+TICKERS = ["AAPL", "MSFT", "COST", "DE"]
 USD_TOLERANCE = Decimal(500_000)
 EPS_TOLERANCE = Decimal("0.005")
 MIN_FISCAL_YEARS = 10
+# Deere's balance sheet is unclassified: it shows no current totals, so the balance-sheet subtotals
+# have no breakdown to compare with (docs/erd/data.md "DE: captive finance arm").
+UNCLASSIFIED_BALANCE_SHEET = {"DE"}
+# Deere's income statement has no operating income (its OperatingIncomeLoss is excluded in the DE
+# override), so total operating costs (gross profit - operating income) are empty.
+NO_OPERATING_INCOME = {"DE"}
 
 
 def golden(ticker: str) -> dict[str, Any]:
@@ -141,9 +147,14 @@ def test_residual_lines_complete_their_subtotal_in_every_period(ticker: str, fre
         table = table_with(pipeline, item.code, freq)
         rows = {r.code: r for r in table.rows}
         terms = parse_formula(item.derive)
+        siblings = {i.code for i in pipeline.items if i.parent == item.parent}
         for index, period in enumerate(table.periods):
-            subtotal = rows[terms[0][1]].values[index]
-            if subtotal is None:
+            required = [code for _, code in terms if code not in siblings]
+            if any(rows[code].values[index] is None for code in required):
+                # the subtotal, or a line outside the breakdown (Deere's operating income), is
+                # missing: the residual must stay empty rather than mislabel a number
+                if rows[item.code].values[index] is not None:
+                    failures.append(f"{item.code} {period.key}: shown without {required}")
                 continue
             expected = sum(
                 (sign * (rows[code].values[index] or Decimal(0)) for sign, code in terms),
@@ -193,6 +204,16 @@ def test_a_subtotal_equals_the_sum_of_its_breakdown(
     pipeline = run_pipeline(ticker)
     table = (pipeline.annual if freq == "annual" else pipeline.quarterly)[statement]
     rows = {r.code: r for r in table.rows}
+    if statement == "BS" and ticker in UNCLASSIFIED_BALANCE_SHEET:
+        # The total is mapped and every part is empty in every period, not silently half filled.
+        assert any(v is not None for v in rows[total].values), f"{total} was never mapped"
+        assert all(v is None for code in parts for v in rows[code].values)
+        return
+    if total == "total_operating_costs" and ticker in NO_OPERATING_INCOME:
+        # No operating income, so the subtotal is empty everywhere while the parts are still mapped.
+        assert all(v is None for v in rows[total].values)
+        assert any(v is not None for code in parts for v in rows[code].values)
+        return
     checked = 0
     failures = []
     for index, period in enumerate(table.periods):

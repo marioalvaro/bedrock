@@ -101,6 +101,10 @@ expected_missing:
   buybacks: "no XBRL fact before FY2011"
   dividends_paid: "dividends paid tagged from FY2013 only"
   fx_effect: "no exchange-rate line in Apple's cash flow statement"
+  dividends_per_share: "no dividend before FY2012 (FY2007-09 not tagged; FY2010-11 tagged 0)"
+  goodwill_impairment: "tagged (0) only FY2008-17; no line otherwise, and companyfacts omits zero lines"
+  temporary_equity: "no temporary equity"
+  shares_outstanding: "no XBRL fact before FY2008"
 
 # Concepts of the latest 10-K that the edgartools table recognizes but Bedrock does not map, each a
 # decision (map-xbrl run of 2026-10-09). test_mapping_coverage.py fails on a concept not listed here and

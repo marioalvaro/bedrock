@@ -316,3 +316,30 @@ def test_a_concept_can_be_a_member_of_one_code_and_stand_alone_for_another() -> 
 
     values = {r["code"]: r["value"] for r in out.to_dict("records")}
     assert values == {"short_term_debt": 125, "current_portion": 25}
+
+
+def test_an_excluded_default_is_not_mapped_for_that_company_only() -> None:
+    from bedrock.mapping.config import CanonicalItemDef
+    from tests.statements_pipeline import mapping_frame
+
+    gross = CanonicalItemDef(
+        "gross_profit",
+        "IS",
+        "Gross profit",
+        "flow",
+        "USD",
+        1,
+        None,
+        ("us-gaap:GrossProfit",),
+        None,
+        False,
+    )
+    latest = facts([fact("GrossProfit", *FY23, 50)])
+
+    plain = map_facts(latest, mapping_frame([gross], {}), [gross])
+    excluded = map_facts(
+        latest, mapping_frame([gross], {}, {"gross_profit": ["us-gaap:GrossProfit"]}), [gross]
+    )
+
+    assert value_at(plain, "gross_profit", FY23) == 50
+    assert excluded.empty

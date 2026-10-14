@@ -9,6 +9,7 @@ from typing import Any
 import pandas as pd
 
 from bedrock.mapping.config import CanonicalItemDef
+from bedrock.mapping.vintage import BALANCE_DATE_TOLERANCE
 from bedrock.statements.cells import Derivation, Provenance, compute_cells
 from bedrock.statements.periods import annual_periods, fiscal_calendar, quarterly_periods
 
@@ -123,8 +124,17 @@ def _vintages(
         if (
             r["taxonomy"] == taxonomy
             and r["concept"] in by_member
-            and (r["unit"], r["period_end"]) == (unit, end)
-            and (r["period_start"] == start or (start is None and pd.isna(r["period_start"])))
+            and r["unit"] == unit
+            and (
+                (r["period_start"] == start and r["period_end"] == end)
+                # an instant's balance date may sit up to a week off the one the cell reads
+                # (`select_vintage` groups them), and every filing of the group is a vintage
+                or (
+                    start is None
+                    and pd.isna(r["period_start"])
+                    and abs(r["period_end"] - end) <= BALANCE_DATE_TOLERANCE
+                )
+            )
         ):
             by_member[r["concept"]].append(r)
     for rows in by_member.values():

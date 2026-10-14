@@ -179,6 +179,17 @@
   concepts:
     - us-gaap:EarningsPerShareDiluted
   residual: false
+- code: dividends_per_share
+  statement: IS
+  label: Dividends per share
+  kind: flow
+  unit: USD/shares
+  sign: 1
+  parent: null
+  concepts:
+    - us-gaap:CommonStockDividendsPerShareDeclared
+    - us-gaap:CommonStockDividendsPerShareCashPaid
+  residual: false
 - code: shares_basic
   statement: IS
   label: Weighted-average shares, basic
@@ -198,6 +209,16 @@
   parent: null
   concepts:
     - us-gaap:WeightedAverageNumberOfDilutedSharesOutstanding
+  residual: false
+- code: goodwill_impairment
+  statement: IS
+  label: Goodwill impairment
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: null
+  concepts:
+    - us-gaap:GoodwillImpairmentLoss
   residual: false
 - code: total_assets
   statement: BS
@@ -457,6 +478,17 @@
   concepts: []
   derive: total_noncurrent_liabilities - long_term_debt - operating_lease_liabilities_noncurrent
   residual: true
+- code: temporary_equity
+  statement: BS
+  label: Temporary equity
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: null
+  concepts:
+    - us-gaap:TemporaryEquityCarryingAmountIncludingPortionAttributableToNoncontrollingInterests
+    - us-gaap:RedeemableNoncontrollingInterestEquityCarryingAmount
+  residual: false
 - code: total_equity
   statement: BS
   label: Total equity
@@ -560,6 +592,16 @@
   parent: null
   concepts: []
   derive: total_debt - cash - short_term_investments
+  residual: false
+- code: shares_outstanding
+  statement: BS
+  label: Shares outstanding
+  kind: instant
+  unit: shares
+  sign: 1
+  parent: null
+  concepts:
+    - us-gaap:CommonStockSharesOutstanding
   residual: false
 - code: cfo
   statement: CF

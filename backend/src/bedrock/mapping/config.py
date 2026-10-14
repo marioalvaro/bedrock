@@ -77,7 +77,28 @@ def load_canonical_items(path: Path = DEFAULT_ITEMS_PATH) -> list[CanonicalItemD
 def load_overrides(
     directory: Path, ticker: str, items: Sequence[CanonicalItemDef] | None = None
 ) -> dict[str, list[str]]:
-    """`<ticker>.yaml` maps `code: [concepts...]`. Concepts come back as `taxonomy:Concept`."""
+    """The concepts a company adds ahead of the defaults. `<ticker>.yaml` maps `code` to either a
+    list of concepts or `{concepts: [...], exclude: ...}` (see `load_excludes`). Concepts come
+    back as `taxonomy:Concept`; a code that only excludes has no entry."""
+    parsed = _read_overrides(directory, ticker, items)
+    return {code: added for code, (added, _) in parsed.items() if added}
+
+
+def load_excludes(
+    directory: Path, ticker: str, items: Sequence[CanonicalItemDef]
+) -> dict[str, list[str]]:
+    """The default concepts a company switches off, by code, each as `taxonomy:Concept` (or the
+    summed entry `taxonomy:A + taxonomy:B`) exactly as in the item's defaults. `exclude: [...]`
+    names defaults; `exclude: all` drops every default of the item, so it falls back to its
+    `derive` formula, else stays empty. An exclude that names no default of the item is an error,
+    so stale excludes fail."""
+    parsed = _read_overrides(directory, ticker, items)
+    return {code: dropped for code, (_, dropped) in parsed.items() if dropped}
+
+
+def _read_overrides(
+    directory: Path, ticker: str, items: Sequence[CanonicalItemDef] | None
+) -> dict[str, tuple[list[str], list[str]]]:
     path = directory / f"{ticker.upper()}.yaml"
     if not path.is_file():
         return {}
@@ -85,17 +106,60 @@ def load_overrides(
     if not isinstance(raw, dict):
         raise MappingConfigError(f"{path.name} must map codes to concept lists")
     by_code = {i.code: i for i in items} if items is not None else None
-    overrides: dict[str, list[str]] = {}
-    for code, concepts in raw.items():
+    parsed: dict[str, tuple[list[str], list[str]]] = {}
+    for code, entry in raw.items():
+        item = None
         if by_code is not None:
             if code not in by_code:
                 raise MappingConfigError(f"override for unknown code in {path.name}", code)
-            if by_code[code].residual:
+            item = by_code[code]
+            if item.residual:
                 raise MappingConfigError("residual items cannot be overridden", code)
-        if not isinstance(concepts, list) or not all(isinstance(c, str) for c in concepts):
-            raise MappingConfigError(f"override must be a list of concepts in {path.name}", code)
-        overrides[code] = _qualify(code, concepts)
-    return overrides
+        concepts, exclude = _override_entry(path.name, code, entry)
+        added = _qualify(code, concepts)
+        dropped: list[str] = []
+        if exclude is not None:
+            if item is None:
+                raise MappingConfigError("excludes need the canonical items to check", code)
+            dropped = _excluded(code, exclude, item)
+            if set(dropped) & set(added):
+                raise MappingConfigError("a concept cannot be both added and excluded", code)
+        parsed[code] = (added, dropped)
+    return parsed
+
+
+def _override_entry(file: str, code: str, entry: Any) -> tuple[list[str], list[str] | str | None]:
+    if isinstance(entry, list):
+        concepts, exclude = entry, None
+    elif isinstance(entry, dict):
+        if not entry or set(entry) - {"concepts", "exclude"}:
+            raise MappingConfigError(
+                f"an override mapping takes `concepts` and `exclude` in {file}", code
+            )
+        concepts, exclude = entry.get("concepts", []), entry.get("exclude")
+        if "exclude" in entry and not (
+            exclude == "all"
+            or (isinstance(exclude, list) and exclude and all(isinstance(e, str) for e in exclude))
+        ):
+            raise MappingConfigError(f"exclude must be `all` or a list of concepts in {file}", code)
+    else:
+        raise MappingConfigError(f"override must be a list of concepts in {file}", code)
+    if not isinstance(concepts, list) or not all(isinstance(c, str) for c in concepts):
+        raise MappingConfigError(f"override must be a list of concepts in {file}", code)
+    return concepts, exclude
+
+
+def _excluded(code: str, exclude: list[str] | str, item: CanonicalItemDef) -> list[str]:
+    if exclude == "all":
+        if not item.concepts:
+            raise MappingConfigError("exclude: all but the item has no default concept", code)
+        return list(item.concepts)
+    assert isinstance(exclude, list)
+    dropped = _qualify(code, exclude)
+    for entry in dropped:
+        if entry not in item.concepts:
+            raise MappingConfigError(f"{entry!r} is not a default concept, cannot exclude", code)
+    return dropped
 
 
 def formula_order(items: Sequence[CanonicalItemDef]) -> list[CanonicalItemDef]:

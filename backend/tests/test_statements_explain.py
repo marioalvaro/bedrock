@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 
 from bedrock.mapping.mapper import map_facts
-from bedrock.mapping.vintage import select_vintage
+from bedrock.mapping.vintage import balance_snapshot, select_vintage
 from bedrock.statements.cells import DerivationInput
 from bedrock.statements.explain import CellExplanation, explain_cell
 from tests.engine_data import fact, facts, flow_facts, item, mappings
@@ -253,3 +253,37 @@ def test_vintages_of_a_summed_cell_use_the_sign_of_the_item() -> None:
 
 
 FY23_YEAR = (date(2022, 7, 1), date(2023, 6, 30))
+
+
+BS_ITEMS = [
+    item("total_assets", "BS", kind="instant"),
+    item("total_liabilities", "BS", kind="instant"),
+    item("total_equity", "BS", kind="instant"),
+]
+BS_MAPS = mappings(
+    ("total_assets", "Assets", 0),
+    ("total_liabilities", "Liabilities", 0),
+    ("total_equity", "StockholdersEquity", 0),
+)
+
+
+def test_a_balance_dated_off_the_period_end_keeps_the_vintages_of_its_own_date() -> None:
+    """Deere dates its FY2015 balance sheet 31 Oct for the year ending 1 Nov, and a later 10-K
+    restates total assets alone under 1 Nov. The cell shows the complete sheet's value, and its
+    vintages list the filings of both dates, so the 10-K it cites is among them."""
+    sheet_date, year_end = date(2023, 6, 29), date(2023, 6, 30)
+    rows = flow_facts("Revenues", {2023: (1, 1, 1, 1)})  # defines the calendar
+    for concept, value in (("Assets", 500), ("Liabilities", 300), ("StockholdersEquity", 200)):
+        rows.append(
+            fact(concept, None, sheet_date, value, accession="K-2023", filed=date(2023, 8, 20))
+        )
+    rows.append(fact("Assets", None, year_end, 499, accession="K-2025", filed=date(2025, 8, 20)))
+    vintages = facts(rows)
+    maps = pd.concat([MAPS, BS_MAPS], ignore_index=True)
+    items = ITEMS + BS_ITEMS
+    latest = select_vintage(vintages, snapshot=balance_snapshot(maps))
+    cell = explain_cell(map_facts(latest, maps, items), vintages, items, "total_assets", 2023, "FY")
+
+    assert cell.value == 500
+    assert cell.filing is not None and cell.filing.accession_no == "K-2023"
+    assert [(v.value, v.accession_no) for v in cell.vintages] == [(500, "K-2023"), (499, "K-2025")]
