@@ -1,7 +1,7 @@
 from collections.abc import Collection, Iterable
 from datetime import date
 from decimal import Decimal
-from typing import Any
+from typing import Any, NamedTuple
 
 import pandas as pd
 from sqlalchemy import Select, insert, select, tuple_
@@ -125,10 +125,15 @@ def load_latest_annual_facts(session: Session, company_id: int) -> pd.DataFrame:
     return _frame(session.execute(_joined().where(RawFact.filing_id == filing_id)).all())
 
 
-def latest_shares_outstanding(session: Session, company_id: int) -> Decimal | None:
+class SharesOutstanding(NamedTuple):
+    value: Decimal
+    filed_at: date  # the filing that stated it: splits after this date change its meaning
+
+
+def latest_shares_outstanding(session: Session, company_id: int) -> SharesOutstanding | None:
     """`dei:EntityCommonStockSharesOutstanding`: the newest filed value at the latest `end`."""
     stmt = (
-        select(RawFact.value)
+        select(RawFact.value, Filing.filed_at)
         .join(Filing, Filing.id == RawFact.filing_id)
         .where(
             RawFact.company_id == company_id,
@@ -139,8 +144,8 @@ def latest_shares_outstanding(session: Session, company_id: int) -> Decimal | No
         .order_by(RawFact.period_end.desc(), Filing.filed_at.desc(), Filing.accession_no.desc())
         .limit(1)
     )
-    value = session.execute(stmt).scalar_one_or_none()
-    return None if value is None else plain(value)
+    row = session.execute(stmt).first()
+    return None if row is None else SharesOutstanding(plain(row[0]), row[1])
 
 
 def _joined() -> Select[str, str, str, date | None, date, Decimal, str, str, date]:

@@ -4,9 +4,12 @@ fixture -> parse -> fact frame -> vintage -> mapper (shipped YAML + overrides) -
 No DB and no network: it is the same chain `build_statements` runs in S4, minus the repository.
 """
 
+import csv
 import gzip
 import json
 from dataclasses import dataclass
+from datetime import date
+from decimal import Decimal
 from functools import cache
 from pathlib import Path
 
@@ -24,8 +27,10 @@ from bedrock.mapping.config import (
 from bedrock.mapping.mapper import map_facts
 from bedrock.mapping.vintage import balance_snapshot, select_vintage
 from bedrock.statements.build import StatementTable, build_statement
+from bedrock.statements.splits import split_adjust
 
 FIXTURES = Path(__file__).parent / "fixtures" / "edgar"
+SPLITS = Path(__file__).parent / "fixtures" / "yfinance"
 STATEMENTS = ("IS", "BS", "CF")
 
 
@@ -138,6 +143,24 @@ def latest_10k_facts(ticker: str) -> pd.DataFrame:
     )
 
 
+@dataclass(frozen=True)
+class FixtureSplit:
+    effective_date: date
+    ratio: Decimal
+
+
+def fixture_splits(ticker: str) -> list[FixtureSplit]:
+    """The recorded `yfinance/<T>_splits.csv` (`date,ratio`); a missing file means no splits."""
+    path = SPLITS / f"{ticker}_splits.csv"
+    if not path.exists():
+        return []
+    with path.open() as handle:
+        return [
+            FixtureSplit(date.fromisoformat(r["date"]), Decimal(r["ratio"]))
+            for r in csv.DictReader(handle)
+        ]
+
+
 @cache
 def run_pipeline(ticker: str) -> Pipeline:
     items = load_canonical_items(DEFAULT_ITEMS_PATH)
@@ -145,7 +168,7 @@ def run_pipeline(ticker: str) -> Pipeline:
     mappings = mapping_frame(items, overrides)
     facts = fact_frame(ticker, mappings)
     latest = select_vintage(facts, snapshot=balance_snapshot(mappings))
-    canonical = map_facts(latest, mappings, items)
+    canonical = split_adjust(map_facts(latest, mappings, items), fixture_splits(ticker))
     return Pipeline(
         items=items,
         facts=facts,

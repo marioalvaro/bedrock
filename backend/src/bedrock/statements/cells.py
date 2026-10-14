@@ -71,6 +71,9 @@ class _Fact:
     end: date
     value: Decimal
     ref: FactRef
+    split_factor: Decimal = Decimal(1)
+    split_dates: tuple[date, ...] = ()
+    reported_value: Decimal | None = None  # before the split factor; None = same as value
 
 
 class _Index:
@@ -91,7 +94,15 @@ class _Index:
                 r["filed_at"],
             )
             self._by_end[(r["code"], r["period_end"])].append(
-                _Fact(start, r["period_end"], r["value"], ref)
+                _Fact(
+                    start,
+                    r["period_end"],
+                    r["value"],
+                    ref,
+                    r.get("split_factor", Decimal(1)),
+                    r.get("split_dates", ()),
+                    r.get("reported_value"),
+                )
             )
 
     def instant(self, code: str, end: date) -> _Fact | None:
@@ -142,17 +153,36 @@ def _mapped_cell(
     if item.kind == "instant":
         if period.fiscal_period == "Q4":  # the fiscal year-end balance
             return cells.get((code, f"FY{period.fiscal_year}"), EMPTY)
-        return _reported(index.instant(code, period.end))
+        return _reported(index.instant(code, period.end), code, period)
     if period.fiscal_period == "Q4":
         return EMPTY if item.kind == "average" else _q4(code, year, cells, index)
-    reported = _reported(index.duration(code, period.start, period.end))
+    reported = _reported(index.duration(code, period.start, period.end), code, period)
     if reported.value is not None or item.kind == "average" or period.fiscal_period == "FY":
         return reported
     return _from_year_to_date(code, period, year, index)
 
 
-def _reported(fact: _Fact | None) -> Cell:
-    return EMPTY if fact is None else Cell(fact.value, "reported", source=fact.ref)
+def _reported(fact: _Fact | None, code: str, period: Period) -> Cell:
+    if fact is None:
+        return EMPTY
+    if fact.split_factor == 1:
+        return Cell(fact.value, "reported", source=fact.ref)
+    reported = fact.value if fact.reported_value is None else fact.reported_value
+    return Cell(
+        fact.value,
+        "derived",
+        source=fact.ref,
+        derivation=Derivation(
+            _split_formula(fact), (DerivationInput(code, period.fiscal_period, reported),)
+        ),
+    )
+
+
+def _split_formula(fact: _Fact) -> str:
+    op = "×" if fact.ref.unit == "shares" else "÷"
+    noun = "split" if len(fact.split_dates) == 1 else "splits"
+    dates = ", ".join(d.isoformat() for d in fact.split_dates)
+    return f"as reported {op} {format(fact.split_factor.normalize(), 'f')} ({noun} {dates})"
 
 
 def _quarter_number(period: Period) -> int:

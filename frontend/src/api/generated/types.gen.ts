@@ -172,6 +172,28 @@ export type CompanyListItem = {
 };
 
 /**
+ * CorporateActionOut
+ */
+export type CorporateActionOut = {
+    /**
+     * Effective Date
+     */
+    effective_date: string;
+    /**
+     * Ratio
+     */
+    ratio: string;
+    /**
+     * Source
+     */
+    source: string;
+    /**
+     * Type
+     */
+    type: string;
+};
+
+/**
  * DerivationInputOut
  */
 export type DerivationInputOut = {
@@ -331,6 +353,10 @@ export type RefreshResultOut = {
      * New Prices
      */
     new_prices: number;
+    /**
+     * New Splits
+     */
+    new_splits: number;
     /**
      * Ticker
      */
@@ -690,6 +716,38 @@ export type GetCompanyApiV1CompaniesTickerGetResponses = {
 };
 
 export type GetCompanyApiV1CompaniesTickerGetResponse = GetCompanyApiV1CompaniesTickerGetResponses[keyof GetCompanyApiV1CompaniesTickerGetResponses];
+
+export type ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/corporate-actions';
+};
+
+export type ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetError = ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetErrors[keyof ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetErrors];
+
+export type ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetResponses = {
+    /**
+     * Response List Corporate Actions Api V1 Companies  Ticker  Corporate Actions Get
+     *
+     * Successful Response
+     */
+    200: Array<CorporateActionOut>;
+};
+
+export type ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetResponse = ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetResponses[keyof ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetResponses];
 
 export type GetMappingGapsApiV1CompaniesTickerMappingGapsGetData = {
     body?: never;

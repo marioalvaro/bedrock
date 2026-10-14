@@ -6,7 +6,7 @@ from typing import Any
 import pandas as pd
 import pytest
 
-from bedrock.ingest.protocol import CompanyRef, SourceUnavailable
+from bedrock.ingest.protocol import CompanyRef, SourceUnavailable, SplitRow
 from bedrock.ingest.sources.yfinance import YFinanceSource
 
 CSV = Path(__file__).parent / "fixtures" / "yfinance" / "AAPL.csv"
@@ -18,6 +18,11 @@ class FakeTicker:
 
     def __init__(self, symbol: str) -> None:
         self.symbol = symbol
+
+    @property
+    def splits(self) -> pd.Series:
+        stamps = pd.to_datetime(["2014-06-09", "2020-08-31"]).tz_localize("America/New_York")
+        return pd.Series([7.0, 4.0], index=stamps, name="Stock Splits")
 
     def history(self, **kwargs: Any) -> pd.DataFrame:
         FakeTicker.calls.append({"symbol": self.symbol, **kwargs})
@@ -81,6 +86,8 @@ def test_any_exception_becomes_source_unavailable(monkeypatch: pytest.MonkeyPatc
 
 def test_an_empty_frame_is_no_rows(monkeypatch: pytest.MonkeyPatch) -> None:
     class Empty:
+        splits = pd.Series([], dtype=float)
+
         def __init__(self, symbol: str) -> None: ...
 
         def history(self, **kwargs: Any) -> pd.DataFrame:
@@ -89,3 +96,40 @@ def test_an_empty_frame_is_no_rows(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("yfinance.Ticker", Empty)
 
     assert YFinanceSource().fetch(AAPL, date(2026, 10, 7)).rows == []
+
+
+def test_splits_are_parsed_oldest_first() -> None:
+    payload = YFinanceSource().fetch(AAPL, date(2026, 10, 7))
+
+    assert payload.splits == [
+        SplitRow(date(2014, 6, 9), Decimal("7")),
+        SplitRow(date(2020, 8, 31), Decimal("4")),
+    ]
+
+
+def test_fractional_ratios_are_exact_and_zero_ratios_are_dropped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Odd(FakeTicker):
+        @property
+        def splits(self) -> pd.Series:
+            stamps = pd.to_datetime(["2001-01-02", "2002-01-02", "2003-01-02"]).tz_localize("UTC")
+            return pd.Series([0.1, 0.0, 1.5], index=stamps)
+
+    monkeypatch.setattr("yfinance.Ticker", Odd)
+
+    assert YFinanceSource().fetch(AAPL, None).splits == [
+        SplitRow(date(2001, 1, 2), Decimal("0.1")),
+        SplitRow(date(2003, 1, 2), Decimal("1.5")),
+    ]
+
+
+def test_a_company_without_splits_has_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Plain(FakeTicker):
+        @property
+        def splits(self) -> pd.Series:
+            return pd.Series([], dtype=float)
+
+    monkeypatch.setattr("yfinance.Ticker", Plain)
+
+    assert YFinanceSource().fetch(AAPL, None).splits == []

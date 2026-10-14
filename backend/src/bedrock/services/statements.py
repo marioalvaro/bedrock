@@ -19,12 +19,15 @@ from bedrock.mapping.gaps import MissingItem, UnmappedConcept, missing_items, un
 from bedrock.mapping.mapper import map_facts
 from bedrock.mapping.vintage import BALANCE_TOTALS, balance_snapshot, select_vintage
 from bedrock.models.company import Company
+from bedrock.repositories import corporate_actions as actions_repo
 from bedrock.repositories import facts as facts_repo
 from bedrock.repositories import mappings as mappings_repo
 from bedrock.repositories import prices as prices_repo
+from bedrock.repositories.numeric import plain
 from bedrock.services.errors import CellNotFound
 from bedrock.statements.build import CommonSizeBase, Freq, StatementTable, build_statement
 from bedrock.statements.explain import CellExplanation, explain_cell
+from bedrock.statements.splits import split_adjust, split_factor
 from bedrock.statements.view import trim_periods
 
 __all__ = [
@@ -75,7 +78,7 @@ class _Loaded:
     items: tuple[CanonicalItemDef, ...]
     mappings: pd.DataFrame
     facts: pd.DataFrame  # every vintage of the mapped concepts
-    canonical: pd.DataFrame  # the latest vintage, mapped
+    canonical: pd.DataFrame  # the latest vintage, mapped and split-adjusted
 
 
 def build_statements(
@@ -131,7 +134,15 @@ def company_key_stats(session: Session, company: Company) -> KeyStats:
     """The company-list stats. Only the concepts they need are loaded."""
     loaded = _load(session, company, codes=_key_stat_codes())
     close = prices_repo.latest_close(session, company.id)
-    shares = facts_repo.latest_shares_outstanding(session, company.id)
+    latest = facts_repo.latest_shares_outstanding(session, company.id)
+    # The dei count is in the shares of its filing's day; bring it to today's.
+    shares = (
+        None
+        if latest is None
+        else plain(
+            latest.value * split_factor(latest.filed_at, actions_repo.list_for(session, company.id))
+        )
+    )
     if loaded.canonical.empty:
         return key_stats(close=close, shares=shares, ttm={}, quarterly_bs=None)
     ttm = {
@@ -151,7 +162,10 @@ def _load(session: Session, company: Company, codes: frozenset[str] | None = Non
     facts = facts_repo.load_facts(session, company.id, wanted)
     # Always the balance-date snapshot: a later filing can restate one total and not the others.
     latest = select_vintage(facts, snapshot=balance_snapshot(mappings))
-    return _Loaded(items, mappings, facts, map_facts(latest, mappings, items))
+    canonical = split_adjust(
+        map_facts(latest, mappings, items), actions_repo.list_for(session, company.id)
+    )
+    return _Loaded(items, mappings, facts, canonical)
 
 
 @cache

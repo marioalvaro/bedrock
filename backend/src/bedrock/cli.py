@@ -70,6 +70,7 @@ def _result_lines(result: RefreshResult) -> list[str]:
         f"  new_filings: {result.new_filings}",
         f"  new_facts: {result.new_facts}",
         f"  new_prices: {result.new_prices}",
+        f"  new_splits: {result.new_splits}",
         f"  last_refreshed_at: {result.last_refreshed_at.isoformat()}",
         *(f"  warning: {warning}" for warning in result.warnings),
     ]

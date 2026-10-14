@@ -10,6 +10,7 @@ class RefreshResultOut(BaseModel):
     new_filings: int
     new_facts: int
     new_prices: int
+    new_splits: int
     last_refreshed_at: datetime
     warnings: list[str]
 
@@ -20,6 +21,7 @@ class RefreshResultOut(BaseModel):
             new_filings=result.new_filings,
             new_facts=result.new_facts,
             new_prices=result.new_prices,
+            new_splits=result.new_splits,
             last_refreshed_at=result.last_refreshed_at,
             warnings=result.warnings,
         )

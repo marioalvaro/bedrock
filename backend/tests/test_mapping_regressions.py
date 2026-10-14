@@ -59,12 +59,14 @@ INCOME_STATEMENT: list[tuple[str, str, str, Decimal]] = [
     ("AAPL", "income_tax", "FY2025", usd(20_719)),
     ("AAPL", "net_income_common", "FY2015", usd(53_394)),
     ("AAPL", "net_income_common", "FY2025", usd(112_010)),
-    ("AAPL", "eps_basic", "FY2015", Decimal("9.28")),
+    # FY2015 per-share and share counts are split-adjusted for the 4-for-1 of 2020-08-31:
+    # the FY2015 10-K says 9.28, 5,753,421 and 5,793,069 thousand.
+    ("AAPL", "eps_basic", "FY2015", Decimal("2.32")),
     ("AAPL", "eps_basic", "FY2020", Decimal("3.31")),
     ("AAPL", "eps_basic", "FY2025", Decimal("7.49")),
-    ("AAPL", "shares_basic", "FY2015", Decimal(5_753_421_000)),
+    ("AAPL", "shares_basic", "FY2015", Decimal(23_013_684_000)),
     ("AAPL", "shares_basic", "FY2020", Decimal(17_352_119_000)),
-    ("AAPL", "shares_diluted", "FY2015", Decimal(5_793_069_000)),
+    ("AAPL", "shares_diluted", "FY2015", Decimal(23_172_276_000)),
     ("AAPL", "shares_diluted", "FY2020", Decimal(17_528_214_000)),
     # AAPL interest expense: companyfacts only (the 10-K face statement does not show it).
     ("AAPL", "interest_expense", "FY2015", usd(733)),

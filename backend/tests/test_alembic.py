@@ -8,11 +8,33 @@ from alembic.runtime.migration import MigrationContext
 from sqlalchemy import create_engine, inspect
 
 from bedrock.core.config import load_settings
-from bedrock.models import canonical_item, company, concept_mapping, filing, price_daily, raw_fact
+from bedrock.models import (
+    adjustment,
+    canonical_item,
+    company,
+    concept_mapping,
+    corporate_action,
+    filing,
+    off_balance_item,
+    price_daily,
+    qoe_threshold,
+    raw_fact,
+)
 from bedrock.models.base import Base
 
 # Importing registers every table on Base.metadata, so the drift test below sees them all.
-_MODELS = (canonical_item, company, concept_mapping, filing, price_daily, raw_fact)
+_MODELS = (
+    adjustment,
+    canonical_item,
+    company,
+    concept_mapping,
+    corporate_action,
+    filing,
+    off_balance_item,
+    price_daily,
+    qoe_threshold,
+    raw_fact,
+)
 
 
 def test_alembic_upgrade_head_creates_company_table(
@@ -83,3 +105,25 @@ def test_downgrade_to_base_removes_the_schema(
 ) -> None:
     database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"), ("downgrade", "base"))
     assert inspect(create_engine(database_url)).get_table_names() == ["alembic_version"]
+
+
+_ANALYSIS_TABLES = {"adjustment", "corporate_action", "off_balance_item", "qoe_threshold"}
+
+
+def test_upgrade_head_creates_the_analysis_tables_and_downgrade_removes_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    inspector = inspect(create_engine(database_url))
+    assert _ANALYSIS_TABLES <= set(inspector.get_table_names())
+    uq = {
+        table: {tuple(c["column_names"]) for c in inspector.get_unique_constraints(table)}
+        for table in ("corporate_action", "qoe_threshold")
+    }
+    assert ("company_id", "effective_date") in uq["corporate_action"]
+    assert ("rule_code",) in uq["qoe_threshold"]
+
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"), ("downgrade", "0002"))
+    tables = set(inspect(create_engine(database_url)).get_table_names())
+    assert not _ANALYSIS_TABLES & tables
+    assert "price_daily" in tables

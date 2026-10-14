@@ -9,12 +9,14 @@
 # (accession 0001628280-16-020309, ASU 2015-03 / 2015-17 applied retrospectively): the engine shows the latest
 # vintage, and the original FY2015 10-K value stays available as an earlier vintage.
 annual:
+  FY2013:
+    eps_diluted: 1.42  # 5.68 in the FY2015 10-K (filed 2015-10-28, after the 2014 split) ÷ 4 for the 2020-08-31 split
   FY2015:
     revenue: 233715000000
     gross_profit: 93626000000
     operating_income: 71230000000
     net_income: 53394000000
-    eps_diluted: 9.22
+    eps_diluted: 2.305  # 9.22 in the FY2015 10-K, split-adjusted: the 4-for-1 of 2020-08-31 (the 7-for-1 of 2014 is already in it)
     cash: 21120000000
     total_assets: 290345000000      # restated in the FY2016 10-K; the FY2015 10-K said 290,479
     total_liabilities: 170990000000 # restated in the FY2016 10-K; the FY2015 10-K said 171,124

@@ -335,6 +335,36 @@
         "title": "CompanyListItem",
         "type": "object"
       },
+      "CorporateActionOut": {
+        "properties": {
+          "effective_date": {
+            "format": "date",
+            "title": "Effective Date",
+            "type": "string"
+          },
+          "ratio": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Ratio",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "effective_date",
+          "ratio",
+          "source"
+        ],
+        "title": "CorporateActionOut",
+        "type": "object"
+      },
       "DerivationInputOut": {
         "properties": {
           "code": {
@@ -549,6 +579,10 @@
             "title": "New Prices",
             "type": "integer"
           },
+          "new_splits": {
+            "title": "New Splits",
+            "type": "integer"
+          },
           "ticker": {
             "title": "Ticker",
             "type": "string"
@@ -566,6 +600,7 @@
           "new_filings",
           "new_facts",
           "new_prices",
+          "new_splits",
           "last_refreshed_at",
           "warnings"
         ],
@@ -1117,6 +1152,52 @@
         "summary": "Get Company",
         "tags": [
           "companies"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/corporate-actions": {
+      "get": {
+        "operationId": "list_corporate_actions_api_v1_companies__ticker__corporate_actions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CorporateActionOut"
+                  },
+                  "title": "Response List Corporate Actions Api V1 Companies  Ticker  Corporate Actions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Corporate Actions",
+        "tags": [
+          "corporate-actions"
         ]
       }
     },

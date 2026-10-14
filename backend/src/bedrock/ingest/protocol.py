@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, ClassVar, Protocol, TypeVar
@@ -48,8 +48,16 @@ class PriceRow:
 
 
 @dataclass(frozen=True)
+class SplitRow:
+    effective_date: date
+    ratio: Decimal  # new shares per old share: 4 for a 4-for-1 split, 0.1 for a 1-for-10 reverse
+
+
+@dataclass(frozen=True)
 class PricePayload:
     rows: list[PriceRow]
+    # The full split history, whatever `since` was: it is a handful of rows.
+    splits: list[SplitRow] = field(default_factory=list)
 
 
 class DataSource(Protocol[P]):

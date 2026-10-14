@@ -12,6 +12,7 @@ from bedrock.ingest.sources import Sources
 from bedrock.models.canonical_item import CanonicalItem
 from bedrock.models.company import Company
 from bedrock.models.concept_mapping import ConceptMapping
+from bedrock.models.corporate_action import CorporateAction
 from bedrock.models.filing import Filing
 from bedrock.models.price_daily import PriceDaily
 from bedrock.models.raw_fact import RawFact
@@ -71,7 +72,7 @@ def test_a_second_refresh_inserts_nothing_new(db_session: Session) -> None:
 
     again = refresh_company(db_session, _sources(), "AAPL", LATER)
 
-    assert (again.new_filings, again.new_facts, again.new_prices) == (0, 0, 0)
+    assert (again.new_filings, again.new_facts, again.new_prices, again.new_splits) == (0, 0, 0, 0)
     assert _count(db_session, RawFact) == facts
     assert _count(db_session, PriceDaily) == prices
 
@@ -94,7 +95,8 @@ def test_a_price_failure_is_a_warning_and_the_filings_are_still_stored(
 
     result = refresh_company(db_session, _sources(prices=prices), "AAPL", NOW)
 
-    assert result.new_prices == 0
+    assert (result.new_prices, result.new_splits) == (0, 0)
+    assert _count(db_session, CorporateAction) == 0
     assert len(result.warnings) == 1 and "rate limited" in result.warnings[0]
     assert result.new_facts > 0
     db_session.refresh(company)
@@ -151,3 +153,42 @@ def test_prices_are_not_asked_for_when_the_last_stored_day_is_today(db_session: 
 
     assert prices.calls == [None]
     assert result.new_prices == 0 and result.warnings == []
+
+
+def test_refresh_stores_the_split_history(db_session: Session) -> None:
+    follow(db_session, FakeEdgar(), "AAPL")
+
+    result = refresh_company(db_session, _sources(), "AAPL", NOW)
+
+    recorded = FakePrices().fetch(AAPL, None).splits
+    assert len(recorded) >= 2
+    assert result.new_splits == len(recorded) == _count(db_session, CorporateAction)
+    stored = db_session.execute(select(CorporateAction.effective_date)).scalars()
+    assert set(stored) == {s.effective_date for s in recorded}
+
+
+def test_splits_come_with_every_price_fetch_and_a_second_refresh_adds_none(
+    db_session: Session,
+) -> None:
+    prices = FakePrices()
+    follow(db_session, FakeEdgar(), "AAPL")
+    refresh_company(db_session, _sources(prices=prices), "AAPL", NOW)
+
+    again = refresh_company(db_session, _sources(prices=prices), "AAPL", NOW)
+
+    assert prices.calls[1] is not None  # an incremental fetch still carries the full history
+    assert again.new_splits == 0
+
+
+def test_splits_are_not_asked_for_when_prices_are_current_today(db_session: Session) -> None:
+    # The splits ride on the price fetch, which is skipped when the last stored day is today.
+    follow(db_session, FakeEdgar(), "AAPL")
+    refresh_company(db_session, _sources(), "AAPL", NOW)
+    last = max(r.date for r in FakePrices().fetch(AAPL, None).rows)
+    same_day = datetime(last.year, last.month, last.day, 20, 0, tzinfo=UTC)
+    prices = FakePrices()
+
+    result = refresh_company(db_session, _sources(prices=prices), "AAPL", same_day)
+
+    assert prices.calls == []
+    assert result.new_splits == 0

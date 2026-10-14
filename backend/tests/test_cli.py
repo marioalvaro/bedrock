@@ -119,7 +119,13 @@ def test_refresh_prints_the_result_of_each_ticker(cli_db: Path) -> None:
 
     assert result.exit_code == 0, result.output
     assert "AAPL" in result.output and "MSFT" not in result.output
-    for line in ("new_filings: 0", "new_facts: 0", "new_prices: 0", "last_refreshed_at:"):
+    for line in (
+        "new_filings: 0",
+        "new_facts: 0",
+        "new_prices: 0",
+        "new_splits: 0",
+        "last_refreshed_at:",
+    ):
         assert line in result.output
 
 

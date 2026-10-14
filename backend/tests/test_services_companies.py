@@ -1,7 +1,8 @@
 """Following, listing and removing companies."""
 
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from decimal import Decimal
 
 import pytest
 from sqlalchemy import func, select
@@ -19,6 +20,7 @@ from bedrock.ingest.sources import Sources
 from bedrock.models.canonical_item import CanonicalItem
 from bedrock.models.company import Company
 from bedrock.models.concept_mapping import ConceptMapping
+from bedrock.models.corporate_action import CorporateAction
 from bedrock.models.filing import Filing
 from bedrock.models.price_daily import PriceDaily
 from bedrock.models.raw_fact import RawFact
@@ -71,17 +73,38 @@ def test_the_list_stats_match_stats_from_the_full_statements(db_session: Session
     pipeline = run_pipeline("COST")
     price = FakePrices().fetch(COST, None).rows[-1]
     shares = facts_repo.latest_shares_outstanding(db_session, view.company.id)
+    assert shares is not None
     ttm = {s: build_statement(pipeline.canonical, pipeline.items, s, "ttm") for s in ("IS", "CF")}
 
     expected = key_stats(
         close=(price.date, price.close),
-        shares=shares,
+        shares=shares.value,
         ttm=ttm,
         quarterly_bs=pipeline.quarterly["BS"],
     )
 
     assert view.stats == expected
     assert view.stats.ev_ebitda is not None  # Costco maps every input
+
+
+def test_a_split_after_the_shares_filing_multiplies_the_market_cap(db_session: Session) -> None:
+    view = add_company(db_session, fake_sources(), "AAPL", NOW)
+    before = view.stats.market_cap
+    assert before is not None
+    db_session.add(
+        CorporateAction(
+            company_id=view.company.id,
+            type="split",
+            effective_date=date(2099, 1, 1),  # after every filing
+            ratio=Decimal(2),
+            source="test",
+        )
+    )
+    db_session.commit()
+
+    after = get_company(db_session, "AAPL").stats.market_cap
+
+    assert after == before * 2
 
 
 def test_ev_ebitda_needs_every_input(db_session: Session) -> None:
