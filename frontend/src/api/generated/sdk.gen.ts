@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AddCompanyApiV1CompaniesPostData, AddCompanyApiV1CompaniesPostErrors, AddCompanyApiV1CompaniesPostResponses, GetCellApiV1CompaniesTickerStatementsCellGetData, GetCellApiV1CompaniesTickerStatementsCellGetErrors, GetCellApiV1CompaniesTickerStatementsCellGetResponses, GetCompaniesApiV1CompaniesGetData, GetCompaniesApiV1CompaniesGetResponses, GetCompanyApiV1CompaniesTickerGetData, GetCompanyApiV1CompaniesTickerGetErrors, GetCompanyApiV1CompaniesTickerGetResponses, GetMappingGapsApiV1CompaniesTickerMappingGapsGetData, GetMappingGapsApiV1CompaniesTickerMappingGapsGetErrors, GetMappingGapsApiV1CompaniesTickerMappingGapsGetResponses, GetStatementApiV1CompaniesTickerStatementsGetData, GetStatementApiV1CompaniesTickerStatementsGetErrors, GetStatementApiV1CompaniesTickerStatementsGetResponses, HealthApiV1HealthGetData, HealthApiV1HealthGetResponses, ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetData, ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetErrors, ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetResponses, LoginApiV1AuthLoginPostData, LoginApiV1AuthLoginPostErrors, LoginApiV1AuthLoginPostResponses, LogoutApiV1AuthLogoutPostData, LogoutApiV1AuthLogoutPostResponses, MeApiV1AuthMeGetData, MeApiV1AuthMeGetResponses, RefreshApiV1CompaniesTickerRefreshPostData, RefreshApiV1CompaniesTickerRefreshPostErrors, RefreshApiV1CompaniesTickerRefreshPostResponses, RemoveCompanyApiV1CompaniesTickerDeleteData, RemoveCompanyApiV1CompaniesTickerDeleteErrors, RemoveCompanyApiV1CompaniesTickerDeleteResponses } from './types.gen';
+import type { AddCompanyApiV1CompaniesPostData, AddCompanyApiV1CompaniesPostErrors, AddCompanyApiV1CompaniesPostResponses, CreateAdjustmentApiV1CompaniesTickerAdjustmentsPostData, CreateAdjustmentApiV1CompaniesTickerAdjustmentsPostErrors, CreateAdjustmentApiV1CompaniesTickerAdjustmentsPostResponses, DeleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDeleteData, DeleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDeleteErrors, DeleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDeleteResponses, GetCellApiV1CompaniesTickerStatementsCellGetData, GetCellApiV1CompaniesTickerStatementsCellGetErrors, GetCellApiV1CompaniesTickerStatementsCellGetResponses, GetCompaniesApiV1CompaniesGetData, GetCompaniesApiV1CompaniesGetResponses, GetCompanyApiV1CompaniesTickerGetData, GetCompanyApiV1CompaniesTickerGetErrors, GetCompanyApiV1CompaniesTickerGetResponses, GetMappingGapsApiV1CompaniesTickerMappingGapsGetData, GetMappingGapsApiV1CompaniesTickerMappingGapsGetErrors, GetMappingGapsApiV1CompaniesTickerMappingGapsGetResponses, GetStatementApiV1CompaniesTickerStatementsGetData, GetStatementApiV1CompaniesTickerStatementsGetErrors, GetStatementApiV1CompaniesTickerStatementsGetResponses, HealthApiV1HealthGetData, HealthApiV1HealthGetResponses, ListAdjustmentsApiV1CompaniesTickerAdjustmentsGetData, ListAdjustmentsApiV1CompaniesTickerAdjustmentsGetErrors, ListAdjustmentsApiV1CompaniesTickerAdjustmentsGetResponses, ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetData, ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetErrors, ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetResponses, LoginApiV1AuthLoginPostData, LoginApiV1AuthLoginPostErrors, LoginApiV1AuthLoginPostResponses, LogoutApiV1AuthLogoutPostData, LogoutApiV1AuthLogoutPostResponses, MeApiV1AuthMeGetData, MeApiV1AuthMeGetResponses, RefreshApiV1CompaniesTickerRefreshPostData, RefreshApiV1CompaniesTickerRefreshPostErrors, RefreshApiV1CompaniesTickerRefreshPostResponses, RemoveCompanyApiV1CompaniesTickerDeleteData, RemoveCompanyApiV1CompaniesTickerDeleteErrors, RemoveCompanyApiV1CompaniesTickerDeleteResponses, UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutData, UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutErrors, UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -66,6 +66,40 @@ export const removeCompanyApiV1CompaniesTickerDelete = <ThrowOnError extends boo
  * Get Company
  */
 export const getCompanyApiV1CompaniesTickerGet = <ThrowOnError extends boolean = false>(options: Options<GetCompanyApiV1CompaniesTickerGetData, ThrowOnError>): RequestResult<GetCompanyApiV1CompaniesTickerGetResponses, GetCompanyApiV1CompaniesTickerGetErrors, ThrowOnError> => (options.client ?? client).get<GetCompanyApiV1CompaniesTickerGetResponses, GetCompanyApiV1CompaniesTickerGetErrors, ThrowOnError>({ url: '/api/v1/companies/{ticker}', ...options });
+
+/**
+ * List Adjustments
+ */
+export const listAdjustmentsApiV1CompaniesTickerAdjustmentsGet = <ThrowOnError extends boolean = false>(options: Options<ListAdjustmentsApiV1CompaniesTickerAdjustmentsGetData, ThrowOnError>): RequestResult<ListAdjustmentsApiV1CompaniesTickerAdjustmentsGetResponses, ListAdjustmentsApiV1CompaniesTickerAdjustmentsGetErrors, ThrowOnError> => (options.client ?? client).get<ListAdjustmentsApiV1CompaniesTickerAdjustmentsGetResponses, ListAdjustmentsApiV1CompaniesTickerAdjustmentsGetErrors, ThrowOnError>({ url: '/api/v1/companies/{ticker}/adjustments', ...options });
+
+/**
+ * Create Adjustment
+ */
+export const createAdjustmentApiV1CompaniesTickerAdjustmentsPost = <ThrowOnError extends boolean = false>(options: Options<CreateAdjustmentApiV1CompaniesTickerAdjustmentsPostData, ThrowOnError>): RequestResult<CreateAdjustmentApiV1CompaniesTickerAdjustmentsPostResponses, CreateAdjustmentApiV1CompaniesTickerAdjustmentsPostErrors, ThrowOnError> => (options.client ?? client).post<CreateAdjustmentApiV1CompaniesTickerAdjustmentsPostResponses, CreateAdjustmentApiV1CompaniesTickerAdjustmentsPostErrors, ThrowOnError>({
+    url: '/api/v1/companies/{ticker}/adjustments',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Delete Adjustment
+ */
+export const deleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDelete = <ThrowOnError extends boolean = false>(options: Options<DeleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDeleteData, ThrowOnError>): RequestResult<DeleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDeleteResponses, DeleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDeleteErrors, ThrowOnError> => (options.client ?? client).delete<DeleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDeleteResponses, DeleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDeleteErrors, ThrowOnError>({ url: '/api/v1/companies/{ticker}/adjustments/{adjustment_id}', ...options });
+
+/**
+ * Update Adjustment
+ */
+export const updateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPut = <ThrowOnError extends boolean = false>(options: Options<UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutData, ThrowOnError>): RequestResult<UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutResponses, UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutErrors, ThrowOnError> => (options.client ?? client).put<UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutResponses, UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutErrors, ThrowOnError>({
+    url: '/api/v1/companies/{ticker}/adjustments/{adjustment_id}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
 
 /**
  * List Corporate Actions

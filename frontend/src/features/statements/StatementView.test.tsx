@@ -58,6 +58,7 @@ const cellDetail = {
     },
   ],
   adjustments: [],
+  normalized_value: null,
 };
 
 beforeEach(() => {

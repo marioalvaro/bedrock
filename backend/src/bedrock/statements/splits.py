@@ -71,7 +71,12 @@ def _adjust(value: Decimal, unit: str, factor: Decimal) -> Decimal:
         return value
     if unit == SHARES:
         return value * factor
-    return _plain((value / factor).quantize(_PLACES))
+    return per_share(value / factor)
+
+
+def per_share(value: Decimal) -> Decimal:
+    """A per-share amount to 10 decimal places, trailing zeros dropped."""
+    return _plain(value.quantize(_PLACES))
 
 
 def _plain(value: Decimal) -> Decimal:

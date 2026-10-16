@@ -6,6 +6,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from bedrock.models.base import Base
 
+CATEGORIES = ("one-off", "restatement", "reclass", "other")
+
 
 def utc_now() -> datetime:
     # SQLite keeps no time zone, so the columns hold UTC without one.

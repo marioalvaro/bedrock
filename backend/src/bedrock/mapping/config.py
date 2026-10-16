@@ -44,6 +44,12 @@ class CanonicalItemDef:
     concepts: tuple[str, ...]  # "taxonomy:Concept", in priority order
     derive: str | None
     residual: bool
+    # M2: where a normalization adjustment of this line propagates, as (code, sign)
+    rolls_into: tuple[tuple[str, int], ...] = ()
+
+
+# Memo lines whose charge sits inside another line: adjust that line instead.
+MEMO_CODES = frozenset({"goodwill_impairment"})
 
 
 def split_concept(text: str) -> tuple[str, str]:
@@ -187,6 +193,61 @@ def formula_order(items: Sequence[CanonicalItemDef]) -> list[CanonicalItemDef]:
     return ordered
 
 
+def is_adjustable(item: CanonicalItemDef) -> bool:
+    """A normalization adjustment may target USD flows and instants (residual lines included), not
+    the computed-only lines (`derive` and no concepts, not residual), memo lines, EPS, shares or
+    per-share figures."""
+    computed_only = item.derive is not None and not item.concepts and not item.residual
+    return (
+        item.unit == "USD"
+        and item.kind in ("flow", "instant")
+        and not computed_only
+        and item.code not in MEMO_CODES
+    )
+
+
+def _edges(item: CanonicalItemDef) -> tuple[tuple[str, int], ...]:
+    """The lines a delta of `item` flows into directly: its `rolls_into`, else (balance sheet and
+    cash flow, whose parents are sums of their children) its `parent`."""
+    if item.rolls_into:
+        return item.rolls_into
+    if item.statement != "IS" and item.parent is not None:
+        return ((item.parent, 1),)
+    return ()
+
+
+def propagation_targets(items: Sequence[CanonicalItemDef], code: str) -> dict[str, int]:
+    """Every line a delta of `code` reaches, transitively, with the signs multiplied along the
+    path (paths to one target add up)."""
+    by_code = {i.code: i for i in items}
+    targets: dict[str, int] = {}
+
+    def walk(current: str, sign: int) -> None:
+        for target, edge_sign in _edges(by_code[current]):
+            targets[target] = targets.get(target, 0) + sign * edge_sign
+            walk(target, sign * edge_sign)
+
+    walk(code, 1)
+    return {c: s for c, s in targets.items() if s != 0}
+
+
+def _rolls_into(code: str, raw: Any) -> tuple[tuple[str, int], ...]:
+    if raw is None:
+        return ()
+    if not isinstance(raw, list) or not all(isinstance(t, str) for t in raw):
+        raise MappingConfigError("rolls_into must be a list of codes", code)
+    targets = []
+    for text in raw:
+        sign = -1 if text.startswith("-") else 1
+        target = text[1:] if text.startswith("-") else text
+        if not re.fullmatch(_CODE, target):
+            raise MappingConfigError(f"malformed rolls_into entry {text!r}", code)
+        targets.append((target, sign))
+    if len({t for t, _ in targets}) != len(targets):
+        raise MappingConfigError("duplicate rolls_into target", code)
+    return tuple(targets)
+
+
 def _item(entry: Any) -> CanonicalItemDef:
     if not isinstance(entry, dict) or not isinstance(entry.get("code"), str):
         raise MappingConfigError(f"item without a code: {entry!r}")
@@ -215,6 +276,7 @@ def _item(entry: Any) -> CanonicalItemDef:
         concepts=tuple(_qualify(code, concepts)),
         derive=entry.get("derive"),
         residual=bool(entry.get("residual", False)),
+        rolls_into=_rolls_into(code, entry.get("rolls_into")),
     )
 
 
@@ -276,5 +338,27 @@ def _validate(items: list[CanonicalItemDef]) -> None:
                 raise MappingConfigError("parent cycle", item.code)
             seen.add(node.parent)
             node = by_code[node.parent]
+
+    for item in items:
+        for target, _ in item.rolls_into:
+            if target not in by_code:
+                raise MappingConfigError(f"rolls_into unknown code {target!r}", item.code)
+            if by_code[target].statement != item.statement:
+                raise MappingConfigError(
+                    f"rolls_into target {target!r} is on another statement", item.code
+                )
+            if by_code[target].kind == "average":
+                raise MappingConfigError(f"rolls_into target {target!r} is an average", item.code)
+
+    for item in items:  # a delta must not come back to the line it started from
+        pending = [t for t, _ in _edges(item)]
+        reached: set[str] = set()
+        while pending:
+            code = pending.pop()
+            if code == item.code:
+                raise MappingConfigError("propagation cycle", item.code)
+            if code not in reached:
+                reached.add(code)
+                pending.extend(t for t, _ in _edges(by_code[code]))
 
     formula_order(items)  # raises on a formula cycle

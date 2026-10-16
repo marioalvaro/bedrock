@@ -25,7 +25,7 @@ from bedrock.statements.periods import (
     quarterly_periods,
 )
 
-Provenance = Literal["reported", "derived"]
+Provenance = Literal["reported", "derived", "normalized"]
 
 
 @dataclass(frozen=True)

@@ -5,9 +5,40 @@ export type ClientOptions = {
 };
 
 /**
- * AdjustmentOut
+ * AdjustmentIn
  *
- * Placeholder until M2's adjustments; the list is always empty in M1.
+ * `amount` is in USD units, in the displayed sign convention: an expense is positive, so
+ * removing a one-off charge from SG&A is a negative amount.
+ */
+export type AdjustmentIn = {
+    /**
+     * Amount
+     */
+    amount: number | string;
+    /**
+     * Canonical Code
+     */
+    canonical_code: string;
+    /**
+     * Category
+     */
+    category: 'one-off' | 'restatement' | 'reclass' | 'other';
+    /**
+     * Fiscal Period
+     */
+    fiscal_period: 'FY' | 'Q1' | 'Q2' | 'Q3' | 'Q4';
+    /**
+     * Fiscal Year
+     */
+    fiscal_year: number;
+    /**
+     * Reason
+     */
+    reason: string;
+};
+
+/**
+ * AdjustmentOut
  */
 export type AdjustmentOut = {
     /**
@@ -15,13 +46,41 @@ export type AdjustmentOut = {
      */
     amount: string;
     /**
+     * Canonical Code
+     */
+    canonical_code: string;
+    /**
      * Category
      */
     category: string;
     /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Fiscal Period
+     */
+    fiscal_period: string;
+    /**
+     * Fiscal Year
+     */
+    fiscal_year: number;
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Label
+     */
+    label: string;
+    /**
      * Reason
      */
     reason: string;
+    /**
+     * Updated At
+     */
+    updated_at: string;
 };
 
 /**
@@ -53,13 +112,66 @@ export type BalanceCheckOut = {
 };
 
 /**
+ * CellAdjustmentOut
+ *
+ * An adjustment behind a statement cell. `via` is the adjusted line when the cell got the
+ * change through propagation (SG&A for the operating income it rolls into), else null.
+ */
+export type CellAdjustmentOut = {
+    /**
+     * Amount
+     */
+    amount: string;
+    /**
+     * Canonical Code
+     */
+    canonical_code: string;
+    /**
+     * Category
+     */
+    category: string;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Fiscal Period
+     */
+    fiscal_period: string;
+    /**
+     * Fiscal Year
+     */
+    fiscal_year: number;
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Reason
+     */
+    reason: string;
+    /**
+     * Updated At
+     */
+    updated_at: string;
+    /**
+     * Via
+     */
+    via: string | null;
+};
+
+/**
  * CellDetailOut
  */
 export type CellDetailOut = {
     /**
      * Adjustments
      */
-    adjustments: Array<AdjustmentOut>;
+    adjustments: Array<CellAdjustmentOut>;
     /**
      * Code
      */
@@ -79,9 +191,13 @@ export type CellDetailOut = {
      */
     label: string;
     /**
+     * Normalized Value
+     */
+    normalized_value: string | null;
+    /**
      * Provenance
      */
-    provenance: 'reported' | 'derived' | null;
+    provenance: 'reported' | 'derived' | 'normalized' | null;
     source: SourceOut | null;
     /**
      * Value
@@ -376,6 +492,10 @@ export type RefreshResultOut = {
  */
 export type RowOut = {
     /**
+     * Adjustable
+     */
+    adjustable: boolean;
+    /**
      * Code
      */
     code: string;
@@ -402,7 +522,7 @@ export type RowOut = {
     /**
      * Provenance
      */
-    provenance: Array<'reported' | 'derived' | null>;
+    provenance: Array<'reported' | 'derived' | 'normalized' | null>;
     /**
      * Unit
      */
@@ -716,6 +836,136 @@ export type GetCompanyApiV1CompaniesTickerGetResponses = {
 };
 
 export type GetCompanyApiV1CompaniesTickerGetResponse = GetCompanyApiV1CompaniesTickerGetResponses[keyof GetCompanyApiV1CompaniesTickerGetResponses];
+
+export type ListAdjustmentsApiV1CompaniesTickerAdjustmentsGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/adjustments';
+};
+
+export type ListAdjustmentsApiV1CompaniesTickerAdjustmentsGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListAdjustmentsApiV1CompaniesTickerAdjustmentsGetError = ListAdjustmentsApiV1CompaniesTickerAdjustmentsGetErrors[keyof ListAdjustmentsApiV1CompaniesTickerAdjustmentsGetErrors];
+
+export type ListAdjustmentsApiV1CompaniesTickerAdjustmentsGetResponses = {
+    /**
+     * Response List Adjustments Api V1 Companies  Ticker  Adjustments Get
+     *
+     * Successful Response
+     */
+    200: Array<AdjustmentOut>;
+};
+
+export type ListAdjustmentsApiV1CompaniesTickerAdjustmentsGetResponse = ListAdjustmentsApiV1CompaniesTickerAdjustmentsGetResponses[keyof ListAdjustmentsApiV1CompaniesTickerAdjustmentsGetResponses];
+
+export type CreateAdjustmentApiV1CompaniesTickerAdjustmentsPostData = {
+    body: AdjustmentIn;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/adjustments';
+};
+
+export type CreateAdjustmentApiV1CompaniesTickerAdjustmentsPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateAdjustmentApiV1CompaniesTickerAdjustmentsPostError = CreateAdjustmentApiV1CompaniesTickerAdjustmentsPostErrors[keyof CreateAdjustmentApiV1CompaniesTickerAdjustmentsPostErrors];
+
+export type CreateAdjustmentApiV1CompaniesTickerAdjustmentsPostResponses = {
+    /**
+     * Successful Response
+     */
+    201: AdjustmentOut;
+};
+
+export type CreateAdjustmentApiV1CompaniesTickerAdjustmentsPostResponse = CreateAdjustmentApiV1CompaniesTickerAdjustmentsPostResponses[keyof CreateAdjustmentApiV1CompaniesTickerAdjustmentsPostResponses];
+
+export type DeleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDeleteData = {
+    body?: never;
+    path: {
+        /**
+         * Adjustment Id
+         */
+        adjustment_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/adjustments/{adjustment_id}';
+};
+
+export type DeleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDeleteErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDeleteError = DeleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDeleteErrors[keyof DeleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDeleteErrors];
+
+export type DeleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDeleteResponse = DeleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDeleteResponses[keyof DeleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDeleteResponses];
+
+export type UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutData = {
+    body: AdjustmentIn;
+    path: {
+        /**
+         * Adjustment Id
+         */
+        adjustment_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/adjustments/{adjustment_id}';
+};
+
+export type UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutError = UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutErrors[keyof UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutErrors];
+
+export type UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutResponses = {
+    /**
+     * Successful Response
+     */
+    200: AdjustmentOut;
+};
+
+export type UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutResponse = UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutResponses[keyof UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutResponses];
 
 export type ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetData = {
     body?: never;

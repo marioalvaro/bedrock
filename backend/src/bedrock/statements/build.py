@@ -7,8 +7,9 @@ from typing import Literal
 
 import pandas as pd
 
-from bedrock.mapping.config import CanonicalItemDef
+from bedrock.mapping.config import CanonicalItemDef, is_adjustable
 from bedrock.statements.cells import EMPTY, Cell, CellKey, Provenance, compute_cells
+from bedrock.statements.normalize import AdjustmentLike, apply_adjustments
 from bedrock.statements.periods import (
     Period,
     annual_periods,
@@ -33,6 +34,7 @@ class Row:
     yoy: list[Decimal | None]
     common_size: list[Decimal | None]
     common_size_base: str | None = None  # label of the row `common_size` divides by
+    adjustable: bool = False  # a normalization adjustment may target this line
 
 
 @dataclass(frozen=True)
@@ -63,8 +65,10 @@ def build_statement(
     statement: str,
     freq: Freq,
     common_size_base: CommonSizeBase = "total",
+    adjustments: Sequence[AdjustmentLike] = (),
 ) -> StatementTable:
-    """Evaluation order: discrete periods -> formulas -> TTM -> YoY / common-size.
+    """Evaluation order: discrete periods -> formulas -> adjustments (normalized basis) -> TTM ->
+    YoY / common-size.
 
     Common-size divides every row by one base row of the same period: `total` is revenue (IS, CF)
     or total assets (BS); `parent` is the row's parent, and a row without one uses the total."""
@@ -72,6 +76,8 @@ def build_statement(
         raise ValueError("TTM is only defined for flow statements, not the balance sheet")
     calendar = fiscal_calendar(frame)
     cells = compute_cells(frame, items, calendar)
+    if adjustments:
+        cells, _ = apply_adjustments(cells, items, adjustments, calendar)
     if freq == "annual":
         periods = annual_periods(calendar)
     elif freq == "quarterly":
@@ -102,7 +108,13 @@ def _ttm_cell(item: CanonicalItemDef, quarter_keys: list[str], cells: dict[CellK
     values = [cells.get((item.code, key), EMPTY).value for key in quarter_keys]
     if any(v is None for v in values):
         return EMPTY
-    return Cell(sum((v for v in values if v is not None), Decimal(0)), "derived")
+    normalized = any(
+        cells.get((item.code, key), EMPTY).provenance == "normalized" for key in quarter_keys
+    )
+    return Cell(
+        sum((v for v in values if v is not None), Decimal(0)),
+        "normalized" if normalized else "derived",
+    )
 
 
 def _row(
@@ -133,6 +145,7 @@ def _row(
         yoy=yoy,
         common_size=[_ratio(v, b) for v, b in zip(values, base_values, strict=True)],
         common_size_base=None if base is None else base.label,
+        adjustable=is_adjustable(item),
     )
 
 

@@ -60,6 +60,7 @@ def test_annual_income_statement_has_the_documented_shape(aapl_client: TestClien
         "yoy",
         "common_size",
         "common_size_base",
+        "adjustable",
     }
     for field in ("values", "provenance", "yoy", "common_size"):
         assert len(revenue[field]) == len(periods)  # type: ignore[arg-type]
@@ -154,7 +155,7 @@ def test_a_bad_common_size_base_is_a_422(aapl_client: TestClient) -> None:
     assert response.status_code == 422
 
 
-def test_normalized_equals_reported_until_adjustments_exist(aapl_client: TestClient) -> None:
+def test_normalized_equals_reported_while_there_are_no_adjustments(aapl_client: TestClient) -> None:
     reported = _statement(aapl_client, "IS", "annual")
     normalized = _statement(aapl_client, "IS", "annual", basis="normalized")
 
@@ -189,7 +190,7 @@ def test_a_reported_cell_has_source_filing_and_vintages(aapl_client: TestClient)
         "form",
         "filed_at",
     }
-    assert cell["adjustments"] == []
+    assert cell["adjustments"] == [] and cell["normalized_value"] is None
     assert isinstance(cell["value"], str)
 
 

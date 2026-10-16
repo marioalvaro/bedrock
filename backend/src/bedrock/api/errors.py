@@ -5,9 +5,11 @@ from fastapi.responses import JSONResponse
 
 from bedrock.ingest.protocol import SourceNotConfigured, SourceUnavailable, UnknownTicker
 from bedrock.services.errors import (
+    AdjustmentNotFound,
     CellNotFound,
     CompanyExists,
     CompanyNotFound,
+    InvalidAdjustment,
     user_message,
 )
 
@@ -15,6 +17,8 @@ _STATUS: dict[type[Exception], int] = {
     CompanyNotFound: 404,
     UnknownTicker: 404,
     CellNotFound: 404,
+    AdjustmentNotFound: 404,
+    InvalidAdjustment: 422,
     CompanyExists: 409,
     SourceNotConfigured: 503,
     SourceUnavailable: 502,

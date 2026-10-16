@@ -1,7 +1,7 @@
 """Cell details: where one statement value came from. Pure."""
 
 from collections.abc import Hashable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 from typing import Any
@@ -11,6 +11,7 @@ import pandas as pd
 from bedrock.mapping.config import CanonicalItemDef
 from bedrock.mapping.vintage import BALANCE_DATE_TOLERANCE
 from bedrock.statements.cells import Derivation, Provenance, compute_cells
+from bedrock.statements.normalize import AdjustmentLike, AppliedAdjustment, apply_adjustments
 from bedrock.statements.periods import annual_periods, fiscal_calendar, quarterly_periods
 
 
@@ -48,6 +49,11 @@ class CellExplanation:
     filing: FilingInfo | None  # reported cells
     derivation: Derivation | None  # derived cells
     vintages: list[Vintage]  # every filing's value of the source fact, oldest first
+    # M2: the adjustments that change this cell, and its value once they are applied (None when no
+    # adjustment changes the cell, or when normalization empties it, then `adjustments` is
+    # non-empty); `value` stays the reported figure
+    adjustments: list[AppliedAdjustment] = field(default_factory=list)
+    normalized_value: Decimal | None = None
 
 
 def explain_cell(
@@ -57,6 +63,7 @@ def explain_cell(
     code: str,
     fiscal_year: int,
     fiscal_period: str,
+    adjustments: Sequence[AdjustmentLike] = (),
 ) -> CellExplanation:
     """`frame` is the canonical (latest) frame, `all_vintages` the fact frame before
     `select_vintage`. Raises KeyError for an unknown code or a period that does not exist."""
@@ -74,7 +81,10 @@ def explain_cell(
     )
     if period is None:
         raise KeyError(f"FY{fiscal_year} {fiscal_period}")
-    cell = compute_cells(frame, items, calendar)[(code, period.key)]
+    cells = compute_cells(frame, items, calendar)
+    cell = cells[(code, period.key)]
+    normalized, applied = apply_adjustments(cells, items, adjustments, calendar)
+    behind = applied.get((code, period.key), [])
 
     source = filing = None
     vintages: list[Vintage] = []
@@ -102,6 +112,8 @@ def explain_cell(
         filing=filing,
         derivation=cell.derivation,
         vintages=vintages,
+        adjustments=behind,
+        normalized_value=normalized[(code, period.key)].value if behind else None,
     )
 
 

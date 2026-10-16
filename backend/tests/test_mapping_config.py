@@ -7,10 +7,12 @@ from bedrock.mapping.config import (
     CanonicalItemDef,
     MappingConfigError,
     formula_order,
+    is_adjustable,
     load_canonical_items,
     load_excludes,
     load_overrides,
     parse_formula,
+    propagation_targets,
     split_concept,
     split_group,
 )
@@ -562,3 +564,163 @@ def test_exclude_all_needs_a_default_to_drop(tmp_path: Path) -> None:
 
     with pytest.raises(MappingConfigError):
         load_excludes(tmp_path, "X", items)
+
+
+# --- rolls_into: where a normalization adjustment propagates (M2) --------------------------------
+
+ROLLS = """
+- {code: revenue, statement: IS, label: Revenue, kind: flow, unit: USD, sign: 1,
+   rolls_into: [gross_profit]}
+- {code: cost_of_revenue, statement: IS, label: Cost, kind: flow, unit: USD, sign: 1,
+   rolls_into: ["-gross_profit"]}
+- {code: gross_profit, statement: IS, label: Gross, kind: flow, unit: USD, sign: 1}
+- {code: eps, statement: IS, label: EPS, kind: average, unit: USD/shares, sign: 1}
+- {code: cash, statement: BS, label: Cash, kind: instant, unit: USD, sign: 1, parent: current}
+- {code: current, statement: BS, label: Current, kind: instant, unit: USD, sign: 1, parent: assets}
+- {code: assets, statement: BS, label: Assets, kind: instant, unit: USD, sign: 1}
+"""
+
+
+def test_rolls_into_reads_signed_codes(tmp_path: Path) -> None:
+    items = {i.code: i for i in load_canonical_items(write(tmp_path, ROLLS))}
+
+    assert items["revenue"].rolls_into == (("gross_profit", 1),)
+    assert items["cost_of_revenue"].rolls_into == (("gross_profit", -1),)
+    assert items["gross_profit"].rolls_into == ()
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("rolls_into: [gross_profit]}\n- {code: cost", "rolls_into: [nowhere]}\n- {code: cost"),
+        ("rolls_into: [gross_profit]}\n- {code: cost", "rolls_into: [cash]}\n- {code: cost"),
+        ("rolls_into: [gross_profit]}\n- {code: cost", "rolls_into: [eps]}\n- {code: cost"),
+        ("rolls_into: [gross_profit]}\n- {code: cost", "rolls_into: [revenue]}\n- {code: cost"),
+        (
+            "rolls_into: [gross_profit]}\n- {code: cost",
+            "rolls_into: [gross_profit, gross_profit]}\n- {code: cost",
+        ),
+        ("rolls_into: [gross_profit]}\n- {code: cost", "rolls_into: gross_profit}\n- {code: cost"),
+        (
+            "rolls_into: [gross_profit]}\n- {code: cost",
+            "rolls_into: ['+gross_profit']}\n- {code: cost",
+        ),
+    ],
+    ids=["unknown", "other-statement", "average-target", "self", "duplicate", "not-a-list", "plus"],
+)
+def test_rolls_into_rejects_invalid_targets(tmp_path: Path, old: str, new: str) -> None:
+    error = fail_with(tmp_path, ROLLS.replace(old, new))
+
+    assert error.code == "revenue"
+
+
+def test_rolls_into_rejects_a_cycle(tmp_path: Path) -> None:
+    error = fail_with(
+        tmp_path,
+        ROLLS.replace("sign: 1}\n- {code: eps", "sign: 1, rolls_into: [revenue]}\n- {code: eps"),
+    )
+
+    assert "cycle" in str(error)
+
+
+def test_rolls_into_cycle_through_a_parent_is_rejected(tmp_path: Path) -> None:
+    # assets -> cash, while cash propagates to its parent current -> assets
+    error = fail_with(
+        tmp_path,
+        ROLLS.replace(
+            "kind: instant, unit: USD, sign: 1}",
+            "kind: instant, unit: USD, sign: 1, rolls_into: [cash]}",
+        ),
+    )
+
+    assert "cycle" in str(error)
+
+
+def test_propagation_targets_are_transitive_and_multiply_signs(tmp_path: Path) -> None:
+    items = load_canonical_items(write(tmp_path, ROLLS))
+
+    assert propagation_targets(items, "revenue") == {"gross_profit": 1}
+    assert propagation_targets(items, "cost_of_revenue") == {"gross_profit": -1}
+    assert propagation_targets(items, "gross_profit") == {}
+
+
+def test_balance_sheet_lines_fall_back_to_their_parent_chain(tmp_path: Path) -> None:
+    items = load_canonical_items(write(tmp_path, ROLLS))
+
+    assert propagation_targets(items, "cash") == {"current": 1, "assets": 1}
+    assert propagation_targets(items, "assets") == {}
+
+
+def test_shipped_income_statement_propagates_down_the_waterfall() -> None:
+    items = load_canonical_items(DEFAULT_ITEMS_PATH)
+
+    assert propagation_targets(items, "sga") == {
+        "operating_income": -1,
+        "pretax_income": -1,
+        "net_income": -1,
+        "net_income_common": -1,
+    }
+    assert propagation_targets(items, "revenue") == {
+        "gross_profit": 1,
+        "operating_income": 1,
+        "pretax_income": 1,
+        "net_income": 1,
+        "net_income_common": 1,
+    }
+    assert propagation_targets(items, "cost_of_revenue")["operating_income"] == -1
+    assert propagation_targets(items, "interest_expense") == {
+        "pretax_income": -1,
+        "net_income": -1,
+        "net_income_common": -1,
+    }
+    assert propagation_targets(items, "income_tax") == {"net_income": -1, "net_income_common": -1}
+    assert propagation_targets(items, "net_income_nci") == {"net_income_common": -1}
+    assert propagation_targets(items, "net_income_common") == {}
+
+
+def test_shipped_balance_sheet_and_cash_flow_propagate_through_their_parents() -> None:
+    items = load_canonical_items(DEFAULT_ITEMS_PATH)
+
+    assert propagation_targets(items, "cash") == {
+        "total_current_assets": 1,
+        "total_assets": 1,
+    }
+    assert propagation_targets(items, "long_term_debt") == {
+        "total_noncurrent_liabilities": 1,
+        "total_liabilities": 1,
+        "total_liabilities_and_equity": 1,
+    }
+    assert propagation_targets(items, "retained_earnings") == {
+        "equity_parent": 1,
+        "total_equity": 1,
+        "total_liabilities_and_equity": 1,
+    }
+    assert propagation_targets(items, "temporary_equity") == {"total_liabilities_and_equity": 1}
+    assert propagation_targets(items, "capex") == {"cfi": 1, "net_change_in_cash": 1}
+    assert propagation_targets(items, "d_and_a") == {"cfo": 1, "net_change_in_cash": 1}
+    assert propagation_targets(items, "fx_effect") == {"net_change_in_cash": 1}
+
+
+def test_is_adjustable_follows_the_erd_rules() -> None:
+    by_code = {i.code: i for i in load_canonical_items(DEFAULT_ITEMS_PATH)}
+
+    adjustable = {c for c, i in by_code.items() if is_adjustable(i)}
+
+    for code in (
+        "revenue",
+        "sga",
+        "other_operating_expenses",
+        "cash",
+        "other_current_assets",
+        "capex",
+        "cfo",
+        "total_assets",
+    ):
+        assert code in adjustable, code
+    for code in (  # computed-only, memo, per-share and share lines
+        "total_operating_costs", "total_noncurrent_assets", "total_noncurrent_liabilities",
+        "total_debt", "net_debt", "free_cash_flow", "goodwill_impairment",
+        "eps_basic", "eps_diluted", "dividends_per_share", "shares_basic", "shares_diluted",
+        "shares_outstanding",
+    ):  # fmt: skip
+        assert code not in adjustable, code

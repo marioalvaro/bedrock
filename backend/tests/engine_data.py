@@ -88,6 +88,7 @@ def item(
     derive: str | None = None,
     residual: bool = False,
     concepts: Sequence[str] = (),
+    rolls_into: Sequence[tuple[str, int]] = (),
 ) -> CanonicalItemDef:
     return CanonicalItemDef(
         code=code,
@@ -100,6 +101,7 @@ def item(
         concepts=tuple(concepts),
         derive=derive,
         residual=residual,
+        rolls_into=tuple(rolls_into),
     )
 
 

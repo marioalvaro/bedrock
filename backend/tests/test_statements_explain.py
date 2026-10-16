@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
@@ -8,6 +9,7 @@ from bedrock.mapping.mapper import map_facts
 from bedrock.mapping.vintage import balance_snapshot, select_vintage
 from bedrock.statements.cells import DerivationInput
 from bedrock.statements.explain import CellExplanation, explain_cell
+from bedrock.statements.normalize import AppliedAdjustment
 from tests.engine_data import fact, facts, flow_facts, item, mappings
 
 REVENUE = {2022: (100, 110, 120, 130), 2023: (150, 160, 170, 180)}
@@ -287,3 +289,113 @@ def test_a_balance_dated_off_the_period_end_keeps_the_vintages_of_its_own_date()
     assert cell.value == 500
     assert cell.filing is not None and cell.filing.accession_no == "K-2023"
     assert [(v.value, v.accession_no) for v in cell.vintages] == [(500, "K-2023"), (499, "K-2025")]
+
+
+# --- adjustments (M2): the cell shows the reported value and what normalizing does to it -----
+
+NORMALIZED_ITEMS = [
+    item("revenue", rolls_into=[("gross_profit", 1)]),
+    item("cost_of_revenue", parent="gross_profit", rolls_into=[("gross_profit", -1)]),
+    item("gross_profit", derive="revenue - cost_of_revenue"),
+    item("capex", "CF", sign=-1),
+]
+
+
+@dataclass(frozen=True)
+class Adj:
+    id: int
+    canonical_code: str
+    fiscal_year: int
+    fiscal_period: str
+    amount: Decimal
+
+
+def explain_adjusted(
+    code: str, fiscal_year: int, fiscal_period: str, adjustments: list[Adj]
+) -> CellExplanation:
+    vintages = raw_facts()
+    canonical = map_facts(select_vintage(vintages), MAPS, NORMALIZED_ITEMS)
+    return explain_cell(
+        canonical, vintages, NORMALIZED_ITEMS, code, fiscal_year, fiscal_period, adjustments
+    )
+
+
+def test_a_cell_without_adjustments_has_none_and_no_normalized_value() -> None:
+    cell = explain_adjusted("revenue", 2023, "FY", [])
+
+    assert cell.adjustments == [] and cell.normalized_value is None
+
+
+def test_an_adjusted_cell_keeps_the_reported_value_and_adds_the_normalized_one() -> None:
+    cell = explain_adjusted("revenue", 2023, "FY", [Adj(7, "revenue", 2023, "FY", Decimal(100))])
+
+    assert cell.value == 665 and cell.provenance == "reported"
+    assert cell.normalized_value == 765
+    assert cell.adjustments == [AppliedAdjustment(7, "revenue", Decimal(100), None)]
+    assert [v.value for v in cell.vintages][-1] == 665
+
+
+def test_a_cell_changed_through_propagation_names_the_adjusted_line_in_via() -> None:
+    cell = explain_adjusted(
+        "gross_profit", 2023, "FY", [Adj(7, "revenue", 2023, "FY", Decimal(100))]
+    )
+
+    assert cell.value == 465  # 665 - 200, reported
+    assert cell.normalized_value == 565
+    assert cell.adjustments == [AppliedAdjustment(7, "revenue", Decimal(100), "revenue")]
+
+
+def test_a_cell_the_adjustment_does_not_reach_is_unchanged() -> None:
+    adjustments = [Adj(7, "revenue", 2023, "Q2", Decimal(100))]
+
+    untouched = explain_adjusted("revenue", 2023, "Q1", adjustments)
+    touched = explain_adjusted("revenue", 2023, "Q2", adjustments)
+
+    assert untouched.adjustments == [] and untouched.normalized_value is None
+    assert touched.normalized_value == 260
+
+
+EPS_ITEMS = [
+    item("net_income_common"),
+    item("eps_diluted", kind="average", unit="USD/shares"),
+    item("shares_diluted", kind="average", unit="shares"),
+]
+EPS_MAPS = mappings(
+    ("net_income_common", "NetIncomeLossCommon", 0),
+    ("eps_diluted", "EarningsPerShareDiluted", 0),
+    ("shares_diluted", "WeightedAverageShares", 0),
+)
+
+
+def explain_eps(adjustments: list[Adj], *, with_shares: bool) -> CellExplanation:
+    rows = flow_facts("NetIncomeLossCommon", {2023: (40, 50, 60, 70)})
+    rows += flow_facts("EarningsPerShareDiluted", {2023: (2, 2, 2, 2)}, unit="USD/shares")
+    if with_shares:
+        rows += flow_facts("WeightedAverageShares", {2023: (10, 10, 10, 10)}, unit="shares")
+    vintages = facts(rows)
+    canonical = map_facts(select_vintage(vintages), EPS_MAPS, EPS_ITEMS)
+    return explain_cell(canonical, vintages, EPS_ITEMS, "eps_diluted", 2023, "Q2", adjustments)
+
+
+def test_an_eps_emptied_by_normalization_still_names_the_adjustments_behind_it() -> None:
+    adjustments = [Adj(7, "net_income_common", 2023, "Q2", Decimal(5))]
+
+    cell = explain_eps(adjustments, with_shares=False)  # no share count to divide by
+
+    assert cell.value == 2  # the reported EPS stays
+    assert cell.normalized_value is None
+    assert cell.adjustments == [
+        AppliedAdjustment(7, "net_income_common", Decimal(5), "net_income_common")
+    ]
+
+
+def test_an_eps_with_shares_gets_a_normalized_value_and_its_adjustments() -> None:
+    adjustments = [Adj(7, "net_income_common", 2023, "Q2", Decimal(5))]
+
+    cell = explain_eps(adjustments, with_shares=True)
+
+    assert cell.value == 2
+    assert cell.normalized_value == Decimal("2.5")  # 2 + 5 / 10 shares
+    assert cell.adjustments == [
+        AppliedAdjustment(7, "net_income_common", Decimal(5), "net_income_common")
+    ]

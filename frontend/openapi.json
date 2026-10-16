@@ -1,17 +1,49 @@
 {
   "components": {
     "schemas": {
-      "AdjustmentOut": {
-        "description": "Placeholder until M2's adjustments; the list is always empty in M1.",
+      "AdjustmentIn": {
+        "description": "`amount` is in USD units, in the displayed sign convention: an expense is positive, so\nremoving a one-off charge from SG&A is a negative amount.",
         "properties": {
           "amount": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-            "title": "Amount",
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Amount"
+          },
+          "canonical_code": {
+            "title": "Canonical Code",
             "type": "string"
           },
           "category": {
+            "enum": [
+              "one-off",
+              "restatement",
+              "reclass",
+              "other"
+            ],
             "title": "Category",
             "type": "string"
+          },
+          "fiscal_period": {
+            "enum": [
+              "FY",
+              "Q1",
+              "Q2",
+              "Q3",
+              "Q4"
+            ],
+            "title": "Fiscal Period",
+            "type": "string"
+          },
+          "fiscal_year": {
+            "title": "Fiscal Year",
+            "type": "integer"
           },
           "reason": {
             "title": "Reason",
@@ -19,9 +51,73 @@
           }
         },
         "required": [
+          "canonical_code",
+          "fiscal_year",
+          "fiscal_period",
           "amount",
           "category",
           "reason"
+        ],
+        "title": "AdjustmentIn",
+        "type": "object"
+      },
+      "AdjustmentOut": {
+        "properties": {
+          "amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount",
+            "type": "string"
+          },
+          "canonical_code": {
+            "title": "Canonical Code",
+            "type": "string"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "fiscal_period": {
+            "title": "Fiscal Period",
+            "type": "string"
+          },
+          "fiscal_year": {
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "canonical_code",
+          "label",
+          "fiscal_year",
+          "fiscal_period",
+          "amount",
+          "category",
+          "reason",
+          "created_at",
+          "updated_at"
         ],
         "title": "AdjustmentOut",
         "type": "object"
@@ -70,11 +166,85 @@
         "title": "BalanceCheckOut",
         "type": "object"
       },
+      "CellAdjustmentOut": {
+        "description": "An adjustment behind a statement cell. `via` is the adjusted line when the cell got the\nchange through propagation (SG&A for the operating income it rolls into), else null.",
+        "properties": {
+          "amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount",
+            "type": "string"
+          },
+          "canonical_code": {
+            "title": "Canonical Code",
+            "type": "string"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "fiscal_period": {
+            "title": "Fiscal Period",
+            "type": "string"
+          },
+          "fiscal_year": {
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "via": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Via"
+          }
+        },
+        "required": [
+          "id",
+          "canonical_code",
+          "label",
+          "fiscal_year",
+          "fiscal_period",
+          "amount",
+          "category",
+          "reason",
+          "created_at",
+          "updated_at",
+          "via"
+        ],
+        "title": "CellAdjustmentOut",
+        "type": "object"
+      },
       "CellDetailOut": {
         "properties": {
           "adjustments": {
             "items": {
-              "$ref": "#/components/schemas/AdjustmentOut"
+              "$ref": "#/components/schemas/CellAdjustmentOut"
             },
             "title": "Adjustments",
             "type": "array"
@@ -115,12 +285,25 @@
             "title": "Label",
             "type": "string"
           },
+          "normalized_value": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Normalized Value"
+          },
           "provenance": {
             "anyOf": [
               {
                 "enum": [
                   "reported",
-                  "derived"
+                  "derived",
+                  "normalized"
                 ],
                 "type": "string"
               },
@@ -171,7 +354,8 @@
           "filing",
           "derivation",
           "vintages",
-          "adjustments"
+          "adjustments",
+          "normalized_value"
         ],
         "title": "CellDetailOut",
         "type": "object"
@@ -610,6 +794,10 @@
       "RowOut": {
         "description": "One line item. The arrays are aligned with the statement's `periods`; YoY and common-size\nare fractions (0.05 = 5 %), not percentages. `common_size_base` is the label of the row\n`common_size` divides by (revenue, total assets or the row's parent).",
         "properties": {
+          "adjustable": {
+            "title": "Adjustable",
+            "type": "boolean"
+          },
           "code": {
             "title": "Code",
             "type": "string"
@@ -658,7 +846,8 @@
                 {
                   "enum": [
                     "reported",
-                    "derived"
+                    "derived",
+                    "normalized"
                   ],
                   "type": "string"
                 },
@@ -715,7 +904,8 @@
           "provenance",
           "yoy",
           "common_size",
-          "common_size_base"
+          "common_size_base",
+          "adjustable"
         ],
         "title": "RowOut",
         "type": "object"
@@ -1152,6 +1342,205 @@
         "summary": "Get Company",
         "tags": [
           "companies"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/adjustments": {
+      "get": {
+        "operationId": "list_adjustments_api_v1_companies__ticker__adjustments_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AdjustmentOut"
+                  },
+                  "title": "Response List Adjustments Api V1 Companies  Ticker  Adjustments Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Adjustments",
+        "tags": [
+          "adjustments"
+        ]
+      },
+      "post": {
+        "operationId": "create_adjustment_api_v1_companies__ticker__adjustments_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdjustmentIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdjustmentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Adjustment",
+        "tags": [
+          "adjustments"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/adjustments/{adjustment_id}": {
+      "delete": {
+        "operationId": "delete_adjustment_api_v1_companies__ticker__adjustments__adjustment_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "adjustment_id",
+            "required": true,
+            "schema": {
+              "title": "Adjustment Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Adjustment",
+        "tags": [
+          "adjustments"
+        ]
+      },
+      "put": {
+        "operationId": "update_adjustment_api_v1_companies__ticker__adjustments__adjustment_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "adjustment_id",
+            "required": true,
+            "schema": {
+              "title": "Adjustment Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdjustmentIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdjustmentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Adjustment",
+        "tags": [
+          "adjustments"
         ]
       }
     },
