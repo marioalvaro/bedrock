@@ -17,6 +17,7 @@ export interface GridRow {
   values: Record<string, string | null>;
   provenance: Record<string, Provenance | null>;
   ok?: Record<string, boolean>;
+  adjustable: boolean; // a line item that takes adjustments; sub-rows and the check never do
   parentLabel?: string;
   hasChildren: boolean; // a line item with a breakdown under it
   expanded: boolean; // whether that breakdown is shown
@@ -26,6 +27,9 @@ export interface GridOptions {
   yoy: boolean;
   commonSize: boolean;
   expanded: ReadonlySet<string>; // codes whose breakdown is open
+  // Also show adjustable line items with no value in any period, so they can be adjusted
+  // (non-adjustable empty lines stay hidden). Off by default.
+  showEmpty?: boolean;
 }
 
 function byPeriod<T>(keys: string[], items: T[]): Record<string, T> {
@@ -38,8 +42,25 @@ function hasValue(values: (string | null)[]): boolean {
 
 // The line items a statement shows. The payload is a flat list in display order with a depth,
 // each subtotal above its breakdown, so a line has a breakdown when the next shown line is deeper.
-function shownLines(payload: StatementOut): RowOut[] {
-  return payload.rows.filter((line) => hasValue(line.values));
+// A line with no value in any period shows only when `showEmpty` is on and it is adjustable; each
+// otherwise hidden ancestor of such a line shows too, so the line keeps its real parent.
+function shownLines(payload: StatementOut, showEmpty: boolean): RowOut[] {
+  const lines = payload.rows;
+  const shown = lines.map((line) => hasValue(line.values));
+  if (showEmpty) {
+    lines.forEach((line, index) => {
+      if (shown[index] || !line.adjustable) return;
+      shown[index] = true;
+      let depth = line.depth;
+      for (let up = index - 1; up >= 0 && depth > 0; up -= 1) {
+        const ancestor = lines[up] as RowOut;
+        if (ancestor.depth >= depth) continue;
+        shown[up] = true;
+        depth = ancestor.depth;
+      }
+    });
+  }
+  return lines.filter((_, index) => shown[index]);
 }
 
 function hasBreakdown(lines: RowOut[], index: number): boolean {
@@ -47,9 +68,9 @@ function hasBreakdown(lines: RowOut[], index: number): boolean {
   return next !== undefined && next.depth > (lines[index] as RowOut).depth;
 }
 
-// The codes whose breakdown can be opened, for "expand all".
-export function expandableCodes(payload: StatementOut): string[] {
-  const lines = shownLines(payload);
+// The codes whose breakdown can be opened, for "expand all"; `showEmpty` as in GridOptions.
+export function expandableCodes(payload: StatementOut, showEmpty = false): string[] {
+  const lines = shownLines(payload, showEmpty);
   return lines.filter((_, index) => hasBreakdown(lines, index)).map((line) => line.code);
 }
 
@@ -74,20 +95,21 @@ function subRow(
       keys,
       keys.map(() => null),
     ),
+    adjustable: false,
     hasChildren: false,
     expanded: false,
   };
 }
 
-// Reshapes a statement payload into grid rows. Line items with no value in any period
-// are dropped (the Data gaps report lists them); a line under a collapsed ancestor is hidden;
-// YoY and common-size sub-rows follow their line when toggled on, and only where the API
-// sent a value.
+// Reshapes a statement payload into grid rows. Line items with no value in any period are
+// dropped (the Data gaps report lists them) unless `showEmpty` keeps them (see `shownLines`); a
+// line under a collapsed ancestor is hidden; YoY and common-size sub-rows follow their line when
+// toggled on, and only where the API sent a value.
 export function toGridRows(payload: StatementOut, options: GridOptions): GridRow[] {
   const keys = payload.periods.map((period) => period.key);
   const rows: GridRow[] = [];
 
-  const lines = shownLines(payload);
+  const lines = shownLines(payload, options.showEmpty ?? false);
   const open: { depth: number; expanded: boolean }[] = []; // the ancestors of the current line
 
   lines.forEach((line, index) => {
@@ -107,6 +129,7 @@ export function toGridRows(payload: StatementOut, options: GridOptions): GridRow
       kind: "line",
       values: byPeriod(keys, line.values),
       provenance: byPeriod(keys, line.provenance),
+      adjustable: line.adjustable,
       hasChildren,
       expanded,
     });
@@ -136,6 +159,7 @@ export function toGridRows(payload: StatementOut, options: GridOptions): GridRow
         keys.map(() => null),
       ),
       ok: Object.fromEntries(keys.map((key) => [key, checks.get(key)?.ok ?? false])),
+      adjustable: false,
       hasChildren: false,
       expanded: false,
     });
@@ -144,10 +168,11 @@ export function toGridRows(payload: StatementOut, options: GridOptions): GridRow
   return rows;
 }
 
-// Only a reported or derived value of a line item has details; the cell endpoint covers
-// FY and Q1..Q4, not TTM.
+// A line item's value has details, and an empty cell of an adjustable line opens them too so an
+// adjustment can be added there; the cell endpoint covers FY and Q1..Q4, not TTM.
 export function canExplain(row: GridRow, period: PeriodOut): boolean {
-  return row.kind === "line" && !period.key.startsWith("TTM") && row.values[period.key] !== null;
+  if (row.kind !== "line" || period.key.startsWith("TTM")) return false;
+  return row.values[period.key] !== null || row.adjustable;
 }
 
 // The statement header names the USD scale; rows in another unit say so themselves.

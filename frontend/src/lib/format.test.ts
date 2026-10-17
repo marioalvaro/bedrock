@@ -4,11 +4,15 @@ import {
   formatCompact,
   formatCsvPercent,
   formatCsvValue,
+  formatFiscalPeriod,
   formatMultiple,
   formatPercent,
   formatPrice,
   formatRelative,
+  formatSplitRatio,
   formatValue,
+  toScaledText,
+  parseScaled,
   scaleLabel,
 } from "./format";
 
@@ -145,5 +149,104 @@ describe("key stats", () => {
   it("shows a multiple with one decimal and an x", () => {
     expect(formatMultiple("34.21")).toBe("34.2x");
     expect(formatMultiple(null)).toBe("—");
+  });
+});
+
+describe("parseScaled", () => {
+  it.each([
+    ["25", "M", "25000000"],
+    ["-25", "M", "-25000000"],
+    ["(25)", "M", "-25000000"],
+    ["1,234.5", "M", "1234500000"],
+    ["0.0000005", "M", "0.5"],
+    ["1.5", "B", "1500000000"],
+    ["2", "K", "2000"],
+    [" 25 ", "M", "25000000"],
+    ["0", "M", "0"],
+    ["-0", "M", "0"],
+    ["(0.0)", "B", "0"],
+    ["007", "M", "7000000"],
+    [".5", "K", "500"],
+    ["1.250", "K", "1250"],
+    ["999999999999", "B", "999999999999000000000"],
+    ["0.1", "M", "100000"],
+    ["1,234,567", "M", "1234567000000"],
+  ] as const)("parses %j in %s as %j", (text, scale, expected) => {
+    expect(parseScaled(text, scale)).toBe(expected);
+  });
+
+  it.each([
+    "",
+    "   ",
+    "abc",
+    "1.2.3",
+    "--5",
+    "1e6",
+    "(5",
+    "5)",
+    "-(5)",
+    "1,23",
+    ",5",
+    "1,2345",
+    ".",
+    // A leading plus sign is not accepted (pinned current behaviour).
+    "+5",
+  ])("rejects %j", (text) => {
+    expect(parseScaled(text, "M")).toBeNull();
+  });
+});
+
+describe("formatSplitRatio", () => {
+  it.each([
+    ["4", "4-for-1"],
+    ["7", "7-for-1"],
+    ["0.1", "1-for-10"],
+    ["0.25", "1-for-4"],
+    ["1.5", "3-for-2"],
+    ["1", "1-for-1"],
+    ["4.0000000000", "4-for-1"],
+    ["0.3333333333", "1-for-3"],
+  ])("formats %j as %j", (ratio, expected) => {
+    expect(formatSplitRatio(ratio)).toBe(expected);
+  });
+
+  it.each(["0", "-1", "abc"])("returns %j unchanged when it is not a positive number", (ratio) => {
+    expect(formatSplitRatio(ratio)).toBe(ratio);
+  });
+
+  it("falls back to <number>-for-1 when no pair fits within a denominator of 1000", () => {
+    expect(formatSplitRatio("0.0001234")).toBe("0.0001234-for-1");
+  });
+});
+
+describe("toScaledText", () => {
+  it.each([
+    ["-25000000", "M", "-25"],
+    ["-25500000", "M", "-25.5"],
+    ["1500000000", "B", "1.5"],
+    ["0", "M", "0"],
+    ["123", "M", "0.000123"],
+    ["25000", "K", "25"],
+  ] as const)("shows %s in %s as %s", (units, scale, text) => {
+    expect(toScaledText(units, scale)).toBe(text);
+  });
+
+  it.each(["1E-7", "-2.5e+3", "1e6"])("returns the exponent form %j unchanged", (units) => {
+    expect(toScaledText(units, "M")).toBe(units);
+  });
+
+  it("round-trips with parseScaled", () => {
+    for (const scale of ["K", "M", "B"] as const) {
+      for (const units of ["-25000000", "0", "123", "1500000000", "-7", "12345678901.5"]) {
+        expect(parseScaled(toScaledText(units, scale), scale)).toBe(units);
+      }
+    }
+  });
+});
+
+describe("formatFiscalPeriod", () => {
+  it("names a year and a quarter", () => {
+    expect(formatFiscalPeriod(2024, "FY")).toBe("FY2024");
+    expect(formatFiscalPeriod(2024, "Q1")).toBe("Q1 FY2024");
   });
 });
