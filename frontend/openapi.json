@@ -744,6 +744,129 @@
         "title": "PeriodOut",
         "type": "object"
       },
+      "RatioRowOut": {
+        "description": "One ratio. `values` is aligned with `periods`; `pct` values are fractions (0.05 = 5 %).",
+        "properties": {
+          "category": {
+            "enum": [
+              "Profitability",
+              "DuPont",
+              "Liquidity",
+              "Solvency",
+              "Efficiency",
+              "Per share"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "caveat": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caveat"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "definition": {
+            "title": "Definition",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "unit": {
+            "enum": [
+              "pct",
+              "x",
+              "days",
+              "USD/shares"
+            ],
+            "title": "Unit",
+            "type": "string"
+          },
+          "values": {
+            "items": {
+              "anyOf": [
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Values",
+            "type": "array"
+          }
+        },
+        "required": [
+          "code",
+          "label",
+          "category",
+          "unit",
+          "definition",
+          "caveat",
+          "values"
+        ],
+        "title": "RatioRowOut",
+        "type": "object"
+      },
+      "RatiosOut": {
+        "properties": {
+          "basis": {
+            "enum": [
+              "reported",
+              "normalized"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
+          "freq": {
+            "enum": [
+              "annual",
+              "ttm"
+            ],
+            "title": "Freq",
+            "type": "string"
+          },
+          "periods": {
+            "items": {
+              "$ref": "#/components/schemas/PeriodOut"
+            },
+            "title": "Periods",
+            "type": "array"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/RatioRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticker",
+          "freq",
+          "basis",
+          "periods",
+          "rows"
+        ],
+        "title": "RatiosOut",
+        "type": "object"
+      },
       "RefreshResultOut": {
         "properties": {
           "last_refreshed_at": {
@@ -1629,6 +1752,75 @@
         "summary": "Get Mapping Gaps",
         "tags": [
           "statements"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/ratios": {
+      "get": {
+        "operationId": "get_ratios_api_v1_companies__ticker__ratios_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "freq",
+            "required": true,
+            "schema": {
+              "enum": [
+                "annual",
+                "ttm"
+              ],
+              "title": "Freq",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "basis",
+            "required": false,
+            "schema": {
+              "default": "reported",
+              "enum": [
+                "reported",
+                "normalized"
+              ],
+              "title": "Basis",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RatiosOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Ratios",
+        "tags": [
+          "ratios"
         ]
       }
     },

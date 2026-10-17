@@ -1,5 +1,6 @@
 """Statements, cell details and mapping gaps of a followed company, built from stored facts."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import cache
 from typing import Literal
@@ -40,6 +41,7 @@ __all__ = [
     "company_key_stats",
     "fiscal_periods",
     "mapping_gaps",
+    "statement_tables",
 ]
 
 Basis = Literal["reported", "normalized"]
@@ -95,17 +97,34 @@ def build_statements(
     """One statement as periods x items. `normalized` is reported + the company's adjustments
     (see `statements/normalize.py`). `common_size_base` picks the common-size denominator (see
     `build_statement`). Raises ValueError for a TTM balance sheet."""
-    if statement == "BS" and freq == "ttm":
+    return trim_periods(
+        statement_tables(session, company, [(statement, freq)], basis, common_size_base)[
+            (statement, freq)
+        ]
+    )
+
+
+def statement_tables(
+    session: Session,
+    company: Company,
+    wanted: Sequence[tuple[str, Freq]],
+    basis: Basis = "reported",
+    common_size_base: CommonSizeBase = "total",
+) -> dict[tuple[str, Freq], StatementTable]:
+    """Every requested (statement, freq) table on `basis`, untrimmed, from one load of the
+    company's facts (and one read of its adjustments when `normalized`), keyed in request order.
+    `common_size_base` applies to every table. A company with no facts gives empty tables. Raises
+    ValueError for a TTM balance sheet."""
+    if ("BS", "ttm") in wanted:
         raise ValueError("TTM is only defined for flow statements, not the balance sheet")
     loaded = _load(session, company)
     if loaded.canonical.empty:
-        return StatementTable(statement, freq, [], [], None, [])
+        return {(s, f): StatementTable(s, f, [], [], None, []) for s, f in wanted}
     adjustments = adjustments_repo.list_for(session, company.id) if basis == "normalized" else []
-    return trim_periods(
-        build_statement(
-            loaded.canonical, loaded.items, statement, freq, common_size_base, adjustments
-        )
-    )
+    return {
+        (s, f): build_statement(loaded.canonical, loaded.items, s, f, common_size_base, adjustments)
+        for s, f in wanted
+    }
 
 
 def cell_detail(

@@ -1,7 +1,15 @@
 from fastapi import APIRouter, Depends
 
 from bedrock.api.deps import require_session
-from bedrock.api.v1 import adjustments, auth, companies, corporate_actions, health, statements
+from bedrock.api.v1 import (
+    adjustments,
+    auth,
+    companies,
+    corporate_actions,
+    health,
+    ratios,
+    statements,
+)
 
 # Protected by default: a new router goes in `protected`, and only the routes that
 # must work without a session go in `public` (guarded by tests/test_route_guard.py).
@@ -15,6 +23,7 @@ protected.include_router(companies.router)
 protected.include_router(corporate_actions.router)
 protected.include_router(adjustments.router)
 protected.include_router(statements.router)
+protected.include_router(ratios.router)
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(public)

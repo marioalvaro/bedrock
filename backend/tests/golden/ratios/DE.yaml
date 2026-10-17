@@ -1,0 +1,106 @@
+# Deere & Company (CIK 315189) — ratio goldens computed by hand from 10-K figures on sec.gov (never companyfacts).
+# Definitions: docs/erd/analysis.md "Ratio registry" -> "Definitions (M2)" (annual operands; avg(x) = (this FY end + previous FY end) / 2).
+# Consolidated figures only, including John Deere Financial (docs/erd/data.md "DE: captive finance arm (M2)"); revenue is
+# "Net sales and revenues" (net sales + finance and interest income + other income).
+# Figures read from the filings' R pages (XBRL viewer renderings of the statements); each from the NEWEST 10-K carrying the period (G13):
+#   FY2025 10-K, accession 0001104659-25-122321 (FYE 2025-11-02): FY2025 flows, FY2025 and FY2024 (Oct. 27, 2024) balances;
+#     shares outstanding from Note 21 "Capital stock" ("270.4 million common shares were outstanding at November 2, 2025",
+#     tagged CommonStockSharesOutstanding 270,400,000).
+#   FY2022 10-K, accession 0001558370-22-018703 (FYE 2022-10-30): FY2020 flows, EPS and dividends per share.
+#   FY2021 10-K, accession 0001558370-21-016864 (FYE 2021-10-31): FY2020 (Nov. 1, 2020) balances.
+#   FY2020 10-K, accession 0001558370-20-014436 (FYE 2020-11-01): FY2019 (Nov. 3, 2019) balances.
+#   FY2019 10-K, accession 0001558370-19-011614 (FYE 2019-11-03): checked for the FY2017 restated cost of sales (not used, see FY2017 below).
+#   FY2018 10-K, accession 0001047469-18-007694 (FYE 2018-10-28): FY2017 (Oct. 29, 2017) inventories.
+#   FY2017 10-K, accession 0001047469-17-007719 (FYE 2017-10-29): FY2016 (Oct. 30, 2016) inventories and FY2017 cost of sales (see FY2017 below).
+# Balance checks (total liabilities + redeemable NCI + total stockholders' equity = total assets):
+#   FY2019 61,580 + 14 + 11,417 = 73,011; FY2020 62,147 + 0 + 12,944 = 75,091;
+#   FY2024 84,395 + 82 + 22,843 = 107,320; FY2025 79,989 + 51 + 25,956 = 105,996.
+# Units: USD millions in the comments; ratios are fractions (pct), multiples (x), days, or USD per share.
+# Canonical lines for Deere: short_term_debt = "Short-term borrowings" + "Short-term securitization borrowings" (DE override);
+# long_term_debt = "Long-term borrowings"; receivables = "Trade accounts and notes receivable - net" (not financing receivables);
+# equity_parent = "Total Deere & Company stockholders' equity"; total_equity = "Total stockholders' equity" (incl. NCI,
+# excluding the redeemable NCI); dividends_per_share = dividends declared per share (CommonStockDividendsPerShareDeclared).
+# No stock split after 2007 (tests/fixtures/yfinance/DE_splits.csv), so per-share figures need no adjustment.
+# `null` asserts only structural empties (docs/erd/data.md): the balance sheet is unclassified (no current totals ->
+# current_ratio, quick_ratio) and the income statement has no operating income line (the engine excludes
+# OperatingIncomeLoss -> operating_margin, interest_coverage, roic). Empties from mapping gaps the 10-K could fill
+# (`de:` extension tags, the combined payables line) are listed as "not asserted" below instead.
+# not asserted: debt_to_equity FY2025: total_debt is empty in the engine at the FY2025 end (long-term borrowings are a `de:` tag from FY2022)
+# not asserted: bvps FY2020: shares_outstanding is empty in the engine in FY2019 and FY2020 (tagged from FY2023 only)
+# not asserted: gross_margin FY2020: cost_of_revenue is empty in the engine (cost of sales is a `de:` extension tag from FY2018), so gross_profit is empty; the 10-K has cost of sales
+# not asserted: dio FY2020: cost_of_revenue is empty in the engine (cost of sales is a `de:` extension tag from FY2018)
+# not asserted: dpo FY2020: cost_of_revenue is empty (`de:` tag from FY2018) and accounts_payable is empty (only the combined "Accounts payable and accrued expenses" line)
+# not asserted: gross_margin FY2025: cost_of_revenue is empty in the engine (cost of sales is a `de:` extension tag from FY2018), so gross_profit is empty; the 10-K has cost of sales
+# not asserted: dio FY2025: cost_of_revenue is empty in the engine (cost of sales is a `de:` extension tag from FY2018)
+# not asserted: dpo FY2025: cost_of_revenue is empty (`de:` tag from FY2018) and accounts_payable is empty (only the combined "Accounts payable and accrued expenses" line)
+annual:
+  FY2017:
+    # avg(inventories 3,904.1 [Oct. 29, 2017, FY2018 10-K], 3,340.5 [Oct. 30, 2016, FY2017 10-K]) = 3,622.3
+    # / cost of sales 19,933.5 (FY2017 10-K, accession 0001047469-17-007719) x 365.
+    # The FY2018/FY2019 10-Ks restate it to 19,866 (ASU 2017-07) only on a ProductMember-dimensioned CostOfRevenue fact
+    # that companyfacts omits, so this exception to G13 uses the newest undimensioned figure.
+    dio: 66.327514
+  FY2020:
+    # no operating income line (the engine excludes the segment note's OperatingIncomeLoss)
+    operating_margin: null
+    # net income attributable to Deere 2,751 / revenue 35,540 (FY2022 10-K)
+    net_margin: 0.077406
+    # (cfo 7,483 + capex -820 = 6,663) / revenue 35,540 (FY2022 10-K)
+    fcf_margin: 0.187479
+    # net income attributable to Deere 2,751 (FY2022 10-K) / avg(Deere equity 12,937 [FY2021 10-K], 11,413 [FY2020 10-K]) = 12,175
+    roe: 0.225955
+    # net income 2,753 (FY2022 10-K) / avg(total assets 75,091 [FY2021 10-K], 73,011 [FY2020 10-K]) = 74,051
+    roa: 0.037177
+    # no operating income line, so nopat (and roic) is empty
+    roic: null
+    # total debt (short-term borrowings 8,582 + short-term securitization borrowings 4,682 + long-term borrowings 32,734 = 45,998)
+    # / total stockholders' equity 12,944 (FY2021 10-K)
+    debt_to_equity: 3.553616
+    # unclassified balance sheet: no total current assets / current liabilities
+    current_ratio: null
+    # unclassified balance sheet: no total current liabilities
+    quick_ratio: null
+    # no operating income line
+    interest_coverage: null
+    # avg(trade accounts and notes receivable 4,171 [FY2021 10-K], 5,230 [FY2020 10-K]) = 4,700.5 / revenue 35,540 (FY2022 10-K) x 365
+    dso: 48.27469
+    # 10-K diluted EPS 8.69 (FY2022 10-K); no split since
+    eps_diluted: 8.69
+    # dividends declared per share 3.04 (FY2022 10-K income statement; paid was also 3.04)
+    dps: 3.04
+    # revenue 35,540 (FY2022 10-K) / avg(total assets 75,091, 73,011) = 74,051
+    asset_turnover: 0.47994
+    # avg(total assets 75,091, 73,011) = 74,051 / avg(Deere equity 12,937, 11,413) = 12,175
+    dupont_equity_multiplier: 6.082218
+  FY2025:
+    # no operating income line (the engine excludes the segment note's OperatingIncomeLoss)
+    operating_margin: null
+    # net income attributable to Deere 5,027 / revenue 45,684 (FY2025 10-K)
+    net_margin: 0.110039
+    # (cfo 7,459 + capex -1,360 = 6,099) / revenue 45,684 (FY2025 10-K)
+    fcf_margin: 0.133504
+    # net income attributable to Deere 5,027 / avg(Deere equity 25,950, 22,836) = 24,393 (FY2025 10-K)
+    roe: 0.206084
+    # net income 4,998 / avg(total assets 105,996, 107,320) = 106,658 (FY2025 10-K)
+    roa: 0.04686
+    # no operating income line, so nopat (and roic) is empty
+    roic: null
+    # unclassified balance sheet: no total current assets / current liabilities
+    current_ratio: null
+    # unclassified balance sheet: no total current liabilities
+    quick_ratio: null
+    # no operating income line
+    interest_coverage: null
+    # avg(trade accounts and notes receivable 5,317, 5,326) = 5,321.5 / revenue 45,684 x 365 (FY2025 10-K)
+    dso: 42.517019
+    # 10-K diluted EPS 18.50 (FY2025 10-K); no split since
+    eps_diluted: 18.5
+    # Deere equity 25,950 / shares outstanding 270.4 M (FY2025 10-K Note 21, CommonStockSharesOutstanding 270,400,000;
+    # issued 536,431,204 - treasury 266,079,164 = 270,352,040 would give 95.9860)
+    bvps: 95.9689
+    # dividends declared per share 6.48 (FY2025 10-K income statement; paid was 6.33)
+    dps: 6.48
+    # revenue 45,684 / avg(total assets 105,996, 107,320) = 106,658 (FY2025 10-K)
+    asset_turnover: 0.428322
+    # avg(total assets 105,996, 107,320) = 106,658 / avg(Deere equity 25,950, 22,836) = 24,393 (FY2025 10-K)
+    dupont_equity_multiplier: 4.372484

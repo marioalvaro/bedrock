@@ -1,0 +1,24 @@
+# Per-company caveats on ratio rows (docs/erd/analysis.md "Definitions (M2)").
+# {TICKER: [{codes: [ratio codes], text: shown on those rows}]}
+DE:
+  - codes:
+      - debt_to_ebitda
+      - net_debt_to_ebitda
+      - interest_coverage
+      - debt_to_equity
+      - roic
+      - roa
+      - asset_turnover
+      - dupont_asset_turnover
+      - dupont_equity_multiplier
+    text: >-
+      Consolidated figures include John Deere Financial. Its debt, interest expense and
+      financing receivables fund customer purchases, so leverage, coverage and asset-based
+      ratios are not comparable with an industrial company.
+  - codes:
+      - gross_margin
+      - dso
+    text: >-
+      Deere's revenue is net sales and revenues, which include John Deere Financial's finance
+      and interest income, so gross margin and days sales outstanding are not comparable with
+      an equipment maker's.

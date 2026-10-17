@@ -450,6 +450,68 @@ export type PeriodOut = {
 };
 
 /**
+ * RatioRowOut
+ *
+ * One ratio. `values` is aligned with `periods`; `pct` values are fractions (0.05 = 5 %).
+ */
+export type RatioRowOut = {
+    /**
+     * Category
+     */
+    category: 'Profitability' | 'DuPont' | 'Liquidity' | 'Solvency' | 'Efficiency' | 'Per share';
+    /**
+     * Caveat
+     */
+    caveat: string | null;
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Definition
+     */
+    definition: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Unit
+     */
+    unit: 'pct' | 'x' | 'days' | 'USD/shares';
+    /**
+     * Values
+     */
+    values: Array<string | null>;
+};
+
+/**
+ * RatiosOut
+ */
+export type RatiosOut = {
+    /**
+     * Basis
+     */
+    basis: 'reported' | 'normalized';
+    /**
+     * Freq
+     */
+    freq: 'annual' | 'ttm';
+    /**
+     * Periods
+     */
+    periods: Array<PeriodOut>;
+    /**
+     * Rows
+     */
+    rows: Array<RatioRowOut>;
+    /**
+     * Ticker
+     */
+    ticker: string;
+};
+
+/**
  * RefreshResultOut
  */
 export type RefreshResultOut = {
@@ -1028,6 +1090,45 @@ export type GetMappingGapsApiV1CompaniesTickerMappingGapsGetResponses = {
 };
 
 export type GetMappingGapsApiV1CompaniesTickerMappingGapsGetResponse = GetMappingGapsApiV1CompaniesTickerMappingGapsGetResponses[keyof GetMappingGapsApiV1CompaniesTickerMappingGapsGetResponses];
+
+export type GetRatiosApiV1CompaniesTickerRatiosGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query: {
+        /**
+         * Freq
+         */
+        freq: 'annual' | 'ttm';
+        /**
+         * Basis
+         */
+        basis?: 'reported' | 'normalized';
+    };
+    url: '/api/v1/companies/{ticker}/ratios';
+};
+
+export type GetRatiosApiV1CompaniesTickerRatiosGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetRatiosApiV1CompaniesTickerRatiosGetError = GetRatiosApiV1CompaniesTickerRatiosGetErrors[keyof GetRatiosApiV1CompaniesTickerRatiosGetErrors];
+
+export type GetRatiosApiV1CompaniesTickerRatiosGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: RatiosOut;
+};
+
+export type GetRatiosApiV1CompaniesTickerRatiosGetResponse = GetRatiosApiV1CompaniesTickerRatiosGetResponses[keyof GetRatiosApiV1CompaniesTickerRatiosGetResponses];
 
 export type RefreshApiV1CompaniesTickerRefreshPostData = {
     body?: never;

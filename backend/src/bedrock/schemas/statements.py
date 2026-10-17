@@ -10,6 +10,7 @@ from bedrock.services.adjustments import CellAdjustment
 from bedrock.services.statements import MappingGaps
 from bedrock.statements.build import StatementTable
 from bedrock.statements.explain import CellExplanation
+from bedrock.statements.periods import Period
 
 Provenance = Literal["reported", "derived", "normalized"]
 
@@ -22,6 +23,19 @@ class PeriodOut(BaseModel):
     period_start: date
     period_end: date
     is_forecast: bool
+
+    @classmethod
+    def from_period(cls, period: Period) -> "PeriodOut":
+        """An actual (not forecast) period."""
+        return cls(
+            key=period.key,
+            label=period.label,
+            fiscal_year=period.fiscal_year,
+            fiscal_period=period.fiscal_period,
+            period_start=period.start,
+            period_end=period.end,
+            is_forecast=False,
+        )
 
 
 class RowOut(BaseModel):
@@ -75,18 +89,7 @@ class StatementOut(BaseModel):
             freq=freq,
             basis=basis,
             currency=currency,
-            periods=[
-                PeriodOut(
-                    key=p.key,
-                    label=p.label,
-                    fiscal_year=p.fiscal_year,
-                    fiscal_period=p.fiscal_period,
-                    period_start=p.start,
-                    period_end=p.end,
-                    is_forecast=False,
-                )
-                for p in table.periods
-            ],
+            periods=[PeriodOut.from_period(p) for p in table.periods],
             rows=[
                 RowOut(
                     code=r.code,

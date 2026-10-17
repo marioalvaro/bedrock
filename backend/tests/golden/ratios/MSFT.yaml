@@ -1,0 +1,109 @@
+# Microsoft Corporation (CIK 789019) — ratio goldens computed by hand from 10-K figures on sec.gov (never companyfacts).
+# Definitions: docs/erd/analysis.md "Ratio registry" (annual operands: a flow is the FY value, an instant the
+# FY-end balance, avg(x) = (x at this FY end + x at the previous FY end) / 2). Each figure is from the NEWEST
+# 10-K that carries the period (Gotcha G13). Read from the filings' R pages (XBRL viewer statement renderings).
+# Sources:
+#   [10-K FY2020] filed 2020-07-30, accession 0001564590-20-034944 (FYE 2020-06-30): FY2019 balance sheet (comparative column)
+#   [10-K FY2021] filed 2021-07-29, accession 0001564590-21-039151: FY2020 balance sheet and FY2020 shares outstanding (comparative column)
+#   [10-K FY2022] filed 2022-07-28, accession 0001564590-22-026876: FY2020 income statement, cash flow, interest expense
+#                 (Components of other income (expense) note) and dividends declared per share (oldest column of the 3-year statements)
+#   [10-K FY2026] filed 2026-07-29, accession 0001193125-26-323660 (FYE 2026-06-30): FY2026 statements and the FY2025 balance sheet (comparative)
+# Every balance sheet used was checked: total liabilities + total equity = total assets (FY2019 184,226 + 102,330 = 286,556;
+# FY2020 183,007 + 118,304 = 301,311; FY2025 275,524 + 343,479 = 619,003; FY2026 315,989 + 442,387 = 758,376), and the income
+# statements foot (gross margin - R&D - S&M - G&A = operating income; + other income = pretax; - tax = net income).
+# Units: USD millions in the comments; ratios are fractions (pct), multiples (x), days, or USD per share.
+# Canonical lines as Microsoft maps them (canonical_items.yaml + overrides/MSFT.yaml):
+#   short_term_debt = current portion of long-term debt in all four year ends used here (no short-term debt line at
+#   FY2019, FY2020, FY2026; the FY2025 10-K shows short-term debt (CommercialPaper) of 0 at 2025-06-30 and the FY2026 10-K
+#   drops the line); long_term_debt = non-current long-term debt; short_term_investments = short-term investments;
+#   receivables = accounts receivable, net; total_equity = equity_parent (no noncontrolling interests);
+#   shares_outstanding = us-gaap CommonStockSharesOutstanding (balance-sheet parenthetical, reported in whole millions);
+#   dividends_per_share = CommonStockDividendsPerShareDeclared (declared, from the stockholders' equity statement);
+#   interest_expense = InterestExpense (FY2020) / InterestExpenseNonoperating (FY2026), from the other income note.
+# Per-share figures: Microsoft's last split was 2-for-1 on 2003-02-18 (tests/fixtures/yfinance/MSFT_splits.csv), so no
+# adjustment applies to FY2020 or FY2026.
+# not asserted: none of the listed ratios (MSFT d_and_a is empty in FY2019, FY2020, FY2025, FY2026, so no EBITDA-based
+# ratio would be assertable; none is in this file).
+annual:
+  FY2020:
+    # gross margin 96,937 / revenue 143,015 [10-K FY2022]
+    gross_margin: 0.677810
+    # operating income 52,959 / revenue 143,015 [10-K FY2022]
+    operating_margin: 0.370304
+    # net income 44,281 / revenue 143,015 [10-K FY2022]
+    net_margin: 0.309625
+    # (cash from operations 60,675 + capex -15,441) = 45,234 / revenue 143,015 [10-K FY2022]
+    fcf_margin: 0.316288
+    # net income 44,281 [10-K FY2022] / avg(equity 118,304 [10-K FY2021], 102,330 [10-K FY2020]) = 110,317
+    roe: 0.401398
+    # net income 44,281 [10-K FY2022] / avg(total assets 301,311 [10-K FY2021], 286,556 [10-K FY2020]) = 293,933.5
+    roa: 0.150650
+    # tax rate = provision 8,755 / pretax 53,036 = 0.165077; nopat = operating income 52,959 x (1 - 0.165077) = 44,216.711 [10-K FY2022]
+    # invested capital FY2020 = debt (current portion 3,749 + long-term debt 59,578 = 63,327) + equity 118,304
+    #   - cash 13,576 - short-term investments 122,951 = 45,104 [10-K FY2021]
+    # invested capital FY2019 = debt (5,516 + 66,662 = 72,178) + equity 102,330 - cash 11,356 - 122,463 = 40,689 [10-K FY2020]
+    # 44,216.711 / avg(45,104, 40,689) = 42,896.5
+    roic: 1.030777
+    # total debt 63,327 (3,749 + 59,578) / total equity 118,304 [10-K FY2021]
+    debt_to_equity: 0.535290
+    # total current assets 181,915 / total current liabilities 72,310 [10-K FY2021]
+    current_ratio: 2.515765
+    # (cash 13,576 + short-term investments 122,951 + accounts receivable 32,011) = 168,538 / current liabilities 72,310 [10-K FY2021]
+    quick_ratio: 2.330770
+    # operating income 52,959 / interest expense 2,591 [10-K FY2022, components of other income note]
+    interest_coverage: 20.439599
+    # revenue 143,015 [10-K FY2022] / avg(total assets 301,311, 286,556) = 293,933.5
+    asset_turnover: 0.486556
+    # avg(total assets) 293,933.5 / avg(equity 118,304, 102,330) = 110,317
+    dupont_equity_multiplier: 2.664444
+    # avg(accounts receivable 32,011 [10-K FY2021], 29,524 [10-K FY2020]) = 30,767.5 / revenue 143,015 x 365
+    dso: 78.524193
+    # avg(accounts payable 12,530 [10-K FY2021], 9,382 [10-K FY2020]) = 10,956 / cost of revenue 46,078 [10-K FY2022] x 365
+    dpo: 86.786319
+    # diluted EPS 5.76 [10-K FY2022; same in 10-K FY2020]
+    eps_diluted: 5.76
+    # equity 118,304 / shares outstanding 7,571 million at 2020-06-30 [10-K FY2021 balance-sheet parenthetical]
+    bvps: 15.6259
+    # cash dividends declared per common share, FY2020: 2.04 [10-K FY2022 stockholders' equity statement]
+    dps: 2.04
+  FY2026:
+    # gross margin 225,465 / revenue 331,839 [10-K FY2026]
+    gross_margin: 0.679441
+    # operating income 155,237 / revenue 331,839 [10-K FY2026]
+    operating_margin: 0.467808
+    # net income 133,749 / revenue 331,839 [10-K FY2026]
+    net_margin: 0.403054
+    # (cash from operations 182,935 + capex -115,948) = 66,987 / revenue 331,839 [10-K FY2026]
+    fcf_margin: 0.201866
+    # net income 133,749 / avg(equity 442,387, 343,479) = 392,933 [10-K FY2026]
+    roe: 0.340386
+    # net income 133,749 / avg(total assets 758,376, 619,003) = 688,689.5 [10-K FY2026]
+    roa: 0.194208
+    # tax rate = provision 32,185 / pretax 165,934 = 0.193963; nopat = operating income 155,237 x (1 - 0.193963) = 125,126.819
+    # invested capital FY2026 = debt (current portion 9,227 + long-term debt 31,067 = 40,294) + equity 442,387
+    #   - cash 20,935 - short-term investments 55,908 = 405,838
+    # invested capital FY2025 = debt (2,999 + 40,152 = 43,151) + equity 343,479 - cash 30,242 - 64,323 = 292,065
+    # 125,126.819 / avg(405,838, 292,065) = 348,951.5 [all 10-K FY2026]
+    roic: 0.358579
+    # total debt 40,294 (9,227 + 31,067) / total equity 442,387 [10-K FY2026]
+    debt_to_equity: 0.091083
+    # total current assets 207,710 / total current liabilities 168,825 [10-K FY2026]
+    current_ratio: 1.230327
+    # (cash 20,935 + short-term investments 55,908 + accounts receivable 80,876) = 157,719 / current liabilities 168,825 [10-K FY2026]
+    quick_ratio: 0.934216
+    # operating income 155,237 / interest expense 3,051 [10-K FY2026, components of other income note]
+    interest_coverage: 50.880695
+    # revenue 331,839 / avg(total assets 758,376, 619,003) = 688,689.5 [10-K FY2026]
+    asset_turnover: 0.481841
+    # avg(total assets) 688,689.5 / avg(equity 442,387, 343,479) = 392,933 [10-K FY2026]
+    dupont_equity_multiplier: 1.752689
+    # avg(accounts receivable 80,876, 69,905) = 75,390.5 / revenue 331,839 x 365 [10-K FY2026]
+    dso: 82.924347
+    # avg(accounts payable 42,416, 27,724) = 35,070 / cost of revenue 106,374 x 365 [10-K FY2026]
+    dpo: 120.335326
+    # diluted EPS 17.95 [10-K FY2026]
+    eps_diluted: 17.95
+    # equity 442,387 / shares outstanding 7,427 million at 2026-06-30 [10-K FY2026 balance-sheet parenthetical]
+    bvps: 59.5647
+    # cash dividends declared per common share, FY2026: 3.64 [10-K FY2026 stockholders' equity statement]
+    dps: 3.64

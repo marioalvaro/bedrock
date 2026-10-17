@@ -1,0 +1,100 @@
+# Costco Wholesale Corp. (CIK 909832) — ratio goldens computed by hand from 10-K figures on sec.gov (never companyfacts).
+# Definitions: docs/erd/analysis.md "Ratio registry" -> "Definitions (M2)" (annual operands; avg(x) = (this FY end + previous FY end) / 2).
+# Figures read from the filings' R pages (XBRL viewer renderings of the statements); each from the NEWEST 10-K carrying the period (G13):
+#   FY2026 10-K, accession 0000909832-26-000093 (FYE 2026-08-30): FY2026 flows, FY2026 and FY2025 balances, FY2026 dividends per share (equity note).
+#   FY2022 10-K, accession 0000909832-22-000021 (FYE 2022-08-28): FY2020 flows and EPS (newest 10-K with the FY2020 income and cash flow statements).
+#   FY2021 10-K, accession 0000909832-21-000014 (FYE 2021-08-29): FY2020 (Aug. 30, 2020) balances and shares outstanding.
+#   FY2020 10-K, accession 0000909832-20-000017 (FYE 2020-08-30): FY2019 (Sep. 1, 2019) balances.
+# Balance checks: FY2019 29,816 + 15,584 = 45,400; FY2020 36,851 + 18,705 = 55,556; FY2025 47,935 + 29,164 = 77,099; FY2026 53,242 + 35,803 = 89,045.
+# Units: USD millions in the comments; ratios are fractions (pct), multiples (x), days, or USD per share.
+# Canonical lines for Costco: short_term_debt = "Current portion of long-term debt" (COST override, LongTermDebtCurrent);
+# long_term_debt = "Long-term debt, excluding current portion"; total_debt = their sum; receivables = "Receivables, net";
+# equity_parent = Costco stockholders' equity; total_equity includes noncontrolling interests (none after FY2023);
+# shares_outstanding = balance-sheet parenthetical "Common stock, shares outstanding" (CommonStockSharesOutstanding);
+# dividends_per_share = dividends declared per share (CommonStockDividendsPerShareDeclared, ranked first).
+# No stock split after 2000 (tests/fixtures/yfinance/COST_splits.csv), so per-share figures need no adjustment.
+# not asserted: dps FY2020: dividends_per_share is empty in the engine for FY2020 (no per-share tag in the FY2020-22 10-Ks)
+annual:
+  FY2020:
+    # gross profit 21,822 = revenue 166,761 - merchandise costs 144,939 (FY2022 10-K) / revenue 166,761
+    gross_margin: 0.130858
+    # operating income 5,435 / revenue 166,761 (FY2022 10-K)
+    operating_margin: 0.032592
+    # net income attributable to Costco 4,002 / revenue 166,761 (FY2022 10-K)
+    net_margin: 0.023998
+    # (cfo 8,861 + capex -2,810 = 6,051) / revenue 166,761 (FY2022 10-K)
+    fcf_margin: 0.036285
+    # net income attributable to Costco 4,002 (FY2022 10-K) / avg(Costco equity 18,284 [FY2021 10-K], 15,243 [FY2020 10-K]) = 16,763.5
+    roe: 0.238733
+    # net income incl. NCI 4,059 (FY2022 10-K) / avg(total assets 55,556 [FY2021 10-K], 45,400 [FY2020 10-K]) = 50,478
+    roa: 0.080411
+    # tax rate = tax 1,308 / pretax 5,367 = 0.243712; nopat = operating income 5,435 x (1 - 0.243712) = 4,110.43 (FY2022 10-K)
+    # invested capital FY2020 = debt (95 + 7,514) + total equity 18,705 - cash 12,277 - short-term investments 1,028 = 13,009 (FY2021 10-K)
+    # invested capital FY2019 = debt (1,699 + 5,124) + total equity 15,584 - cash 8,384 - short-term investments 1,060 = 12,963 (FY2020 10-K)
+    # roic = 4,110.43 / avg(13,009, 12,963) = 12,986
+    roic: 0.316528
+    # total debt (95 + 7,514 = 7,609) / total equity incl. NCI 18,705 (FY2021 10-K)
+    debt_to_equity: 0.40679
+    # total current assets 28,120 / total current liabilities 24,844 (FY2021 10-K)
+    current_ratio: 1.131863
+    # (cash 12,277 + short-term investments 1,028 + receivables 1,550 = 14,855) / current liabilities 24,844 (FY2021 10-K)
+    quick_ratio: 0.597931
+    # operating income 5,435 / interest expense 160 (FY2022 10-K)
+    interest_coverage: 33.96875
+    # avg(receivables 1,550 [FY2021 10-K], 1,535 [FY2020 10-K]) = 1,542.5 / revenue 166,761 x 365
+    dso: 3.376164
+    # avg(merchandise inventories 12,242 [FY2021 10-K], 11,395 [FY2020 10-K]) = 11,818.5 / merchandise costs 144,939 (FY2022 10-K) x 365
+    dio: 29.762538
+    # avg(accounts payable 14,172 [FY2021 10-K], 11,679 [FY2020 10-K]) = 12,925.5 / merchandise costs 144,939 (FY2022 10-K) x 365
+    dpo: 32.550297
+    # 10-K diluted EPS attributable to Costco 9.02 (FY2022 10-K); no split since
+    eps_diluted: 9.02
+    # Costco equity 18,284 / shares outstanding 441.255 M at Aug. 30, 2020 (FY2021 10-K parenthetical: 441,255,000)
+    bvps: 41.4364
+    # revenue 166,761 (FY2022 10-K) / avg(total assets 55,556, 45,400) = 50,478
+    asset_turnover: 3.303637
+    # avg(total assets 55,556, 45,400) = 50,478 / avg(Costco equity 18,284, 15,243) = 16,763.5
+    dupont_equity_multiplier: 3.011185
+  FY2026:
+    # gross profit 38,875 = revenue 303,154 - merchandise costs 264,279 (FY2026 10-K) / revenue 303,154
+    gross_margin: 0.128235
+    # operating income 11,685 / revenue 303,154 (FY2026 10-K)
+    operating_margin: 0.038545
+    # net income 9,226 (no noncontrolling interests since FY2023) / revenue 303,154 (FY2026 10-K)
+    net_margin: 0.030433
+    # (cfo 15,817 + capex -6,435 = 9,382) / revenue 303,154 (FY2026 10-K)
+    fcf_margin: 0.030948
+    # net income 9,226 / avg(total equity 35,803, 29,164) = 32,483.5 (FY2026 10-K; equity_parent = total equity, no NCI)
+    roe: 0.284021
+    # net income 9,226 / avg(total assets 89,045, 77,099) = 83,072 (FY2026 10-K)
+    roa: 0.11106
+    # tax rate = tax 3,025 / pretax 12,251 = 0.246919; nopat = operating income 11,685 x (1 - 0.246919) = 8,799.76 (FY2026 10-K)
+    # invested capital FY2026 = debt (2,248 + 3,914) + equity 35,803 - cash 20,207 - short-term investments 1,094 = 20,664
+    # invested capital FY2025 = debt (75 + 5,713) + equity 29,164 - cash 14,161 - short-term investments 1,123 = 19,668 (both FY2026 10-K)
+    # roic = 8,799.76 / avg(20,664, 19,668) = 20,166
+    roic: 0.436366
+    # total debt (2,248 + 3,914 = 6,162) / total equity 35,803 (FY2026 10-K)
+    debt_to_equity: 0.172108
+    # total current assets 46,582 / total current liabilities 43,952 (FY2026 10-K)
+    current_ratio: 1.059838
+    # (cash 20,207 + short-term investments 1,094 + receivables 3,959 = 25,260) / current liabilities 43,952 (FY2026 10-K)
+    quick_ratio: 0.574718
+    # operating income 11,685 / interest expense 145 (FY2026 10-K)
+    interest_coverage: 80.586207
+    # avg(receivables 3,959, 3,203) = 3,581 / revenue 303,154 x 365 (FY2026 10-K)
+    dso: 4.311555
+    # avg(merchandise inventories 19,324, 18,116) = 18,720 / merchandise costs 264,279 x 365 (FY2026 10-K)
+    dio: 25.854495
+    # avg(accounts payable 22,591, 19,783) = 21,187 / merchandise costs 264,279 x 365 (FY2026 10-K)
+    dpo: 29.261708
+    # 10-K diluted EPS 20.76 (FY2026 10-K); no split since
+    eps_diluted: 20.76
+    # equity 35,803 / shares outstanding 443.266 M at Aug. 30, 2026 (FY2026 10-K parenthetical: 443,266,000)
+    bvps: 80.7709
+    # dividends declared per share 5.54 for the 12 months ended Aug. 30, 2026 (FY2026 10-K stockholders' equity note, R55;
+    # 1.30 + 1.30 + 1.47 + 1.47; total 2,458; no special dividend in FY2026)
+    dps: 5.54
+    # revenue 303,154 / avg(total assets 89,045, 77,099) = 83,072 (FY2026 10-K)
+    asset_turnover: 3.649292
+    # avg(total assets 89,045, 77,099) = 83,072 / avg(equity 35,803, 29,164) = 32,483.5 (FY2026 10-K)
+    dupont_equity_multiplier: 2.55736
