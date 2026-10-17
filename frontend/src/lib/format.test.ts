@@ -3,16 +3,21 @@ import { describe, expect, it } from "vitest";
 import {
   formatCompact,
   formatCsvPercent,
+  formatCsvRatio,
   formatCsvValue,
   formatFiscalPeriod,
   formatMultiple,
   formatPercent,
   formatPrice,
+  formatRatio,
+  formatThreshold,
   formatRelative,
   formatSplitRatio,
   formatValue,
   toScaledText,
   parseScaled,
+  parseThreshold,
+  toThresholdText,
   scaleLabel,
 } from "./format";
 
@@ -248,5 +253,171 @@ describe("formatFiscalPeriod", () => {
   it("names a year and a quarter", () => {
     expect(formatFiscalPeriod(2024, "FY")).toBe("FY2024");
     expect(formatFiscalPeriod(2024, "Q1")).toBe("Q1 FY2024");
+  });
+});
+
+describe("formatRatio", () => {
+  it.each([
+    ["0.123", "pct", "12.3%"],
+    ["-0.034", "pct", "(3.4%)"],
+    ["12.34", "x", "12.3x"],
+    ["-1.23", "x", "(1.2x)"],
+    ["45.4", "days", "45"],
+    ["1234", "days", "1,234"],
+    ["-1234.4", "days", "(1,234)"],
+    ["6.1111", "USD/shares", "6.11"],
+    ["-6.1111", "USD/shares", "(6.11)"],
+    ["1234.5", "USD/shares", "1,234.50"],
+  ] as const)("formats %s as %s -> %s", (value, unit, text) => {
+    expect(formatRatio(value, unit)).toBe(text);
+  });
+
+  it("shows an em dash for null in every unit", () => {
+    for (const unit of ["pct", "x", "days", "USD/shares"] as const) {
+      expect(formatRatio(null, unit)).toBe("—");
+    }
+  });
+
+  it("gives a value rounding to zero no sign", () => {
+    expect(formatRatio("-0.00001", "pct")).toBe("0.0%");
+    expect(formatRatio("-0.04", "x")).toBe("0.0x");
+    expect(formatRatio("-0.4", "days")).toBe("0");
+    expect(formatRatio("-0.001", "USD/shares")).toBe("0.00");
+    expect(formatRatio("-0", "x")).toBe("0.0x");
+  });
+});
+
+describe("formatCsvRatio", () => {
+  it.each([
+    ["-0.028", "pct", "-2.8%"],
+    ["12.34", "x", "12.3"],
+    ["-12.34", "x", "-12.3"],
+    ["1234.4", "days", "1234"],
+    ["45", "days", "45"],
+    ["6.1111", "USD/shares", "6.11"],
+    ["-1234.567", "USD/shares", "-1234.57"],
+  ] as const)("writes %s as %s -> %s", (value, unit, text) => {
+    expect(formatCsvRatio(value, unit)).toBe(text);
+  });
+
+  it("writes null as an empty cell", () => {
+    for (const unit of ["pct", "x", "days", "USD/shares"] as const) {
+      expect(formatCsvRatio(null, unit)).toBe("");
+    }
+  });
+
+  it("never writes -0", () => {
+    expect(formatCsvRatio("-0.00001", "pct")).toBe("0%");
+    expect(formatCsvRatio("-0.04", "x")).toBe("0");
+    expect(formatCsvRatio("-0.4", "days")).toBe("0");
+    expect(formatCsvRatio("-0.001", "USD/shares")).toBe("0");
+  });
+});
+
+describe("parseThreshold", () => {
+  it.each([
+    ["5", "pct", "0.05"],
+    ["12.5", "pct", "0.125"],
+    ["-3", "pct", "-0.03"],
+    ["0", "pct", "0"],
+    ["-0", "pct", "0"],
+    ["(5)", "pct", "-0.05"],
+    ["1,000", "pct", "10"],
+    [" 5 ", "pct", "0.05"],
+    ["150", "pct", "1.5"],
+    ["0.001", "pct", "0.00001"],
+    ["10.0", "pct", "0.1"],
+    ["007", "pct", "0.07"],
+    [".5", "pct", "0.005"],
+    ["0.80", "x", "0.8"],
+    ["00.5", "x", "0.5"],
+    ["-1.50", "x", "-1.5"],
+    ["(2)", "x", "-2"],
+    ["1,234.5", "x", "1234.5"],
+    ["0.0", "x", "0"],
+    ["-0.0", "x", "0"],
+    ["0", "x", "0"],
+  ] as const)("parses %j (%s) as %j", (text, unit, level) => {
+    expect(parseThreshold(text, unit)).toBe(level);
+  });
+
+  it.each([
+    "+5",
+    "1e3",
+    "1E-7",
+    "5.",
+    "1,23",
+    "abc",
+    "",
+    "  ",
+    "-",
+    "()",
+    "--5",
+    "(5",
+    "5)",
+    "1 000",
+  ])("rejects %j", (text) => {
+    expect(parseThreshold(text, "pct")).toBeNull();
+    expect(parseThreshold(text, "x")).toBeNull();
+  });
+});
+
+describe("toThresholdText", () => {
+  it.each([
+    ["0.05", "pct", "5"],
+    ["0.125", "pct", "12.5"],
+    ["-0.03", "pct", "-3"],
+    ["0", "pct", "0"],
+    ["0.1", "pct", "10"],
+    ["1.5", "pct", "150"],
+    ["0.8", "x", "0.8"],
+    ["0.80", "x", "0.8"],
+    ["-2", "x", "-2"],
+    ["12.50", "x", "12.5"],
+    ["1E-7", "pct", "0.00001"],
+    ["5E+1", "pct", "5000"],
+    ["1E-7", "x", "0.0000001"],
+    ["5E+1", "x", "50"],
+    ["-2.5e-2", "pct", "-2.5"],
+  ] as const)("shows %j (%s) as %j", (level, unit, text) => {
+    expect(toThresholdText(level, unit)).toBe(text);
+  });
+
+  it("round-trips with parseThreshold to the canonical level", () => {
+    const levels: [string, string][] = [
+      ["0.05", "0.05"],
+      ["0.125", "0.125"],
+      ["-0.03", "-0.03"],
+      ["0", "0"],
+      ["0.1", "0.1"],
+      ["0.10", "0.1"],
+      ["1.5", "1.5"],
+      ["1234.5", "1234.5"],
+      ["-7", "-7"],
+      ["0.00001", "0.00001"],
+      ["1E-7", "0.0000001"],
+      ["5E+1", "50"],
+      ["100", "100"],
+      ["0.8", "0.8"],
+    ];
+    for (const unit of ["pct", "x"] as const) {
+      for (const [level, canonical] of levels) {
+        expect(parseThreshold(toThresholdText(level, unit), unit)).toBe(canonical);
+      }
+    }
+  });
+});
+
+describe("formatThreshold", () => {
+  it.each([
+    ["0.05", "pct", "5%"],
+    ["0.125", "pct", "12.5%"],
+    ["-0.03", "pct", "-3%"],
+    ["0", "pct", "0%"],
+    ["0.8", "x", "0.8x"],
+    ["0", "x", "0x"],
+    ["1E-7", "x", "0.0000001x"],
+  ] as const)("shows %j (%s) as %j", (level, unit, text) => {
+    expect(formatThreshold(level, unit)).toBe(text);
   });
 });

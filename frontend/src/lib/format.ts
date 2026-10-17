@@ -100,6 +100,106 @@ export function formatPercent(value: string | null): string {
   return formatNumber(Number(value) * 100, 1, "%");
 }
 
+interface DecimalParts {
+  negative: boolean;
+  whole: string;
+  fraction: string;
+}
+
+// Splits typed decimal text (parseScaled's grammar) into sign, whole and fraction digits; null
+// when blank or malformed. `lenient` also accepts a leading "+" and no grouping, for API levels.
+function splitDecimal(text: string, lenient = false): DecimalParts | null {
+  let body = text.trim();
+  let negative = false;
+  if (body.startsWith("(") && body.endsWith(")")) {
+    negative = true;
+    body = body.slice(1, -1);
+  } else if (body.startsWith("-") || (lenient && body.startsWith("+"))) {
+    negative = body.startsWith("-");
+    body = body.slice(1);
+  }
+  const match = /^(\d{1,3}(?:,\d{3})+|\d+)?(?:\.(\d+))?$/.exec(body);
+  if (!match || (match[1] === undefined && match[2] === undefined)) return null;
+  return { negative, whole: (match[1] ?? "").replaceAll(",", ""), fraction: match[2] ?? "" };
+}
+
+// Moves the decimal point `places` to the right (negative: left) by digit shuffling, then
+// canonicalises: no leading zeros, no trailing fractional zeros, no "-0".
+function shiftDecimal({ negative, whole, fraction }: DecimalParts, places: number): string {
+  let digits = whole + fraction;
+  let point = whole.length + places;
+  if (point < 0) {
+    digits = "0".repeat(-point) + digits;
+    point = 0;
+  } else if (point > digits.length) {
+    digits = digits.padEnd(point, "0");
+  }
+  const integer = digits.slice(0, point).replace(/^0+/, "");
+  const rest = digits.slice(point).replace(/0+$/, "");
+  if (integer === "" && rest === "") return "0";
+  const text = `${integer || "0"}${rest ? `.${rest}` : ""}`;
+  return negative ? `-${text}` : text;
+}
+
+export type RatioUnit = "pct" | "x" | "days" | "USD/shares";
+export type ThresholdUnit = "pct" | "x";
+
+/**
+ * A ratio by its unit: `pct` (a fraction) as a percent with 1 decimal ("12.3%"), `x` like
+ * `formatMultiple` ("12.3x"), `days` with 0 decimals ("45"), `USD/shares` with 2 decimals
+ * ("6.11"). Negatives in parentheses, null "—".
+ */
+export function formatRatio(value: string | null, unit: RatioUnit): string {
+  if (value === null) return DASH;
+  const number = Number(value);
+  if (unit === "pct") return formatNumber(number * 100, 1, "%");
+  if (unit === "x") return formatNumber(number, 1, "x");
+  return formatNumber(number, unit === "days" ? 0 : 2);
+}
+
+/**
+ * A ratio as a CSV cell: like `formatRatio` but with a plain minus sign, no thousands separators
+ * and no "x" suffix (`pct` "-2.8%", `x` "12.3", `days` "45", `USD/shares` "6.11"); null "".
+ */
+export function formatCsvRatio(value: string | null, unit: RatioUnit): string {
+  if (value === null) return "";
+  const number = Number(value);
+  if (unit === "pct") return csvNumber(number * 100, 1, "%");
+  if (unit === "x") return csvNumber(number, 1);
+  return csvNumber(number, unit === "days" ? 0 : 2);
+}
+
+/**
+ * A QoE threshold as typed in Settings, to the API's level: a `pct` level is typed as a percent
+ * and returned as an exact fraction ("5" → "0.05", "12.5" → "0.125", "-3" → "-0.03"); an `x`
+ * level is returned as typed ("0.80" → "0.8"). The grammar is `parseScaled`'s (a leading "-" or
+ * parentheses, well-formed "," groups, a decimal point, surrounding blanks; no "+" or exponent),
+ * the result a plain decimal string with no exponent, leading zeros, trailing fractional zeros
+ * or "-0". Null for blank or malformed text (the caller treats blank as "no level").
+ */
+export function parseThreshold(text: string, unit: ThresholdUnit): string | null {
+  const parts = splitDecimal(text);
+  if (parts === null) return null;
+  return shiftDecimal(parts, unit === "pct" ? -2 : 0);
+}
+
+/**
+ * The exact inverse of `parseThreshold`, for prefilling a Settings input: "0.05" pct → "5",
+ * "0.125" pct → "12.5", "0.8" x → "0.8", "0" → "0". No float arithmetic, no separators, no
+ * trailing fractional zeros; an exponent-form level ("1E-7") is expanded exactly.
+ */
+export function toThresholdText(level: string, unit: ThresholdUnit): string {
+  const exponent = /^([^eE]*)[eE]([-+]?\d+)$/.exec(level);
+  const parts = splitDecimal(exponent ? exponent[1]! : level, true);
+  if (parts === null) return level;
+  return shiftDecimal(parts, (exponent ? Number(exponent[2]) : 0) + (unit === "pct" ? 2 : 0));
+}
+
+/** A QoE level for display: `toThresholdText` plus "%" or "x" ("0.05" pct → "5%", "0.8" x → "0.8x"). */
+export function formatThreshold(level: string, unit: ThresholdUnit): string {
+  return `${toThresholdText(level, unit)}${unit === "pct" ? "%" : "x"}`;
+}
+
 export function scaleLabel(unit: string, scale: Scale): string {
   if (unit === "USD/shares") return "USD/share";
   return `${unit} ${SCALE_WORDS[scale]}`;
