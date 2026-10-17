@@ -133,7 +133,7 @@ def _row(
     yoy: list[Decimal | None] = []
     for p, value in zip(periods, values, strict=True):
         prior_at = position.get((p.fiscal_year - 1, p.fiscal_period))
-        yoy.append(_growth(value, None if prior_at is None else values[prior_at]))
+        yoy.append(growth(value, None if prior_at is None else values[prior_at]))
     return Row(
         code=item.code,
         label=item.label,
@@ -160,7 +160,9 @@ def _base_item(
     return total
 
 
-def _growth(current: Decimal | None, prior: Decimal | None) -> Decimal | None:
+def growth(current: Decimal | None, prior: Decimal | None) -> Decimal | None:
+    """The statement YoY rule: current / prior - 1, quantized to RATIO_PLACES; None unless both
+    exist and prior > 0."""
     if current is None or prior is None or prior <= 0:
         return None
     return (current / prior - 1).quantize(RATIO_PLACES)

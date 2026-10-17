@@ -6,7 +6,9 @@ from bedrock.api.v1 import (
     auth,
     companies,
     corporate_actions,
+    flags,
     health,
+    qoe_rules,
     ratios,
     statements,
 )
@@ -24,6 +26,8 @@ protected.include_router(corporate_actions.router)
 protected.include_router(adjustments.router)
 protected.include_router(statements.router)
 protected.include_router(ratios.router)
+protected.include_router(flags.router)
+protected.include_router(qoe_rules.router)
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(public)

@@ -21,6 +21,24 @@ class InvalidAdjustment(Exception):
     """The adjustment breaks a rule; the message says which."""
 
 
+class RuleNotFound(Exception):
+    """No quality-of-earnings rule with this code in `qoe_rules.yaml`."""
+
+
+class InvalidThreshold(Exception):
+    """A threshold override breaks a rule (levels out of order, not finite); the message says
+    which."""
+
+
+class OffBalanceItemNotFound(Exception):
+    """No off-balance-sheet item with this id on the company (another company's id counts as
+    unknown)."""
+
+
+class InvalidOffBalanceItem(Exception):
+    """The off-balance-sheet item breaks a rule; the message says which."""
+
+
 # What a use-case can raise on purpose; the API maps these to statuses, the CLI prints them.
 DOMAIN_ERRORS = (
     CompanyNotFound,
@@ -28,6 +46,10 @@ DOMAIN_ERRORS = (
     CellNotFound,
     AdjustmentNotFound,
     InvalidAdjustment,
+    RuleNotFound,
+    InvalidThreshold,
+    OffBalanceItemNotFound,
+    InvalidOffBalanceItem,
     UnknownTicker,
     SourceNotConfigured,
     SourceUnavailable,
@@ -45,6 +67,10 @@ def user_message(error: Exception) -> str:
             return f"No such statement cell: {error}"
         case AdjustmentNotFound():
             return f"No such adjustment: {error}"
+        case RuleNotFound():
+            return f"No such quality-of-earnings rule: {error}"
+        case OffBalanceItemNotFound():
+            return f"No such off-balance-sheet item: {error}"
         case CompanyExists():
             return f"{error} is already followed"
         case SourceNotConfigured():

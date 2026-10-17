@@ -166,6 +166,135 @@
         "title": "BalanceCheckOut",
         "type": "object"
       },
+      "CapitalAllocationOut": {
+        "properties": {
+          "freq": {
+            "enum": [
+              "annual",
+              "ttm"
+            ],
+            "title": "Freq",
+            "type": "string"
+          },
+          "periods": {
+            "items": {
+              "$ref": "#/components/schemas/PeriodOut"
+            },
+            "title": "Periods",
+            "type": "array"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/CapitalRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticker",
+          "freq",
+          "periods",
+          "rows"
+        ],
+        "title": "CapitalAllocationOut",
+        "type": "object"
+      },
+      "CapitalRowOut": {
+        "description": "`values` in USD (outflows negative), x or pct (fractions); `pct_of_cfo`/`pct_of_fcf` are\nnull for rows that are not shares of cash flow.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "pct_of_cfo": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pct Of Cfo"
+          },
+          "pct_of_fcf": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pct Of Fcf"
+          },
+          "unit": {
+            "enum": [
+              "USD",
+              "x",
+              "pct"
+            ],
+            "title": "Unit",
+            "type": "string"
+          },
+          "values": {
+            "items": {
+              "anyOf": [
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Values",
+            "type": "array"
+          }
+        },
+        "required": [
+          "code",
+          "label",
+          "unit",
+          "values",
+          "pct_of_cfo",
+          "pct_of_fcf"
+        ],
+        "title": "CapitalRowOut",
+        "type": "object"
+      },
       "CellAdjustmentOut": {
         "description": "An adjustment behind a statement cell. `via` is the adjusted line when the cell got the\nchange through propagation (SG&A for the operating income it rolls into), else null.",
         "properties": {
@@ -618,6 +747,156 @@
         "title": "FilingOut",
         "type": "object"
       },
+      "FlagRuleOut": {
+        "description": "One rule's values and severities, aligned with `periods`; `warn`/`alert` are the effective\nlevels. A null value has a null severity.",
+        "properties": {
+          "alert": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alert"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "direction": {
+            "enum": [
+              "above",
+              "below"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "rule": {
+            "title": "Rule",
+            "type": "string"
+          },
+          "severity": {
+            "items": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "none",
+                    "warn",
+                    "alert"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Severity",
+            "type": "array"
+          },
+          "unit": {
+            "enum": [
+              "pct",
+              "x"
+            ],
+            "title": "Unit",
+            "type": "string"
+          },
+          "values": {
+            "items": {
+              "anyOf": [
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Values",
+            "type": "array"
+          },
+          "warn": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warn"
+          }
+        },
+        "required": [
+          "code",
+          "label",
+          "rule",
+          "direction",
+          "unit",
+          "warn",
+          "alert",
+          "values",
+          "severity"
+        ],
+        "title": "FlagRuleOut",
+        "type": "object"
+      },
+      "FlagsOut": {
+        "properties": {
+          "freq": {
+            "enum": [
+              "annual",
+              "ttm"
+            ],
+            "title": "Freq",
+            "type": "string"
+          },
+          "off_balance_items": {
+            "items": {
+              "$ref": "#/components/schemas/OffBalanceItemOut"
+            },
+            "title": "Off Balance Items",
+            "type": "array"
+          },
+          "periods": {
+            "items": {
+              "$ref": "#/components/schemas/PeriodOut"
+            },
+            "title": "Periods",
+            "type": "array"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/FlagRuleOut"
+            },
+            "title": "Rules",
+            "type": "array"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticker",
+          "freq",
+          "periods",
+          "rules",
+          "off_balance_items"
+        ],
+        "title": "FlagsOut",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -699,6 +978,137 @@
         "title": "MissingItemOut",
         "type": "object"
       },
+      "OffBalanceItemIn": {
+        "description": "`amount` is in USD units.",
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "lease",
+              "guarantee",
+              "vie",
+              "purchase_commitment",
+              "other"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "source_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Note"
+          }
+        },
+        "required": [
+          "kind",
+          "description",
+          "as_of"
+        ],
+        "title": "OffBalanceItemIn",
+        "type": "object"
+      },
+      "OffBalanceItemOut": {
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "lease",
+              "guarantee",
+              "vie",
+              "purchase_commitment",
+              "other"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "source_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Note"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "description",
+          "amount",
+          "as_of",
+          "source_note",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "OffBalanceItemOut",
+        "type": "object"
+      },
       "PeriodOut": {
         "properties": {
           "fiscal_period": {
@@ -742,6 +1152,146 @@
           "is_forecast"
         ],
         "title": "PeriodOut",
+        "type": "object"
+      },
+      "QoeRuleOut": {
+        "description": "A quality-of-earnings rule with its effective levels (`warn`, `alert`) and the shipped\ndefaults. Levels are fractions for `pct` rules; a null level means the rule has none.",
+        "properties": {
+          "alert": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alert"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "default_alert": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Alert"
+          },
+          "default_warn": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Warn"
+          },
+          "direction": {
+            "enum": [
+              "above",
+              "below"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "overridden": {
+            "title": "Overridden",
+            "type": "boolean"
+          },
+          "rule": {
+            "title": "Rule",
+            "type": "string"
+          },
+          "unit": {
+            "enum": [
+              "pct",
+              "x"
+            ],
+            "title": "Unit",
+            "type": "string"
+          },
+          "warn": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warn"
+          }
+        },
+        "required": [
+          "code",
+          "label",
+          "rule",
+          "direction",
+          "unit",
+          "warn",
+          "alert",
+          "default_warn",
+          "default_alert",
+          "overridden"
+        ],
+        "title": "QoeRuleOut",
+        "type": "object"
+      },
+      "QoeThresholdsIn": {
+        "description": "Both levels are required keys; null removes that level.",
+        "properties": {
+          "alert": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alert"
+          },
+          "warn": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warn"
+          }
+        },
+        "required": [
+          "warn",
+          "alert"
+        ],
+        "title": "QoeThresholdsIn",
         "type": "object"
       },
       "RatioRowOut": {
@@ -1667,6 +2217,61 @@
         ]
       }
     },
+    "/api/v1/companies/{ticker}/capital-allocation": {
+      "get": {
+        "operationId": "get_capital_allocation_api_v1_companies__ticker__capital_allocation_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "freq",
+            "required": true,
+            "schema": {
+              "enum": [
+                "annual",
+                "ttm"
+              ],
+              "title": "Freq",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapitalAllocationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Capital Allocation",
+        "tags": [
+          "analysis"
+        ]
+      }
+    },
     "/api/v1/companies/{ticker}/corporate-actions": {
       "get": {
         "operationId": "list_corporate_actions_api_v1_companies__ticker__corporate_actions_get",
@@ -1713,6 +2318,61 @@
         ]
       }
     },
+    "/api/v1/companies/{ticker}/flags": {
+      "get": {
+        "operationId": "get_flags_api_v1_companies__ticker__flags_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "freq",
+            "required": true,
+            "schema": {
+              "enum": [
+                "annual",
+                "ttm"
+              ],
+              "title": "Freq",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlagsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Flags",
+        "tags": [
+          "analysis"
+        ]
+      }
+    },
     "/api/v1/companies/{ticker}/mapping-gaps": {
       "get": {
         "operationId": "get_mapping_gaps_api_v1_companies__ticker__mapping_gaps_get",
@@ -1752,6 +2412,205 @@
         "summary": "Get Mapping Gaps",
         "tags": [
           "statements"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/off-balance-items": {
+      "get": {
+        "operationId": "list_off_balance_items_api_v1_companies__ticker__off_balance_items_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OffBalanceItemOut"
+                  },
+                  "title": "Response List Off Balance Items Api V1 Companies  Ticker  Off Balance Items Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Off Balance Items",
+        "tags": [
+          "analysis"
+        ]
+      },
+      "post": {
+        "operationId": "create_off_balance_item_api_v1_companies__ticker__off_balance_items_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OffBalanceItemIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffBalanceItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Off Balance Item",
+        "tags": [
+          "analysis"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/off-balance-items/{item_id}": {
+      "delete": {
+        "operationId": "delete_off_balance_item_api_v1_companies__ticker__off_balance_items__item_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Off Balance Item",
+        "tags": [
+          "analysis"
+        ]
+      },
+      "put": {
+        "operationId": "update_off_balance_item_api_v1_companies__ticker__off_balance_items__item_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OffBalanceItemIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffBalanceItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Off Balance Item",
+        "tags": [
+          "analysis"
         ]
       }
     },
@@ -2055,6 +2914,116 @@
         "summary": "Health",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/api/v1/qoe-rules": {
+      "get": {
+        "operationId": "list_qoe_rules_api_v1_qoe_rules_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/QoeRuleOut"
+                  },
+                  "title": "Response List Qoe Rules Api V1 Qoe Rules Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Qoe Rules",
+        "tags": [
+          "qoe-rules"
+        ]
+      }
+    },
+    "/api/v1/qoe-rules/{code}": {
+      "delete": {
+        "operationId": "reset_qoe_thresholds_api_v1_qoe_rules__code__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reset Qoe Thresholds",
+        "tags": [
+          "qoe-rules"
+        ]
+      },
+      "put": {
+        "operationId": "set_qoe_thresholds_api_v1_qoe_rules__code__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QoeThresholdsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QoeRuleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Qoe Thresholds",
+        "tags": [
+          "qoe-rules"
         ]
       }
     }

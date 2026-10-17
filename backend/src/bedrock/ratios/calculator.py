@@ -79,7 +79,7 @@ def compute_ratios(
         raise ValueError("TTM ratios need the quarterly income statement")
     if tuple(ratios) != RATIOS:
         validate(METRICS, _merged(ratios), CANONICAL_CODES)
-    evaluator = _Evaluator(inputs, freq, ratios)
+    evaluator = Operands(inputs, freq, ratios)
     periods = inputs.income.periods
     grid = [
         [evaluator.ratio(ratio.code, (p.fiscal_year, p.fiscal_period)) for p in periods]
@@ -128,10 +128,21 @@ def _quarter_back(point: Point) -> Point:
     return (year - 1, "Q4") if q == 1 else (year, f"Q{q - 1}")
 
 
-class _Evaluator:
-    """Operand and ratio values at a point, memoized per (ratio code, point)."""
+def year_earlier(point: Point) -> Point:
+    """The same period a year earlier: FY2023 for FY2024, Q2 FY2023 for Q2 FY2024."""
+    return (point[0] - 1, point[1])
 
-    def __init__(self, inputs: RatioInputs, freq: RatioFreq, ratios: Sequence[Ratio]) -> None:
+
+class Operands:
+    """Operand, metric and ratio values of one `RatioInputs` at a point, by the ERD's operand rules
+    (annual: FY values and FY-end instants; ttm: TTM flows, quarter-end instants, average-kind
+    lines from the latest quarter of the window). Ratio values are memoized per (code, point).
+    Shared by the ratio calculator and the analysis engines (`analysis/qoe.py`,
+    `analysis/capital_allocation.py`)."""
+
+    def __init__(
+        self, inputs: RatioInputs, freq: RatioFreq, ratios: Sequence[Ratio] = RATIOS
+    ) -> None:
         self._freq = freq
         self._lines = _series([inputs.income, inputs.cash_flow, inputs.balance])
         quarterly = inputs.quarterly_income
@@ -149,21 +160,23 @@ class _Evaluator:
         numerator, denominator = ratio.numerator, ratio.denominator
         if self._freq == "ttm" and ratio.ttm is not None:
             numerator, denominator = ratio.ttm
-        num = self._operand(numerator, point, ratio.avg_numerator)
+        num = self.operand(numerator, point, ratio.avg_numerator)
         if num is None:
             return None
         if denominator is None:
             return (num * ratio.scale).quantize(RATIO_PLACES)
-        den = self._operand(denominator, point, ratio.avg_denominator)
+        den = self.operand(denominator, point, ratio.avg_denominator)
         if den is None or den <= 0:
             return None
         return (num / den * ratio.scale).quantize(RATIO_PLACES)
 
-    def _operand(self, text: str, point: Point, average: bool) -> Decimal | None:
+    def operand(self, text: str, point: Point, average: bool = False) -> Decimal | None:
+        """A code or `+`/`-` formula at `point` (None when any term is None); with `average`, the
+        mean of it at `point` and a year earlier (None unless both exist)."""
         current = self._formula(text, point)
         if not average:
             return current
-        prior = self._formula(text, (point[0] - 1, point[1]))
+        prior = self._formula(text, year_earlier(point))
         if current is None or prior is None:
             return None
         return (current + prior) / 2
@@ -171,18 +184,19 @@ class _Evaluator:
     def _formula(self, text: str, point: Point) -> Decimal | None:
         total = Decimal(0)
         for sign, code in parse_formula(text):
-            value = self._value(code, point)
+            value = self.value(code, point)
             if value is None:
                 return None
             total += sign * value
         return total
 
-    def _value(self, code: str, point: Point) -> Decimal | None:
+    def value(self, code: str, point: Point) -> Decimal | None:
+        """One canonical, metric or ratio code at `point` (unquantized for lines and metrics)."""
         if code in CANONICAL_CODES:
             return self._line(code, point)
         metric = _METRICS.get(code)
         if metric is not None:
-            return metric.fn({name: self._value(name, point) for name in metric.inputs})
+            return metric.fn({name: self.value(name, point) for name in metric.inputs})
         return self.ratio(code, point)
 
     def _line(self, code: str, point: Point) -> Decimal | None:

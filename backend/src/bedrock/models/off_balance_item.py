@@ -1,11 +1,15 @@
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Literal, get_args
 
 from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from bedrock.models.adjustment import utc_now
 from bedrock.models.base import Base
+
+OffBalanceKind = Literal["lease", "guarantee", "vie", "purchase_commitment", "other"]
+KINDS: tuple[str, ...] = get_args(OffBalanceKind)
 
 
 class OffBalanceItem(Base):
@@ -15,7 +19,7 @@ class OffBalanceItem(Base):
     company_id: Mapped[int] = mapped_column(
         ForeignKey("company.id", ondelete="CASCADE"), nullable=False
     )
-    # lease / guarantee / vie / purchase_commitment / other
+    # one of KINDS
     kind: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str] = mapped_column(String, nullable=False)
     amount: Mapped[Decimal | None] = mapped_column(Numeric(28, 10), nullable=True)

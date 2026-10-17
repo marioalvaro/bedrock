@@ -112,6 +112,61 @@ export type BalanceCheckOut = {
 };
 
 /**
+ * CapitalAllocationOut
+ */
+export type CapitalAllocationOut = {
+    /**
+     * Freq
+     */
+    freq: 'annual' | 'ttm';
+    /**
+     * Periods
+     */
+    periods: Array<PeriodOut>;
+    /**
+     * Rows
+     */
+    rows: Array<CapitalRowOut>;
+    /**
+     * Ticker
+     */
+    ticker: string;
+};
+
+/**
+ * CapitalRowOut
+ *
+ * `values` in USD (outflows negative), x or pct (fractions); `pct_of_cfo`/`pct_of_fcf` are
+ * null for rows that are not shares of cash flow.
+ */
+export type CapitalRowOut = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Pct Of Cfo
+     */
+    pct_of_cfo: Array<string | null> | null;
+    /**
+     * Pct Of Fcf
+     */
+    pct_of_fcf: Array<string | null> | null;
+    /**
+     * Unit
+     */
+    unit: 'USD' | 'x' | 'pct';
+    /**
+     * Values
+     */
+    values: Array<string | null>;
+};
+
+/**
  * CellAdjustmentOut
  *
  * An adjustment behind a statement cell. `via` is the adjusted line when the cell got the
@@ -360,6 +415,77 @@ export type FilingOut = {
 };
 
 /**
+ * FlagRuleOut
+ *
+ * One rule's values and severities, aligned with `periods`; `warn`/`alert` are the effective
+ * levels. A null value has a null severity.
+ */
+export type FlagRuleOut = {
+    /**
+     * Alert
+     */
+    alert: string | null;
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Direction
+     */
+    direction: 'above' | 'below';
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Rule
+     */
+    rule: string;
+    /**
+     * Severity
+     */
+    severity: Array<'none' | 'warn' | 'alert' | null>;
+    /**
+     * Unit
+     */
+    unit: 'pct' | 'x';
+    /**
+     * Values
+     */
+    values: Array<string | null>;
+    /**
+     * Warn
+     */
+    warn: string | null;
+};
+
+/**
+ * FlagsOut
+ */
+export type FlagsOut = {
+    /**
+     * Freq
+     */
+    freq: 'annual' | 'ttm';
+    /**
+     * Off Balance Items
+     */
+    off_balance_items: Array<OffBalanceItemOut>;
+    /**
+     * Periods
+     */
+    periods: Array<PeriodOut>;
+    /**
+     * Rules
+     */
+    rules: Array<FlagRuleOut>;
+    /**
+     * Ticker
+     */
+    ticker: string;
+};
+
+/**
  * HTTPValidationError
  */
 export type HttpValidationError = {
@@ -416,6 +542,72 @@ export type MissingItemOut = {
 };
 
 /**
+ * OffBalanceItemIn
+ *
+ * `amount` is in USD units.
+ */
+export type OffBalanceItemIn = {
+    /**
+     * Amount
+     */
+    amount?: number | string | null;
+    /**
+     * As Of
+     */
+    as_of: string;
+    /**
+     * Description
+     */
+    description: string;
+    /**
+     * Kind
+     */
+    kind: 'lease' | 'guarantee' | 'vie' | 'purchase_commitment' | 'other';
+    /**
+     * Source Note
+     */
+    source_note?: string | null;
+};
+
+/**
+ * OffBalanceItemOut
+ */
+export type OffBalanceItemOut = {
+    /**
+     * Amount
+     */
+    amount: string | null;
+    /**
+     * As Of
+     */
+    as_of: string;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Description
+     */
+    description: string;
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Kind
+     */
+    kind: 'lease' | 'guarantee' | 'vie' | 'purchase_commitment' | 'other';
+    /**
+     * Source Note
+     */
+    source_note: string | null;
+    /**
+     * Updated At
+     */
+    updated_at: string;
+};
+
+/**
  * PeriodOut
  */
 export type PeriodOut = {
@@ -447,6 +639,71 @@ export type PeriodOut = {
      * Period Start
      */
     period_start: string;
+};
+
+/**
+ * QoeRuleOut
+ *
+ * A quality-of-earnings rule with its effective levels (`warn`, `alert`) and the shipped
+ * defaults. Levels are fractions for `pct` rules; a null level means the rule has none.
+ */
+export type QoeRuleOut = {
+    /**
+     * Alert
+     */
+    alert: string | null;
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Default Alert
+     */
+    default_alert: string | null;
+    /**
+     * Default Warn
+     */
+    default_warn: string | null;
+    /**
+     * Direction
+     */
+    direction: 'above' | 'below';
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Overridden
+     */
+    overridden: boolean;
+    /**
+     * Rule
+     */
+    rule: string;
+    /**
+     * Unit
+     */
+    unit: 'pct' | 'x';
+    /**
+     * Warn
+     */
+    warn: string | null;
+};
+
+/**
+ * QoeThresholdsIn
+ *
+ * Both levels are required keys; null removes that level.
+ */
+export type QoeThresholdsIn = {
+    /**
+     * Alert
+     */
+    alert: number | string | null;
+    /**
+     * Warn
+     */
+    warn: number | string | null;
 };
 
 /**
@@ -1029,6 +1286,41 @@ export type UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutRespon
 
 export type UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutResponse = UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutResponses[keyof UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutResponses];
 
+export type GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query: {
+        /**
+         * Freq
+         */
+        freq: 'annual' | 'ttm';
+    };
+    url: '/api/v1/companies/{ticker}/capital-allocation';
+};
+
+export type GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetError = GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetErrors[keyof GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetErrors];
+
+export type GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: CapitalAllocationOut;
+};
+
+export type GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetResponse = GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetResponses[keyof GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetResponses];
+
 export type ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetData = {
     body?: never;
     path: {
@@ -1061,6 +1353,41 @@ export type ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetResponses
 
 export type ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetResponse = ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetResponses[keyof ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetResponses];
 
+export type GetFlagsApiV1CompaniesTickerFlagsGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query: {
+        /**
+         * Freq
+         */
+        freq: 'annual' | 'ttm';
+    };
+    url: '/api/v1/companies/{ticker}/flags';
+};
+
+export type GetFlagsApiV1CompaniesTickerFlagsGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetFlagsApiV1CompaniesTickerFlagsGetError = GetFlagsApiV1CompaniesTickerFlagsGetErrors[keyof GetFlagsApiV1CompaniesTickerFlagsGetErrors];
+
+export type GetFlagsApiV1CompaniesTickerFlagsGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: FlagsOut;
+};
+
+export type GetFlagsApiV1CompaniesTickerFlagsGetResponse = GetFlagsApiV1CompaniesTickerFlagsGetResponses[keyof GetFlagsApiV1CompaniesTickerFlagsGetResponses];
+
 export type GetMappingGapsApiV1CompaniesTickerMappingGapsGetData = {
     body?: never;
     path: {
@@ -1090,6 +1417,136 @@ export type GetMappingGapsApiV1CompaniesTickerMappingGapsGetResponses = {
 };
 
 export type GetMappingGapsApiV1CompaniesTickerMappingGapsGetResponse = GetMappingGapsApiV1CompaniesTickerMappingGapsGetResponses[keyof GetMappingGapsApiV1CompaniesTickerMappingGapsGetResponses];
+
+export type ListOffBalanceItemsApiV1CompaniesTickerOffBalanceItemsGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/off-balance-items';
+};
+
+export type ListOffBalanceItemsApiV1CompaniesTickerOffBalanceItemsGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListOffBalanceItemsApiV1CompaniesTickerOffBalanceItemsGetError = ListOffBalanceItemsApiV1CompaniesTickerOffBalanceItemsGetErrors[keyof ListOffBalanceItemsApiV1CompaniesTickerOffBalanceItemsGetErrors];
+
+export type ListOffBalanceItemsApiV1CompaniesTickerOffBalanceItemsGetResponses = {
+    /**
+     * Response List Off Balance Items Api V1 Companies  Ticker  Off Balance Items Get
+     *
+     * Successful Response
+     */
+    200: Array<OffBalanceItemOut>;
+};
+
+export type ListOffBalanceItemsApiV1CompaniesTickerOffBalanceItemsGetResponse = ListOffBalanceItemsApiV1CompaniesTickerOffBalanceItemsGetResponses[keyof ListOffBalanceItemsApiV1CompaniesTickerOffBalanceItemsGetResponses];
+
+export type CreateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsPostData = {
+    body: OffBalanceItemIn;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/off-balance-items';
+};
+
+export type CreateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsPostError = CreateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsPostErrors[keyof CreateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsPostErrors];
+
+export type CreateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsPostResponses = {
+    /**
+     * Successful Response
+     */
+    201: OffBalanceItemOut;
+};
+
+export type CreateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsPostResponse = CreateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsPostResponses[keyof CreateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsPostResponses];
+
+export type DeleteOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdDeleteData = {
+    body?: never;
+    path: {
+        /**
+         * Item Id
+         */
+        item_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/off-balance-items/{item_id}';
+};
+
+export type DeleteOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdDeleteErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeleteOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdDeleteError = DeleteOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdDeleteErrors[keyof DeleteOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdDeleteErrors];
+
+export type DeleteOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeleteOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdDeleteResponse = DeleteOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdDeleteResponses[keyof DeleteOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdDeleteResponses];
+
+export type UpdateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdPutData = {
+    body: OffBalanceItemIn;
+    path: {
+        /**
+         * Item Id
+         */
+        item_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/off-balance-items/{item_id}';
+};
+
+export type UpdateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdPutErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdPutError = UpdateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdPutErrors[keyof UpdateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdPutErrors];
+
+export type UpdateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdPutResponses = {
+    /**
+     * Successful Response
+     */
+    200: OffBalanceItemOut;
+};
+
+export type UpdateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdPutResponse = UpdateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdPutResponses[keyof UpdateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdPutResponses];
 
 export type GetRatiosApiV1CompaniesTickerRatiosGetData = {
     body?: never;
@@ -1269,3 +1726,81 @@ export type HealthApiV1HealthGetResponses = {
 };
 
 export type HealthApiV1HealthGetResponse = HealthApiV1HealthGetResponses[keyof HealthApiV1HealthGetResponses];
+
+export type ListQoeRulesApiV1QoeRulesGetData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/qoe-rules';
+};
+
+export type ListQoeRulesApiV1QoeRulesGetResponses = {
+    /**
+     * Response List Qoe Rules Api V1 Qoe Rules Get
+     *
+     * Successful Response
+     */
+    200: Array<QoeRuleOut>;
+};
+
+export type ListQoeRulesApiV1QoeRulesGetResponse = ListQoeRulesApiV1QoeRulesGetResponses[keyof ListQoeRulesApiV1QoeRulesGetResponses];
+
+export type ResetQoeThresholdsApiV1QoeRulesCodeDeleteData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/v1/qoe-rules/{code}';
+};
+
+export type ResetQoeThresholdsApiV1QoeRulesCodeDeleteErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ResetQoeThresholdsApiV1QoeRulesCodeDeleteError = ResetQoeThresholdsApiV1QoeRulesCodeDeleteErrors[keyof ResetQoeThresholdsApiV1QoeRulesCodeDeleteErrors];
+
+export type ResetQoeThresholdsApiV1QoeRulesCodeDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type ResetQoeThresholdsApiV1QoeRulesCodeDeleteResponse = ResetQoeThresholdsApiV1QoeRulesCodeDeleteResponses[keyof ResetQoeThresholdsApiV1QoeRulesCodeDeleteResponses];
+
+export type SetQoeThresholdsApiV1QoeRulesCodePutData = {
+    body: QoeThresholdsIn;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/v1/qoe-rules/{code}';
+};
+
+export type SetQoeThresholdsApiV1QoeRulesCodePutErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SetQoeThresholdsApiV1QoeRulesCodePutError = SetQoeThresholdsApiV1QoeRulesCodePutErrors[keyof SetQoeThresholdsApiV1QoeRulesCodePutErrors];
+
+export type SetQoeThresholdsApiV1QoeRulesCodePutResponses = {
+    /**
+     * Successful Response
+     */
+    200: QoeRuleOut;
+};
+
+export type SetQoeThresholdsApiV1QoeRulesCodePutResponse = SetQoeThresholdsApiV1QoeRulesCodePutResponses[keyof SetQoeThresholdsApiV1QoeRulesCodePutResponses];

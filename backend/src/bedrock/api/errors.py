@@ -10,6 +10,10 @@ from bedrock.services.errors import (
     CompanyExists,
     CompanyNotFound,
     InvalidAdjustment,
+    InvalidOffBalanceItem,
+    InvalidThreshold,
+    OffBalanceItemNotFound,
+    RuleNotFound,
     user_message,
 )
 
@@ -19,6 +23,10 @@ _STATUS: dict[type[Exception], int] = {
     CellNotFound: 404,
     AdjustmentNotFound: 404,
     InvalidAdjustment: 422,
+    RuleNotFound: 404,
+    OffBalanceItemNotFound: 404,
+    InvalidThreshold: 422,
+    InvalidOffBalanceItem: 422,
     CompanyExists: 409,
     SourceNotConfigured: 503,
     SourceUnavailable: 502,
