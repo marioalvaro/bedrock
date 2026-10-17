@@ -418,7 +418,9 @@ export type FilingOut = {
  * FlagRuleOut
  *
  * One rule's values and severities, aligned with `periods`; `warn`/`alert` are the effective
- * levels. A null value has a null severity.
+ * number levels and `warn_formula`/`alert_formula` the formula ones (as typed), with
+ * `warn_levels`/`alert_levels` each level's value per period. A null value has a null
+ * severity. `error` is set when a stored formula of the rule no longer parses.
  */
 export type FlagRuleOut = {
     /**
@@ -426,13 +428,29 @@ export type FlagRuleOut = {
      */
     alert: string | null;
     /**
+     * Alert Formula
+     */
+    alert_formula: string | null;
+    /**
+     * Alert Levels
+     */
+    alert_levels: Array<string | null>;
+    /**
      * Code
      */
     code: string;
     /**
+     * Custom
+     */
+    custom: boolean;
+    /**
      * Direction
      */
     direction: 'above' | 'below';
+    /**
+     * Error
+     */
+    error: string | null;
     /**
      * Label
      */
@@ -457,6 +475,14 @@ export type FlagRuleOut = {
      * Warn
      */
     warn: string | null;
+    /**
+     * Warn Formula
+     */
+    warn_formula: string | null;
+    /**
+     * Warn Levels
+     */
+    warn_levels: Array<string | null>;
 };
 
 /**
@@ -642,10 +668,105 @@ export type PeriodOut = {
 };
 
 /**
+ * QoeCustomRuleIn
+ */
+export type QoeCustomRuleIn = {
+    /**
+     * Alert
+     */
+    alert?: string | number | string | null;
+    /**
+     * Direction
+     */
+    direction: 'above' | 'below';
+    /**
+     * Formula
+     */
+    formula: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Unit
+     */
+    unit: 'pct' | 'x';
+    /**
+     * Warn
+     */
+    warn?: string | number | string | null;
+};
+
+/**
+ * QoeCustomRuleOut
+ *
+ * A stored custom rule. A number level is in `warn` / `alert`, a formula level in
+ * `warn_formula` / `alert_formula` (as typed); `error` is set when a stored formula no longer
+ * parses.
+ */
+export type QoeCustomRuleOut = {
+    /**
+     * Alert
+     */
+    alert: string | null;
+    /**
+     * Alert Formula
+     */
+    alert_formula: string | null;
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Direction
+     */
+    direction: 'above' | 'below';
+    /**
+     * Error
+     */
+    error: string | null;
+    /**
+     * Formula
+     */
+    formula: string;
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Unit
+     */
+    unit: 'pct' | 'x';
+    /**
+     * Updated At
+     */
+    updated_at: string;
+    /**
+     * Warn
+     */
+    warn: string | null;
+    /**
+     * Warn Formula
+     */
+    warn_formula: string | null;
+};
+
+/**
  * QoeRuleOut
  *
- * A quality-of-earnings rule with its effective levels (`warn`, `alert`) and the shipped
- * defaults. Levels are fractions for `pct` rules; a null level means the rule has none.
+ * A quality-of-earnings rule with its effective levels and the shipped defaults. Levels are
+ * fractions for `pct` rules; a null level means the rule has none. A formula level is in
+ * `warn_formula` / `alert_formula` (as typed), with `warn` / `alert` null. A custom rule has
+ * `custom`, its `formula` (also in `rule`) and null defaults; `error` is set when a stored
+ * formula no longer parses.
  */
 export type QoeRuleOut = {
     /**
@@ -653,9 +774,17 @@ export type QoeRuleOut = {
      */
     alert: string | null;
     /**
+     * Alert Formula
+     */
+    alert_formula: string | null;
+    /**
      * Code
      */
     code: string;
+    /**
+     * Custom
+     */
+    custom: boolean;
     /**
      * Default Alert
      */
@@ -668,6 +797,14 @@ export type QoeRuleOut = {
      * Direction
      */
     direction: 'above' | 'below';
+    /**
+     * Error
+     */
+    error: string | null;
+    /**
+     * Formula
+     */
+    formula: string | null;
     /**
      * Label
      */
@@ -688,22 +825,27 @@ export type QoeRuleOut = {
      * Warn
      */
     warn: string | null;
+    /**
+     * Warn Formula
+     */
+    warn_formula: string | null;
 };
 
 /**
  * QoeThresholdsIn
  *
- * Both levels are required keys; null removes that level.
+ * Both levels are required keys; null removes that level. A level is a number (a fraction
+ * for `pct` rules) or a formula string.
  */
 export type QoeThresholdsIn = {
     /**
      * Alert
      */
-    alert: number | string | null;
+    alert: string | number | string | null;
     /**
      * Warn
      */
-    warn: number | string | null;
+    warn: string | number | string | null;
 };
 
 /**
@@ -1726,6 +1868,109 @@ export type HealthApiV1HealthGetResponses = {
 };
 
 export type HealthApiV1HealthGetResponse = HealthApiV1HealthGetResponses[keyof HealthApiV1HealthGetResponses];
+
+export type ListCustomRulesApiV1QoeCustomRulesGetData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/qoe-custom-rules';
+};
+
+export type ListCustomRulesApiV1QoeCustomRulesGetResponses = {
+    /**
+     * Response List Custom Rules Api V1 Qoe Custom Rules Get
+     *
+     * Successful Response
+     */
+    200: Array<QoeCustomRuleOut>;
+};
+
+export type ListCustomRulesApiV1QoeCustomRulesGetResponse = ListCustomRulesApiV1QoeCustomRulesGetResponses[keyof ListCustomRulesApiV1QoeCustomRulesGetResponses];
+
+export type CreateCustomRuleApiV1QoeCustomRulesPostData = {
+    body: QoeCustomRuleIn;
+    path?: never;
+    query?: never;
+    url: '/api/v1/qoe-custom-rules';
+};
+
+export type CreateCustomRuleApiV1QoeCustomRulesPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateCustomRuleApiV1QoeCustomRulesPostError = CreateCustomRuleApiV1QoeCustomRulesPostErrors[keyof CreateCustomRuleApiV1QoeCustomRulesPostErrors];
+
+export type CreateCustomRuleApiV1QoeCustomRulesPostResponses = {
+    /**
+     * Successful Response
+     */
+    201: QoeCustomRuleOut;
+};
+
+export type CreateCustomRuleApiV1QoeCustomRulesPostResponse = CreateCustomRuleApiV1QoeCustomRulesPostResponses[keyof CreateCustomRuleApiV1QoeCustomRulesPostResponses];
+
+export type DeleteCustomRuleApiV1QoeCustomRulesRuleIdDeleteData = {
+    body?: never;
+    path: {
+        /**
+         * Rule Id
+         */
+        rule_id: number;
+    };
+    query?: never;
+    url: '/api/v1/qoe-custom-rules/{rule_id}';
+};
+
+export type DeleteCustomRuleApiV1QoeCustomRulesRuleIdDeleteErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeleteCustomRuleApiV1QoeCustomRulesRuleIdDeleteError = DeleteCustomRuleApiV1QoeCustomRulesRuleIdDeleteErrors[keyof DeleteCustomRuleApiV1QoeCustomRulesRuleIdDeleteErrors];
+
+export type DeleteCustomRuleApiV1QoeCustomRulesRuleIdDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeleteCustomRuleApiV1QoeCustomRulesRuleIdDeleteResponse = DeleteCustomRuleApiV1QoeCustomRulesRuleIdDeleteResponses[keyof DeleteCustomRuleApiV1QoeCustomRulesRuleIdDeleteResponses];
+
+export type UpdateCustomRuleApiV1QoeCustomRulesRuleIdPutData = {
+    body: QoeCustomRuleIn;
+    path: {
+        /**
+         * Rule Id
+         */
+        rule_id: number;
+    };
+    query?: never;
+    url: '/api/v1/qoe-custom-rules/{rule_id}';
+};
+
+export type UpdateCustomRuleApiV1QoeCustomRulesRuleIdPutErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateCustomRuleApiV1QoeCustomRulesRuleIdPutError = UpdateCustomRuleApiV1QoeCustomRulesRuleIdPutErrors[keyof UpdateCustomRuleApiV1QoeCustomRulesRuleIdPutErrors];
+
+export type UpdateCustomRuleApiV1QoeCustomRulesRuleIdPutResponses = {
+    /**
+     * Successful Response
+     */
+    200: QoeCustomRuleOut;
+};
+
+export type UpdateCustomRuleApiV1QoeCustomRulesRuleIdPutResponse = UpdateCustomRuleApiV1QoeCustomRulesRuleIdPutResponses[keyof UpdateCustomRuleApiV1QoeCustomRulesRuleIdPutResponses];
 
 export type ListQoeRulesApiV1QoeRulesGetData = {
     body?: never;

@@ -5,7 +5,8 @@ from typing import Literal, cast
 from pydantic import BaseModel, field_validator
 
 from bedrock.analysis.capital_allocation import CapitalAllocationTable, CapitalUnit
-from bedrock.analysis.qoe import Direction, RuleUnit, Severity
+from bedrock.analysis.formula import Formula
+from bedrock.analysis.qoe import Direction, Level, RuleUnit, Severity
 from bedrock.models.off_balance_item import OffBalanceItem, OffBalanceKind
 from bedrock.schemas.statements import PeriodOut
 from bedrock.services.analysis import Flags, OffBalanceInput
@@ -56,7 +57,9 @@ class OffBalanceItemOut(BaseModel):
 
 class FlagRuleOut(BaseModel):
     """One rule's values and severities, aligned with `periods`; `warn`/`alert` are the effective
-    levels. A null value has a null severity."""
+    number levels and `warn_formula`/`alert_formula` the formula ones (as typed), with
+    `warn_levels`/`alert_levels` each level's value per period. A null value has a null
+    severity. `error` is set when a stored formula of the rule no longer parses."""
 
     code: str
     label: str
@@ -67,6 +70,20 @@ class FlagRuleOut(BaseModel):
     alert: Decimal | None
     values: list[Decimal | None]
     severity: list[Severity | None]
+    custom: bool
+    warn_formula: str | None
+    alert_formula: str | None
+    warn_levels: list[Decimal | None]
+    alert_levels: list[Decimal | None]
+    error: str | None
+
+
+def _number(level: Level) -> Decimal | None:
+    return level if isinstance(level, Decimal) else None
+
+
+def _formula_text(level: Level) -> str | None:
+    return level.text if isinstance(level, Formula) else None
 
 
 class FlagsOut(BaseModel):
@@ -90,10 +107,16 @@ class FlagsOut(BaseModel):
                     rule=r.rule,
                     direction=r.direction,
                     unit=r.unit,
-                    warn=r.thresholds.warn,
-                    alert=r.thresholds.alert,
+                    warn=_number(r.thresholds.warn),
+                    alert=_number(r.thresholds.alert),
                     values=r.values,
                     severity=r.severity,
+                    custom=r.custom,
+                    warn_formula=_formula_text(r.thresholds.warn),
+                    alert_formula=_formula_text(r.thresholds.alert),
+                    warn_levels=r.warn_levels,
+                    alert_levels=r.alert_levels,
+                    error=r.error,
                 )
                 for r in table.rows
             ],

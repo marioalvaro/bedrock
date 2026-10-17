@@ -748,7 +748,7 @@
         "type": "object"
       },
       "FlagRuleOut": {
-        "description": "One rule's values and severities, aligned with `periods`; `warn`/`alert` are the effective\nlevels. A null value has a null severity.",
+        "description": "One rule's values and severities, aligned with `periods`; `warn`/`alert` are the effective\nnumber levels and `warn_formula`/`alert_formula` the formula ones (as typed), with\n`warn_levels`/`alert_levels` each level's value per period. A null value has a null\nseverity. `error` is set when a stored formula of the rule no longer parses.",
         "properties": {
           "alert": {
             "anyOf": [
@@ -762,9 +762,39 @@
             ],
             "title": "Alert"
           },
+          "alert_formula": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alert Formula"
+          },
+          "alert_levels": {
+            "items": {
+              "anyOf": [
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Alert Levels",
+            "type": "array"
+          },
           "code": {
             "title": "Code",
             "type": "string"
+          },
+          "custom": {
+            "title": "Custom",
+            "type": "boolean"
           },
           "direction": {
             "enum": [
@@ -773,6 +803,17 @@
             ],
             "title": "Direction",
             "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
           },
           "label": {
             "title": "Label",
@@ -835,6 +876,32 @@
               }
             ],
             "title": "Warn"
+          },
+          "warn_formula": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warn Formula"
+          },
+          "warn_levels": {
+            "items": {
+              "anyOf": [
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Warn Levels",
+            "type": "array"
           }
         },
         "required": [
@@ -846,7 +913,13 @@
           "warn",
           "alert",
           "values",
-          "severity"
+          "severity",
+          "custom",
+          "warn_formula",
+          "alert_formula",
+          "warn_levels",
+          "alert_levels",
+          "error"
         ],
         "title": "FlagRuleOut",
         "type": "object"
@@ -1154,8 +1227,80 @@
         "title": "PeriodOut",
         "type": "object"
       },
-      "QoeRuleOut": {
-        "description": "A quality-of-earnings rule with its effective levels (`warn`, `alert`) and the shipped\ndefaults. Levels are fractions for `pct` rules; a null level means the rule has none.",
+      "QoeCustomRuleIn": {
+        "properties": {
+          "alert": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alert"
+          },
+          "direction": {
+            "enum": [
+              "above",
+              "below"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "formula": {
+            "title": "Formula",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "unit": {
+            "enum": [
+              "pct",
+              "x"
+            ],
+            "title": "Unit",
+            "type": "string"
+          },
+          "warn": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warn"
+          }
+        },
+        "required": [
+          "label",
+          "formula",
+          "direction",
+          "unit"
+        ],
+        "title": "QoeCustomRuleIn",
+        "type": "object"
+      },
+      "QoeCustomRuleOut": {
+        "description": "A stored custom rule. A number level is in `warn` / `alert`, a formula level in\n`warn_formula` / `alert_formula` (as typed); `error` is set when a stored formula no longer\nparses.",
         "properties": {
           "alert": {
             "anyOf": [
@@ -1169,9 +1314,145 @@
             ],
             "title": "Alert"
           },
+          "alert_formula": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alert Formula"
+          },
           "code": {
             "title": "Code",
             "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "direction": {
+            "enum": [
+              "above",
+              "below"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "formula": {
+            "title": "Formula",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "unit": {
+            "enum": [
+              "pct",
+              "x"
+            ],
+            "title": "Unit",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "warn": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warn"
+          },
+          "warn_formula": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warn Formula"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "label",
+          "formula",
+          "direction",
+          "unit",
+          "warn",
+          "alert",
+          "warn_formula",
+          "alert_formula",
+          "error",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "QoeCustomRuleOut",
+        "type": "object"
+      },
+      "QoeRuleOut": {
+        "description": "A quality-of-earnings rule with its effective levels and the shipped defaults. Levels are\nfractions for `pct` rules; a null level means the rule has none. A formula level is in\n`warn_formula` / `alert_formula` (as typed), with `warn` / `alert` null. A custom rule has\n`custom`, its `formula` (also in `rule`) and null defaults; `error` is set when a stored\nformula no longer parses.",
+        "properties": {
+          "alert": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alert"
+          },
+          "alert_formula": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alert Formula"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "custom": {
+            "title": "Custom",
+            "type": "boolean"
           },
           "default_alert": {
             "anyOf": [
@@ -1205,6 +1486,28 @@
             "title": "Direction",
             "type": "string"
           },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "formula": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Formula"
+          },
           "label": {
             "title": "Label",
             "type": "string"
@@ -1236,6 +1539,17 @@
               }
             ],
             "title": "Warn"
+          },
+          "warn_formula": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warn Formula"
           }
         },
         "required": [
@@ -1248,16 +1562,24 @@
           "alert",
           "default_warn",
           "default_alert",
-          "overridden"
+          "overridden",
+          "custom",
+          "formula",
+          "warn_formula",
+          "alert_formula",
+          "error"
         ],
         "title": "QoeRuleOut",
         "type": "object"
       },
       "QoeThresholdsIn": {
-        "description": "Both levels are required keys; null removes that level.",
+        "description": "Both levels are required keys; null removes that level. A level is a number (a fraction\nfor `pct` rules) or a formula string.",
         "properties": {
           "alert": {
             "anyOf": [
+              {
+                "type": "string"
+              },
               {
                 "type": "number"
               },
@@ -1273,6 +1595,9 @@
           },
           "warn": {
             "anyOf": [
+              {
+                "type": "string"
+              },
               {
                 "type": "number"
               },
@@ -2914,6 +3239,155 @@
         "summary": "Health",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/api/v1/qoe-custom-rules": {
+      "get": {
+        "operationId": "list_custom_rules_api_v1_qoe_custom_rules_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/QoeCustomRuleOut"
+                  },
+                  "title": "Response List Custom Rules Api V1 Qoe Custom Rules Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Custom Rules",
+        "tags": [
+          "qoe-custom-rules"
+        ]
+      },
+      "post": {
+        "operationId": "create_custom_rule_api_v1_qoe_custom_rules_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QoeCustomRuleIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QoeCustomRuleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Custom Rule",
+        "tags": [
+          "qoe-custom-rules"
+        ]
+      }
+    },
+    "/api/v1/qoe-custom-rules/{rule_id}": {
+      "delete": {
+        "operationId": "delete_custom_rule_api_v1_qoe_custom_rules__rule_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "title": "Rule Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Custom Rule",
+        "tags": [
+          "qoe-custom-rules"
+        ]
+      },
+      "put": {
+        "operationId": "update_custom_rule_api_v1_qoe_custom_rules__rule_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "title": "Rule Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QoeCustomRuleIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QoeCustomRuleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Custom Rule",
+        "tags": [
+          "qoe-custom-rules"
         ]
       }
     },

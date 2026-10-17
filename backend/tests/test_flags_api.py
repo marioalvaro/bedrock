@@ -7,8 +7,11 @@ from typing import Any
 import pytest
 import yaml
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
 from bedrock.analysis.qoe import DEFAULT_RULES_PATH
+from bedrock.models.qoe_custom_rule import QoeCustomRule
+from bedrock.models.qoe_threshold import QoeThreshold
 
 COMPANIES = "/api/v1/companies"
 MSFT = f"{COMPANIES}/MSFT"
@@ -27,6 +30,12 @@ RULE_KEYS = {
     "alert",
     "values",
     "severity",
+    "custom",
+    "warn_formula",
+    "alert_formula",
+    "warn_levels",
+    "alert_levels",
+    "error",
 }
 SEVERITIES = {"none", "warn", "alert"}
 
@@ -170,6 +179,112 @@ def test_an_override_changes_the_severities_until_it_is_reset(msft_client: TestC
 
     assert msft_client.delete(SBC_RULE).status_code == 204
     assert rule(get_flags(msft_client), "sbc_to_revenue") == before
+
+
+# --- custom rules and formula levels (FR-ANL-10) ---------------------------------------------
+
+CUSTOM = "/api/v1/qoe-custom-rules"
+ACCRUALS = {
+    "label": "Accruals (mine)",
+    "formula": "(net_income - cfo) / avg(total_assets)",
+    "direction": "above",
+    "unit": "pct",
+    "warn": "0.05",
+    "alert": "0.10",
+}
+
+
+@pytest.mark.parametrize("freq", ["annual", "ttm"])
+def test_a_custom_rule_matches_the_built_in_it_copies(msft_client: TestClient, freq: str) -> None:
+    created = msft_client.post(CUSTOM, json=ACCRUALS)
+    assert created.status_code == 201, created.text
+
+    body = get_flags(msft_client, freq=freq)
+
+    assert body["rules"][-1]["code"] == created.json()["code"]
+    mine = body["rules"][-1]
+    builtin = rule(body, "accruals_ratio")
+    assert mine["custom"] is True and builtin["custom"] is False
+    assert mine["values"] == builtin["values"]
+    assert mine["severity"] == builtin["severity"]
+    assert mine["error"] is None
+    n = len(body["periods"])
+    judged = [v is not None for v in mine["values"]]
+    assert mine["warn_levels"] == ["0.05" if j else None for j in judged]
+    assert mine["alert_levels"] == ["0.1" if j else None for j in judged]
+    assert len(mine["warn_levels"]) == len(mine["alert_levels"]) == len(mine["severity"]) == n
+
+
+def test_a_formula_level_is_judged_per_period(msft_client: TestClient) -> None:
+    put = msft_client.put(SBC_RULE, json={"warn": "prev(sbc / revenue) + 1%", "alert": None})
+    assert put.status_code == 200, put.text
+
+    body = get_flags(msft_client)
+    sbc = rule(body, "sbc_to_revenue")
+
+    assert sbc["warn_formula"] == "prev(sbc / revenue) + 1%"
+    assert sbc["warn"] is None
+    values = [None if v is None else Decimal(v) for v in sbc["values"]]
+    levels = [None if v is None else Decimal(v) for v in sbc["warn_levels"]]
+    assert levels[0] is None
+    for i in range(1, len(values)):
+        previous = values[i - 1]
+        if previous is None:
+            assert levels[i] is None
+        else:
+            # the level is prev(sbc / revenue) + 1 % quantized once; the value is quantized first
+            assert abs(levels[i] - (previous + Decimal("0.01"))) <= Decimal("0.000001")
+    for value, level, severity in zip(values, levels, sbc["severity"], strict=True):
+        if value is None:
+            assert severity is None
+        else:
+            assert severity == ("warn" if level is not None and value > level else "none")
+    # non-vacuity: some level is judged. No period is a "warn": MSFT's SBC share never rises by more
+    # than one point year on year (real values), so every judged severity is "none"; the warn
+    # branch of the loop above is covered by the unit test in test_qoe.py (sbc_inputs).
+    assert any(level is not None for level in levels)
+    assert any(v is not None for v in values) and "none" in sbc["severity"]
+
+
+def test_a_deleted_custom_rule_leaves_the_flags(msft_client: TestClient) -> None:
+    created = msft_client.post(CUSTOM, json=ACCRUALS).json()
+    assert created["code"] in [r["code"] for r in get_flags(msft_client)["rules"]]
+
+    assert msft_client.delete(f"{CUSTOM}/{created['id']}").status_code == 204
+
+    assert [r["code"] for r in get_flags(msft_client)["rules"]] == YAML_CODES
+
+
+def test_a_stored_broken_custom_rule_is_an_error_row_not_a_failure(
+    msft_client: TestClient, db_session: Session
+) -> None:
+    db_session.add(QoeCustomRule(label="Broken", formula="revenu / 2", direction="above", unit="x"))
+    db_session.commit()
+
+    body = get_flags(msft_client)
+
+    mine = body["rules"][-1]
+    assert mine["custom"] is True
+    assert mine["error"] == "Unknown name 'revenu' at 0"
+    n = len(body["periods"])
+    for key in ("values", "severity", "warn_levels", "alert_levels"):
+        assert mine[key] == [None] * n, key
+    assert rule(body, "accruals_ratio")["error"] is None
+
+
+def test_a_stored_broken_override_is_an_error_row_not_a_failure(
+    msft_client: TestClient, db_session: Session
+) -> None:
+    db_session.add(QoeThreshold(rule_code="sbc_to_revenue", warn_formula="revenu"))
+    db_session.commit()
+
+    body = get_flags(msft_client)
+
+    sbc = rule(body, "sbc_to_revenue")
+    assert sbc["error"] is not None and "revenu" in sbc["error"]
+    n = len(body["periods"])
+    assert sbc["values"] == [None] * n and sbc["severity"] == [None] * n
+    assert rule(body, "accruals_ratio")["error"] is None
 
 
 # --- off-balance items -----------------------------------------------------------------------

@@ -5,64 +5,59 @@ import { qoeRulesQueryOptions, useResetQoeThresholds, useSetQoeThresholds } from
 import { companyErrorMessage } from "@/api/companies";
 import type { QoeRuleOut } from "@/api/generated/types.gen";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { CustomRules } from "@/features/settings/CustomRules";
+import { FormulaReference } from "@/features/settings/FormulaReference";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { parseThreshold, toThresholdText } from "@/lib/format";
-
-const toText = (level: string | null, unit: QoeRuleOut["unit"]) =>
-  level === null ? "" : toThresholdText(level, unit as "pct" | "x");
+import { FORMULA_UNITS_NOTE, isFormulaLevel, levelText, levelToSend } from "@/lib/levels";
 
 function RuleRow({ rule }: { rule: QoeRuleOut }) {
   const unit = rule.unit as "pct" | "x";
-  const [warn, setWarn] = useState(toText(rule.warn, unit));
-  const [alert, setAlert] = useState(toText(rule.alert, unit));
-  const [parseError, setParseError] = useState<string | null>(null);
+  const [warn, setWarn] = useState(levelText(rule.warn, rule.warn_formula, unit));
+  const [alert, setAlert] = useState(levelText(rule.alert, rule.alert_formula, unit));
   const save = useSetQoeThresholds();
   const reset = useResetQoeThresholds();
   const suffix = unit === "pct" ? "%" : "x";
 
-  // Blank is "no level"; null from parseThreshold on non-blank text is malformed.
-  const level = (text: string): { ok: boolean; value: string | null } => {
-    if (text.trim() === "") return { ok: true, value: null };
-    const value = parseThreshold(text, unit);
-    return { ok: value !== null, value };
-  };
-
   function onSave() {
-    const w = level(warn);
-    const a = level(alert);
-    if (!w.ok || !a.ok) {
-      setParseError("Enter a number");
-      return;
-    }
-    setParseError(null);
     reset.reset();
-    save.mutate({ code: rule.code, body: { warn: w.value, alert: a.value } });
+    save.mutate({
+      code: rule.code,
+      body: { warn: levelToSend(warn, unit), alert: levelToSend(alert, unit) },
+    });
   }
 
   function onReset() {
-    setParseError(null);
     save.reset();
     reset.mutate(rule.code);
   }
 
   const error =
-    parseError ??
     (save.isError ? companyErrorMessage(save.error, "Could not save the thresholds.") : null) ??
-    (reset.isError ? companyErrorMessage(reset.error, "Could not reset the thresholds.") : null);
+    (reset.isError ? companyErrorMessage(reset.error, "Could not reset the thresholds.") : null) ??
+    rule.error;
 
   const levelInput = (name: string, value: string, set: (v: string) => void) => (
     <td className="px-2 py-2">
       <div className="flex items-center gap-1">
         <Input
           aria-label={`${rule.label} ${name}`}
-          className="h-8 w-20"
+          className={isFormulaLevel(value, unit) ? "h-8 w-40" : "h-8 w-20"}
           inputMode="decimal"
           value={value}
           onChange={(e) => set(e.target.value)}
         />
-        <span className="text-muted-foreground text-sm">{suffix}</span>
+        {isFormulaLevel(value, unit) ? (
+          <span aria-label="formula" title="formula" className="text-muted-foreground text-sm">
+            ƒ
+          </span>
+        ) : (
+          <span className="text-muted-foreground text-sm">{suffix}</span>
+        )}
       </div>
+      {isFormulaLevel(value, unit) && (
+        <p className="text-muted-foreground mt-1 max-w-40 text-xs">{FORMULA_UNITS_NOTE}</p>
+      )}
     </td>
   );
 
@@ -110,7 +105,8 @@ function QoeThresholds() {
   if (rules.isPending) return <p className="text-muted-foreground text-sm">Loading…</p>;
   if (rules.isError)
     return <p className="text-destructive text-sm">Could not load the thresholds.</p>;
-  if (rules.data.length === 0) return <p className="text-muted-foreground text-sm">No rules.</p>;
+  const builtIns = rules.data.filter((rule) => !rule.custom);
+  if (builtIns.length === 0) return <p className="text-muted-foreground text-sm">No rules.</p>;
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left">
@@ -127,10 +123,10 @@ function QoeThresholds() {
           </tr>
         </thead>
         <tbody>
-          {rules.data.map((rule) => (
+          {builtIns.map((rule) => (
             // Keyed by the server values so drafts re-sync after a save/reset refetch.
             <RuleRow
-              key={`${rule.code}|${rule.warn}|${rule.alert}|${rule.overridden}`}
+              key={`${rule.code}|${rule.warn}|${rule.alert}|${rule.warn_formula}|${rule.alert_formula}|${rule.overridden}`}
               rule={rule}
             />
           ))}
@@ -149,6 +145,8 @@ export function Settings() {
       </div>
       <h2 className="mt-8 mb-3 text-lg font-semibold">Quality-of-earnings thresholds</h2>
       <QoeThresholds />
+      <CustomRules />
+      <FormulaReference />
     </div>
   );
 }

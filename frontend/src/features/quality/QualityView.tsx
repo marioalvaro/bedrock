@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import type { ColDef } from "ag-grid-community";
+import type { ColDef, ICellRendererParams } from "ag-grid-community";
 import { useMemo, useState } from "react";
 
 import { flagsQueryOptions, type AnalysisFreq } from "@/api/analysis";
@@ -20,16 +20,25 @@ const FREQS: { value: AnalysisFreq; label: string }[] = [
 
 const EMPTY = "No quality flags for this company.";
 
-function thresholdText(rule: Rule): string {
+function levelText(rule: Rule, formula: string | null, level: string | null, name: string) {
   const sign = rule.direction === "above" ? ">" : "<";
-  const levels = [
-    ["warn", rule.warn],
-    ["alert", rule.alert],
-  ] as const;
-  const parts = levels.flatMap(([name, level]) =>
-    level === null ? [] : [`${name} ${sign} ${formatThreshold(level, rule.unit)}`],
-  );
+  if (formula !== null) return [`${name} ${sign} ${formula}`];
+  return level === null ? [] : [`${name} ${sign} ${formatThreshold(level, rule.unit)}`];
+}
+
+function thresholdText(rule: Rule): string {
+  const parts = [
+    ...levelText(rule, rule.warn_formula, rule.warn, "warn"),
+    ...levelText(rule, rule.alert_formula, rule.alert, "alert"),
+  ];
   return parts.length > 0 ? parts.join(" · ") : "—";
+}
+
+/** One period's levels for the cell title ("warn 4.1% · alert —"), formatted like the cell values. */
+function levelsTitle(rule: Rule, index: number): string {
+  const warn = formatRatio(rule.warn_levels[index] ?? null, rule.unit);
+  const alert = formatRatio(rule.alert_levels[index] ?? null, rule.unit);
+  return `warn ${warn} · alert ${alert}`;
 }
 
 function columnDefs(payload: FlagsOut): ColDef<Rule>[] {
@@ -39,7 +48,14 @@ function columnDefs(payload: FlagsOut): ColDef<Rule>[] {
     width: 100,
     headerClass: ["num", "ag-right-aligned-header"],
     valueGetter: ({ data }) => data?.values[index] ?? null,
-    valueFormatter: ({ data }) => (data ? formatRatio(data.values[index] ?? null, data.unit) : ""),
+    valueFormatter: ({ data }) =>
+      data && data.error === null
+        ? formatRatio(data.values[index] ?? null, data.unit)
+        : data
+          ? "—"
+          : "",
+    cellRenderer: ({ data, valueFormatted }: ICellRendererParams<Rule>) =>
+      data ? <span title={levelsTitle(data, index)}>{valueFormatted}</span> : null,
     cellClass: ({ data }) => {
       const severity = data?.severity[index];
       return [
@@ -60,6 +76,7 @@ function columnDefs(payload: FlagsOut): ColDef<Rule>[] {
         data ? (
           <span className="truncate" title={data.code}>
             {data.label}
+            {data.custom && <span className="text-muted-foreground ml-1.5 text-xs">custom</span>}
           </span>
         ) : null,
     },
@@ -68,7 +85,11 @@ function columnDefs(payload: FlagsOut): ColDef<Rule>[] {
       headerName: "Definition",
       width: 220,
       cellRenderer: ({ data }: { data?: Rule }) =>
-        data ? (
+        data?.error ? (
+          <span className="text-destructive truncate" title={data.error}>
+            {data.error}
+          </span>
+        ) : data ? (
           <span className="text-muted-foreground truncate" title={data.rule}>
             {data.rule}
           </span>

@@ -28,6 +28,7 @@ protected.include_router(statements.router)
 protected.include_router(ratios.router)
 protected.include_router(flags.router)
 protected.include_router(qoe_rules.router)
+protected.include_router(qoe_rules.custom_router)
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(public)

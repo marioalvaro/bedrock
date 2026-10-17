@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -139,5 +139,89 @@ describe("QualityView", () => {
     );
     renderView();
     expect(await screen.findByText("No quality flags for this company.")).toBeInTheDocument();
+  });
+
+  describe("custom rules and formula levels", () => {
+    const [builtIn] = flags().rules;
+    const custom = {
+      ...builtIn!,
+      code: "custom_sbc",
+      label: "SBC creep",
+      rule: "sbc / revenue",
+      custom: true,
+      warn: null,
+      alert: "0.1",
+      warn_formula: "prev(sbc / revenue) + 2%",
+      alert_formula: null,
+      warn_levels: ["0.041", null],
+      alert_levels: [null, "0.1"],
+      values: ["0.05", "0.12"],
+      severity: ["warn", "alert"] as ("warn" | "alert")[],
+    };
+    const broken = {
+      ...custom,
+      code: "custom_bad",
+      label: "Broken rule",
+      warn_formula: "foo(",
+      warn_levels: [null, null],
+      alert: null,
+      alert_levels: [null, null],
+      values: [null, null],
+      severity: [null, null],
+      error: "unknown name foo",
+    };
+
+    async function renderWith(rules: (typeof builtIn)[]) {
+      vi.mocked(getFlagsApiV1CompaniesTickerFlagsGet).mockResolvedValue(
+        okResult(flags({ rules: rules as never })) as never,
+      );
+      renderView();
+      await waitFor(() => expect(cell(rules[0]!.code, "FY2023")).not.toBeNull());
+    }
+
+    it("tags only custom rows with a muted custom tag", async () => {
+      await renderWith([builtIn, custom] as never);
+      const rows = (code: string) => document.querySelector(`[row-id="${code}"]`) as HTMLElement;
+      expect(within(rows("custom_sbc")).getByText("custom")).toHaveClass("text-muted-foreground");
+      expect(within(rows("accruals_ratio")).queryByText("custom")).toBeNull();
+    });
+
+    it("shows a formula level as written and a number level as before", async () => {
+      await renderWith([builtIn, custom] as never);
+      const thresholds = (code: string) =>
+        document.querySelector(`[row-id="${code}"] [col-id="thresholds"]`);
+      expect(thresholds("custom_sbc")).toHaveTextContent(
+        "warn > prev(sbc / revenue) + 2% · alert > 10%",
+      );
+      expect(thresholds("accruals_ratio")).toHaveTextContent("warn > 5% · alert > 10%");
+    });
+
+    it("gives each period's levels in the cell title, with a dash for none", async () => {
+      await renderWith([builtIn, custom] as never);
+      expect(cell("custom_sbc", "FY2023").querySelector("[title]")).toHaveAttribute(
+        "title",
+        "warn 4.1% · alert —",
+      );
+      expect(cell("custom_sbc", "FY2024").querySelector("[title]")).toHaveAttribute(
+        "title",
+        "warn — · alert 10.0%",
+      );
+      expect(cell("accruals_ratio", "FY2023").querySelector("[title]")).toHaveAttribute(
+        "title",
+        "warn 5.0% · alert 10.0%",
+      );
+    });
+
+    it("shows a rule's error in the Definition cell and dashes for values", async () => {
+      await renderWith([broken] as never);
+      const definition = document.querySelector(
+        '[row-id="custom_bad"] [col-id="rule"]',
+      ) as HTMLElement;
+      const error = within(definition).getByText("unknown name foo");
+      expect(error).toHaveClass("text-destructive");
+      expect(error).toHaveAttribute("title", "unknown name foo");
+      expect(cell("custom_bad", "FY2023")).toHaveTextContent("—");
+      expect(cell("custom_bad", "FY2024")).toHaveTextContent("—");
+    });
   });
 });

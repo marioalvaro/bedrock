@@ -2,17 +2,23 @@
 
 Pure apart from reading the rules file. Rule values read their operands through
 `ratios/calculator.py::Operands` (the ratio calculator's operand rules), never a copy of them.
+Custom rules and formula levels (FR-ANL-10) are `analysis/formula.py` formulas over the same
+operands.
 """
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
+from functools import cache
 from pathlib import Path
 from typing import Literal, get_args
 
 import yaml
 
+from bedrock.analysis import formula as formulas
+from bedrock.analysis.formula import Formula
 from bedrock.ratios.calculator import Operands, Point, RatioFreq, RatioInputs, year_earlier
+from bedrock.ratios.registry import CANONICAL_CODES, METRICS, RATIOS
 from bedrock.statements.build import RATIO_PLACES, growth
 from bedrock.statements.periods import Period
 
@@ -32,19 +38,28 @@ class RuleError(ValueError):
     """The rules file, or a threshold pair, breaks a rule; the message names the rule code."""
 
 
+Level = Decimal | Formula | None
+
+
 @dataclass(frozen=True)
 class Thresholds:
-    """One rule's levels; None means the rule has no such level."""
+    """One rule's levels; None means the rule has no such level. A Formula level is evaluated per
+    company and period (FR-ANL-10)."""
 
-    warn: Decimal | None
-    alert: Decimal | None
+    warn: Level
+    alert: Level
 
 
 @dataclass(frozen=True)
 class Rule:
-    """One entry of `qoe_rules.yaml`. `rule` is the human-readable formula shown in the UI.
-    `thresholds` are the effective ones (the YAML default, or an override after
-    `effective_rules`); `default` is always the YAML pair."""
+    """One entry of `qoe_rules.yaml`, or a custom rule. `rule` is the human-readable formula shown
+    in the UI. `thresholds` are the effective ones (the YAML default, or an override after
+    `effective_rules`); `default` is always the YAML pair (a custom rule's own levels).
+
+    A built-in rule has `formula` None and a value function in this module. A custom rule
+    (`custom`, code `custom_<id>`) has its value `formula`, or None when its stored text no longer
+    parses. `error` (a `FormulaError` message) is set when a stored formula of the rule (its value
+    or a level) no longer parses; such a rule has only None values."""
 
     code: str
     label: str
@@ -53,6 +68,9 @@ class Rule:
     unit: RuleUnit
     thresholds: Thresholds
     default: Thresholds
+    formula: Formula | None = None
+    custom: bool = False
+    error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -65,6 +83,12 @@ class FlagRow:
     thresholds: Thresholds  # the effective ones the severities were judged on
     values: list[Decimal | None]  # aligned with FlagTable.periods; quantized to RATIO_PLACES
     severity: list[Severity | None]  # None exactly where the value is None
+    # Each level's value per period, aligned with `values`: a number level repeated, a formula
+    # level evaluated and quantized to RATIO_PLACES, None where there is no level (or no value).
+    warn_levels: list[Decimal | None]
+    alert_levels: list[Decimal | None]
+    custom: bool
+    error: str | None
 
 
 @dataclass(frozen=True)
@@ -74,13 +98,22 @@ class FlagTable:
     rows: list[FlagRow]
 
 
+@cache
+def formula_names() -> frozenset[str]:
+    """The names a formula may use: every canonical line code (`ratios/registry.py::
+    CANONICAL_CODES`), metric code and ratio code, i.e. what `Operands.value` resolves. QoE rule
+    codes are not names."""
+    return CANONICAL_CODES | {m.code for m in METRICS} | {r.code for r in RATIOS}
+
+
 def validate_thresholds(code: str, direction: Direction, thresholds: Thresholds) -> None:
-    """Raises RuleError when both levels are set and out of order: for `above` alert must be
+    """Formula levels are not checked here (they are checked when parsed). Raises RuleError when
+    both levels are numbers and out of order: for `above` alert must be
     >= warn, for `below` alert must be <= warn. A non-finite level, one with |level| >=
     LEVEL_LIMIT, or one with more than LEVEL_PLACES decimal places is also a RuleError."""
     warn, alert = thresholds.warn, thresholds.alert
     for level in (warn, alert):
-        if level is None:
+        if not isinstance(level, Decimal):
             continue
         if not level.is_finite():
             raise RuleError(f"{code}: threshold {level} is not finite")
@@ -89,7 +122,7 @@ def validate_thresholds(code: str, direction: Direction, thresholds: Thresholds)
         exponent = level.normalize().as_tuple().exponent
         if isinstance(exponent, int) and exponent < -LEVEL_PLACES:
             raise RuleError(f"{code}: threshold {level} has more than {LEVEL_PLACES} decimals")
-    if warn is None or alert is None:
+    if not isinstance(warn, Decimal) or not isinstance(alert, Decimal):
         return
     if direction == "above" and alert < warn:
         raise RuleError(f"{code}: an 'above' rule needs alert >= warn ({alert} < {warn})")
@@ -174,27 +207,35 @@ def effective_rules(rules: Sequence[Rule], overrides: Mapping[str, Thresholds]) 
 def evaluate_flags(inputs: RatioInputs, rules: Sequence[Rule], freq: RatioFreq) -> FlagTable:
     """One row per rule, in order, over the periods of `inputs.income`.
 
-    Postconditions: values follow the ERD rule table (YoY is `statements/build.py::growth`; the
-    previous period of `goodwill_impairment` is a year earlier: the prior FY end, or in TTM the
-    same quarter a year earlier); values are quantized to RATIO_PLACES and severities judged on
-    the quantized value: `above` flags value > level, `below` flags value < level, alert wins over
-    warn, a None level never flags, a None value has severity None. A period in which no rule has a
-    value is left out. Raises ValueError when `freq` is `ttm` and `quarterly_income` is None."""
+    Postconditions: built-in values follow the ERD rule table (YoY is `statements/build.py::growth`;
+    the previous period of `goodwill_impairment` is a year earlier: the prior FY end, or in TTM the
+    same quarter a year earlier); a custom rule's value is `formula.evaluate(rule.formula, …)`; a
+    rule with `error` has only None values. Values are quantized to RATIO_PLACES (a value too
+    large to quantize is None) and severities judged on the quantized value against that
+    period's level values (`warn_levels` / `alert_levels`; formula levels evaluated and quantized
+    the same way): `above` flags value > level, `below` flags value < level, alert wins over
+    warn, a None level (or level value) never flags, a None value has severity None. A period in
+    which no rule has a value is left out. Raises ValueError when `freq` is `ttm` and
+    `quarterly_income` is None; RuleError for a non-custom rule with no value function, or a
+    custom rule with neither a formula nor an error."""
     if freq == "ttm" and inputs.quarterly_income is None:
         raise ValueError("TTM flags need the quarterly income statement")
     for r in rules:
-        if r.code not in _VALUES:
+        if r.custom:
+            if r.formula is None and r.error is None:
+                raise RuleError(f"{r.code}: custom rule has neither a formula nor an error")
+        elif r.code not in _VALUES:
             raise RuleError(f"{r.code}: no value function for this rule")
     operands = Operands(inputs, freq)
     periods = inputs.income.periods
-    grid = [
-        [_quantize(_VALUES[r.code](operands, (p.fiscal_year, p.fiscal_period))) for p in periods]
-        for r in rules
-    ]
+    points = [(p.fiscal_year, p.fiscal_period) for p in periods]
+    grid = [[_rule_value(r, operands, pt) for pt in points] for r in rules]
     kept = [i for i in range(len(periods)) if any(row[i] is not None for row in grid)]
     rows = []
     for r, row in zip(rules, grid, strict=True):
         values = [row[i] for i in kept]
+        warn_levels = [_level_value(r.thresholds.warn, operands, points[i], row[i]) for i in kept]
+        alert_levels = [_level_value(r.thresholds.alert, operands, points[i], row[i]) for i in kept]
         rows.append(
             FlagRow(
                 code=r.code,
@@ -204,17 +245,54 @@ def evaluate_flags(inputs: RatioInputs, rules: Sequence[Rule], freq: RatioFreq) 
                 unit=r.unit,
                 thresholds=r.thresholds,
                 values=values,
-                severity=[_severity(v, r.direction, r.thresholds) for v in values],
+                severity=[
+                    _severity(v, r.direction, warn, alert)
+                    for v, warn, alert in zip(values, warn_levels, alert_levels, strict=True)
+                ],
+                warn_levels=warn_levels,
+                alert_levels=alert_levels,
+                custom=r.custom,
+                error=r.error,
             )
         )
     return FlagTable(freq=freq, periods=[periods[i] for i in kept], rows=rows)
 
 
+def _rule_value(rule: Rule, ops: Operands, point: Point) -> Decimal | None:
+    if rule.error is not None:
+        return None
+    if rule.custom:
+        assert rule.formula is not None
+        return _quantize(formulas.evaluate(rule.formula, ops, point))
+    return _quantize(_VALUES[rule.code](ops, point))
+
+
+def _level_value(
+    level: Level, ops: Operands, point: Point, value: Decimal | None
+) -> Decimal | None:
+    """The level at `point`; None where the rule has no value there or no level."""
+    if value is None or level is None:
+        return None
+    if isinstance(level, Decimal):
+        return level
+    return _quantize(formulas.evaluate(level, ops, point))
+
+
 def _quantize(value: Decimal | None) -> Decimal | None:
-    return None if value is None else value.quantize(RATIO_PLACES)
+    if value is None:
+        return None
+    try:
+        return value.quantize(RATIO_PLACES)
+    except InvalidOperation:
+        return None
 
 
-def _severity(value: Decimal | None, direction: Direction, levels: Thresholds) -> Severity | None:
+def _severity(
+    value: Decimal | None,
+    direction: Direction,
+    warn: Decimal | None,
+    alert: Decimal | None,
+) -> Severity | None:
     if value is None:
         return None
 
@@ -223,9 +301,9 @@ def _severity(value: Decimal | None, direction: Direction, levels: Thresholds) -
             return False
         return value > level if direction == "above" else value < level
 
-    if breached(levels.alert):
+    if breached(alert):
         return "alert"
-    if breached(levels.warn):
+    if breached(warn):
         return "warn"
     return "none"
 

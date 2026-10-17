@@ -18,8 +18,13 @@ import {
   invalidateThresholdViews,
   offBalanceItemsKey,
   offBalanceItemsQueryOptions,
+  customRulesQueryOptions,
+  qoeCustomRulesKey,
   qoeRulesKey,
   qoeRulesQueryOptions,
+  useCreateQoeCustomRule,
+  useDeleteQoeCustomRule,
+  useUpdateQoeCustomRule,
   ratiosQueryOptions,
   useCreateOffBalanceItem,
   useDeleteOffBalanceItem,
@@ -37,8 +42,12 @@ import {
   getRatiosApiV1CompaniesTickerRatiosGet,
   listOffBalanceItemsApiV1CompaniesTickerOffBalanceItemsGet,
   listQoeRulesApiV1QoeRulesGet,
+  createCustomRuleApiV1QoeCustomRulesPost,
+  deleteCustomRuleApiV1QoeCustomRulesRuleIdDelete,
+  listCustomRulesApiV1QoeCustomRulesGet,
   resetQoeThresholdsApiV1QoeRulesCodeDelete,
   setQoeThresholdsApiV1QoeRulesCodePut,
+  updateCustomRuleApiV1QoeCustomRulesRuleIdPut,
   updateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdPut,
 } from "@/api/generated/sdk.gen";
 import {
@@ -46,6 +55,7 @@ import {
   flags,
   offBalanceItem,
   offBalanceItems,
+  qoeCustomRule,
   qoeRule,
   qoeRules,
   ratios,
@@ -63,6 +73,10 @@ vi.mock("@/api/generated/sdk.gen", () => ({
   listQoeRulesApiV1QoeRulesGet: vi.fn(),
   setQoeThresholdsApiV1QoeRulesCodePut: vi.fn(),
   resetQoeThresholdsApiV1QoeRulesCodeDelete: vi.fn(),
+  listCustomRulesApiV1QoeCustomRulesGet: vi.fn(),
+  createCustomRuleApiV1QoeCustomRulesPost: vi.fn(),
+  updateCustomRuleApiV1QoeCustomRulesRuleIdPut: vi.fn(),
+  deleteCustomRuleApiV1QoeCustomRulesRuleIdDelete: vi.fn(),
 }));
 
 const getRatios = vi.mocked(getRatiosApiV1CompaniesTickerRatiosGet);
@@ -75,6 +89,10 @@ const deleteItem = vi.mocked(deleteOffBalanceItemApiV1CompaniesTickerOffBalanceI
 const listRules = vi.mocked(listQoeRulesApiV1QoeRulesGet);
 const setRule = vi.mocked(setQoeThresholdsApiV1QoeRulesCodePut);
 const resetRule = vi.mocked(resetQoeThresholdsApiV1QoeRulesCodeDelete);
+const listCustom = vi.mocked(listCustomRulesApiV1QoeCustomRulesGet);
+const createCustom = vi.mocked(createCustomRuleApiV1QoeCustomRulesPost);
+const updateCustom = vi.mocked(updateCustomRuleApiV1QoeCustomRulesRuleIdPut);
+const deleteCustom = vi.mocked(deleteCustomRuleApiV1QoeCustomRulesRuleIdDelete);
 
 function setup() {
   const queryClient = new QueryClient({
@@ -141,6 +159,15 @@ const queries = [
     sdk: listRules,
     args: undefined,
     body: qoeRules(),
+    bad: [{}, "<html></html>"],
+  },
+  {
+    name: "customRulesQueryOptions",
+    options: () => customRulesQueryOptions(),
+    key: qoeCustomRulesKey,
+    sdk: listCustom,
+    args: undefined,
+    body: [qoeCustomRule()],
     bad: [{}, "<html></html>"],
   },
 ];
@@ -221,6 +248,7 @@ describe("invalidateThresholdViews", () => {
     const { queryClient } = setup();
     const stale = [
       qoeRulesKey,
+      qoeCustomRulesKey,
       [...flagsKey("AAPL"), "annual"],
       [...flagsKey("AAPL"), "ttm"],
       [...flagsKey("MSFT"), "annual"],
@@ -257,11 +285,32 @@ function useSetCase() {
 function useResetCase() {
   return useResetQoeThresholds();
 }
+function useCreateCustomCase() {
+  return useCreateQoeCustomRule();
+}
+function useUpdateCustomCase() {
+  return useUpdateQoeCustomRule();
+}
+function useDeleteCustomCase() {
+  return useDeleteQoeCustomRule();
+}
+const customBody = {
+  label: "Accruals (mine)",
+  formula: "(net_income - cfo) / avg(total_assets)",
+  direction: "above" as const,
+  unit: "pct" as const,
+  warn: "0.05",
+  alert: "prev(sbc / revenue) + 1%",
+};
 
 // Mutations: hook, trigger, SDK mock, expected call, success payload, and which group goes stale.
 type AnyMutation = UseMutationResult<unknown, Error, never>;
 const offBalanceStale = () => [offBalanceItemsKey("AAPL"), [...flagsKey("AAPL"), "annual"]];
-const thresholdStale = () => [qoeRulesKey, [...flagsKey("AAPL"), "annual"]];
+const thresholdStale = () => [
+  qoeRulesKey,
+  qoeCustomRulesKey,
+  [...flagsKey("AAPL"), "annual"],
+];
 
 const mutations = [
   {
@@ -307,6 +356,33 @@ const mutations = [
     hook: useResetCase,
     vars: "accruals_ratio",
     call: { path: { code: "accruals_ratio" } },
+    stale: thresholdStale,
+  },
+  {
+    name: "create custom rule",
+    sdk: createCustom,
+    ok: () => okResult(qoeCustomRule(), 201),
+    hook: useCreateCustomCase,
+    vars: customBody,
+    call: { body: customBody },
+    stale: thresholdStale,
+  },
+  {
+    name: "update custom rule",
+    sdk: updateCustom,
+    ok: () => okResult(qoeCustomRule()),
+    hook: useUpdateCustomCase,
+    vars: { id: 4, body: customBody },
+    call: { path: { rule_id: 4 }, body: customBody },
+    stale: thresholdStale,
+  },
+  {
+    name: "delete custom rule",
+    sdk: deleteCustom,
+    ok: () => okResult(null, 204),
+    hook: useDeleteCustomCase,
+    vars: 4,
+    call: { path: { rule_id: 4 } },
     stale: thresholdStale,
   },
 ];

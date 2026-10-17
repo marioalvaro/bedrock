@@ -30,6 +30,20 @@ class InvalidThreshold(Exception):
     which."""
 
 
+class CustomRuleNotFound(Exception):
+    """No custom quality-of-earnings rule with this id."""
+
+
+class InvalidFormula(Exception):
+    """A formula (a custom rule's value or a level) does not parse; the message is the
+    `FormulaError` text with its position, e.g. "Unknown name 'revenu' at 0"."""
+
+
+class InvalidCustomRule(Exception):
+    """A custom rule breaks a rule other than its formula (e.g. a blank label); the message says
+    which."""
+
+
 class OffBalanceItemNotFound(Exception):
     """No off-balance-sheet item with this id on the company (another company's id counts as
     unknown)."""
@@ -48,6 +62,9 @@ DOMAIN_ERRORS = (
     InvalidAdjustment,
     RuleNotFound,
     InvalidThreshold,
+    CustomRuleNotFound,
+    InvalidFormula,
+    InvalidCustomRule,
     OffBalanceItemNotFound,
     InvalidOffBalanceItem,
     UnknownTicker,
@@ -69,6 +86,8 @@ def user_message(error: Exception) -> str:
             return f"No such adjustment: {error}"
         case RuleNotFound():
             return f"No such quality-of-earnings rule: {error}"
+        case CustomRuleNotFound():
+            return f"No such custom quality-of-earnings rule: {error}"
         case OffBalanceItemNotFound():
             return f"No such off-balance-sheet item: {error}"
         case CompanyExists():

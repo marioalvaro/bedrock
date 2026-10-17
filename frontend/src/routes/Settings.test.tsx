@@ -4,10 +4,12 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  listCustomRulesApiV1QoeCustomRulesGet,
   listQoeRulesApiV1QoeRulesGet,
   resetQoeThresholdsApiV1QoeRulesCodeDelete,
   setQoeThresholdsApiV1QoeRulesCodePut,
 } from "@/api/generated/sdk.gen";
+import { FORMULA_UNITS_NOTE } from "@/lib/levels";
 import { createQueryClient } from "@/lib/query-client";
 import { qoeRule, qoeRules } from "@/test/analysis";
 import { errorResult, okResult } from "@/test/responses";
@@ -15,6 +17,7 @@ import { errorResult, okResult } from "@/test/responses";
 import { Settings } from "./Settings";
 
 vi.mock("@/api/generated/sdk.gen", () => ({
+  listCustomRulesApiV1QoeCustomRulesGet: vi.fn(),
   listQoeRulesApiV1QoeRulesGet: vi.fn(),
   setQoeThresholdsApiV1QoeRulesCodePut: vi.fn(),
   resetQoeThresholdsApiV1QoeRulesCodeDelete: vi.fn(),
@@ -42,6 +45,18 @@ const input = (name: string) => screen.getByLabelText(name) as HTMLInputElement;
 describe("Settings", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    // The Custom rules section (features/settings/CustomRules.tsx, tested on its own) loads too.
+    vi.mocked(listCustomRulesApiV1QoeCustomRulesGet).mockResolvedValue(okResult([]) as never);
+  });
+
+  it("shows the formula reference at the bottom", async () => {
+    await setup();
+    expect(screen.getByText("Formula reference")).toBeInTheDocument();
+  });
+
+  it("shows the Custom rules section below the thresholds", async () => {
+    await setup();
+    expect(await screen.findByRole("heading", { name: "Custom rules" })).toBeInTheDocument();
   });
 
   it("still renders the theme toggle", async () => {
@@ -108,13 +123,68 @@ describe("Settings", () => {
     );
   });
 
-  it("rejects malformed input without sending", async () => {
+  it("sends a formula level as typed, trimmed, and marks it with the formula sign", async () => {
+    vi.mocked(setQoeThresholdsApiV1QoeRulesCodePut).mockResolvedValue(okResult(qoeRule()) as never);
+    await setup();
+    expect(screen.queryByLabelText("formula")).not.toBeInTheDocument();
+    await userEvent.clear(input("Accruals ratio warn"));
+    await userEvent.type(input("Accruals ratio warn"), "  0.5 * revenue ");
+    expect(screen.getByLabelText("formula")).toHaveTextContent("ƒ");
+    await userEvent.click(screen.getByRole("button", { name: "Save Accruals ratio" }));
+    await waitFor(() =>
+      expect(setQoeThresholdsApiV1QoeRulesCodePut).toHaveBeenCalledWith({
+        path: { code: "accruals_ratio" },
+        body: { warn: "0.5 * revenue", alert: "0.1" },
+      }),
+    );
+  });
+
+  it("prefills a formula level from warn_formula and marks it", async () => {
+    await setup([qoeRule({ warn: null, warn_formula: "revenue * 0.01" })]);
+    expect(input("Accruals ratio warn").value).toBe("revenue * 0.01");
+    expect(input("Accruals ratio alert").value).toBe("10");
+    expect(screen.getAllByLabelText("formula")).toHaveLength(1);
+  });
+
+  it("shows the fractions note while a level is a formula and hides it for a number", async () => {
+    await setup();
+    expect(screen.queryByText(FORMULA_UNITS_NOTE)).not.toBeInTheDocument();
+    await userEvent.clear(input("Accruals ratio warn"));
+    await userEvent.type(input("Accruals ratio warn"), "0.5 * revenue");
+    expect(screen.getAllByText(FORMULA_UNITS_NOTE)).toHaveLength(1);
+    await userEvent.clear(input("Accruals ratio warn"));
+    await userEvent.type(input("Accruals ratio warn"), "5");
+    expect(screen.queryByText(FORMULA_UNITS_NOTE)).not.toBeInTheDocument();
+  });
+
+  it("shows the fractions note on a prefilled formula level only", async () => {
+    await setup([qoeRule({ warn: null, warn_formula: "revenue * 0.01" })]);
+    expect(screen.getAllByText(FORMULA_UNITS_NOTE)).toHaveLength(1);
+  });
+
+  it("shows the 422 detail with the position for a formula level", async () => {
+    vi.mocked(setQoeThresholdsApiV1QoeRulesCodePut).mockResolvedValue(
+      errorResult(422, { detail: "Unknown name 'revenu' at 0" }) as never,
+    );
     await setup();
     await userEvent.clear(input("Accruals ratio warn"));
-    await userEvent.type(input("Accruals ratio warn"), "abc");
+    await userEvent.type(input("Accruals ratio warn"), "revenu");
     await userEvent.click(screen.getByRole("button", { name: "Save Accruals ratio" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Enter a number");
-    expect(setQoeThresholdsApiV1QoeRulesCodePut).not.toHaveBeenCalled();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Unknown name 'revenu' at 0");
+  });
+
+  it("does not render custom rules in the thresholds table", async () => {
+    await setup([
+      ...qoeRules(),
+      qoeRule({ code: "custom_1", label: "Accruals (mine)", custom: true }),
+    ]);
+    expect(screen.queryByLabelText("Accruals (mine) warn")).not.toBeInTheDocument();
+    expect(screen.queryByText("Accruals (mine)")).not.toBeInTheDocument();
+  });
+
+  it("shows a built-in rule's error in its row", async () => {
+    await setup([qoeRule({ error: "Division by zero at 4" })]);
+    expect(screen.getByRole("alert")).toHaveTextContent("Division by zero at 4");
   });
 
   it("shows the 422 detail in the row", async () => {
@@ -254,15 +324,6 @@ describe("Settings", () => {
     await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
   });
 
-  it("rejects malformed text in the alert field only", async () => {
-    await setup();
-    await userEvent.clear(input("Accruals ratio alert"));
-    await userEvent.type(input("Accruals ratio alert"), "abc");
-    await userEvent.click(screen.getByRole("button", { name: "Save Accruals ratio" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Enter a number");
-    expect(setQoeThresholdsApiV1QoeRulesCodePut).not.toHaveBeenCalled();
-  });
-
   it("shows a generic message when a failure has no detail", async () => {
     vi.mocked(setQoeThresholdsApiV1QoeRulesCodePut).mockResolvedValue(
       errorResult(500, {}) as never,
@@ -274,8 +335,12 @@ describe("Settings", () => {
 
   it("shows a loading line while pending", async () => {
     vi.mocked(listQoeRulesApiV1QoeRulesGet).mockReturnValue(new Promise(() => {}) as never);
+    vi.mocked(listCustomRulesApiV1QoeCustomRulesGet).mockReturnValue(
+      new Promise(() => {}) as never,
+    );
     renderSettings();
-    expect(screen.getByText("Loading…")).toBeInTheDocument();
+    // One loading line for the thresholds table and one for the Custom rules section.
+    expect(screen.getAllByText("Loading…")).toHaveLength(2);
   });
 
   it("shows an error state", async () => {

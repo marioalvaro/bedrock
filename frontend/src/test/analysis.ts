@@ -3,6 +3,7 @@ import type {
   FlagsOut,
   OffBalanceItemOut,
   PeriodOut,
+  QoeCustomRuleOut,
   QoeRuleOut,
   RatiosOut,
 } from "@/api/generated/types.gen";
@@ -125,6 +126,12 @@ export function flags(overrides: Partial<FlagsOut> = {}): FlagsOut {
         alert: "0.1",
         values: ["0.062", "0.15"],
         severity: ["warn", "alert"],
+        custom: false,
+        warn_formula: null,
+        alert_formula: null,
+        warn_levels: ["0.05", "0.05"],
+        alert_levels: ["0.1", "0.1"],
+        error: null,
       },
       {
         code: "cfo_to_net_income",
@@ -136,6 +143,12 @@ export function flags(overrides: Partial<FlagsOut> = {}): FlagsOut {
         alert: "0",
         values: ["1.2", null],
         severity: ["none", null],
+        custom: false,
+        warn_formula: null,
+        alert_formula: null,
+        warn_levels: ["0.8", null],
+        alert_levels: ["0", null],
+        error: null,
       },
       {
         code: "goodwill_impairment",
@@ -147,6 +160,12 @@ export function flags(overrides: Partial<FlagsOut> = {}): FlagsOut {
         alert: null,
         values: ["0", "0"],
         severity: ["none", "none"],
+        custom: false,
+        warn_formula: null,
+        alert_formula: null,
+        warn_levels: ["0", "0"],
+        alert_levels: [null, null],
+        error: null,
       },
     ],
     off_balance_items: offBalanceItems(),
@@ -289,6 +308,11 @@ export function qoeRule(overrides: Partial<QoeRuleOut> = {}): QoeRuleOut {
     default_warn: "0.05",
     default_alert: "0.1",
     overridden: false,
+    custom: false,
+    formula: null,
+    warn_formula: null,
+    alert_formula: null,
+    error: null,
     ...overrides,
   };
 }
@@ -319,4 +343,23 @@ export function qoeRules(): QoeRuleOut[] {
       default_alert: "0",
     }),
   ];
+}
+
+export function qoeCustomRule(overrides: Partial<QoeCustomRuleOut> = {}): QoeCustomRuleOut {
+  return {
+    id: 1,
+    code: "custom_1",
+    label: "Accruals (mine)",
+    formula: "(net_income - cfo) / avg(total_assets)",
+    direction: "above",
+    unit: "pct",
+    warn: "0.05",
+    alert: "0.1",
+    warn_formula: null,
+    alert_formula: null,
+    error: null,
+    created_at: "2026-10-17T10:00:00Z",
+    updated_at: "2026-10-17T10:00:00Z",
+    ...overrides,
+  };
 }

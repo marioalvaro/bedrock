@@ -1,5 +1,7 @@
 """Quality-of-earnings flags (FR-ANL-05): rule values, severities, YAML validation, overrides."""
 
+import functools
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -8,9 +10,11 @@ from typing import Any
 import pytest
 import yaml
 
+from bedrock.analysis.formula import Formula, parse
 from bedrock.analysis.qoe import (
     DEFAULT_RULES_PATH,
     Direction,
+    FlagRow,
     FlagTable,
     Rule,
     RuleError,
@@ -19,13 +23,15 @@ from bedrock.analysis.qoe import (
     Thresholds,
     effective_rules,
     evaluate_flags,
+    formula_names,
     load_rules,
     validate_thresholds,
 )
 from bedrock.mapping.config import load_canonical_items
 from bedrock.ratios.calculator import RatioInputs
-from bedrock.statements.build import RATIO_PLACES, Row, StatementTable
+from bedrock.statements.build import RATIO_PLACES, Row, StatementTable, build_statement
 from bedrock.statements.periods import Period
+from tests.statements_pipeline import run_pipeline
 
 KINDS = {i.code: i.kind for i in load_canonical_items()}
 
@@ -713,6 +719,7 @@ def broken(mutate: str) -> list[dict[str, Any]] | dict[str, Any]:
     elif mutate == "mapping_file":
         return {"rules": entries}
     elif mutate == "entry_not_mapping":
+        # deliberately not a mapping: the loader must reject it (the list type is the valid shape)
         entries[0] = "accruals_ratio"  # type: ignore[call-overload]
     return entries
 
@@ -781,3 +788,282 @@ def test_values_are_on_the_ratio_grid() -> None:
     for row in result.rows:
         for value in row.values:
             assert value is None or value == value.quantize(RATIO_PLACES)
+
+
+# --- custom rules and formula levels (FR-ANL-10) -------------------------------------------------
+
+
+def custom(
+    code: str,
+    text: str,
+    warn: str | None = None,
+    alert: str | None = None,
+    direction: Direction = "above",
+    error: str | None = None,
+) -> Rule:
+    def level(raw: str | None) -> Decimal | Formula | None:
+        if raw is None:
+            return None
+        try:
+            return Decimal(raw)
+        except ArithmeticError:
+            return parse(raw, formula_names())
+
+    levels = Thresholds(level(warn), level(alert))
+    formula = None if error else parse(text, formula_names())
+    return Rule(
+        code,
+        code,
+        text,
+        direction,
+        "pct",
+        levels,
+        levels,
+        formula=formula,
+        custom=True,
+        error=error,
+    )
+
+
+def full_row(result: FlagTable, code: str) -> FlagRow:
+    return next(r for r in result.rows if r.code == code)
+
+
+def test_a_custom_rule_value_is_its_formula_quantized() -> None:
+    inputs = annual_inputs(YEARS, income={"revenue": [3, 3, 3]}, balance={"goodwill": [1, 2, 1]})
+    result = evaluate_flags(inputs, [custom("custom_1", "goodwill / revenue")], "annual")
+    row = full_row(result, "custom_1")
+    assert row.values == [Decimal("0.333333"), Decimal("0.666667"), Decimal("0.333333")]
+    assert (row.custom, row.error) == (True, None)
+    assert row.severity == ["none"] * 3
+
+
+def test_rows_follow_the_given_rules_order_with_customs_mixed_in() -> None:
+    inputs = goodwill_share("0.1")
+    rules = [custom("custom_2", "revenue"), rule("goodwill_to_assets"), custom("custom_1", "1")]
+    result = evaluate_flags(inputs, rules, "annual")
+    assert [r.code for r in result.rows] == ["custom_2", "goodwill_to_assets", "custom_1"]
+    assert [r.custom for r in result.rows] == [True, False, True]
+
+
+def test_a_period_only_a_custom_rule_has_a_value_for_is_kept() -> None:
+    inputs = annual_inputs(
+        YEARS, income={"revenue": [None, 5, 5]}, balance={"goodwill": [1, None, None]}
+    )
+    builtin = rule("goodwill_to_assets")
+    assert [p.key for p in evaluate_flags(inputs, [builtin], "annual").periods] == []
+    result = evaluate_flags(inputs, [builtin, custom("custom_1", "revenue")], "annual")
+    assert [p.key for p in result.periods] == ["FY2023", "FY2024"]
+    assert full_row(result, "custom_1").values == [Decimal(5), Decimal(5)]
+
+
+def test_a_rule_with_an_error_has_only_nulls_and_keeps_no_period_alive() -> None:
+    inputs = goodwill_share("0.1", "0.2")
+    broken_rule = custom("custom_1", "bad", "0.1", "0.2", error="Unknown name 'bad' at 0")
+    result = evaluate_flags(inputs, [broken_rule], "annual")
+    assert result.periods == []
+    both = evaluate_flags(inputs, [rule("goodwill_to_assets"), broken_rule], "annual")
+    row = full_row(both, "custom_1")
+    assert row.values == row.severity == row.warn_levels == row.alert_levels == [None, None]
+    assert row.error == "Unknown name 'bad' at 0"
+    assert row.thresholds == broken_rule.thresholds
+
+
+def test_a_built_in_rule_with_an_error_has_only_nulls() -> None:
+    healthy = rule("sbc_to_revenue", warn="0.05", alert="0.1")
+    keep_alive = custom("custom_1", "revenue")
+    inputs = sbc_inputs()
+    ok = full_row(evaluate_flags(inputs, [healthy, keep_alive], "annual"), "sbc_to_revenue")
+    assert any(v is not None for v in ok.values)  # non-vacuity: the error is what nulls it
+
+    broken_rule = replace(healthy, error="x")
+    row = full_row(evaluate_flags(inputs, [broken_rule, keep_alive], "annual"), "sbc_to_revenue")
+
+    assert len(row.values) == len(ok.values)
+    assert all(v is None for v in row.values + row.severity + row.warn_levels + row.alert_levels)
+    assert row.error == "x"
+
+
+def test_a_custom_rule_with_neither_formula_nor_error_is_a_rule_error() -> None:
+    bare = Rule(
+        "custom_1",
+        "x",
+        "x",
+        "above",
+        "pct",
+        Thresholds(None, None),
+        Thresholds(None, None),
+        custom=True,
+    )
+    with pytest.raises(RuleError, match="custom_1"):
+        evaluate_flags(annual_inputs(YEARS), [bare], "annual")
+
+
+def test_number_levels_are_repeated_per_period() -> None:
+    result = evaluate_flags(
+        goodwill_share("0.1", "0.4"), [rule("goodwill_to_assets", "above", "0.3", "0.5")], "annual"
+    )
+    row = full_row(result, "goodwill_to_assets")
+    assert row.warn_levels == [Decimal("0.3")] * 2
+    assert row.alert_levels == [Decimal("0.5")] * 2
+    assert row.severity == ["none", "warn"]
+
+
+def test_a_missing_level_is_none_in_every_period() -> None:
+    result = evaluate_flags(goodwill_share("0.1"), [rule("goodwill_to_assets")], "annual")
+    row = full_row(result, "goodwill_to_assets")
+    assert row.warn_levels == row.alert_levels == [None]
+
+
+def test_levels_are_none_where_the_value_is_none() -> None:
+    inputs = annual_inputs(
+        YEARS,
+        income={"revenue": [100, 100, 100]},
+        balance={"goodwill": [30, None, 60], "total_assets": [100, 100, 100]},
+    )
+    keep_alive = custom("custom_1", "revenue")
+    rules = [rule("goodwill_to_assets", "above", "0.3", "0.5"), keep_alive]
+    row = full_row(evaluate_flags(inputs, rules, "annual"), "goodwill_to_assets")
+    assert row.warn_levels == [Decimal("0.3"), None, Decimal("0.3")]
+    assert row.alert_levels == [Decimal("0.5"), None, Decimal("0.5")]
+
+
+def sbc_inputs() -> RatioInputs:
+    return annual_inputs(
+        [fy(2022), fy(2023), fy(2024), fy(2025)],
+        income={"revenue": [100, 100, 100, 100]},
+        cash_flow={"sbc": [5, 5, 8, 20]},
+    )
+
+
+def test_a_formula_level_is_judged_per_period() -> None:
+    # the level is last year's sbc_to_revenue + 1 point; FY2022 has no previous year
+    rules = [
+        Rule(
+            "sbc_to_revenue",
+            "sbc",
+            "sbc / revenue",
+            "above",
+            "pct",
+            Thresholds(parse("prev(sbc / revenue) + 1%", formula_names()), None),
+            Thresholds(None, None),
+        )
+    ]
+    result = evaluate_flags(sbc_inputs(), rules, "annual")
+    row = full_row(result, "sbc_to_revenue")
+    assert row.values == [Decimal("0.05"), Decimal("0.05"), Decimal("0.08"), Decimal("0.2")]
+    assert row.warn_levels == [None, Decimal("0.06"), Decimal("0.06"), Decimal("0.09")]
+    assert row.alert_levels == [None] * 4
+    assert row.severity == ["none", "none", "warn", "warn"]
+
+
+def test_an_alert_formula_wins_over_the_warn_formula() -> None:
+    f = functools.partial(parse, known_names=formula_names())
+    levels = Thresholds(f("prev(sbc / revenue) + 1%"), f("prev(sbc / revenue) + 5%"))
+    rules = [Rule("sbc_to_revenue", "s", "s", "above", "pct", levels, levels)]
+    row = full_row(evaluate_flags(sbc_inputs(), rules, "annual"), "sbc_to_revenue")
+    assert row.alert_levels == [None, Decimal("0.10"), Decimal("0.10"), Decimal("0.13")]
+    assert row.severity == ["none", "none", "warn", "alert"]
+
+
+def test_a_formula_level_is_quantized() -> None:
+    levels = Thresholds(parse("1 / 3", formula_names()), None)
+    rules = [Rule("sbc_to_revenue", "s", "s", "above", "pct", levels, levels)]
+    row = full_row(evaluate_flags(sbc_inputs(), rules, "annual"), "sbc_to_revenue")
+    assert row.warn_levels == [Decimal("0.333333")] * 4
+
+
+def test_a_below_rule_with_a_formula_level() -> None:
+    levels = Thresholds(parse("sbc / revenue + 1%", formula_names()), None)
+    rules = [Rule("sbc_to_revenue", "s", "s", "below", "pct", levels, levels)]
+    row = full_row(evaluate_flags(sbc_inputs(), rules, "annual"), "sbc_to_revenue")
+    assert row.severity == ["warn"] * 4  # the value is below its own level plus 1 point
+
+
+def test_a_value_too_large_to_quantize_is_none() -> None:
+    inputs = annual_inputs(YEARS, income={"revenue": [10**12, 5, 10**12]})
+    rules = [custom("custom_1", "revenue * revenue * revenue"), custom("custom_2", "revenue")]
+    result = evaluate_flags(inputs, rules, "annual")
+    row = full_row(result, "custom_1")
+    assert row.values == [None, Decimal(125), None]
+    assert row.severity == [None, "none", None]
+
+
+def test_a_level_too_large_to_quantize_never_flags() -> None:
+    levels = Thresholds(parse("revenue * revenue * revenue", formula_names()), None)
+    rules = [Rule("sbc_to_revenue", "s", "s", "above", "pct", levels, levels)]
+    inputs = annual_inputs([fy(2024)], income={"revenue": [10**12]}, cash_flow={"sbc": [1]})
+    row = full_row(evaluate_flags(inputs, rules, "annual"), "sbc_to_revenue")
+    assert row.warn_levels == [None]
+    assert row.severity == ["none"]
+
+
+def test_validate_thresholds_skips_formula_levels() -> None:
+    f = parse("revenue", formula_names())
+    validate_thresholds("r", "above", Thresholds(Decimal("0.9"), f))
+    validate_thresholds("r", "above", Thresholds(f, Decimal("0.1")))
+    validate_thresholds("r", "below", Thresholds(f, f))
+    with pytest.raises(RuleError, match="r:"):
+        validate_thresholds("r", "above", Thresholds(f, Decimal("1000000")))
+    with pytest.raises(RuleError, match="r:"):
+        validate_thresholds("r", "above", Thresholds(Decimal("1E+30"), f))
+
+
+def test_formula_names_are_lines_metrics_and_ratios_but_not_rule_codes() -> None:
+    names = formula_names()
+    assert {"revenue", "ebitda", "roe", "sbc", "net_income"} <= names
+    # goodwill_impairment is both a QoE rule code and a canonical line, so it is a name
+    shipped = {r.code for r in load_rules()} - {"goodwill_impairment"}
+    assert shipped & names == set(), shipped & names
+
+
+# Golden invariant: a custom rule written as the built-in's formula gives the same values.
+GOLDEN = {
+    "accruals_ratio": "(net_income - cfo) / avg(total_assets)",
+    "receivables_vs_revenue": "yoy(receivables) - yoy(revenue)",
+    "sbc_to_revenue": "sbc / revenue",
+}
+
+
+@functools.cache
+def pipeline_inputs(ticker: str, freq: str) -> RatioInputs:
+    p = run_pipeline(ticker)
+    if freq == "annual":
+        return RatioInputs(p.annual["IS"], p.annual["CF"], p.annual["BS"])
+    return RatioInputs(
+        build_statement(p.canonical, p.items, "IS", "ttm"),
+        build_statement(p.canonical, p.items, "CF", "ttm"),
+        p.quarterly["BS"],
+        p.quarterly["IS"],
+    )
+
+
+@pytest.mark.parametrize("freq", ["annual", "ttm"])
+@pytest.mark.parametrize("ticker", ["AAPL", "MSFT", "COST", "DE"])
+def test_custom_rules_equal_the_built_ins_on_recorded_fixtures(ticker: str, freq: str) -> None:
+    shipped = {r.code: r for r in load_rules()}
+    rules = [shipped[code] for code in GOLDEN]
+    for code, text in GOLDEN.items():
+        t = shipped[code].thresholds
+        assert isinstance(t.warn, Decimal | None) and isinstance(t.alert, Decimal | None)
+        rules.append(
+            custom(
+                f"custom_{code}",
+                text,
+                None if t.warn is None else str(t.warn),
+                None if t.alert is None else str(t.alert),
+                shipped[code].direction,
+            )
+        )
+    result = evaluate_flags(
+        pipeline_inputs(ticker, freq), rules, "annual" if freq == "annual" else "ttm"
+    )
+    assert result.periods
+    for code in GOLDEN:
+        mine, builtin = full_row(result, f"custom_{code}"), full_row(result, code)
+        assert mine.values == builtin.values, code
+        assert mine.severity == builtin.severity, code
+        assert mine.warn_levels == builtin.warn_levels, code
+        assert mine.alert_levels == builtin.alert_levels, code
+        # non-vacuity: every code has a judged value on every recorded ticker and frequency
+        assert any(v is not None for v in builtin.values), (ticker, freq, code)

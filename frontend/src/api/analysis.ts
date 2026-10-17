@@ -4,15 +4,19 @@ import { ratiosKey } from "@/api/adjustments";
 import { companyKey } from "@/api/companies";
 import { ApiError, unwrap } from "@/api/errors";
 import {
+  createCustomRuleApiV1QoeCustomRulesPost,
   createOffBalanceItemApiV1CompaniesTickerOffBalanceItemsPost,
+  deleteCustomRuleApiV1QoeCustomRulesRuleIdDelete,
   deleteOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdDelete,
   getCapitalAllocationApiV1CompaniesTickerCapitalAllocationGet,
   getFlagsApiV1CompaniesTickerFlagsGet,
   getRatiosApiV1CompaniesTickerRatiosGet,
+  listCustomRulesApiV1QoeCustomRulesGet,
   listOffBalanceItemsApiV1CompaniesTickerOffBalanceItemsGet,
   listQoeRulesApiV1QoeRulesGet,
   resetQoeThresholdsApiV1QoeRulesCodeDelete,
   setQoeThresholdsApiV1QoeRulesCodePut,
+  updateCustomRuleApiV1QoeCustomRulesRuleIdPut,
   updateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdPut,
 } from "@/api/generated/sdk.gen";
 import type {
@@ -20,6 +24,8 @@ import type {
   FlagsOut,
   OffBalanceItemIn,
   OffBalanceItemOut,
+  QoeCustomRuleIn,
+  QoeCustomRuleOut,
   QoeRuleOut,
   QoeThresholdsIn,
   RatiosOut,
@@ -41,6 +47,8 @@ export const offBalanceItemsKey = (ticker: string) =>
   [...companyKey(ticker), "off-balance-items"] as const;
 // QoE rules are global (not per company).
 export const qoeRulesKey = ["qoe-rules"] as const;
+// Custom QoE rules are global too.
+export const qoeCustomRulesKey = ["qoe-custom-rules"] as const;
 
 /**
  * GET …/ratios?freq&basis. Key `[...ratiosKey(ticker), freq, basis]`, so an adjustment change
@@ -134,13 +142,26 @@ export function invalidateOffBalanceViews(queryClient: QueryClient, ticker: stri
   );
 }
 
+/** GET /qoe-custom-rules. Key `qoeCustomRulesKey`. Rejects a 200 whose body is not an array. */
+export const customRulesQueryOptions = () =>
+  queryOptions<QoeCustomRuleOut[]>({
+    queryKey: qoeCustomRulesKey,
+    queryFn: async () => {
+      const list = await unwrap(listCustomRulesApiV1QoeCustomRulesGet());
+      if (!Array.isArray(list)) throw new ApiError(200, "Unexpected response");
+      return list;
+    },
+  });
+
 /**
- * Marks stale what a threshold change moves: the QoE rules and every company's flags (any key
+ * Marks stale what a threshold or custom-rule change moves: the QoE rules, the custom rules and
+ * every company's flags (any key
  * `["companies", <ticker>, "flags", …]`). Nothing else.
  */
 export function invalidateThresholdViews(queryClient: QueryClient): Promise<void> {
   return Promise.all([
     queryClient.invalidateQueries({ queryKey: qoeRulesKey }),
+    queryClient.invalidateQueries({ queryKey: qoeCustomRulesKey }),
     queryClient.invalidateQueries({
       predicate: (query) => query.queryKey[0] === "companies" && query.queryKey[2] === "flags",
     }),
@@ -206,6 +227,35 @@ export function useResetQoeThresholds() {
   const queryClient = useQueryClient();
   return useMutation<unknown, Error, string>({
     mutationFn: (code) => unwrap(resetQoeThresholdsApiV1QoeRulesCodeDelete({ path: { code } })),
+    onSuccess: () => invalidateThresholdViews(queryClient),
+  });
+}
+
+/** POST /qoe-custom-rules with `body`; on success `invalidateThresholdViews`. */
+export function useCreateQoeCustomRule() {
+  const queryClient = useQueryClient();
+  return useMutation<QoeCustomRuleOut, Error, QoeCustomRuleIn>({
+    mutationFn: (body) => unwrap(createCustomRuleApiV1QoeCustomRulesPost({ body })),
+    onSuccess: () => invalidateThresholdViews(queryClient),
+  });
+}
+
+/** PUT /qoe-custom-rules/{id} with `body`; on success `invalidateThresholdViews`. */
+export function useUpdateQoeCustomRule() {
+  const queryClient = useQueryClient();
+  return useMutation<QoeCustomRuleOut, Error, { id: number; body: QoeCustomRuleIn }>({
+    mutationFn: ({ id, body }) =>
+      unwrap(updateCustomRuleApiV1QoeCustomRulesRuleIdPut({ path: { rule_id: id }, body })),
+    onSuccess: () => invalidateThresholdViews(queryClient),
+  });
+}
+
+/** DELETE /qoe-custom-rules/{id}; on success `invalidateThresholdViews`. */
+export function useDeleteQoeCustomRule() {
+  const queryClient = useQueryClient();
+  return useMutation<unknown, Error, number>({
+    mutationFn: (id) =>
+      unwrap(deleteCustomRuleApiV1QoeCustomRulesRuleIdDelete({ path: { rule_id: id } })),
     onSuccess: () => invalidateThresholdViews(queryClient),
   });
 }
