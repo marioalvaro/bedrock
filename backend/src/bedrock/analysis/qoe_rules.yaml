@@ -1,0 +1,60 @@
+# Quality-of-earnings flag rules (FR-ANL-05; docs/erd/analysis.md "Quality-of-earnings flags (M2)").
+# direction: above flags a value greater than a level; below flags a value less than it.
+# unit: pct (a fraction) | x. warn/alert may be null (no such level).
+# Each code needs a value function in analysis/qoe.py.
+- code: accruals_ratio
+  label: Accruals ratio
+  rule: (net_income − cfo) ÷ avg(total_assets)
+  direction: above
+  unit: pct
+  warn: 0.05
+  alert: 0.10
+- code: cfo_to_net_income
+  label: CFO / net income
+  rule: cfo ÷ net_income; null when net_income ≤ 0
+  direction: below
+  unit: x
+  warn: 0.8
+  alert: 0
+- code: receivables_vs_revenue
+  label: Receivables growing faster than revenue
+  rule: YoY(receivables) − YoY(revenue)
+  direction: above
+  unit: pct
+  warn: 0.10
+  alert: 0.20
+- code: inventory_vs_revenue
+  label: Inventory growing faster than revenue
+  rule: YoY(inventory) − YoY(revenue)
+  direction: above
+  unit: pct
+  warn: 0.10
+  alert: 0.20
+- code: goodwill_to_assets
+  label: Goodwill / total assets
+  rule: goodwill ÷ total_assets
+  direction: above
+  unit: pct
+  warn: 0.30
+  alert: 0.50
+- code: goodwill_impairment
+  label: Goodwill impairment
+  rule: goodwill_impairment ÷ goodwill a year earlier; 0 when no impairment is reported and goodwill exists at both ends
+  direction: above
+  unit: pct
+  warn: 0
+  alert: null
+- code: sbc_to_revenue
+  label: SBC / revenue
+  rule: sbc ÷ revenue
+  direction: above
+  unit: pct
+  warn: 0.05
+  alert: 0.10
+- code: sbc_to_cfo
+  label: SBC / CFO
+  rule: sbc ÷ cfo; null when cfo ≤ 0
+  direction: above
+  unit: pct
+  warn: 0.15
+  alert: 0.30

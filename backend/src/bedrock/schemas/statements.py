@@ -1,14 +1,18 @@
+from collections.abc import Sequence
 from datetime import date
 from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel
 
+from bedrock.schemas.adjustments import CellAdjustmentOut
+from bedrock.services.adjustments import CellAdjustment
 from bedrock.services.statements import MappingGaps
 from bedrock.statements.build import StatementTable
 from bedrock.statements.explain import CellExplanation
+from bedrock.statements.periods import Period
 
-Provenance = Literal["reported", "derived"]
+Provenance = Literal["reported", "derived", "normalized"]
 
 
 class PeriodOut(BaseModel):
@@ -19,6 +23,19 @@ class PeriodOut(BaseModel):
     period_start: date
     period_end: date
     is_forecast: bool
+
+    @classmethod
+    def from_period(cls, period: Period) -> "PeriodOut":
+        """An actual (not forecast) period."""
+        return cls(
+            key=period.key,
+            label=period.label,
+            fiscal_year=period.fiscal_year,
+            fiscal_period=period.fiscal_period,
+            period_start=period.start,
+            period_end=period.end,
+            is_forecast=False,
+        )
 
 
 class RowOut(BaseModel):
@@ -36,6 +53,7 @@ class RowOut(BaseModel):
     yoy: list[Decimal | None]
     common_size: list[Decimal | None]
     common_size_base: str | None
+    adjustable: bool  # a normalization adjustment may target this line
 
 
 class BalanceCheckOut(BaseModel):
@@ -71,18 +89,7 @@ class StatementOut(BaseModel):
             freq=freq,
             basis=basis,
             currency=currency,
-            periods=[
-                PeriodOut(
-                    key=p.key,
-                    label=p.label,
-                    fiscal_year=p.fiscal_year,
-                    fiscal_period=p.fiscal_period,
-                    period_start=p.start,
-                    period_end=p.end,
-                    is_forecast=False,
-                )
-                for p in table.periods
-            ],
+            periods=[PeriodOut.from_period(p) for p in table.periods],
             rows=[
                 RowOut(
                     code=r.code,
@@ -95,6 +102,7 @@ class StatementOut(BaseModel):
                     yoy=r.yoy,
                     common_size=r.common_size,
                     common_size_base=r.common_size_base,
+                    adjustable=r.adjustable,
                 )
                 for r in table.rows
             ],
@@ -139,14 +147,6 @@ class VintageOut(BaseModel):
     filed_at: date
 
 
-class AdjustmentOut(BaseModel):
-    """Placeholder until M2's adjustments; the list is always empty in M1."""
-
-    amount: Decimal
-    category: str
-    reason: str
-
-
 class CellDetailOut(BaseModel):
     code: str
     label: str
@@ -158,10 +158,15 @@ class CellDetailOut(BaseModel):
     filing: FilingOut | None
     derivation: DerivationOut | None
     vintages: list[VintageOut]
-    adjustments: list[AdjustmentOut]
+    adjustments: list[CellAdjustmentOut]  # every adjustment that changes the cell
+    # the value with them applied; null when no adjustment changes the cell, or when normalization
+    # empties it (then `adjustments` is non-empty)
+    normalized_value: Decimal | None
 
     @classmethod
-    def from_explanation(cls, cell: CellExplanation) -> "CellDetailOut":
+    def from_explanation(
+        cls, cell: CellExplanation, adjustments: Sequence[CellAdjustment]
+    ) -> "CellDetailOut":
         return cls(
             code=cell.code,
             label=cell.label,
@@ -196,7 +201,8 @@ class CellDetailOut(BaseModel):
                 )
                 for v in cell.vintages
             ],
-            adjustments=[],
+            adjustments=[CellAdjustmentOut.from_cell(a) for a in adjustments],
+            normalized_value=cell.normalized_value,
         )
 
 

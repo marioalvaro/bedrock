@@ -1,5 +1,5 @@
 from collections.abc import Sequence
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pandas as pd
@@ -54,6 +54,7 @@ BS_ITEMS = [
         kind="instant",
         derive="total_liabilities_and_equity - total_equity",
     ),
+    item("temporary_equity", "BS", kind="instant"),
     item("total_equity", "BS", kind="instant"),
     item("total_liabilities_and_equity", "BS", kind="instant"),
 ]
@@ -63,6 +64,7 @@ BS_MAP = mappings(
     ("total_current_assets", "AssetsCurrent", 0),
     ("total_assets", "Assets", 0),
     ("total_liabilities", "Liabilities", 0),
+    ("temporary_equity", "TemporaryEquity", 0),
     ("total_equity", "Equity", 0),
     ("total_liabilities_and_equity", "LiabilitiesAndEquity", 0),
 )
@@ -239,6 +241,39 @@ def test_instants_take_the_value_at_the_period_end_and_q4_is_the_year_end() -> N
     assert cash.provenance == ["reported"] * 4
 
 
+def cash_table(*cash: tuple[int, date]) -> Row:
+    """The FY2023 annual cash cell when facts exist at the given (value, date) pairs."""
+    raw = flow_facts("Revenues", {2023: (1, 1, 1, 1)})  # defines the calendar
+    raw += [
+        fact("Cash", None, when, value, accession=f"K-{n}", filed=date(2023, 8, 20) + timedelta(n))
+        for n, (value, when) in enumerate(cash)
+    ]
+    table = build(raw, BS_ITEMS + IS_ITEMS, IS_BS_MAP, "BS", "annual")
+    return row(table, "cash")
+
+
+def test_an_instant_within_a_week_of_the_period_end_is_that_periods_balance() -> None:
+    _, end, _ = fy_dates(2023)
+
+    for gap in (1, 7):
+        cash = cash_table((42, end - timedelta(days=gap)))
+        assert cash.values == [42], gap
+        assert cash.provenance == ["reported"]
+
+
+def test_an_instant_more_than_a_week_from_the_period_end_is_not_used() -> None:
+    _, end, _ = fy_dates(2023)
+
+    assert cash_table((42, end - timedelta(days=8))).values == [None]
+    assert cash_table((42, end + timedelta(days=8))).values == [None]
+
+
+def test_an_exact_instant_wins_over_a_nearby_one() -> None:
+    _, end, _ = fy_dates(2023)
+
+    assert cash_table((41, end - timedelta(days=1)), (42, end)).values == [42]
+
+
 # --- derive and residual -------------------------------------------------------------------
 
 
@@ -309,6 +344,48 @@ def test_a_residual_treats_a_missing_component_as_zero() -> None:
 
 def test_a_residual_is_null_without_its_subtotal() -> None:
     other = row(balance_sheet(current=None), "other_current_assets")
+
+    assert other.values == [None]
+    assert other.provenance == [None]
+
+
+NONOPERATING_ITEMS = [
+    item("operating_income"),
+    item("interest_expense", parent="pretax_income"),
+    item(
+        "other_nonoperating_income",
+        parent="pretax_income",
+        derive="pretax_income - operating_income + interest_expense",
+        residual=True,
+    ),
+    item("pretax_income"),
+]
+NONOPERATING_MAP = mappings(
+    ("operating_income", "OperatingIncomeLoss", 0),
+    ("interest_expense", "InterestExpense", 0),
+    ("pretax_income", "PretaxIncome", 0),
+)
+
+
+def nonoperating(operating_income: bool) -> Row:
+    raw = flow_facts("PretaxIncome", {2023: (100, 100, 100, 100)}) + flow_facts(
+        "InterestExpense", {2023: (10, 10, 10, 10)}
+    )
+    if operating_income:
+        raw += flow_facts("OperatingIncomeLoss", {2023: (80, 80, 80, 80)})
+    table = build(raw, NONOPERATING_ITEMS, NONOPERATING_MAP, "IS", "annual")
+    return row(table, "other_nonoperating_income")
+
+
+def test_a_residual_completes_its_subtotal_from_an_operand_outside_its_breakdown() -> None:
+    assert nonoperating(operating_income=True).values == [400 - 320 + 40]
+
+
+def test_a_residual_is_null_when_an_operand_outside_its_breakdown_is_missing() -> None:
+    """Operating income is not a component of pretax income's breakdown, so without it the
+    residual would be pretax + interest: a number under the wrong label (Deere has no operating
+    income line)."""
+    other = nonoperating(operating_income=False)
 
     assert other.values == [None]
     assert other.provenance == [None]
@@ -612,9 +689,16 @@ def test_parent_common_size_of_a_cash_flow_row_is_its_section_total() -> None:
 # --- balance check -------------------------------------------------------------------------
 
 
-def checked(assets: int, liabilities: int | None, equity: int | None) -> StatementTable:
+def checked(
+    assets: int, liabilities: int | None, equity: int | None, temporary: int | None = None
+) -> StatementTable:
     raw = flow_facts("Revenues", {2023: (1, 1, 1, 1)})
-    for concept, value in (("Assets", assets), ("Liabilities", liabilities), ("Equity", equity)):
+    for concept, value in (
+        ("Assets", assets),
+        ("Liabilities", liabilities),
+        ("Equity", equity),
+        ("TemporaryEquity", temporary),
+    ):
         if value is not None:
             raw += instant_facts(concept, {2023: (value, value, value, value)})
     return build(raw, BS_ITEMS + IS_ITEMS, IS_BS_MAP, "BS", "annual")
@@ -662,3 +746,24 @@ def test_every_quarter_is_checked() -> None:
 
 def test_only_the_balance_sheet_has_a_balance_check() -> None:
     assert revenue_table("annual").balance_check is None
+
+
+def test_temporary_equity_sits_between_liabilities_and_equity_in_the_check() -> None:
+    # A = L + TE + E: 500 = 300 + 50 + 150. Without TE the period would be off by 50 M.
+    (check,) = checked(500_000_000, 300_000_000, 150_000_000, 50_000_000).balance_check or []
+    (without,) = checked(500_000_000, 300_000_000, 150_000_000).balance_check or []
+
+    assert (check.difference, check.ok) == (0, True)
+    assert (without.difference, without.ok) == (50_000_000, False)
+
+
+def test_a_missing_temporary_equity_counts_as_zero_in_the_check() -> None:
+    (check,) = checked(500_000_000, 300_000_000, 200_000_000).balance_check or []
+
+    assert (check.difference, check.ok) == (0, True)
+
+
+def test_a_period_missing_equity_still_fails_even_with_temporary_equity() -> None:
+    (check,) = checked(500_000_000, 300_000_000, None, 50_000_000).balance_check or []
+
+    assert check.difference is None and not check.ok

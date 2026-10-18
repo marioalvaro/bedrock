@@ -13,11 +13,60 @@ class CellNotFound(Exception):
     """No such statement cell: an unknown item code or a period the company does not have."""
 
 
+class AdjustmentNotFound(Exception):
+    """No adjustment with this id on the company (an id of another company counts as unknown)."""
+
+
+class InvalidAdjustment(Exception):
+    """The adjustment breaks a rule; the message says which."""
+
+
+class RuleNotFound(Exception):
+    """No quality-of-earnings rule with this code in `qoe_rules.yaml`."""
+
+
+class InvalidThreshold(Exception):
+    """A threshold override breaks a rule (levels out of order, not finite); the message says
+    which."""
+
+
+class CustomRuleNotFound(Exception):
+    """No custom quality-of-earnings rule with this id."""
+
+
+class InvalidFormula(Exception):
+    """A formula (a custom rule's value or a level) does not parse; the message is the
+    `FormulaError` text with its position, e.g. "Unknown name 'revenu' at 0"."""
+
+
+class InvalidCustomRule(Exception):
+    """A custom rule breaks a rule other than its formula (e.g. a blank label); the message says
+    which."""
+
+
+class OffBalanceItemNotFound(Exception):
+    """No off-balance-sheet item with this id on the company (another company's id counts as
+    unknown)."""
+
+
+class InvalidOffBalanceItem(Exception):
+    """The off-balance-sheet item breaks a rule; the message says which."""
+
+
 # What a use-case can raise on purpose; the API maps these to statuses, the CLI prints them.
 DOMAIN_ERRORS = (
     CompanyNotFound,
     CompanyExists,
     CellNotFound,
+    AdjustmentNotFound,
+    InvalidAdjustment,
+    RuleNotFound,
+    InvalidThreshold,
+    CustomRuleNotFound,
+    InvalidFormula,
+    InvalidCustomRule,
+    OffBalanceItemNotFound,
+    InvalidOffBalanceItem,
     UnknownTicker,
     SourceNotConfigured,
     SourceUnavailable,
@@ -33,6 +82,14 @@ def user_message(error: Exception) -> str:
             return f"Unknown ticker {error}: no SEC filer has it"
         case CellNotFound():
             return f"No such statement cell: {error}"
+        case AdjustmentNotFound():
+            return f"No such adjustment: {error}"
+        case RuleNotFound():
+            return f"No such quality-of-earnings rule: {error}"
+        case CustomRuleNotFound():
+            return f"No such custom quality-of-earnings rule: {error}"
+        case OffBalanceItemNotFound():
+            return f"No such off-balance-sheet item: {error}"
         case CompanyExists():
             return f"{error} is already followed"
         case SourceNotConfigured():

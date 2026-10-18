@@ -5,11 +5,16 @@ from alembic import context
 from bedrock.core.config import load_settings
 from bedrock.core.db import make_engine
 from bedrock.models import (  # noqa: F401  ensure models are registered
+    adjustment,
     canonical_item,
     company,
     concept_mapping,
+    corporate_action,
     filing,
+    off_balance_item,
     price_daily,
+    qoe_custom_rule,
+    qoe_threshold,
     raw_fact,
 )
 from bedrock.models.base import Base

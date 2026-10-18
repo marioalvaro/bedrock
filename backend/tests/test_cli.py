@@ -119,7 +119,13 @@ def test_refresh_prints_the_result_of_each_ticker(cli_db: Path) -> None:
 
     assert result.exit_code == 0, result.output
     assert "AAPL" in result.output and "MSFT" not in result.output
-    for line in ("new_filings: 0", "new_facts: 0", "new_prices: 0", "last_refreshed_at:"):
+    for line in (
+        "new_filings: 0",
+        "new_facts: 0",
+        "new_prices: 0",
+        "new_splits: 0",
+        "last_refreshed_at:",
+    ):
         assert line in result.output
 
 
@@ -165,5 +171,5 @@ def test_sync_mappings_stores_the_canonical_items(cli_db: Path) -> None:
     assert result.exit_code == 0, result.output
     engine = make_engine(f"sqlite:///{cli_db}")
     with Session(engine) as session:
-        assert session.execute(select(func.count()).select_from(CanonicalItem)).scalar_one() == 78
+        assert session.execute(select(func.count()).select_from(CanonicalItem)).scalar_one() == 82
     engine.dispose()

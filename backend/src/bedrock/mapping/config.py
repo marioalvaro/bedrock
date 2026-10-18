@@ -44,6 +44,12 @@ class CanonicalItemDef:
     concepts: tuple[str, ...]  # "taxonomy:Concept", in priority order
     derive: str | None
     residual: bool
+    # M2: where a normalization adjustment of this line propagates, as (code, sign)
+    rolls_into: tuple[tuple[str, int], ...] = ()
+
+
+# Memo lines whose charge sits inside another line: adjust that line instead.
+MEMO_CODES = frozenset({"goodwill_impairment"})
 
 
 def split_concept(text: str) -> tuple[str, str]:
@@ -77,7 +83,28 @@ def load_canonical_items(path: Path = DEFAULT_ITEMS_PATH) -> list[CanonicalItemD
 def load_overrides(
     directory: Path, ticker: str, items: Sequence[CanonicalItemDef] | None = None
 ) -> dict[str, list[str]]:
-    """`<ticker>.yaml` maps `code: [concepts...]`. Concepts come back as `taxonomy:Concept`."""
+    """The concepts a company adds ahead of the defaults. `<ticker>.yaml` maps `code` to either a
+    list of concepts or `{concepts: [...], exclude: ...}` (see `load_excludes`). Concepts come
+    back as `taxonomy:Concept`; a code that only excludes has no entry."""
+    parsed = _read_overrides(directory, ticker, items)
+    return {code: added for code, (added, _) in parsed.items() if added}
+
+
+def load_excludes(
+    directory: Path, ticker: str, items: Sequence[CanonicalItemDef]
+) -> dict[str, list[str]]:
+    """The default concepts a company switches off, by code, each as `taxonomy:Concept` (or the
+    summed entry `taxonomy:A + taxonomy:B`) exactly as in the item's defaults. `exclude: [...]`
+    names defaults; `exclude: all` drops every default of the item, so it falls back to its
+    `derive` formula, else stays empty. An exclude that names no default of the item is an error,
+    so stale excludes fail."""
+    parsed = _read_overrides(directory, ticker, items)
+    return {code: dropped for code, (_, dropped) in parsed.items() if dropped}
+
+
+def _read_overrides(
+    directory: Path, ticker: str, items: Sequence[CanonicalItemDef] | None
+) -> dict[str, tuple[list[str], list[str]]]:
     path = directory / f"{ticker.upper()}.yaml"
     if not path.is_file():
         return {}
@@ -85,17 +112,60 @@ def load_overrides(
     if not isinstance(raw, dict):
         raise MappingConfigError(f"{path.name} must map codes to concept lists")
     by_code = {i.code: i for i in items} if items is not None else None
-    overrides: dict[str, list[str]] = {}
-    for code, concepts in raw.items():
+    parsed: dict[str, tuple[list[str], list[str]]] = {}
+    for code, entry in raw.items():
+        item = None
         if by_code is not None:
             if code not in by_code:
                 raise MappingConfigError(f"override for unknown code in {path.name}", code)
-            if by_code[code].residual:
+            item = by_code[code]
+            if item.residual:
                 raise MappingConfigError("residual items cannot be overridden", code)
-        if not isinstance(concepts, list) or not all(isinstance(c, str) for c in concepts):
-            raise MappingConfigError(f"override must be a list of concepts in {path.name}", code)
-        overrides[code] = _qualify(code, concepts)
-    return overrides
+        concepts, exclude = _override_entry(path.name, code, entry)
+        added = _qualify(code, concepts)
+        dropped: list[str] = []
+        if exclude is not None:
+            if item is None:
+                raise MappingConfigError("excludes need the canonical items to check", code)
+            dropped = _excluded(code, exclude, item)
+            if set(dropped) & set(added):
+                raise MappingConfigError("a concept cannot be both added and excluded", code)
+        parsed[code] = (added, dropped)
+    return parsed
+
+
+def _override_entry(file: str, code: str, entry: Any) -> tuple[list[str], list[str] | str | None]:
+    if isinstance(entry, list):
+        concepts, exclude = entry, None
+    elif isinstance(entry, dict):
+        if not entry or set(entry) - {"concepts", "exclude"}:
+            raise MappingConfigError(
+                f"an override mapping takes `concepts` and `exclude` in {file}", code
+            )
+        concepts, exclude = entry.get("concepts", []), entry.get("exclude")
+        if "exclude" in entry and not (
+            exclude == "all"
+            or (isinstance(exclude, list) and exclude and all(isinstance(e, str) for e in exclude))
+        ):
+            raise MappingConfigError(f"exclude must be `all` or a list of concepts in {file}", code)
+    else:
+        raise MappingConfigError(f"override must be a list of concepts in {file}", code)
+    if not isinstance(concepts, list) or not all(isinstance(c, str) for c in concepts):
+        raise MappingConfigError(f"override must be a list of concepts in {file}", code)
+    return concepts, exclude
+
+
+def _excluded(code: str, exclude: list[str] | str, item: CanonicalItemDef) -> list[str]:
+    if exclude == "all":
+        if not item.concepts:
+            raise MappingConfigError("exclude: all but the item has no default concept", code)
+        return list(item.concepts)
+    assert isinstance(exclude, list)
+    dropped = _qualify(code, exclude)
+    for entry in dropped:
+        if entry not in item.concepts:
+            raise MappingConfigError(f"{entry!r} is not a default concept, cannot exclude", code)
+    return dropped
 
 
 def formula_order(items: Sequence[CanonicalItemDef]) -> list[CanonicalItemDef]:
@@ -121,6 +191,61 @@ def formula_order(items: Sequence[CanonicalItemDef]) -> list[CanonicalItemDef]:
     for item in items:
         visit(item.code)
     return ordered
+
+
+def is_adjustable(item: CanonicalItemDef) -> bool:
+    """A normalization adjustment may target USD flows and instants (residual lines included), not
+    the computed-only lines (`derive` and no concepts, not residual), memo lines, EPS, shares or
+    per-share figures."""
+    computed_only = item.derive is not None and not item.concepts and not item.residual
+    return (
+        item.unit == "USD"
+        and item.kind in ("flow", "instant")
+        and not computed_only
+        and item.code not in MEMO_CODES
+    )
+
+
+def _edges(item: CanonicalItemDef) -> tuple[tuple[str, int], ...]:
+    """The lines a delta of `item` flows into directly: its `rolls_into`, else (balance sheet and
+    cash flow, whose parents are sums of their children) its `parent`."""
+    if item.rolls_into:
+        return item.rolls_into
+    if item.statement != "IS" and item.parent is not None:
+        return ((item.parent, 1),)
+    return ()
+
+
+def propagation_targets(items: Sequence[CanonicalItemDef], code: str) -> dict[str, int]:
+    """Every line a delta of `code` reaches, transitively, with the signs multiplied along the
+    path (paths to one target add up)."""
+    by_code = {i.code: i for i in items}
+    targets: dict[str, int] = {}
+
+    def walk(current: str, sign: int) -> None:
+        for target, edge_sign in _edges(by_code[current]):
+            targets[target] = targets.get(target, 0) + sign * edge_sign
+            walk(target, sign * edge_sign)
+
+    walk(code, 1)
+    return {c: s for c, s in targets.items() if s != 0}
+
+
+def _rolls_into(code: str, raw: Any) -> tuple[tuple[str, int], ...]:
+    if raw is None:
+        return ()
+    if not isinstance(raw, list) or not all(isinstance(t, str) for t in raw):
+        raise MappingConfigError("rolls_into must be a list of codes", code)
+    targets = []
+    for text in raw:
+        sign = -1 if text.startswith("-") else 1
+        target = text[1:] if text.startswith("-") else text
+        if not re.fullmatch(_CODE, target):
+            raise MappingConfigError(f"malformed rolls_into entry {text!r}", code)
+        targets.append((target, sign))
+    if len({t for t, _ in targets}) != len(targets):
+        raise MappingConfigError("duplicate rolls_into target", code)
+    return tuple(targets)
 
 
 def _item(entry: Any) -> CanonicalItemDef:
@@ -151,6 +276,7 @@ def _item(entry: Any) -> CanonicalItemDef:
         concepts=tuple(_qualify(code, concepts)),
         derive=entry.get("derive"),
         residual=bool(entry.get("residual", False)),
+        rolls_into=_rolls_into(code, entry.get("rolls_into")),
     )
 
 
@@ -212,5 +338,27 @@ def _validate(items: list[CanonicalItemDef]) -> None:
                 raise MappingConfigError("parent cycle", item.code)
             seen.add(node.parent)
             node = by_code[node.parent]
+
+    for item in items:
+        for target, _ in item.rolls_into:
+            if target not in by_code:
+                raise MappingConfigError(f"rolls_into unknown code {target!r}", item.code)
+            if by_code[target].statement != item.statement:
+                raise MappingConfigError(
+                    f"rolls_into target {target!r} is on another statement", item.code
+                )
+            if by_code[target].kind == "average":
+                raise MappingConfigError(f"rolls_into target {target!r} is an average", item.code)
+
+    for item in items:  # a delta must not come back to the line it started from
+        pending = [t for t, _ in _edges(item)]
+        reached: set[str] = set()
+        while pending:
+            code = pending.pop()
+            if code == item.code:
+                raise MappingConfigError("propagation cycle", item.code)
+            if code not in reached:
+                reached.add(code)
+                pending.extend(t for t, _ in _edges(by_code[code]))
 
     formula_order(items)  # raises on a formula cycle

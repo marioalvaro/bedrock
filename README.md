@@ -4,7 +4,7 @@ A personal web app for deep fundamental analysis of a handful of US companies, s
 
 It is a single-user app: a FastAPI + SQLite backend and a React (Vite, TypeScript, Tailwind) SPA, in one repo.
 
-> **Status:** milestone M1 (Data) is in progress: every implementation step is done, and the milestone's acceptance checks remain. M0 (scaffold: login, Docker, CI) is complete.
+> **Status:** milestone M2 (Analysis) is in progress: steps S1–S7 and S9 are done, S8 (custom QoE rules) is under way. M0 (scaffold) and M1 (Data) are complete.
 
 ## Features
 
@@ -13,9 +13,14 @@ It is a single-user app: a FastAPI + SQLite backend and a React (Vite, TypeScrip
 - **Grid views.** YoY growth and common-size rows, collapsible subtotals, a balance check on every balance-sheet period and CSV export.
 - **Provenance.** Each cell is marked reported or derived. Clicking a cell shows its source XBRL tag, the filing, the derivation formula and every filed vintage of the value.
 - **Data gaps.** Each company's Overview lists items with no value in some year and concepts in the latest 10-K that nothing maps, with suggested canonical codes.
+- **Normalized basis.** Adjustments (one-offs, restructuring, impairments and so on) are stored apart from the as-reported data and flow through the income-statement waterfall and into balance-sheet and cash-flow subtotals. Cell details show each adjustment.
+- **Splits.** Split history comes from yfinance and every share and per-share figure is adjusted by filing date.
+- **Ratios.** A registry of ratios (profitability, returns, liquidity, leverage, efficiency, cash flow), annual or TTM, with caveats where a company's structure makes one misleading (for example DE's captive finance arm).
+- **Valuation multiples.** P/E, P/B, P/S, P/FCF, EV multiples, yields and PEG, with the company's own historical range.
+- **Quality of earnings.** Flags driven by thresholds you can edit in Settings, plus custom rules written as formulas, off-balance-sheet items and capital-allocation views.
 - **Company list** with price, market cap, P/E, EV/EBITDA and TTM revenue growth. Each stat is blank when an input is missing.
 
-The test companies are AAPL, MSFT and COST.
+The test companies are AAPL, MSFT, COST and DE.
 
 ## API
 
@@ -35,6 +40,19 @@ Every route is under `/api/v1`. Interactive docs are at `/docs` on a running bac
 | `GET` | `/companies/{ticker}/statements` | session | Query `type=IS\|BS\|CF`, `freq=annual\|quarterly\|ttm`, optional `common_size_base=total\|parent`. Periods and rows with values, provenance, YoY and common size; a balance check for `BS`. `422` for a TTM balance sheet. |
 | `GET` | `/companies/{ticker}/statements/cell` | session | Query `code`, `fiscal_year`, `fiscal_period` (`FY`, `Q1`..`Q4`). Where one value came from: source tag, filing, derivation and vintages. `404` for an unknown cell. |
 | `GET` | `/companies/{ticker}/mapping-gaps` | session | Missing items and unmapped concepts |
+| `GET` `POST` | `/companies/{ticker}/adjustments` | session | List or add adjustments |
+| `PUT` `DELETE` | `/companies/{ticker}/adjustments/{id}` | session | Edit or remove an adjustment |
+| `GET` | `/companies/{ticker}/corporate-actions` | session | Stored splits |
+| `GET` | `/companies/{ticker}/ratios` | session | Ratios, annual or TTM, with caveats |
+| `GET` | `/companies/{ticker}/multiples` | session | Valuation multiples and own-history range |
+| `GET` | `/companies/{ticker}/flags` | session | Quality-of-earnings flags |
+| `GET` | `/companies/{ticker}/capital-allocation` | session | Capital-allocation breakdown |
+| `GET` `POST` | `/companies/{ticker}/off-balance-items` | session | List or add off-balance-sheet items |
+| `PUT` `DELETE` | `/companies/{ticker}/off-balance-items/{id}` | session | Edit or remove one |
+| `GET` | `/qoe-rules` | session | QoE thresholds |
+| `PUT` `DELETE` | `/qoe-rules/{code}` | session | Override or reset a threshold |
+| `GET` `POST` | `/qoe-custom-rules` | session | List or add custom formula rules |
+| `PUT` `DELETE` | `/qoe-custom-rules/{id}` | session | Edit or remove a custom rule |
 
 Error responses carry a human-readable `{"detail": "..."}`.
 

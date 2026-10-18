@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AddCompanyApiV1CompaniesPostData, AddCompanyApiV1CompaniesPostErrors, AddCompanyApiV1CompaniesPostResponses, GetCellApiV1CompaniesTickerStatementsCellGetData, GetCellApiV1CompaniesTickerStatementsCellGetErrors, GetCellApiV1CompaniesTickerStatementsCellGetResponses, GetCompaniesApiV1CompaniesGetData, GetCompaniesApiV1CompaniesGetResponses, GetCompanyApiV1CompaniesTickerGetData, GetCompanyApiV1CompaniesTickerGetErrors, GetCompanyApiV1CompaniesTickerGetResponses, GetMappingGapsApiV1CompaniesTickerMappingGapsGetData, GetMappingGapsApiV1CompaniesTickerMappingGapsGetErrors, GetMappingGapsApiV1CompaniesTickerMappingGapsGetResponses, GetStatementApiV1CompaniesTickerStatementsGetData, GetStatementApiV1CompaniesTickerStatementsGetErrors, GetStatementApiV1CompaniesTickerStatementsGetResponses, HealthApiV1HealthGetData, HealthApiV1HealthGetResponses, LoginApiV1AuthLoginPostData, LoginApiV1AuthLoginPostErrors, LoginApiV1AuthLoginPostResponses, LogoutApiV1AuthLogoutPostData, LogoutApiV1AuthLogoutPostResponses, MeApiV1AuthMeGetData, MeApiV1AuthMeGetResponses, RefreshApiV1CompaniesTickerRefreshPostData, RefreshApiV1CompaniesTickerRefreshPostErrors, RefreshApiV1CompaniesTickerRefreshPostResponses, RemoveCompanyApiV1CompaniesTickerDeleteData, RemoveCompanyApiV1CompaniesTickerDeleteErrors, RemoveCompanyApiV1CompaniesTickerDeleteResponses } from './types.gen';
+import type { AddCompanyApiV1CompaniesPostData, AddCompanyApiV1CompaniesPostErrors, AddCompanyApiV1CompaniesPostResponses, CreateAdjustmentApiV1CompaniesTickerAdjustmentsPostData, CreateAdjustmentApiV1CompaniesTickerAdjustmentsPostErrors, CreateAdjustmentApiV1CompaniesTickerAdjustmentsPostResponses, CreateCustomRuleApiV1QoeCustomRulesPostData, CreateCustomRuleApiV1QoeCustomRulesPostErrors, CreateCustomRuleApiV1QoeCustomRulesPostResponses, CreateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsPostData, CreateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsPostErrors, CreateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsPostResponses, DeleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDeleteData, DeleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDeleteErrors, DeleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDeleteResponses, DeleteCustomRuleApiV1QoeCustomRulesRuleIdDeleteData, DeleteCustomRuleApiV1QoeCustomRulesRuleIdDeleteErrors, DeleteCustomRuleApiV1QoeCustomRulesRuleIdDeleteResponses, DeleteOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdDeleteData, DeleteOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdDeleteErrors, DeleteOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdDeleteResponses, GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetData, GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetErrors, GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetResponses, GetCellApiV1CompaniesTickerStatementsCellGetData, GetCellApiV1CompaniesTickerStatementsCellGetErrors, GetCellApiV1CompaniesTickerStatementsCellGetResponses, GetCompaniesApiV1CompaniesGetData, GetCompaniesApiV1CompaniesGetResponses, GetCompanyApiV1CompaniesTickerGetData, GetCompanyApiV1CompaniesTickerGetErrors, GetCompanyApiV1CompaniesTickerGetResponses, GetFlagsApiV1CompaniesTickerFlagsGetData, GetFlagsApiV1CompaniesTickerFlagsGetErrors, GetFlagsApiV1CompaniesTickerFlagsGetResponses, GetMappingGapsApiV1CompaniesTickerMappingGapsGetData, GetMappingGapsApiV1CompaniesTickerMappingGapsGetErrors, GetMappingGapsApiV1CompaniesTickerMappingGapsGetResponses, GetMultiplesApiV1CompaniesTickerMultiplesGetData, GetMultiplesApiV1CompaniesTickerMultiplesGetErrors, GetMultiplesApiV1CompaniesTickerMultiplesGetResponses, GetRatiosApiV1CompaniesTickerRatiosGetData, GetRatiosApiV1CompaniesTickerRatiosGetErrors, GetRatiosApiV1CompaniesTickerRatiosGetResponses, GetStatementApiV1CompaniesTickerStatementsGetData, GetStatementApiV1CompaniesTickerStatementsGetErrors, GetStatementApiV1CompaniesTickerStatementsGetResponses, HealthApiV1HealthGetData, HealthApiV1HealthGetResponses, ListAdjustmentsApiV1CompaniesTickerAdjustmentsGetData, ListAdjustmentsApiV1CompaniesTickerAdjustmentsGetErrors, ListAdjustmentsApiV1CompaniesTickerAdjustmentsGetResponses, ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetData, ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetErrors, ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetResponses, ListCustomRulesApiV1QoeCustomRulesGetData, ListCustomRulesApiV1QoeCustomRulesGetResponses, ListOffBalanceItemsApiV1CompaniesTickerOffBalanceItemsGetData, ListOffBalanceItemsApiV1CompaniesTickerOffBalanceItemsGetErrors, ListOffBalanceItemsApiV1CompaniesTickerOffBalanceItemsGetResponses, ListQoeRulesApiV1QoeRulesGetData, ListQoeRulesApiV1QoeRulesGetResponses, LoginApiV1AuthLoginPostData, LoginApiV1AuthLoginPostErrors, LoginApiV1AuthLoginPostResponses, LogoutApiV1AuthLogoutPostData, LogoutApiV1AuthLogoutPostResponses, MeApiV1AuthMeGetData, MeApiV1AuthMeGetResponses, RefreshApiV1CompaniesTickerRefreshPostData, RefreshApiV1CompaniesTickerRefreshPostErrors, RefreshApiV1CompaniesTickerRefreshPostResponses, RemoveCompanyApiV1CompaniesTickerDeleteData, RemoveCompanyApiV1CompaniesTickerDeleteErrors, RemoveCompanyApiV1CompaniesTickerDeleteResponses, ResetQoeThresholdsApiV1QoeRulesCodeDeleteData, ResetQoeThresholdsApiV1QoeRulesCodeDeleteErrors, ResetQoeThresholdsApiV1QoeRulesCodeDeleteResponses, SetQoeThresholdsApiV1QoeRulesCodePutData, SetQoeThresholdsApiV1QoeRulesCodePutErrors, SetQoeThresholdsApiV1QoeRulesCodePutResponses, UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutData, UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutErrors, UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutResponses, UpdateCustomRuleApiV1QoeCustomRulesRuleIdPutData, UpdateCustomRuleApiV1QoeCustomRulesRuleIdPutErrors, UpdateCustomRuleApiV1QoeCustomRulesRuleIdPutResponses, UpdateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdPutData, UpdateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdPutErrors, UpdateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdPutResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -68,9 +68,102 @@ export const removeCompanyApiV1CompaniesTickerDelete = <ThrowOnError extends boo
 export const getCompanyApiV1CompaniesTickerGet = <ThrowOnError extends boolean = false>(options: Options<GetCompanyApiV1CompaniesTickerGetData, ThrowOnError>): RequestResult<GetCompanyApiV1CompaniesTickerGetResponses, GetCompanyApiV1CompaniesTickerGetErrors, ThrowOnError> => (options.client ?? client).get<GetCompanyApiV1CompaniesTickerGetResponses, GetCompanyApiV1CompaniesTickerGetErrors, ThrowOnError>({ url: '/api/v1/companies/{ticker}', ...options });
 
 /**
+ * List Adjustments
+ */
+export const listAdjustmentsApiV1CompaniesTickerAdjustmentsGet = <ThrowOnError extends boolean = false>(options: Options<ListAdjustmentsApiV1CompaniesTickerAdjustmentsGetData, ThrowOnError>): RequestResult<ListAdjustmentsApiV1CompaniesTickerAdjustmentsGetResponses, ListAdjustmentsApiV1CompaniesTickerAdjustmentsGetErrors, ThrowOnError> => (options.client ?? client).get<ListAdjustmentsApiV1CompaniesTickerAdjustmentsGetResponses, ListAdjustmentsApiV1CompaniesTickerAdjustmentsGetErrors, ThrowOnError>({ url: '/api/v1/companies/{ticker}/adjustments', ...options });
+
+/**
+ * Create Adjustment
+ */
+export const createAdjustmentApiV1CompaniesTickerAdjustmentsPost = <ThrowOnError extends boolean = false>(options: Options<CreateAdjustmentApiV1CompaniesTickerAdjustmentsPostData, ThrowOnError>): RequestResult<CreateAdjustmentApiV1CompaniesTickerAdjustmentsPostResponses, CreateAdjustmentApiV1CompaniesTickerAdjustmentsPostErrors, ThrowOnError> => (options.client ?? client).post<CreateAdjustmentApiV1CompaniesTickerAdjustmentsPostResponses, CreateAdjustmentApiV1CompaniesTickerAdjustmentsPostErrors, ThrowOnError>({
+    url: '/api/v1/companies/{ticker}/adjustments',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Delete Adjustment
+ */
+export const deleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDelete = <ThrowOnError extends boolean = false>(options: Options<DeleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDeleteData, ThrowOnError>): RequestResult<DeleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDeleteResponses, DeleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDeleteErrors, ThrowOnError> => (options.client ?? client).delete<DeleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDeleteResponses, DeleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDeleteErrors, ThrowOnError>({ url: '/api/v1/companies/{ticker}/adjustments/{adjustment_id}', ...options });
+
+/**
+ * Update Adjustment
+ */
+export const updateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPut = <ThrowOnError extends boolean = false>(options: Options<UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutData, ThrowOnError>): RequestResult<UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutResponses, UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutErrors, ThrowOnError> => (options.client ?? client).put<UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutResponses, UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutErrors, ThrowOnError>({
+    url: '/api/v1/companies/{ticker}/adjustments/{adjustment_id}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Get Capital Allocation
+ */
+export const getCapitalAllocationApiV1CompaniesTickerCapitalAllocationGet = <ThrowOnError extends boolean = false>(options: Options<GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetData, ThrowOnError>): RequestResult<GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetResponses, GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetErrors, ThrowOnError> => (options.client ?? client).get<GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetResponses, GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetErrors, ThrowOnError>({ url: '/api/v1/companies/{ticker}/capital-allocation', ...options });
+
+/**
+ * List Corporate Actions
+ */
+export const listCorporateActionsApiV1CompaniesTickerCorporateActionsGet = <ThrowOnError extends boolean = false>(options: Options<ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetData, ThrowOnError>): RequestResult<ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetResponses, ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetErrors, ThrowOnError> => (options.client ?? client).get<ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetResponses, ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetErrors, ThrowOnError>({ url: '/api/v1/companies/{ticker}/corporate-actions', ...options });
+
+/**
+ * Get Flags
+ */
+export const getFlagsApiV1CompaniesTickerFlagsGet = <ThrowOnError extends boolean = false>(options: Options<GetFlagsApiV1CompaniesTickerFlagsGetData, ThrowOnError>): RequestResult<GetFlagsApiV1CompaniesTickerFlagsGetResponses, GetFlagsApiV1CompaniesTickerFlagsGetErrors, ThrowOnError> => (options.client ?? client).get<GetFlagsApiV1CompaniesTickerFlagsGetResponses, GetFlagsApiV1CompaniesTickerFlagsGetErrors, ThrowOnError>({ url: '/api/v1/companies/{ticker}/flags', ...options });
+
+/**
  * Get Mapping Gaps
  */
 export const getMappingGapsApiV1CompaniesTickerMappingGapsGet = <ThrowOnError extends boolean = false>(options: Options<GetMappingGapsApiV1CompaniesTickerMappingGapsGetData, ThrowOnError>): RequestResult<GetMappingGapsApiV1CompaniesTickerMappingGapsGetResponses, GetMappingGapsApiV1CompaniesTickerMappingGapsGetErrors, ThrowOnError> => (options.client ?? client).get<GetMappingGapsApiV1CompaniesTickerMappingGapsGetResponses, GetMappingGapsApiV1CompaniesTickerMappingGapsGetErrors, ThrowOnError>({ url: '/api/v1/companies/{ticker}/mapping-gaps', ...options });
+
+/**
+ * Get Multiples
+ */
+export const getMultiplesApiV1CompaniesTickerMultiplesGet = <ThrowOnError extends boolean = false>(options: Options<GetMultiplesApiV1CompaniesTickerMultiplesGetData, ThrowOnError>): RequestResult<GetMultiplesApiV1CompaniesTickerMultiplesGetResponses, GetMultiplesApiV1CompaniesTickerMultiplesGetErrors, ThrowOnError> => (options.client ?? client).get<GetMultiplesApiV1CompaniesTickerMultiplesGetResponses, GetMultiplesApiV1CompaniesTickerMultiplesGetErrors, ThrowOnError>({ url: '/api/v1/companies/{ticker}/multiples', ...options });
+
+/**
+ * List Off Balance Items
+ */
+export const listOffBalanceItemsApiV1CompaniesTickerOffBalanceItemsGet = <ThrowOnError extends boolean = false>(options: Options<ListOffBalanceItemsApiV1CompaniesTickerOffBalanceItemsGetData, ThrowOnError>): RequestResult<ListOffBalanceItemsApiV1CompaniesTickerOffBalanceItemsGetResponses, ListOffBalanceItemsApiV1CompaniesTickerOffBalanceItemsGetErrors, ThrowOnError> => (options.client ?? client).get<ListOffBalanceItemsApiV1CompaniesTickerOffBalanceItemsGetResponses, ListOffBalanceItemsApiV1CompaniesTickerOffBalanceItemsGetErrors, ThrowOnError>({ url: '/api/v1/companies/{ticker}/off-balance-items', ...options });
+
+/**
+ * Create Off Balance Item
+ */
+export const createOffBalanceItemApiV1CompaniesTickerOffBalanceItemsPost = <ThrowOnError extends boolean = false>(options: Options<CreateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsPostData, ThrowOnError>): RequestResult<CreateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsPostResponses, CreateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsPostErrors, ThrowOnError> => (options.client ?? client).post<CreateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsPostResponses, CreateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsPostErrors, ThrowOnError>({
+    url: '/api/v1/companies/{ticker}/off-balance-items',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Delete Off Balance Item
+ */
+export const deleteOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdDelete = <ThrowOnError extends boolean = false>(options: Options<DeleteOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdDeleteData, ThrowOnError>): RequestResult<DeleteOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdDeleteResponses, DeleteOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdDeleteErrors, ThrowOnError> => (options.client ?? client).delete<DeleteOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdDeleteResponses, DeleteOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdDeleteErrors, ThrowOnError>({ url: '/api/v1/companies/{ticker}/off-balance-items/{item_id}', ...options });
+
+/**
+ * Update Off Balance Item
+ */
+export const updateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdPut = <ThrowOnError extends boolean = false>(options: Options<UpdateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdPutData, ThrowOnError>): RequestResult<UpdateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdPutResponses, UpdateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdPutErrors, ThrowOnError> => (options.client ?? client).put<UpdateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdPutResponses, UpdateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdPutErrors, ThrowOnError>({
+    url: '/api/v1/companies/{ticker}/off-balance-items/{item_id}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Get Ratios
+ */
+export const getRatiosApiV1CompaniesTickerRatiosGet = <ThrowOnError extends boolean = false>(options: Options<GetRatiosApiV1CompaniesTickerRatiosGetData, ThrowOnError>): RequestResult<GetRatiosApiV1CompaniesTickerRatiosGetResponses, GetRatiosApiV1CompaniesTickerRatiosGetErrors, ThrowOnError> => (options.client ?? client).get<GetRatiosApiV1CompaniesTickerRatiosGetResponses, GetRatiosApiV1CompaniesTickerRatiosGetErrors, ThrowOnError>({ url: '/api/v1/companies/{ticker}/ratios', ...options });
 
 /**
  * Refresh
@@ -91,3 +184,59 @@ export const getCellApiV1CompaniesTickerStatementsCellGet = <ThrowOnError extend
  * Health
  */
 export const healthApiV1HealthGet = <ThrowOnError extends boolean = false>(options?: Options<HealthApiV1HealthGetData, ThrowOnError>): RequestResult<HealthApiV1HealthGetResponses, unknown, ThrowOnError> => (options?.client ?? client).get<HealthApiV1HealthGetResponses, unknown, ThrowOnError>({ url: '/api/v1/health', ...options });
+
+/**
+ * List Custom Rules
+ */
+export const listCustomRulesApiV1QoeCustomRulesGet = <ThrowOnError extends boolean = false>(options?: Options<ListCustomRulesApiV1QoeCustomRulesGetData, ThrowOnError>): RequestResult<ListCustomRulesApiV1QoeCustomRulesGetResponses, unknown, ThrowOnError> => (options?.client ?? client).get<ListCustomRulesApiV1QoeCustomRulesGetResponses, unknown, ThrowOnError>({ url: '/api/v1/qoe-custom-rules', ...options });
+
+/**
+ * Create Custom Rule
+ */
+export const createCustomRuleApiV1QoeCustomRulesPost = <ThrowOnError extends boolean = false>(options: Options<CreateCustomRuleApiV1QoeCustomRulesPostData, ThrowOnError>): RequestResult<CreateCustomRuleApiV1QoeCustomRulesPostResponses, CreateCustomRuleApiV1QoeCustomRulesPostErrors, ThrowOnError> => (options.client ?? client).post<CreateCustomRuleApiV1QoeCustomRulesPostResponses, CreateCustomRuleApiV1QoeCustomRulesPostErrors, ThrowOnError>({
+    url: '/api/v1/qoe-custom-rules',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Delete Custom Rule
+ */
+export const deleteCustomRuleApiV1QoeCustomRulesRuleIdDelete = <ThrowOnError extends boolean = false>(options: Options<DeleteCustomRuleApiV1QoeCustomRulesRuleIdDeleteData, ThrowOnError>): RequestResult<DeleteCustomRuleApiV1QoeCustomRulesRuleIdDeleteResponses, DeleteCustomRuleApiV1QoeCustomRulesRuleIdDeleteErrors, ThrowOnError> => (options.client ?? client).delete<DeleteCustomRuleApiV1QoeCustomRulesRuleIdDeleteResponses, DeleteCustomRuleApiV1QoeCustomRulesRuleIdDeleteErrors, ThrowOnError>({ url: '/api/v1/qoe-custom-rules/{rule_id}', ...options });
+
+/**
+ * Update Custom Rule
+ */
+export const updateCustomRuleApiV1QoeCustomRulesRuleIdPut = <ThrowOnError extends boolean = false>(options: Options<UpdateCustomRuleApiV1QoeCustomRulesRuleIdPutData, ThrowOnError>): RequestResult<UpdateCustomRuleApiV1QoeCustomRulesRuleIdPutResponses, UpdateCustomRuleApiV1QoeCustomRulesRuleIdPutErrors, ThrowOnError> => (options.client ?? client).put<UpdateCustomRuleApiV1QoeCustomRulesRuleIdPutResponses, UpdateCustomRuleApiV1QoeCustomRulesRuleIdPutErrors, ThrowOnError>({
+    url: '/api/v1/qoe-custom-rules/{rule_id}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * List Qoe Rules
+ */
+export const listQoeRulesApiV1QoeRulesGet = <ThrowOnError extends boolean = false>(options?: Options<ListQoeRulesApiV1QoeRulesGetData, ThrowOnError>): RequestResult<ListQoeRulesApiV1QoeRulesGetResponses, unknown, ThrowOnError> => (options?.client ?? client).get<ListQoeRulesApiV1QoeRulesGetResponses, unknown, ThrowOnError>({ url: '/api/v1/qoe-rules', ...options });
+
+/**
+ * Reset Qoe Thresholds
+ */
+export const resetQoeThresholdsApiV1QoeRulesCodeDelete = <ThrowOnError extends boolean = false>(options: Options<ResetQoeThresholdsApiV1QoeRulesCodeDeleteData, ThrowOnError>): RequestResult<ResetQoeThresholdsApiV1QoeRulesCodeDeleteResponses, ResetQoeThresholdsApiV1QoeRulesCodeDeleteErrors, ThrowOnError> => (options.client ?? client).delete<ResetQoeThresholdsApiV1QoeRulesCodeDeleteResponses, ResetQoeThresholdsApiV1QoeRulesCodeDeleteErrors, ThrowOnError>({ url: '/api/v1/qoe-rules/{code}', ...options });
+
+/**
+ * Set Qoe Thresholds
+ */
+export const setQoeThresholdsApiV1QoeRulesCodePut = <ThrowOnError extends boolean = false>(options: Options<SetQoeThresholdsApiV1QoeRulesCodePutData, ThrowOnError>): RequestResult<SetQoeThresholdsApiV1QoeRulesCodePutResponses, SetQoeThresholdsApiV1QoeRulesCodePutErrors, ThrowOnError> => (options.client ?? client).put<SetQoeThresholdsApiV1QoeRulesCodePutResponses, SetQoeThresholdsApiV1QoeRulesCodePutErrors, ThrowOnError>({
+    url: '/api/v1/qoe-rules/{code}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});

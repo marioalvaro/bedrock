@@ -1,0 +1,148 @@
+# Apple Inc. (CIK 320193) — ratio goldens computed by hand from 10-K figures on sec.gov (never companyfacts).
+# Definitions: docs/erd/analysis.md "Ratio registry" (annual operands: a flow is the FY value, an instant the
+# FY-end balance, avg(x) = (x at this FY end + x at the previous FY end) / 2). Each figure is from the NEWEST
+# 10-K that carries the period (Gotcha G13). Read from the filings' R pages (XBRL viewer statement renderings).
+# Sources:
+#   [10-K FY2020] filed 2020-10-30, accession 0000320193-20-000096 (FYE 2020-09-26): FY2019 balance sheet (comparative column)
+#   [10-K FY2021] filed 2021-10-29, accession 0000320193-21-000105: FY2020 balance sheet and FY2020 shares outstanding (comparative column)
+#   [10-K FY2022] filed 2022-10-28, accession 0000320193-22-000108: FY2020 income statement, cash flow, interest expense
+#                 (Other income/(expense) note) and dividends declared per share (oldest column of the 3-year statements)
+#   [10-K FY2025] filed 2025-10-31, accession 0000320193-25-000079 (FYE 2025-09-27): FY2025 statements and the FY2024 balance sheet (comparative)
+# Every balance sheet used was checked: total liabilities + total equity = total assets (FY2019 248,028 + 90,488 = 338,516;
+# FY2020 258,549 + 65,339 = 323,888; FY2024 308,030 + 56,950 = 364,980; FY2025 285,508 + 73,733 = 359,241), and the income
+# statements foot (gross margin - opex = operating income; + other income = pretax; - tax = net income).
+# Units: USD millions in the comments; ratios are fractions (pct), multiples (x), days, or USD per share.
+# Canonical lines as Apple maps them (canonical_items.yaml + overrides/AAPL.yaml):
+#   short_term_debt = commercial paper + current term debt; long_term_debt = non-current term debt;
+#   short_term_investments = current marketable securities; receivables = accounts receivable, net (vendor non-trade
+#   receivables are NOT included); total_equity = equity_parent (no noncontrolling interests);
+#   shares_outstanding = us-gaap CommonStockSharesOutstanding (balance-sheet count, not the dei cover-page count);
+#   dividends_per_share = CommonStockDividendsPerShareDeclared (declared, from the shareholders' equity statement).
+# Per-share figures: Apple's last split was 4-for-1 on 2020-08-31 (tests/fixtures/yfinance/AAPL_splits.csv), before the
+# FY2020 10-K was filed, so every figure below is already on today's share basis (no further adjustment).
+# not asserted: interest_coverage FY2025: interest_expense not reported in the FY2024-25 10-Ks (inside other income/expense)
+annual:
+  FY2020:
+    # gross margin 104,956 / net sales 274,515 [10-K FY2022]
+    gross_margin: 0.382332
+    # operating income 66,288 / net sales 274,515 [10-K FY2022]
+    operating_margin: 0.241473
+    # net income 57,411 / net sales 274,515 [10-K FY2022]
+    net_margin: 0.209136
+    # (cash from operations 80,674 + capex -7,309) = 73,365 / net sales 274,515 [10-K FY2022]
+    fcf_margin: 0.267253
+    # net income 57,411 [10-K FY2022] / avg(equity 65,339 [10-K FY2021], 90,488 [10-K FY2020]) = 77,913.5
+    roe: 0.736856
+    # net income 57,411 [10-K FY2022] / avg(total assets 323,888 [10-K FY2021], 338,516 [10-K FY2020]) = 331,202
+    roa: 0.173341
+    # tax rate = provision 9,680 / pretax 67,091 = 0.144282; nopat = operating income 66,288 x (1 - 0.144282) = 56,723.858 [10-K FY2022]
+    # invested capital FY2020 = debt (CP 4,996 + current term debt 8,773 + term debt 98,667 = 112,436) + equity 65,339
+    #   - cash 38,016 - marketable securities (current) 52,927 = 86,832 [10-K FY2021]
+    # invested capital FY2019 = debt (CP 5,980 + 10,260 + 91,807 = 108,047) + equity 90,488 - cash 48,844 - 51,713 = 97,978 [10-K FY2020]
+    # 56,723.858 / avg(86,832, 97,978) = 92,405
+    roic: 0.613861
+    # total debt 112,436 (4,996 + 8,773 + 98,667) / total equity 65,339 [10-K FY2021]
+    debt_to_equity: 1.720810
+    # total current assets 143,713 / total current liabilities 105,392 [10-K FY2021]
+    current_ratio: 1.363604
+    # (cash 38,016 + marketable securities 52,927 + accounts receivable 16,120) = 107,063 / current liabilities 105,392 [10-K FY2021]
+    quick_ratio: 1.015855
+    # operating income 66,288 / interest expense 2,873 [10-K FY2022, Other income/(expense) note]
+    interest_coverage: 23.072746
+    # net sales 274,515 [10-K FY2022] / avg(total assets 323,888, 338,516) = 331,202
+    asset_turnover: 0.828845
+    # avg(total assets 323,888, 338,516) = 331,202 / avg(equity 65,339, 90,488) = 77,913.5
+    dupont_equity_multiplier: 4.250894
+    # avg(accounts receivable 16,120 [10-K FY2021], 22,926 [10-K FY2020]) = 19,523 / net sales 274,515 x 365
+    dso: 25.958126
+    # avg(accounts payable 42,296 [10-K FY2021], 46,236 [10-K FY2020]) = 44,266 / cost of sales 169,559 [10-K FY2022] x 365
+    dpo: 95.288896
+    # diluted EPS 3.28 [10-K FY2022; same in 10-K FY2020], already post 2020 4-for-1 split
+    eps_diluted: 3.28
+    # equity 65,339 / shares outstanding 16,976.763 million (16,976,763,000) at 2020-09-26 [10-K FY2021]
+    bvps: 3.8487
+    # dividends declared per share or RSU, FY2020: 0.795 [10-K FY2022 shareholders' equity statement]
+    dps: 0.795
+  FY2025:
+    # gross margin 195,201 / net sales 416,161 [10-K FY2025]
+    gross_margin: 0.469052
+    # operating income 133,050 / net sales 416,161 [10-K FY2025]
+    operating_margin: 0.319708
+    # net income 112,010 / net sales 416,161 [10-K FY2025]
+    net_margin: 0.269151
+    # (cash from operations 111,482 + capex -12,715) = 98,767 / net sales 416,161 [10-K FY2025]
+    fcf_margin: 0.237329
+    # net income 112,010 / avg(equity 73,733, 56,950) = 65,341.5 [10-K FY2025]
+    roe: 1.714225
+    # net income 112,010 / avg(total assets 359,241, 364,980) = 362,110.5 [10-K FY2025]
+    roa: 0.309325
+    # tax rate = provision 20,719 / pretax 132,729 = 0.156100; nopat = operating income 133,050 x (1 - 0.156100) = 112,280.892
+    # invested capital FY2025 = debt (CP 7,979 + current term debt 12,350 + term debt 78,328 = 98,657) + equity 73,733
+    #   - cash 35,934 - marketable securities (current) 18,763 = 117,693
+    # invested capital FY2024 = debt (CP 9,967 + 10,912 + 85,750 = 106,629) + equity 56,950 - cash 29,943 - 35,228 = 98,408
+    # 112,280.892 / avg(117,693, 98,408) = 108,050.5 [all 10-K FY2025]
+    roic: 1.039152
+    # total debt 98,657 (7,979 + 12,350 + 78,328) / total equity 73,733 [10-K FY2025]
+    debt_to_equity: 1.338030
+    # total current assets 147,957 / total current liabilities 165,631 [10-K FY2025]
+    current_ratio: 0.893293
+    # (cash 35,934 + marketable securities 18,763 + accounts receivable 39,777) = 94,474 / current liabilities 165,631 [10-K FY2025]
+    quick_ratio: 0.570388
+    # net sales 416,161 / avg(total assets 359,241, 364,980) = 362,110.5 [10-K FY2025]
+    asset_turnover: 1.149265
+    # avg(total assets) 362,110.5 / avg(equity 73,733, 56,950) = 65,341.5 [10-K FY2025]
+    dupont_equity_multiplier: 5.541815
+    # avg(accounts receivable 39,777, 33,410) = 36,593.5 / net sales 416,161 x 365 [10-K FY2025]
+    dso: 32.094856
+    # avg(accounts payable 69,860, 68,960) = 69,410 / cost of sales 220,960 x 365 [10-K FY2025]
+    dpo: 114.657178
+    # diluted EPS 7.46 [10-K FY2025]
+    eps_diluted: 7.46
+    # equity 73,733 / shares outstanding 14,773.260 million (14,773,260,000) at 2025-09-27 [10-K FY2025]
+    bvps: 4.9910
+    # dividends declared per share or RSU, FY2025: 1.02 [10-K FY2025 shareholders' equity statement]
+    dps: 1.02
+
+# Valuation goldens (M2 S9, FR-ANL-07): the ratios at an ASSUMED fiscal-year-end close (`price`, an input, not a 10-K figure),
+# computed by hand from the 10-K figures cited in the `annual` block above. Shares are the balance-sheet shares outstanding
+# (millions). Market cap = price x shares; minority interest = total equity - equity attributable to the parent;
+# EV = market cap + total debt + minority interest - cash - short-term investments (no temporary equity in these years).
+valuation:
+  FY2020:
+    price: 100
+    # market cap 100 x 16,976.763 = 1,697,676.300; net income 57,411 [10-K FY2021/FY2022]
+    pe: 29.570575
+    earnings_yield: 0.033817
+    # equity 65,339 -> market cap / equity
+    pb: 25.982588
+    # revenue 274,515
+    ps: 6.184275
+    # free cash flow 73,365
+    p_fcf: 23.140139
+    fcf_yield: 0.043215
+    # EV = 1,697,676.300 + debt 112,436 + minority 0 - cash 38,016 - short-term investments 52,927 = 1,719,169.300
+    ev_sales: 6.26257
+    # operating income 66,288
+    ev_ebit: 25.934849
+    ev_fcf: 23.433099
+    # dividends declared per share 0.795
+    dividend_yield: 0.00795
+  FY2025:
+    price: 250
+    # market cap 250 x 14,773.26 = 3,693,315.000; net income 112,010 [10-K FY2025]
+    pe: 32.973083
+    earnings_yield: 0.030328
+    # equity 73,733 -> market cap / equity
+    pb: 50.090394
+    # revenue 416,161
+    ps: 8.874726
+    # free cash flow 98,767
+    p_fcf: 37.394221
+    fcf_yield: 0.026742
+    # EV = 3,693,315.000 + debt 98,657 + minority 0 - cash 35,934 - short-term investments 18,763 = 3,737,275.000
+    ev_sales: 8.980359
+    # operating income 133,050
+    ev_ebit: 28.089252
+    ev_fcf: 37.839309
+    # dividends declared per share 1.02
+    dividend_yield: 0.00408

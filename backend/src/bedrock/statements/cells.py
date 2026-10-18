@@ -8,13 +8,14 @@ cells, so what the grid shows and what the cell details say cannot drift apart.
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Literal
 
 import pandas as pd
 
 from bedrock.mapping.config import CanonicalItemDef, formula_order, parse_formula
+from bedrock.mapping.vintage import BALANCE_DATE_TOLERANCE
 from bedrock.statements.periods import (
     START_TOLERANCE,
     Calendar,
@@ -24,7 +25,7 @@ from bedrock.statements.periods import (
     quarterly_periods,
 )
 
-Provenance = Literal["reported", "derived"]
+Provenance = Literal["reported", "derived", "normalized"]
 
 
 @dataclass(frozen=True)
@@ -71,6 +72,9 @@ class _Fact:
     end: date
     value: Decimal
     ref: FactRef
+    split_factor: Decimal = Decimal(1)
+    split_dates: tuple[date, ...] = ()
+    reported_value: Decimal | None = None  # before the split factor; None = same as value
 
 
 class _Index:
@@ -91,11 +95,31 @@ class _Index:
                 r["filed_at"],
             )
             self._by_end[(r["code"], r["period_end"])].append(
-                _Fact(start, r["period_end"], r["value"], ref)
+                _Fact(
+                    start,
+                    r["period_end"],
+                    r["value"],
+                    ref,
+                    r.get("split_factor", Decimal(1)),
+                    r.get("split_dates", ()),
+                    r.get("reported_value"),
+                )
             )
 
     def instant(self, code: str, end: date) -> _Fact | None:
-        return next((f for f in self._by_end.get((code, end), []) if f.start is None), None)
+        """The instant at `end`, else the nearest one within a week of it (a balance sheet dated
+        a day off the fiscal period end). Exact dates always win."""
+        exact = next((f for f in self._by_end.get((code, end), []) if f.start is None), None)
+        if exact is not None:
+            return exact
+        for gap in range(1, BALANCE_DATE_TOLERANCE.days + 1):  # nearest first, earlier on a tie
+            for when in (end - timedelta(days=gap), end + timedelta(days=gap)):
+                found = next(
+                    (f for f in self._by_end.get((code, when), []) if f.start is None), None
+                )
+                if found is not None:
+                    return found
+        return None
 
     def duration(self, code: str, start: date, end: date) -> _Fact | None:
         """The duration fact ending at `end` whose start is within a week of `start`."""
@@ -124,10 +148,11 @@ def compute_cells(
             )
 
     for item in formula_order(items):
+        siblings = frozenset(i.code for i in items if item.residual and i.parent == item.parent)
         for period in periods:
             current = cells.get((item.code, period.key), EMPTY)
             if item.residual or current.value is None:
-                cells[(item.code, period.key)] = _formula_cell(item, period, cells)
+                cells[(item.code, period.key)] = _formula_cell(item, period, cells, siblings)
     return cells
 
 
@@ -142,17 +167,36 @@ def _mapped_cell(
     if item.kind == "instant":
         if period.fiscal_period == "Q4":  # the fiscal year-end balance
             return cells.get((code, f"FY{period.fiscal_year}"), EMPTY)
-        return _reported(index.instant(code, period.end))
+        return _reported(index.instant(code, period.end), code, period)
     if period.fiscal_period == "Q4":
         return EMPTY if item.kind == "average" else _q4(code, year, cells, index)
-    reported = _reported(index.duration(code, period.start, period.end))
+    reported = _reported(index.duration(code, period.start, period.end), code, period)
     if reported.value is not None or item.kind == "average" or period.fiscal_period == "FY":
         return reported
     return _from_year_to_date(code, period, year, index)
 
 
-def _reported(fact: _Fact | None) -> Cell:
-    return EMPTY if fact is None else Cell(fact.value, "reported", source=fact.ref)
+def _reported(fact: _Fact | None, code: str, period: Period) -> Cell:
+    if fact is None:
+        return EMPTY
+    if fact.split_factor == 1:
+        return Cell(fact.value, "reported", source=fact.ref)
+    reported = fact.value if fact.reported_value is None else fact.reported_value
+    return Cell(
+        fact.value,
+        "derived",
+        source=fact.ref,
+        derivation=Derivation(
+            _split_formula(fact), (DerivationInput(code, period.fiscal_period, reported),)
+        ),
+    )
+
+
+def _split_formula(fact: _Fact) -> str:
+    op = "×" if fact.ref.unit == "shares" else "÷"
+    noun = "split" if len(fact.split_dates) == 1 else "splits"
+    dates = ", ".join(d.isoformat() for d in fact.split_dates)
+    return f"as reported {op} {format(fact.split_factor.normalize(), 'f')} ({noun} {dates})"
 
 
 def _quarter_number(period: Period) -> int:
@@ -224,12 +268,21 @@ def _fy_less_ytd(code: str, fiscal: Decimal, ytd_q3: Decimal) -> Cell:
     )
 
 
-def _formula_cell(item: CanonicalItemDef, period: Period, cells: dict[CellKey, Cell]) -> Cell:
+def _formula_cell(
+    item: CanonicalItemDef,
+    period: Period,
+    cells: dict[CellKey, Cell],
+    siblings: frozenset[str] = frozenset(),
+) -> Cell:
+    """A residual treats a missing component of its own breakdown (`siblings`, the lines that
+    share its parent) as 0; any other operand (the subtotal it completes, or a line outside the
+    breakdown such as operating income) is required, or the residual is a number under the wrong
+    label."""
     assert item.derive is not None
     terms = parse_formula(item.derive)
     operands = [(sign, code, cells.get((code, period.key), EMPTY).value) for sign, code in terms]
     if item.residual:
-        if operands[0][2] is None:  # the subtotal this residual completes
+        if any(value is None and code not in siblings for _, code, value in operands):
             return EMPTY
     elif any(value is None for _, _, value in operands):
         return EMPTY

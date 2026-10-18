@@ -7,9 +7,12 @@ from bedrock.mapping.config import (
     CanonicalItemDef,
     MappingConfigError,
     formula_order,
+    is_adjustable,
     load_canonical_items,
+    load_excludes,
     load_overrides,
     parse_formula,
+    propagation_targets,
     split_concept,
     split_group,
 )
@@ -344,10 +347,10 @@ def test_load_overrides_rejects_unknown_codes_and_duplicates(tmp_path: Path) -> 
         load_overrides(tmp_path, "Y", items)
 
 
-def test_shipped_canonical_items_load_with_78_codes() -> None:
+def test_shipped_canonical_items_load_with_82_codes() -> None:
     items = load_canonical_items(DEFAULT_ITEMS_PATH)
 
-    assert len(items) == 78
+    assert len(items) == 82
     assert {i.statement for i in items} == {"IS", "BS", "CF"}
     by_code = {i.code: i for i in items}
     assert by_code["eps_diluted"].kind == "average"
@@ -441,3 +444,283 @@ def test_shipped_items_compute_total_debt_and_net_debt_on_the_balance_sheet() ->
         assert item.parent is None
         assert item.concepts == ()
         assert item.residual is False
+
+
+def test_shipped_items_add_the_four_m2_lines_where_the_erd_puts_them() -> None:
+    items = load_canonical_items(DEFAULT_ITEMS_PATH)
+    codes = [i.code for i in items]
+    by_code = {i.code: i for i in items}
+
+    for code, statement, kind, unit in (
+        ("dividends_per_share", "IS", "flow", "USD/shares"),
+        ("goodwill_impairment", "IS", "flow", "USD"),
+        ("temporary_equity", "BS", "instant", "USD"),
+        ("shares_outstanding", "BS", "instant", "shares"),
+    ):
+        item = by_code[code]
+        assert (item.statement, item.kind, item.unit) == (statement, kind, unit), code
+        assert item.sign == 1 and item.parent is None, code
+        assert item.concepts and not item.residual and item.derive is None, code
+    assert codes.index("dividends_per_share") == codes.index("eps_diluted") + 1
+    assert codes.index("goodwill_impairment") == codes.index("shares_diluted") + 1
+    assert codes.index("temporary_equity") == codes.index("total_equity") - 1
+    assert codes.index("shares_outstanding") == codes.index("net_debt") + 1
+    assert by_code["dividends_per_share"].concepts == (
+        "us-gaap:CommonStockDividendsPerShareDeclared",
+        "us-gaap:CommonStockDividendsPerShareCashPaid",
+    )
+
+
+# Overrides can switch defaults off with the mapping form `code: {concepts: [...], exclude: ...}`.
+
+
+def test_the_mapping_form_adds_concepts_and_excludes_defaults(tmp_path: Path) -> None:
+    items = load_canonical_items(write(tmp_path, VALID))
+    (tmp_path / "X.yaml").write_text(
+        "revenue: {concepts: [Custom], exclude: [SalesRevenueNet]}\n"
+        "gross_profit: {exclude: [us-gaap:GrossProfit]}\n"
+        "cost_of_revenue: [OtherCost]\n"
+    )
+
+    assert load_overrides(tmp_path, "X", items) == {
+        "revenue": ["us-gaap:Custom"],
+        "cost_of_revenue": ["us-gaap:OtherCost"],
+    }
+    assert load_excludes(tmp_path, "X", items) == {
+        "revenue": ["us-gaap:SalesRevenueNet"],
+        "gross_profit": ["us-gaap:GrossProfit"],
+    }
+
+
+def test_exclude_all_drops_every_default_of_the_item(tmp_path: Path) -> None:
+    items = load_canonical_items(write(tmp_path, VALID))
+    (tmp_path / "X.yaml").write_text("revenue: {concepts: [], exclude: all}\n")
+
+    assert load_excludes(tmp_path, "X", items) == {
+        "revenue": ["us-gaap:Revenues", "us-gaap:SalesRevenueNet", "ifrs-full:Revenue"]
+    }
+    assert load_overrides(tmp_path, "X", items) == {}
+
+
+def test_the_plain_list_form_excludes_nothing(tmp_path: Path) -> None:
+    items = load_canonical_items(write(tmp_path, VALID))
+    (tmp_path / "X.yaml").write_text("revenue: [Custom]\n")
+
+    assert load_excludes(tmp_path, "X", items) == {}
+    assert load_excludes(tmp_path / "missing", "X", items) == {}
+
+
+def test_excluding_a_summed_default_matches_the_whole_entry(tmp_path: Path) -> None:
+    summed = VALID.replace(
+        "concepts: [CostOfRevenue]", 'concepts: ["CostOfRevenue + OtherCost", CostOfRevenue]'
+    )
+    items = load_canonical_items(write(tmp_path, summed))
+    (tmp_path / "X.yaml").write_text('cost_of_revenue: {exclude: ["CostOfRevenue + OtherCost"]}\n')
+
+    assert load_excludes(tmp_path, "X", items) == {
+        "cost_of_revenue": ["us-gaap:CostOfRevenue + us-gaap:OtherCost"]
+    }
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "revenue: {exclude: [Ghost]}\n",  # not a default of the item: a stale exclude
+        "revenue: {exclude: [Revenues, us-gaap:Revenues]}\n",  # duplicate
+        "revenue: {exclude: Revenues}\n",  # a string other than `all`
+        "revenue: {exclude: [1]}\n",  # not a string
+        "revenue: {exclude: []}\n",  # nothing to do
+        "revenue: {concepts: [Revenues], exclude: [Revenues]}\n",  # added and excluded
+        "revenue: {concept: [A]}\n",  # unknown key
+        "revenue: {concepts: A}\n",  # concepts not a list
+        "revenue: {}\n",  # empty mapping
+        "revenue: 5\n",
+        "ghost: {exclude: all}\n",  # unknown code
+    ],
+)
+def test_malformed_or_stale_excludes_are_rejected(tmp_path: Path, text: str) -> None:
+    items = load_canonical_items(write(tmp_path, VALID))
+    (tmp_path / "X.yaml").write_text(text)
+
+    with pytest.raises(MappingConfigError):
+        load_excludes(tmp_path, "X", items)
+
+
+def test_residual_codes_cannot_be_excluded(tmp_path: Path) -> None:
+    residual = VALID + (
+        "- code: other_costs\n  statement: IS\n  label: Other\n  kind: flow\n  unit: USD\n"
+        "  sign: 1\n  parent: null\n  derive: revenue - cost_of_revenue\n  residual: true\n"
+    )
+    items = load_canonical_items(write(tmp_path, residual))
+    (tmp_path / "X.yaml").write_text("other_costs: {exclude: all}\n")
+
+    with pytest.raises(MappingConfigError):
+        load_excludes(tmp_path, "X", items)
+
+
+def test_exclude_all_needs_a_default_to_drop(tmp_path: Path) -> None:
+    items = load_canonical_items(write(tmp_path, VALID.replace("  concepts: [GrossProfit]\n", "")))
+    (tmp_path / "X.yaml").write_text("gross_profit: {exclude: all}\n")
+
+    with pytest.raises(MappingConfigError):
+        load_excludes(tmp_path, "X", items)
+
+
+# --- rolls_into: where a normalization adjustment propagates (M2) --------------------------------
+
+ROLLS = """
+- {code: revenue, statement: IS, label: Revenue, kind: flow, unit: USD, sign: 1,
+   rolls_into: [gross_profit]}
+- {code: cost_of_revenue, statement: IS, label: Cost, kind: flow, unit: USD, sign: 1,
+   rolls_into: ["-gross_profit"]}
+- {code: gross_profit, statement: IS, label: Gross, kind: flow, unit: USD, sign: 1}
+- {code: eps, statement: IS, label: EPS, kind: average, unit: USD/shares, sign: 1}
+- {code: cash, statement: BS, label: Cash, kind: instant, unit: USD, sign: 1, parent: current}
+- {code: current, statement: BS, label: Current, kind: instant, unit: USD, sign: 1, parent: assets}
+- {code: assets, statement: BS, label: Assets, kind: instant, unit: USD, sign: 1}
+"""
+
+
+def test_rolls_into_reads_signed_codes(tmp_path: Path) -> None:
+    items = {i.code: i for i in load_canonical_items(write(tmp_path, ROLLS))}
+
+    assert items["revenue"].rolls_into == (("gross_profit", 1),)
+    assert items["cost_of_revenue"].rolls_into == (("gross_profit", -1),)
+    assert items["gross_profit"].rolls_into == ()
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("rolls_into: [gross_profit]}\n- {code: cost", "rolls_into: [nowhere]}\n- {code: cost"),
+        ("rolls_into: [gross_profit]}\n- {code: cost", "rolls_into: [cash]}\n- {code: cost"),
+        ("rolls_into: [gross_profit]}\n- {code: cost", "rolls_into: [eps]}\n- {code: cost"),
+        ("rolls_into: [gross_profit]}\n- {code: cost", "rolls_into: [revenue]}\n- {code: cost"),
+        (
+            "rolls_into: [gross_profit]}\n- {code: cost",
+            "rolls_into: [gross_profit, gross_profit]}\n- {code: cost",
+        ),
+        ("rolls_into: [gross_profit]}\n- {code: cost", "rolls_into: gross_profit}\n- {code: cost"),
+        (
+            "rolls_into: [gross_profit]}\n- {code: cost",
+            "rolls_into: ['+gross_profit']}\n- {code: cost",
+        ),
+    ],
+    ids=["unknown", "other-statement", "average-target", "self", "duplicate", "not-a-list", "plus"],
+)
+def test_rolls_into_rejects_invalid_targets(tmp_path: Path, old: str, new: str) -> None:
+    error = fail_with(tmp_path, ROLLS.replace(old, new))
+
+    assert error.code == "revenue"
+
+
+def test_rolls_into_rejects_a_cycle(tmp_path: Path) -> None:
+    error = fail_with(
+        tmp_path,
+        ROLLS.replace("sign: 1}\n- {code: eps", "sign: 1, rolls_into: [revenue]}\n- {code: eps"),
+    )
+
+    assert "cycle" in str(error)
+
+
+def test_rolls_into_cycle_through_a_parent_is_rejected(tmp_path: Path) -> None:
+    # assets -> cash, while cash propagates to its parent current -> assets
+    error = fail_with(
+        tmp_path,
+        ROLLS.replace(
+            "kind: instant, unit: USD, sign: 1}",
+            "kind: instant, unit: USD, sign: 1, rolls_into: [cash]}",
+        ),
+    )
+
+    assert "cycle" in str(error)
+
+
+def test_propagation_targets_are_transitive_and_multiply_signs(tmp_path: Path) -> None:
+    items = load_canonical_items(write(tmp_path, ROLLS))
+
+    assert propagation_targets(items, "revenue") == {"gross_profit": 1}
+    assert propagation_targets(items, "cost_of_revenue") == {"gross_profit": -1}
+    assert propagation_targets(items, "gross_profit") == {}
+
+
+def test_balance_sheet_lines_fall_back_to_their_parent_chain(tmp_path: Path) -> None:
+    items = load_canonical_items(write(tmp_path, ROLLS))
+
+    assert propagation_targets(items, "cash") == {"current": 1, "assets": 1}
+    assert propagation_targets(items, "assets") == {}
+
+
+def test_shipped_income_statement_propagates_down_the_waterfall() -> None:
+    items = load_canonical_items(DEFAULT_ITEMS_PATH)
+
+    assert propagation_targets(items, "sga") == {
+        "operating_income": -1,
+        "pretax_income": -1,
+        "net_income": -1,
+        "net_income_common": -1,
+    }
+    assert propagation_targets(items, "revenue") == {
+        "gross_profit": 1,
+        "operating_income": 1,
+        "pretax_income": 1,
+        "net_income": 1,
+        "net_income_common": 1,
+    }
+    assert propagation_targets(items, "cost_of_revenue")["operating_income"] == -1
+    assert propagation_targets(items, "interest_expense") == {
+        "pretax_income": -1,
+        "net_income": -1,
+        "net_income_common": -1,
+    }
+    assert propagation_targets(items, "income_tax") == {"net_income": -1, "net_income_common": -1}
+    assert propagation_targets(items, "net_income_nci") == {"net_income_common": -1}
+    assert propagation_targets(items, "net_income_common") == {}
+
+
+def test_shipped_balance_sheet_and_cash_flow_propagate_through_their_parents() -> None:
+    items = load_canonical_items(DEFAULT_ITEMS_PATH)
+
+    assert propagation_targets(items, "cash") == {
+        "total_current_assets": 1,
+        "total_assets": 1,
+    }
+    assert propagation_targets(items, "long_term_debt") == {
+        "total_noncurrent_liabilities": 1,
+        "total_liabilities": 1,
+        "total_liabilities_and_equity": 1,
+    }
+    assert propagation_targets(items, "retained_earnings") == {
+        "equity_parent": 1,
+        "total_equity": 1,
+        "total_liabilities_and_equity": 1,
+    }
+    assert propagation_targets(items, "temporary_equity") == {"total_liabilities_and_equity": 1}
+    assert propagation_targets(items, "capex") == {"cfi": 1, "net_change_in_cash": 1}
+    assert propagation_targets(items, "d_and_a") == {"cfo": 1, "net_change_in_cash": 1}
+    assert propagation_targets(items, "fx_effect") == {"net_change_in_cash": 1}
+
+
+def test_is_adjustable_follows_the_erd_rules() -> None:
+    by_code = {i.code: i for i in load_canonical_items(DEFAULT_ITEMS_PATH)}
+
+    adjustable = {c for c, i in by_code.items() if is_adjustable(i)}
+
+    for code in (
+        "revenue",
+        "sga",
+        "other_operating_expenses",
+        "cash",
+        "other_current_assets",
+        "capex",
+        "cfo",
+        "total_assets",
+    ):
+        assert code in adjustable, code
+    for code in (  # computed-only, memo, per-share and share lines
+        "total_operating_costs", "total_noncurrent_assets", "total_noncurrent_liabilities",
+        "total_debt", "net_debt", "free_cash_flow", "goodwill_impairment",
+        "eps_basic", "eps_diluted", "dividends_per_share", "shares_basic", "shares_diluted",
+        "shares_outstanding",
+    ):  # fmt: skip
+        assert code not in adjustable, code

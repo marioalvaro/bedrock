@@ -1,0 +1,53 @@
+# Deere & Company, consolidated figures only. Its balance sheet is unclassified (no current totals)
+# and it files cost of sales (from FY2018), property and equipment (from FY2021) and long-term
+# borrowings (from FY2022) under `de:` extension tags that companyfacts omits, so those lines stay empty.
+#
+# Short-term debt is two balance-sheet lines: "Short-term borrowings" (DebtCurrent, which includes the
+# current maturities of long-term borrowings) and "Short-term securitization borrowings" (SecuredDebt).
+# The anchor is DebtCurrent, a us-gaap tag only from FY2020; before that the line is a `de:` tag, so the
+# item is empty rather than the securitization line alone.
+short_term_debt:
+  - us-gaap:DebtCurrent + us-gaap:SecuredDebt
+# "Marketable securities": AvailableForSaleSecurities until FY2018, MarketableSecurities after (the
+# same 490 in FY2018 under both).
+short_term_investments:
+  - us-gaap:MarketableSecurities
+  - us-gaap:AvailableForSaleSecurities
+# "Trade accounts and notes receivable - net": AccountsAndNotesReceivableNet until FY2018,
+# AccountsReceivableNet after (5,004 in FY2018 under both). Financing and "other" receivables are
+# separate lines and are not part of it.
+receivables:
+  - us-gaap:AccountsReceivableNet
+  - us-gaap:AccountsAndNotesReceivableNet
+# "Property and equipment - net": the default tag ends in FY2019, FY2018-20 also carry the
+# finance-lease-inclusive tag with the same balance sheet figure, FY2021+ is a `de:` tag.
+ppe_net:
+  - us-gaap:PropertyPlantAndEquipmentAndFinanceLeaseRightOfUseAssetAfterAccumulatedDepreciationAndAmortization
+# "Common stock ... at paid-in amount" is one line (par plus paid-in capital), as for Apple until FY2013.
+common_stock_apic:
+  - us-gaap:CommonStockValue
+# "Purchases of marketable securities": the default purchase tags stop after FY2018.
+purchases_of_investments:
+  - us-gaap:PaymentsToAcquireMarketableSecurities
+# Effect of exchange rates on cash: the default tags cover FY2007-11 and FY2017+; FY2012-16 are tagged
+# with the continuing-operations variant (the 10-K line is the same).
+fx_effect:
+  - us-gaap:EffectOfExchangeRateOnCashAndCashEquivalentsContinuingOperations
+# "Proceeds from maturities and sales of marketable securities": FY2011-16 carry the available-for-sale
+# tag. From FY2017 that tag holds a note figure (FY2023 37 against the line's 186), so the
+# marketable-securities tag stays first.
+sales_maturities_of_investments:
+  - us-gaap:ProceedsFromSaleAndMaturityOfMarketableSecurities
+  - us-gaap:ProceedsFromSaleAndMaturityOfAvailableForSaleSecurities
+# Deere's GrossProfit facts exist only for quarters, from the quarterly-data note, and are the
+# equipment operations' net sales less cost of sales (FY2009 Q1 1,018 = 4,560.5 - 3,542.5), while the
+# income statement revenue is the total (5,146 in that quarter). Excluding it makes gross profit
+# total revenue less cost of sales (the `derive` formula) in every period, so quarters add up to the
+# year; it is empty from FY2018, when cost of sales became a `de:` fact.
+gross_profit:
+  exclude: [us-gaap:GrossProfit]
+# The income statement has no operating income. OperatingIncomeLoss is the segment note's "Total
+# operating profit" (FY2020 10-K: 4,305 against income before income taxes of 3,883), before interest,
+# corporate expenses and taxes, so it is not the canonical line. Operating income stays empty.
+operating_income:
+  exclude: [us-gaap:OperatingIncomeLoss]

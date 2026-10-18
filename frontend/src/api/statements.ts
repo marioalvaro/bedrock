@@ -12,20 +12,24 @@ export type StatementType = "IS" | "BS" | "CF";
 export type Freq = "annual" | "quarterly" | "ttm";
 // What common-size divides by: revenue / total assets, or each row's parent row.
 export type CommonSizeBase = "total" | "parent";
+// Reported, or reported plus the company's adjustments (and their propagation).
+export type Basis = "reported" | "normalized";
 
 export const statementQueryOptions = (
   ticker: string,
   type: StatementType,
   freq: Freq,
   commonSizeBase: CommonSizeBase = "total",
+  // Sent as `basis` and part of the query key.
+  basis: Basis = "reported",
 ) =>
   queryOptions({
-    queryKey: [...companyKey(ticker), "statements", type, freq, commonSizeBase],
+    queryKey: [...companyKey(ticker), "statements", type, freq, commonSizeBase, basis],
     queryFn: async () => {
       const statement = await unwrap(
         getStatementApiV1CompaniesTickerStatementsGet({
           path: { ticker },
-          query: { type, freq, common_size_base: commonSizeBase },
+          query: { type, freq, common_size_base: commonSizeBase, basis },
         }),
       );
       // A 200 proves only that something answered (the dev server's SPA fallback sends

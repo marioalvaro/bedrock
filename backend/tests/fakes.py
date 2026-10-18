@@ -16,6 +16,7 @@ from bedrock.ingest.protocol import (
     EdgarPayload,
     PricePayload,
     PriceRow,
+    SplitRow,
     UnknownTicker,
 )
 
@@ -41,6 +42,18 @@ def _prices(ticker: str) -> tuple[PriceRow, ...]:
             volume=int(row["Volume"]),
         )
         for day, row in frame.iterrows()
+    )
+
+
+@cache
+def _splits(ticker: str) -> tuple[SplitRow, ...]:
+    path = FIXTURES / "yfinance" / f"{ticker}_splits.csv"
+    if not path.is_file():
+        return ()
+    frame = pd.read_csv(path, dtype=str)
+    return tuple(
+        SplitRow(date.fromisoformat(row["date"]), Decimal(row["ratio"]))
+        for _, row in frame.iterrows()
     )
 
 
@@ -81,7 +94,8 @@ class FakeEdgar:
 
 
 class FakePrices:
-    """One year of recorded daily prices; like the real source, only rows after `since`."""
+    """One year of recorded daily prices; like the real source, only rows after `since`, and the
+    full recorded split history every time. `raises` fails the whole fetch (prices and splits)."""
 
     name: ClassVar[str] = "yfinance"
 
@@ -94,4 +108,7 @@ class FakePrices:
         if self.raises is not None:
             raise self.raises
         rows = _prices(company.ticker)
-        return PricePayload(rows=[r for r in rows if since is None or r.date > since])
+        return PricePayload(
+            rows=[r for r in rows if since is None or r.date > since],
+            splits=list(_splits(company.ticker)),
+        )

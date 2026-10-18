@@ -1,6 +1,7 @@
 """The test doubles for the external sources: they must behave like the real adapters."""
 
 from datetime import date
+from decimal import Decimal
 
 import pytest
 
@@ -8,6 +9,7 @@ from bedrock.ingest.protocol import (
     CompanyRef,
     SourceNotConfigured,
     SourceUnavailable,
+    SplitRow,
     UnknownTicker,
 )
 
@@ -81,3 +83,19 @@ def test_fake_prices_remember_what_they_were_asked_for() -> None:
     prices.fetch(AAPL, date(2025, 11, 3))
 
     assert prices.calls == [None, date(2025, 11, 3)]
+
+
+def test_fake_prices_serve_the_recorded_split_history_whatever_since_is() -> None:
+    expected = [SplitRow(date(2014, 6, 9), Decimal("7")), SplitRow(date(2020, 8, 31), Decimal("4"))]
+
+    for since in (None, date(2026, 1, 1)):
+        splits = FakePrices().fetch(AAPL, since).splits
+        assert len(splits) == 5
+        assert [s for s in splits if s.effective_date.year in (2014, 2020)] == expected
+        assert splits == sorted(splits, key=lambda s: s.effective_date)
+
+
+def test_fake_prices_have_no_splits_for_a_ticker_without_a_splits_file() -> None:
+    from .fakes import _splits
+
+    assert _splits("NOSUCH") == ()

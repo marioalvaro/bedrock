@@ -1,21 +1,33 @@
 import { useQuery } from "@tanstack/react-query";
+import { Fragment, type ReactNode } from "react";
 import { RefreshCw } from "lucide-react";
 import { NavLink, useParams } from "react-router";
 
 import { companyErrorMessage, companyQueryOptions, useRefreshCompany } from "@/api/companies";
 import { ApiError } from "@/api/errors";
+import type { CompanyListItem } from "@/api/generated/types.gen";
 import type { StatementType } from "@/api/statements";
 import { Button } from "@/components/ui/button";
+import { CapitalView } from "@/features/capital/CapitalView";
 import { Overview } from "@/features/overview/Overview";
+import { QualityView } from "@/features/quality/QualityView";
+import { RatiosView } from "@/features/ratios/RatiosView";
 import { StatementView } from "@/features/statements/StatementView";
 import { formatCompact, formatPrice, formatRelative } from "@/lib/format";
 import { useNow } from "@/lib/now";
 
-const TABS: { slug: string; label: string; statement?: StatementType }[] = [
-  { slug: "overview", label: "Overview" },
-  { slug: "income", label: "Income", statement: "IS" },
-  { slug: "balance", label: "Balance", statement: "BS" },
-  { slug: "cash-flow", label: "Cash Flow", statement: "CF" },
+const statementTab = (type: StatementType) => (company: CompanyListItem) => (
+  <StatementView ticker={company.ticker} cik={company.cik} type={type} />
+);
+
+const TABS: { slug: string; label: string; render: (company: CompanyListItem) => ReactNode }[] = [
+  { slug: "overview", label: "Overview", render: (company) => <Overview company={company} /> },
+  { slug: "income", label: "Income", render: statementTab("IS") },
+  { slug: "balance", label: "Balance", render: statementTab("BS") },
+  { slug: "cash-flow", label: "Cash Flow", render: statementTab("CF") },
+  { slug: "ratios", label: "Ratios", render: (c) => <RatiosView ticker={c.ticker} /> },
+  { slug: "quality", label: "Quality", render: (c) => <QualityView ticker={c.ticker} /> },
+  { slug: "capital", label: "Capital", render: (c) => <CapitalView ticker={c.ticker} /> },
 ];
 
 const tabPath = (ticker: string, slug: string) =>
@@ -87,16 +99,7 @@ export function Company() {
           </NavLink>
         ))}
       </nav>
-      {active.statement ? (
-        <StatementView
-          key={active.slug}
-          ticker={company.ticker}
-          cik={company.cik}
-          type={active.statement}
-        />
-      ) : (
-        <Overview company={company} />
-      )}
+      <Fragment key={active.slug}>{active.render(company)}</Fragment>
     </div>
   );
 }

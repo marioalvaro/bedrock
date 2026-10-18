@@ -17,6 +17,9 @@ import { StatementView } from "./StatementView";
 vi.mock("@/api/generated/sdk.gen", () => ({
   getStatementApiV1CompaniesTickerStatementsGet: vi.fn(),
   getCellApiV1CompaniesTickerStatementsCellGet: vi.fn(),
+  createAdjustmentApiV1CompaniesTickerAdjustmentsPost: vi.fn(),
+  updateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPut: vi.fn(),
+  deleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDelete: vi.fn(),
 }));
 
 function renderView(type: "IS" | "BS" | "CF" = "IS") {
@@ -28,6 +31,9 @@ function renderView(type: "IS" | "BS" | "CF" = "IS") {
     </QueryClientProvider>,
   );
 }
+
+const cell = (row: string, period: string) =>
+  document.querySelector(`[row-id="${row}"] [col-id="${period}"]`) as HTMLElement;
 
 const cellDetail = {
   code: "revenue",
@@ -58,7 +64,44 @@ const cellDetail = {
     },
   ],
   adjustments: [],
+  normalized_value: null,
 };
+
+const emptyCellDetail = (code: string, label: string, fiscalYear: number) => ({
+  ...cellDetail,
+  code,
+  label,
+  fiscal_year: fiscalYear,
+  value: null,
+  provenance: null,
+  source: null,
+  filing: null,
+  vintages: [],
+});
+
+function captureDownload() {
+  const blobs: Blob[] = [];
+  const names: string[] = [];
+  URL.createObjectURL = vi.fn((blob: Blob | MediaSource) => {
+    blobs.push(blob as Blob);
+    return "blob:csv";
+  });
+  URL.revokeObjectURL = vi.fn();
+  vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+    this: HTMLAnchorElement,
+  ) {
+    names.push(this.download);
+  });
+  return { blobs, names };
+}
+
+function readText(blob: Blob): Promise<string> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.readAsText(blob);
+  });
+}
 
 beforeEach(() => {
   setScale("M");
@@ -90,7 +133,7 @@ describe("StatementView", () => {
 
     expect(getStatementApiV1CompaniesTickerStatementsGet).toHaveBeenCalledWith({
       path: { ticker: "AAPL" },
-      query: { type: "CF", freq: "annual", common_size_base: "total" },
+      query: { type: "CF", freq: "annual", common_size_base: "total", basis: "reported" },
     });
   });
 
@@ -102,7 +145,7 @@ describe("StatementView", () => {
 
     expect(getStatementApiV1CompaniesTickerStatementsGet).toHaveBeenLastCalledWith({
       path: { ticker: "AAPL" },
-      query: { type: "IS", freq: "quarterly", common_size_base: "total" },
+      query: { type: "IS", freq: "quarterly", common_size_base: "total", basis: "reported" },
     });
   });
 
@@ -281,7 +324,7 @@ describe("StatementView", () => {
 
       expect(getStatementApiV1CompaniesTickerStatementsGet).toHaveBeenLastCalledWith({
         path: { ticker: "AAPL" },
-        query: { type: "IS", freq: "annual", common_size_base: "parent" },
+        query: { type: "IS", freq: "annual", common_size_base: "parent", basis: "reported" },
       });
     });
   });
@@ -304,6 +347,87 @@ describe("StatementView", () => {
     expect(derived.closest("[col-id]")).toHaveClass("prov-derived");
     expect(reported.closest("[col-id]")).not.toHaveClass("prov-derived");
     expect(screen.getByText(/Derived/)).toBeInTheDocument();
+  });
+
+  describe("basis", () => {
+    const lastQuery = () =>
+      vi.mocked(getStatementApiV1CompaniesTickerStatementsGet).mock.calls.at(-1)![0]!.query;
+
+    it("defaults to reported", async () => {
+      renderView();
+      await screen.findByText("Revenue");
+
+      expect(screen.getByRole("radiogroup", { name: "Basis" })).toBeInTheDocument();
+      expect(screen.getByRole("radio", { name: "Reported" })).toBeChecked();
+      expect(screen.getByRole("radio", { name: "Normalized" })).not.toBeChecked();
+      expect(
+        vi.mocked(getStatementApiV1CompaniesTickerStatementsGet).mock.calls[0]![0]!.query,
+      ).toMatchObject({ basis: "reported" });
+    });
+
+    it("the basis toggle sends basis=normalized, and back to reported", async () => {
+      renderView();
+      await screen.findByText("Revenue");
+
+      await userEvent.click(screen.getByRole("radio", { name: "Normalized" }));
+      await waitFor(() => expect(lastQuery()).toMatchObject({ basis: "normalized" }));
+
+      await userEvent.click(screen.getByRole("radio", { name: "Reported" }));
+      await waitFor(() => expect(lastQuery()).toMatchObject({ basis: "reported" }));
+    });
+
+    it("keeps the basis when the selected item is clicked again", async () => {
+      renderView();
+      await screen.findByText("Revenue");
+      await userEvent.click(screen.getByRole("radio", { name: "Normalized" }));
+      await waitFor(() => expect(lastQuery()).toMatchObject({ basis: "normalized" }));
+
+      await userEvent.click(screen.getByRole("radio", { name: "Normalized" }));
+
+      expect(lastQuery()).toMatchObject({ basis: "normalized" });
+      const bases = vi
+        .mocked(getStatementApiV1CompaniesTickerStatementsGet)
+        .mock.calls.map((call) => call[0]!.query!.basis);
+      expect(bases).not.toContain("");
+      expect(screen.getByRole("radio", { name: "Normalized" })).toBeChecked();
+    });
+
+    it("survives a frequency change", async () => {
+      renderView();
+      await screen.findByText("Revenue");
+      await userEvent.click(screen.getByRole("radio", { name: "Normalized" }));
+
+      await userEvent.click(screen.getByRole("radio", { name: "Quarterly" }));
+
+      await waitFor(() =>
+        expect(lastQuery()).toMatchObject({ freq: "quarterly", basis: "normalized" }),
+      );
+      expect(screen.getByRole("radio", { name: "Normalized" })).toBeChecked();
+    });
+
+    it("a normalized cell has the prov-normalized class, a null one has no provenance class", async () => {
+      const payload = incomeStatement();
+      payload.rows[0]!.provenance = ["normalized", null];
+      vi.mocked(getStatementApiV1CompaniesTickerStatementsGet).mockResolvedValue(
+        okResult(payload) as never,
+      );
+      renderView();
+
+      const normalized = (await screen.findByText("383,285")).closest("[col-id]");
+      expect(normalized).toHaveClass("prov-normalized");
+      expect(normalized).not.toHaveClass("prov-derived");
+      expect(normalized).not.toHaveClass("italic");
+      const plain = screen.getByText("391,035").closest("[col-id]");
+      expect(plain).not.toHaveClass("prov-normalized");
+      expect(plain).not.toHaveClass("prov-derived");
+    });
+
+    it("explains normalized cells in the legend", async () => {
+      renderView();
+      await screen.findByText("Revenue");
+
+      expect(screen.getByText(/Normalized: with your adjustments/)).toBeInTheDocument();
+    });
   });
 
   it("hides line items with no values", async () => {
@@ -336,6 +460,233 @@ describe("StatementView", () => {
     );
     expect(within(sheet).getByText("10-Q")).toBeInTheDocument();
     expect(within(sheet).getByText(/Adjustments: none/)).toBeInTheDocument();
+  });
+
+  it("opens an adjustable cell with Add adjustment, and a non-adjustable one without", async () => {
+    const payload = incomeStatement();
+    payload.rows[0]!.adjustable = true;
+    vi.mocked(getStatementApiV1CompaniesTickerStatementsGet).mockResolvedValue(
+      okResult(payload) as never,
+    );
+    vi.mocked(getCellApiV1CompaniesTickerStatementsCellGet).mockResolvedValue(
+      okResult(cellDetail) as never,
+    );
+    renderView();
+
+    await userEvent.click(await screen.findByText("391,035"));
+    const sheet = await screen.findByRole("dialog");
+    expect(await within(sheet).findByRole("button", { name: "Add adjustment" })).toBeVisible();
+
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    await userEvent.click(screen.getByText("180,683"));
+    const second = await screen.findByRole("dialog");
+    await within(second).findByText("us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax");
+    expect(
+      within(second).queryByRole("button", { name: "Add adjustment" }),
+    ).not.toBeInTheDocument();
+  });
+
+  describe("adjusting where there is no data", () => {
+    it("opens an empty cell of an adjustable line with Add adjustment", async () => {
+      const payload = incomeStatement();
+      payload.rows[0] = { ...payload.rows[0]!, adjustable: true, values: [null, "391035000000"] };
+      vi.mocked(getStatementApiV1CompaniesTickerStatementsGet).mockResolvedValue(
+        okResult(payload) as never,
+      );
+      vi.mocked(getCellApiV1CompaniesTickerStatementsCellGet).mockResolvedValue(
+        okResult(emptyCellDetail("revenue", "Revenue", 2023)) as never,
+      );
+      renderView();
+      await screen.findByText("Revenue");
+
+      const empty = cell("revenue", "FY2023");
+      expect(empty).toHaveTextContent("—");
+      expect(empty).toHaveClass("cursor-pointer");
+      await userEvent.click(empty);
+
+      const sheet = await screen.findByRole("dialog");
+      expect(getCellApiV1CompaniesTickerStatementsCellGet).toHaveBeenCalledWith({
+        path: { ticker: "AAPL" },
+        query: { code: "revenue", fiscal_year: 2023, fiscal_period: "FY" },
+      });
+      expect(await within(sheet).findByRole("button", { name: "Add adjustment" })).toBeVisible();
+      expect(within(sheet).getByText("—")).toBeInTheDocument();
+      expect(within(sheet).getByText("(no value)")).toBeInTheDocument();
+    });
+
+    it("leaves an empty cell of a non-adjustable line inert", async () => {
+      const payload = incomeStatement();
+      payload.rows[1] = { ...payload.rows[1]!, adjustable: false, values: [null, "180683000000"] };
+      vi.mocked(getStatementApiV1CompaniesTickerStatementsGet).mockResolvedValue(
+        okResult(payload) as never,
+      );
+      renderView();
+      await screen.findByText("Revenue");
+
+      const empty = cell("gross_profit", "FY2023");
+      expect(empty).toHaveTextContent("—");
+      expect(empty).not.toHaveClass("cursor-pointer");
+      await userEvent.click(empty);
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(getCellApiV1CompaniesTickerStatementsCellGet).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("show empty lines", () => {
+    // "Other income" is adjustable with no value anywhere; `rnd` is empty and not adjustable.
+    beforeEach(() => {
+      const payload = incomeStatement();
+      const rnd = payload.rows.find((r) => r.code === "rnd")!;
+      payload.rows = [
+        ...payload.rows,
+        { ...rnd, code: "other_income", label: "Other income", depth: 0, adjustable: true },
+        { ...rnd, code: "unmapped", label: "Unmapped item", depth: 0, adjustable: false },
+      ];
+      vi.mocked(getStatementApiV1CompaniesTickerStatementsGet).mockResolvedValue(
+        okResult(payload) as never,
+      );
+    });
+    const toggle = () => screen.getByRole("button", { name: "Show empty lines" });
+
+    it("is off by default and hides the empty adjustable line", async () => {
+      renderView();
+      await screen.findByText("Revenue");
+
+      expect(toggle()).toHaveAttribute("aria-pressed", "false");
+      expect(screen.queryByText("Other income")).not.toBeInTheDocument();
+    });
+
+    it("shows the empty adjustable lines when on, never the non-adjustable ones", async () => {
+      renderView();
+      await screen.findByText("Revenue");
+
+      await userEvent.click(toggle());
+
+      expect(await screen.findByText("Other income")).toBeInTheDocument();
+      expect(toggle()).toHaveAttribute("aria-pressed", "true");
+      expect(screen.queryByText("Unmapped item")).not.toBeInTheDocument();
+      await userEvent.click(screen.getByRole("button", { name: "Expand all" }));
+      expect(await screen.findByText("Cost of revenue")).toBeInTheDocument();
+      expect(screen.queryByText("Research and development")).not.toBeInTheDocument();
+    });
+
+    it("lets Expand all open a parent whose only breakdown is an empty adjustable line", async () => {
+      const payload = incomeStatement();
+      const rnd = payload.rows.find((r) => r.code === "rnd")!;
+      const eps = payload.rows.findIndex((r) => r.code === "eps_diluted");
+      payload.rows.splice(eps + 1, 0, {
+        ...rnd,
+        code: "eps_adjustment",
+        label: "EPS adjustment",
+        depth: 1,
+        adjustable: true,
+      });
+      vi.mocked(getStatementApiV1CompaniesTickerStatementsGet).mockResolvedValue(
+        okResult(payload) as never,
+      );
+      renderView();
+      await screen.findByText("Revenue");
+
+      await userEvent.click(screen.getByRole("button", { name: "Expand all" }));
+      expect(await screen.findByText("Cost of revenue")).toBeInTheDocument();
+      expect(screen.queryByText("EPS adjustment")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /EPS, diluted/ })).not.toBeInTheDocument();
+      await userEvent.click(screen.getByRole("button", { name: "Collapse all" }));
+
+      await userEvent.click(toggle());
+      await userEvent.click(screen.getByRole("button", { name: "Expand all" }));
+
+      expect(await screen.findByText("EPS adjustment")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Collapse EPS, diluted" })).toHaveAttribute(
+        "aria-expanded",
+        "true",
+      );
+      expect(screen.getByRole("button", { name: "Collapse all" })).toBeInTheDocument();
+    });
+
+    it("opens a cell of a shown empty line with Add adjustment", async () => {
+      vi.mocked(getCellApiV1CompaniesTickerStatementsCellGet).mockResolvedValue(
+        okResult(emptyCellDetail("other_income", "Other income", 2024)) as never,
+      );
+      renderView();
+      await screen.findByText("Revenue");
+      await userEvent.click(toggle());
+      await screen.findByText("Other income");
+
+      const empty = cell("other_income", "FY2024");
+      expect(empty).toHaveTextContent("—");
+      await userEvent.click(empty);
+
+      const sheet = await screen.findByRole("dialog");
+      expect(getCellApiV1CompaniesTickerStatementsCellGet).toHaveBeenCalledWith({
+        path: { ticker: "AAPL" },
+        query: { code: "other_income", fiscal_year: 2024, fiscal_period: "FY" },
+      });
+      expect(await within(sheet).findByRole("button", { name: "Add adjustment" })).toBeVisible();
+      expect(within(sheet).getByText("—")).toBeInTheDocument();
+      expect(within(sheet).getByText("(no value)")).toBeInTheDocument();
+    });
+
+    it("includes shown empty lines in the CSV", async () => {
+      const download = captureDownload();
+      renderView();
+      await screen.findByText("Revenue");
+      const exportLines = async (index: number) => {
+        await userEvent.click(screen.getByRole("button", { name: "Download CSV" }));
+        return (await readText(download.blobs[index]!)).trim().split(/\r?\n/);
+      };
+
+      expect((await exportLines(0)).some((line) => line.includes("Other income"))).toBe(false);
+
+      await userEvent.click(toggle());
+      await screen.findByText("Other income");
+      const lines = await exportLines(1);
+      expect(lines).toContain('"Other income","",""');
+      expect(lines.some((line) => line.includes("Unmapped item"))).toBe(false);
+      vi.mocked(HTMLAnchorElement.prototype.click).mockRestore();
+    });
+
+    it("resets Show empty lines when the tab changes", async () => {
+      const queryClient = createQueryClient();
+      queryClient.setDefaultOptions({ queries: { retry: false } });
+      const view = (key: string) => (
+        <QueryClientProvider client={queryClient}>
+          <StatementView key={key} ticker="AAPL" cik="0000320193" type="IS" />
+        </QueryClientProvider>
+      );
+      const { rerender } = render(view("income-statement"));
+      await screen.findByText("Revenue");
+      await userEvent.click(toggle());
+      expect(toggle()).toHaveAttribute("aria-pressed", "true");
+      expect(await screen.findByText("Other income")).toBeInTheDocument();
+
+      rerender(view("cash-flow"));
+
+      await screen.findByText("Revenue");
+      expect(toggle()).toHaveAttribute("aria-pressed", "false");
+      expect(screen.queryByText("Other income")).not.toBeInTheDocument();
+    });
+
+    it("stays on after a frequency change and after a basis change", async () => {
+      const lastQuery = () =>
+        vi.mocked(getStatementApiV1CompaniesTickerStatementsGet).mock.calls.at(-1)![0]!.query;
+      renderView();
+      await screen.findByText("Revenue");
+      await userEvent.click(toggle());
+
+      await userEvent.click(screen.getByRole("radio", { name: "Quarterly" }));
+      await waitFor(() => expect(lastQuery()).toMatchObject({ freq: "quarterly" }));
+      expect(toggle()).toHaveAttribute("aria-pressed", "true");
+      expect(await screen.findByText("Other income")).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole("radio", { name: "Normalized" }));
+      await waitFor(() => expect(lastQuery()).toMatchObject({ basis: "normalized" }));
+      expect(toggle()).toHaveAttribute("aria-pressed", "true");
+      expect(await screen.findByText("Other income")).toBeInTheDocument();
+    });
   });
 
   it("shows the derivation of a derived cell and says it has no vintages", async () => {
@@ -398,30 +749,6 @@ describe("StatementView", () => {
   });
 
   describe("CSV export", () => {
-    function captureDownload() {
-      const blobs: Blob[] = [];
-      const names: string[] = [];
-      URL.createObjectURL = vi.fn((blob: Blob | MediaSource) => {
-        blobs.push(blob as Blob);
-        return "blob:csv";
-      });
-      URL.revokeObjectURL = vi.fn();
-      vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
-        this: HTMLAnchorElement,
-      ) {
-        names.push(this.download);
-      });
-      return { blobs, names };
-    }
-
-    function readText(blob: Blob): Promise<string> {
-      return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result));
-        reader.readAsText(blob);
-      });
-    }
-
     it("exports the visible rows in the current scale with plain minus signs", async () => {
       const download = captureDownload();
       renderView();

@@ -5,6 +5,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 
 import {
   statementQueryOptions,
+  type Basis,
   type CommonSizeBase,
   type Freq,
   type StatementType,
@@ -40,6 +41,11 @@ const FREQS: { value: Freq; label: string }[] = [
   { value: "annual", label: "Annual" },
   { value: "quarterly", label: "Quarterly" },
   { value: "ttm", label: "TTM" },
+];
+
+const BASES: { value: Basis; label: string }[] = [
+  { value: "reported", label: "Reported" },
+  { value: "normalized", label: "Normalized" },
 ];
 
 const FILE_TYPES: Record<StatementType, string> = { IS: "IS", BS: "BS", CF: "CF" };
@@ -133,7 +139,9 @@ function columnDefs(
     cellClass: ({ data }: CellClassParams<GridRow>) => {
       if (!data) return "num";
       const classes = ["num", "ag-right-aligned-cell", ...growthClass(data, period.key)];
-      if (data.provenance[period.key] === "derived") classes.push("prov-derived");
+      const provenance = data.provenance[period.key];
+      if (provenance === "derived") classes.push("prov-derived");
+      if (provenance === "normalized") classes.push("prov-normalized");
       if (canExplain(data, period)) classes.push("cursor-pointer", "hover:underline");
       if (data.kind === "balance_check" && data.ok?.[period.key] === false) {
         classes.push("text-destructive");
@@ -153,15 +161,19 @@ interface StatementViewProps {
 
 export function StatementView({ ticker, cik, type }: StatementViewProps) {
   const [freq, setFreq] = useState<Freq>("annual");
+  const [basis, setBasis] = useState<Basis>("reported");
   const [yoy, setYoy] = useState(false);
   const [commonSize, setCommonSize] = useState(false);
+  const [showEmpty, setShowEmpty] = useState(false);
   const [base, setBase] = useState<CommonSizeBase>("total");
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const [selected, setSelected] = useState<CellTarget | null>(null);
   const scale = useScale();
   const grid = useRef<DataGridHandle>(null);
 
-  const { data, isPending, isError } = useQuery(statementQueryOptions(ticker, type, freq, base));
+  const { data, isPending, isError } = useQuery(
+    statementQueryOptions(ticker, type, freq, base, basis),
+  );
 
   const toggle = useCallback((code: string) => {
     setExpanded((open) => {
@@ -170,12 +182,15 @@ export function StatementView({ ticker, cik, type }: StatementViewProps) {
       return next;
     });
   }, []);
-  const expandable = useMemo(() => (data ? expandableCodes(data) : []), [data]);
+  const expandable = useMemo(
+    () => (data ? expandableCodes(data, showEmpty) : []),
+    [data, showEmpty],
+  );
   const allOpen = expandable.length > 0 && expandable.every((code) => expanded.has(code));
 
   const rows = useMemo(
-    () => (data ? toGridRows(data, { yoy, commonSize, expanded }) : []),
-    [data, yoy, commonSize, expanded],
+    () => (data ? toGridRows(data, { yoy, commonSize, expanded, showEmpty }) : []),
+    [data, yoy, commonSize, expanded, showEmpty],
   );
   const columns = useMemo(
     () => (data ? columnDefs(data, scale, toggle) : []),
@@ -213,6 +228,21 @@ export function StatementView({ ticker, cik, type }: StatementViewProps) {
             </ToggleGroupItem>
           ))}
         </ToggleGroup>
+        <ToggleGroup
+          type="single"
+          variant="outline"
+          size="sm"
+          spacing={0}
+          aria-label="Basis"
+          value={basis}
+          onValueChange={(value) => value && setBasis(value as Basis)}
+        >
+          {BASES.map(({ value, label }) => (
+            <ToggleGroupItem key={value} value={value}>
+              {label}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
         <Toggle size="sm" variant="outline" pressed={yoy} onPressedChange={setYoy}>
           YoY
         </Toggle>
@@ -235,6 +265,9 @@ export function StatementView({ ticker, cik, type }: StatementViewProps) {
             <ToggleGroupItem value="parent">Parent row</ToggleGroupItem>
           </ToggleGroup>
         )}
+        <Toggle size="sm" variant="outline" pressed={showEmpty} onPressedChange={setShowEmpty}>
+          Show empty lines
+        </Toggle>
         <Button
           variant="outline"
           size="sm"
@@ -274,6 +307,7 @@ export function StatementView({ ticker, cik, type }: StatementViewProps) {
               code: row.code,
               label: row.label,
               unit: row.unit,
+              adjustable: row.adjustable,
               fiscalYear: period.fiscal_year,
               fiscalPeriod: period.fiscal_period,
             });

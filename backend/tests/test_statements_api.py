@@ -60,6 +60,7 @@ def test_annual_income_statement_has_the_documented_shape(aapl_client: TestClien
         "yoy",
         "common_size",
         "common_size_base",
+        "adjustable",
     }
     for field in ("values", "provenance", "yoy", "common_size"):
         assert len(revenue[field]) == len(periods)  # type: ignore[arg-type]
@@ -154,7 +155,7 @@ def test_a_bad_common_size_base_is_a_422(aapl_client: TestClient) -> None:
     assert response.status_code == 422
 
 
-def test_normalized_equals_reported_until_adjustments_exist(aapl_client: TestClient) -> None:
+def test_normalized_equals_reported_while_there_are_no_adjustments(aapl_client: TestClient) -> None:
     reported = _statement(aapl_client, "IS", "annual")
     normalized = _statement(aapl_client, "IS", "annual", basis="normalized")
 
@@ -189,7 +190,7 @@ def test_a_reported_cell_has_source_filing_and_vintages(aapl_client: TestClient)
         "form",
         "filed_at",
     }
-    assert cell["adjustments"] == []
+    assert cell["adjustments"] == [] and cell["normalized_value"] is None
     assert isinstance(cell["value"], str)
 
 
@@ -206,6 +207,50 @@ def test_a_derived_cell_has_its_derivation(aapl_client: TestClient) -> None:
     assert cell["source"] is None and cell["filing"] is None
     assert cell["derivation"]["formula"]
     assert {"code", "fiscal_period", "value"} <= set(cell["derivation"]["inputs"][0])
+
+
+def _annual(client: TestClient, code: str) -> dict[int, str]:
+    body = _statement(client, "IS", "annual")
+    values = _row(body, code)["values"]
+    return {
+        p["fiscal_year"]: v  # type: ignore[index]
+        for p, v in zip(body["periods"], values, strict=True)  # type: ignore[arg-type]
+    }
+
+
+def test_per_share_figures_are_split_adjusted_by_filing_date(aapl_client: TestClient) -> None:
+    eps = _annual(aapl_client, "eps_diluted")
+
+    assert Decimal(eps[2013]) == Decimal("1.42")  # 5.68 in the FY2015 10-K, before the 4-for-1
+    assert Decimal(eps[2019]) == Decimal("2.97")  # its newest filing is after the last split
+    assert Decimal(eps[2020]) / Decimal(eps[2019]) < 2  # no 4x jump across the 2020 split
+
+
+def test_share_counts_are_multiplied_by_later_splits(aapl_client: TestClient) -> None:
+    shares = _annual(aapl_client, "shares_diluted")
+
+    assert Decimal(shares[2013]) == Decimal(6_521_634_000) * 4
+    assert Decimal(shares[2019]) == Decimal(18_595_651_000)
+
+
+def test_a_split_adjusted_cell_shows_its_derivation_and_as_reported_vintages(
+    aapl_client: TestClient,
+) -> None:
+    cell = aapl_client.get(
+        f"{STATEMENTS}/cell",
+        params={"code": "eps_diluted", "fiscal_year": 2013, "fiscal_period": "FY"},
+    ).json()
+
+    assert Decimal(cell["value"]) == Decimal("1.42") and cell["provenance"] == "derived"
+    assert cell["derivation"]["formula"] == "as reported ÷ 4 (split 2020-08-31)"
+    assert [
+        (i["code"], i["fiscal_period"], Decimal(i["value"])) for i in cell["derivation"]["inputs"]
+    ] == [("eps_diluted", "FY", Decimal("5.68"))]
+    assert cell["filing"]["filed_at"] == "2015-10-28"
+    assert Decimal("5.68") in {Decimal(v["value"]) for v in cell["vintages"]}
+    assert all(
+        Decimal(v["value"]) not in (Decimal("1.42"), Decimal("1.4200")) for v in cell["vintages"]
+    )
 
 
 @pytest.mark.parametrize(

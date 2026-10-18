@@ -7,6 +7,7 @@ from bedrock.api.deps import get_session
 from bedrock.models.company import Company
 from bedrock.repositories import companies as companies_repo
 from bedrock.schemas.statements import CellDetailOut, MappingGapsOut, StatementOut
+from bedrock.services import adjustments as adjustments_service
 from bedrock.services import statements as service
 from bedrock.services.errors import CompanyNotFound
 
@@ -52,7 +53,8 @@ def get_cell(
     session: Session = Depends(get_session),
 ) -> CellDetailOut:
     cell = service.cell_detail(session, company, code, fiscal_year, fiscal_period)
-    return CellDetailOut.from_explanation(cell)
+    behind = adjustments_service.cell_adjustments(session, company, cell.adjustments)
+    return CellDetailOut.from_explanation(cell, behind)
 
 
 @router.get("/companies/{ticker}/mapping-gaps")

@@ -4,8 +4,11 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+from statistics import median
 
-from bedrock.statements.build import StatementTable
+from bedrock.ratios.calculator import RatioRow, RatioTable
+from bedrock.ratios.registry import Unit
+from bedrock.statements.build import RATIO_PLACES, StatementTable
 from bedrock.statements.periods import Period
 
 MULTIPLE_PLACES = Decimal("0.01")
@@ -102,3 +105,60 @@ def _multiple(numerator: Decimal | None, denominator: Decimal | None) -> Decimal
     if numerator is None or denominator is None or denominator <= 0:
         return None
     return (numerator / denominator).quantize(MULTIPLE_PLACES)
+
+
+MIN_HISTORY = 3  # annual values needed before a range and percentile are shown
+
+
+@dataclass(frozen=True)
+class MultipleSummary:
+    """One valuation ratio: its current value and the range of its annual history."""
+
+    code: str
+    label: str
+    unit: Unit
+    caveat: str | None
+    current: Decimal | None
+    min: Decimal | None
+    median: Decimal | None
+    max: Decimal | None
+    percentile: Decimal | None  # share of the history that is <= current, 0..1
+    n: int  # annual values used
+
+
+def valuation_summary(history: RatioTable, current: RatioTable) -> list[MultipleSummary]:
+    """A summary per Valuation ratio, in registry order. `history` is the annual ratio table
+    and `current` a table whose last period holds the current values (TTM at the latest close).
+    The range uses the annual values, leaving out null ones and, for `x` multiples, those <= 0.
+    With fewer than `MIN_HISTORY` values there is no range or percentile."""
+    now = {row.code: row for row in current.rows}
+    result = []
+    for row in history.rows:
+        if row.category != "Valuation":
+            continue
+        latest = _last(now.get(row.code))
+        past = [v for v in row.values if v is not None and (row.unit != "x" or v > 0)]
+        ranged = len(past) >= MIN_HISTORY
+        result.append(
+            MultipleSummary(
+                code=row.code,
+                label=row.label,
+                unit=row.unit,
+                caveat=row.caveat,
+                current=latest,
+                min=min(past) if ranged else None,
+                median=median(past).quantize(RATIO_PLACES) if ranged else None,
+                max=max(past) if ranged else None,
+                percentile=(
+                    (Decimal(sum(v <= latest for v in past)) / len(past)).quantize(RATIO_PLACES)
+                    if ranged and latest is not None
+                    else None
+                ),
+                n=len(past),
+            )
+        )
+    return result
+
+
+def _last(row: RatioRow | None) -> Decimal | None:
+    return None if row is None or not row.values else row.values[-1]

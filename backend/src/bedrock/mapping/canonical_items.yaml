@@ -7,6 +7,7 @@
   unit: USD
   sign: 1
   parent: null
+  rolls_into: [gross_profit]
   concepts:
     - us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax
     - us-gaap:Revenues
@@ -19,6 +20,7 @@
   unit: USD
   sign: 1
   parent: null
+  rolls_into: ["-gross_profit"]
   concepts:
     - us-gaap:CostOfRevenue
     - us-gaap:CostOfGoodsAndServicesSold
@@ -31,6 +33,7 @@
   unit: USD
   sign: 1
   parent: null
+  rolls_into: [operating_income]
   concepts:
     - us-gaap:GrossProfit
   derive: revenue - cost_of_revenue
@@ -52,6 +55,7 @@
   unit: USD
   sign: 1
   parent: total_operating_costs
+  rolls_into: ["-operating_income"]
   concepts:
     - us-gaap:ResearchAndDevelopmentExpense
   residual: false
@@ -62,6 +66,7 @@
   unit: USD
   sign: 1
   parent: total_operating_costs
+  rolls_into: ["-operating_income"]
   concepts:
     - us-gaap:SellingGeneralAndAdministrativeExpense
   residual: false
@@ -72,6 +77,7 @@
   unit: USD
   sign: 1
   parent: total_operating_costs
+  rolls_into: ["-operating_income"]
   concepts: []
   derive: gross_profit - rnd - sga - operating_income
   residual: true
@@ -82,6 +88,7 @@
   unit: USD
   sign: 1
   parent: null
+  rolls_into: [pretax_income]
   concepts:
     - us-gaap:OperatingIncomeLoss
   residual: false
@@ -92,6 +99,7 @@
   unit: USD
   sign: 1
   parent: null
+  rolls_into: [net_income]
   concepts:
     - us-gaap:IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest
     - us-gaap:IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments
@@ -103,6 +111,7 @@
   unit: USD
   sign: 1
   parent: pretax_income
+  rolls_into: ["-pretax_income"]
   concepts:
     - us-gaap:InterestExpense
     - us-gaap:InterestExpenseNonoperating
@@ -114,6 +123,7 @@
   unit: USD
   sign: 1
   parent: pretax_income
+  rolls_into: [pretax_income]
   concepts: []
   derive: pretax_income - operating_income + interest_expense
   residual: true
@@ -124,6 +134,7 @@
   unit: USD
   sign: 1
   parent: null
+  rolls_into: [net_income_common]
   concepts:
     - us-gaap:ProfitLoss
     - us-gaap:NetIncomeLoss
@@ -135,6 +146,7 @@
   unit: USD
   sign: 1
   parent: net_income
+  rolls_into: ["-net_income"]
   concepts:
     - us-gaap:IncomeTaxExpenseBenefit
   residual: false
@@ -156,6 +168,7 @@
   unit: USD
   sign: 1
   parent: net_income_common
+  rolls_into: ["-net_income_common"]
   concepts:
     - us-gaap:NetIncomeLossAttributableToNoncontrollingInterest
   residual: false
@@ -179,6 +192,17 @@
   concepts:
     - us-gaap:EarningsPerShareDiluted
   residual: false
+- code: dividends_per_share
+  statement: IS
+  label: Dividends per share
+  kind: flow
+  unit: USD/shares
+  sign: 1
+  parent: null
+  concepts:
+    - us-gaap:CommonStockDividendsPerShareDeclared
+    - us-gaap:CommonStockDividendsPerShareCashPaid
+  residual: false
 - code: shares_basic
   statement: IS
   label: Weighted-average shares, basic
@@ -198,6 +222,16 @@
   parent: null
   concepts:
     - us-gaap:WeightedAverageNumberOfDilutedSharesOutstanding
+  residual: false
+- code: goodwill_impairment
+  statement: IS
+  label: Goodwill impairment
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: null
+  concepts:
+    - us-gaap:GoodwillImpairmentLoss
   residual: false
 - code: total_assets
   statement: BS
@@ -352,6 +386,7 @@
   unit: USD
   sign: 1
   parent: null
+  rolls_into: [total_liabilities_and_equity]
   concepts:
     - us-gaap:Liabilities
   derive: total_liabilities_and_equity - total_equity
@@ -457,6 +492,18 @@
   concepts: []
   derive: total_noncurrent_liabilities - long_term_debt - operating_lease_liabilities_noncurrent
   residual: true
+- code: temporary_equity
+  statement: BS
+  label: Temporary equity
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: null
+  rolls_into: [total_liabilities_and_equity]
+  concepts:
+    - us-gaap:TemporaryEquityCarryingAmountIncludingPortionAttributableToNoncontrollingInterests
+    - us-gaap:RedeemableNoncontrollingInterestEquityCarryingAmount
+  residual: false
 - code: total_equity
   statement: BS
   label: Total equity
@@ -464,6 +511,7 @@
   unit: USD
   sign: 1
   parent: null
+  rolls_into: [total_liabilities_and_equity]
   concepts:
     - us-gaap:StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest
     - us-gaap:StockholdersEquity
@@ -561,6 +609,16 @@
   concepts: []
   derive: total_debt - cash - short_term_investments
   residual: false
+- code: shares_outstanding
+  statement: BS
+  label: Shares outstanding
+  kind: instant
+  unit: shares
+  sign: 1
+  parent: null
+  concepts:
+    - us-gaap:CommonStockSharesOutstanding
+  residual: false
 - code: cfo
   statement: CF
   label: Cash from operations
@@ -568,6 +626,7 @@
   unit: USD
   sign: 1
   parent: null
+  rolls_into: [net_change_in_cash]
   concepts:
     - us-gaap:NetCashProvidedByUsedInOperatingActivities
     - us-gaap:NetCashProvidedByUsedInOperatingActivitiesContinuingOperations
@@ -664,6 +723,7 @@
   unit: USD
   sign: 1
   parent: null
+  rolls_into: [net_change_in_cash]
   concepts:
     - us-gaap:NetCashProvidedByUsedInInvestingActivities
     - us-gaap:NetCashProvidedByUsedInInvestingActivitiesContinuingOperations
@@ -731,6 +791,7 @@
   unit: USD
   sign: 1
   parent: null
+  rolls_into: [net_change_in_cash]
   concepts:
     - us-gaap:NetCashProvidedByUsedInFinancingActivities
     - us-gaap:NetCashProvidedByUsedInFinancingActivitiesContinuingOperations
@@ -795,6 +856,7 @@
   unit: USD
   sign: 1
   parent: null
+  rolls_into: [net_change_in_cash]
   concepts:
     - us-gaap:EffectOfExchangeRateOnCashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents
     - us-gaap:EffectOfExchangeRateOnCashCashEquivalentsRestrictedCashAndRestrictedCashEquivalentsIncludingDisposalGroupAndDiscontinuedOperations

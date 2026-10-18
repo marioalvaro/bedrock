@@ -15,20 +15,23 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from bedrock.ingest.parse import ParsedFacts, parse_companyfacts
-from bedrock.ingest.protocol import PriceRow
+from bedrock.ingest.protocol import PriceRow, SplitRow
 from bedrock.mapping.config import (
     DEFAULT_ITEMS_PATH,
     DEFAULT_OVERRIDES_DIR,
+    CanonicalItemDef,
     load_canonical_items,
     load_overrides,
 )
 from bedrock.models.canonical_item import CanonicalItem
 from bedrock.models.company import Company
 from bedrock.models.concept_mapping import ConceptMapping
+from bedrock.models.corporate_action import CorporateAction
 from bedrock.models.filing import Filing
 from bedrock.models.price_daily import PriceDaily
 from bedrock.models.raw_fact import RawFact
 from bedrock.repositories import companies as companies_repo
+from bedrock.repositories import corporate_actions as actions_repo
 from bedrock.repositories import facts as facts_repo
 from bedrock.repositories import mappings as mappings_repo
 from bedrock.repositories import prices as prices_repo
@@ -229,9 +232,13 @@ def test_latest_shares_outstanding_is_the_newest_filed_value_at_the_latest_end(
     db_session.commit()
     doc = _doc()
     rows = doc["facts"]["dei"]["EntityCommonStockSharesOutstanding"]["units"]["shares"]
-    expected = Decimal(str(max(rows, key=lambda r: (r["end"], r["filed"]))["val"]))
+    newest = max(rows, key=lambda r: (r["end"], r["filed"]))
 
-    assert facts_repo.latest_shares_outstanding(db_session, company.id) == expected
+    shares = facts_repo.latest_shares_outstanding(db_session, company.id)
+
+    assert shares is not None
+    assert shares.value == Decimal(str(newest["val"]))
+    assert shares.filed_at == date.fromisoformat(newest["filed"])
 
 
 def test_latest_shares_outstanding_is_none_without_data(db_session: Session) -> None:
@@ -251,7 +258,7 @@ def test_replace_mappings_stores_items_defaults_and_followed_overrides(db_sessio
     )
     db_session.commit()
 
-    assert _count_rows(db_session, CanonicalItem) == len(items) == 78
+    assert _count_rows(db_session, CanonicalItem) == len(items) == 82
     frame = mappings_repo.mappings_for(db_session, aapl.id)
     assert list(frame.columns) == [
         "canonical_code",
@@ -387,3 +394,145 @@ def test_inserting_a_known_date_again_is_skipped(db_session: Session) -> None:
 @pytest.mark.parametrize("count", [0])
 def test_inserting_no_prices_adds_none(db_session: Session, count: int) -> None:
     assert prices_repo.insert_new(db_session, _company(db_session).id, []) == count
+
+
+# --- corporate actions -----------------------------------------------------------------------
+
+
+def test_insert_new_stores_splits_with_their_type_and_source(db_session: Session) -> None:
+    company = _company(db_session)
+    splits = [
+        SplitRow(date(2014, 6, 9), Decimal("7")),
+        SplitRow(date(2023, 3, 1), Decimal("0.1")),
+    ]
+
+    added = actions_repo.insert_new(db_session, company.id, splits)
+    db_session.commit()
+
+    assert added == 2
+    rows = db_session.execute(select(CorporateAction).order_by(CorporateAction.effective_date))
+    assert [(r.type, r.source) for r in rows.scalars()] == [
+        ("split", "yfinance"),
+        ("reverse_split", "yfinance"),
+    ]
+
+
+def test_a_second_insert_of_the_same_splits_adds_none(db_session: Session) -> None:
+    company = _company(db_session)
+    first = [SplitRow(date(2014, 6, 9), Decimal("7"))]
+    actions_repo.insert_new(db_session, company.id, first)
+    db_session.commit()
+
+    again = [*first, SplitRow(date(2020, 8, 31), Decimal("4"))]
+    assert actions_repo.insert_new(db_session, company.id, again) == 1
+    assert actions_repo.insert_new(db_session, company.id, again) == 0
+
+
+def test_list_for_is_oldest_first_with_plain_decimals(db_session: Session) -> None:
+    company = _company(db_session)
+    actions_repo.insert_new(
+        db_session,
+        company.id,
+        [SplitRow(date(2020, 8, 31), Decimal("4")), SplitRow(date(2014, 6, 9), Decimal("7"))],
+    )
+    db_session.commit()
+    db_session.expire_all()
+
+    actions = actions_repo.list_for(db_session, company.id)
+
+    assert [(a.effective_date, a.ratio) for a in actions] == [
+        (date(2014, 6, 9), Decimal("7")),
+        (date(2020, 8, 31), Decimal("4")),
+    ]
+    assert [str(a.ratio) for a in actions] == ["7", "4"]
+
+
+def test_list_for_another_company_is_empty(db_session: Session) -> None:
+    company = _company(db_session)
+    other = _company(db_session, "MSFT", "0000789019")
+    actions_repo.insert_new(db_session, company.id, [SplitRow(date(2014, 6, 9), Decimal("7"))])
+    db_session.commit()
+
+    assert actions_repo.list_for(db_session, other.id) == []
+
+
+def test_splits_are_deleted_with_their_company(db_session: Session) -> None:
+    company = _company(db_session)
+    actions_repo.insert_new(db_session, company.id, [SplitRow(date(2014, 6, 9), Decimal("7"))])
+    db_session.commit()
+
+    db_session.delete(db_session.get(Company, company.id))
+    db_session.commit()
+
+    assert actions_repo.list_for(db_session, company.id) == []
+
+
+def test_excluded_defaults_are_dropped_for_that_company_only(db_session: Session) -> None:
+    aapl = _company(db_session)
+    msft = _company(db_session, "MSFT", "0000789019")
+    items = load_canonical_items(DEFAULT_ITEMS_PATH)
+    by_code = {i.code: i for i in items}
+    gross = by_code["gross_profit"].concepts
+    mappings_repo.replace_mappings(
+        db_session,
+        items,
+        {aapl.id: {"revenue": ["us-gaap:Custom"]}},
+        {aapl.id: {"gross_profit": list(gross)}},
+    )
+    db_session.commit()
+
+    mine = mappings_repo.mappings_for(db_session, aapl.id)
+    other = mappings_repo.mappings_for(db_session, msft.id)
+
+    assert "gross_profit" not in set(mine["canonical_code"])  # all its defaults are gone
+    assert "gross_profit" in set(other["canonical_code"])
+    assert "Revenues" in set(mine["concept"])  # an add-only override keeps the defaults
+    assert list(mine.columns) == mappings_repo.MAPPING_COLUMNS  # no marker rows leak out
+    assert (mine["priority"] >= 0).all()
+
+
+def test_excluding_a_summed_default_leaves_the_entry_that_shares_its_anchor(
+    db_session: Session,
+) -> None:
+    aapl = _company(db_session)
+    summed = "us-gaap:CommercialPaper + us-gaap:LongTermDebtCurrent"
+    item = CanonicalItemDef(
+        "short_term_debt",
+        "BS",
+        "Short-term debt",
+        "instant",
+        "USD",
+        1,
+        None,
+        (summed, "us-gaap:LongTermDebtCurrent"),
+        None,
+        False,
+    )
+    mappings_repo.replace_mappings(db_session, [item], {}, {aapl.id: {item.code: [summed]}})
+    db_session.commit()
+
+    frame = mappings_repo.mappings_for(db_session, aapl.id)
+
+    assert list(zip(frame["concept"], frame["priority"], strict=True)) == [
+        ("LongTermDebtCurrent", 1)
+    ]
+
+
+def test_the_mapping_frame_with_excludes_matches_the_one_the_engine_tests_build(
+    db_session: Session,
+) -> None:
+    aapl = _company(db_session)
+    items = load_canonical_items(DEFAULT_ITEMS_PATH)
+    overrides = {"revenue": ["us-gaap:Custom"]}
+    excludes = {"gross_profit": ["us-gaap:GrossProfit"]}
+    mappings_repo.replace_mappings(db_session, items, {aapl.id: overrides}, {aapl.id: excludes})
+    db_session.commit()
+
+    stored = mappings_repo.mappings_for(db_session, aapl.id)
+    expected = mapping_frame(items, overrides, excludes)
+
+    def key(frame: pd.DataFrame) -> list[tuple[object, ...]]:
+        return sorted(tuple(r) for r in frame.itertuples(index=False))
+
+    assert key(stored) == key(expected)
+    assert "GrossProfit" not in set(expected["concept"])

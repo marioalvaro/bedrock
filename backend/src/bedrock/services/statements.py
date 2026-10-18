@@ -1,5 +1,6 @@
 """Statements, cell details and mapping gaps of a followed company, built from stored facts."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import cache
 from typing import Literal
@@ -19,12 +20,17 @@ from bedrock.mapping.gaps import MissingItem, UnmappedConcept, missing_items, un
 from bedrock.mapping.mapper import map_facts
 from bedrock.mapping.vintage import BALANCE_TOTALS, balance_snapshot, select_vintage
 from bedrock.models.company import Company
+from bedrock.repositories import adjustments as adjustments_repo
+from bedrock.repositories import corporate_actions as actions_repo
 from bedrock.repositories import facts as facts_repo
 from bedrock.repositories import mappings as mappings_repo
 from bedrock.repositories import prices as prices_repo
+from bedrock.repositories.numeric import plain
 from bedrock.services.errors import CellNotFound
 from bedrock.statements.build import CommonSizeBase, Freq, StatementTable, build_statement
 from bedrock.statements.explain import CellExplanation, explain_cell
+from bedrock.statements.periods import annual_periods, fiscal_calendar, quarterly_periods
+from bedrock.statements.splits import split_adjust, split_factor
 from bedrock.statements.view import trim_periods
 
 __all__ = [
@@ -33,7 +39,9 @@ __all__ = [
     "build_statements",
     "cell_detail",
     "company_key_stats",
+    "fiscal_periods",
     "mapping_gaps",
+    "statement_tables",
 ]
 
 Basis = Literal["reported", "normalized"]
@@ -75,7 +83,7 @@ class _Loaded:
     items: tuple[CanonicalItemDef, ...]
     mappings: pd.DataFrame
     facts: pd.DataFrame  # every vintage of the mapped concepts
-    canonical: pd.DataFrame  # the latest vintage, mapped
+    canonical: pd.DataFrame  # the latest vintage, mapped and split-adjusted
 
 
 def build_statements(
@@ -86,31 +94,71 @@ def build_statements(
     basis: Basis = "reported",
     common_size_base: CommonSizeBase = "total",
 ) -> StatementTable:
-    """One statement as periods x items. `normalized` is the reported table until adjustments
-    exist (M2). `common_size_base` picks the common-size denominator (see `build_statement`).
-    Raises ValueError for a TTM balance sheet."""
-    if statement == "BS" and freq == "ttm":
+    """One statement as periods x items. `normalized` is reported + the company's adjustments
+    (see `statements/normalize.py`). `common_size_base` picks the common-size denominator (see
+    `build_statement`). Raises ValueError for a TTM balance sheet."""
+    return trim_periods(
+        statement_tables(session, company, [(statement, freq)], basis, common_size_base)[
+            (statement, freq)
+        ]
+    )
+
+
+def statement_tables(
+    session: Session,
+    company: Company,
+    wanted: Sequence[tuple[str, Freq]],
+    basis: Basis = "reported",
+    common_size_base: CommonSizeBase = "total",
+) -> dict[tuple[str, Freq], StatementTable]:
+    """Every requested (statement, freq) table on `basis`, untrimmed, from one load of the
+    company's facts (and one read of its adjustments when `normalized`), keyed in request order.
+    `common_size_base` applies to every table. A company with no facts gives empty tables. Raises
+    ValueError for a TTM balance sheet."""
+    if ("BS", "ttm") in wanted:
         raise ValueError("TTM is only defined for flow statements, not the balance sheet")
     loaded = _load(session, company)
     if loaded.canonical.empty:
-        return StatementTable(statement, freq, [], [], None, [])
-    return trim_periods(
-        build_statement(loaded.canonical, loaded.items, statement, freq, common_size_base)
-    )
+        return {(s, f): StatementTable(s, f, [], [], None, []) for s, f in wanted}
+    adjustments = adjustments_repo.list_for(session, company.id) if basis == "normalized" else []
+    return {
+        (s, f): build_statement(loaded.canonical, loaded.items, s, f, common_size_base, adjustments)
+        for s, f in wanted
+    }
 
 
 def cell_detail(
     session: Session, company: Company, code: str, fiscal_year: int, fiscal_period: str
 ) -> CellExplanation:
+    """The reported value and where it came from, plus the adjustments that change the cell and
+    its normalized value (whichever basis the grid shows)."""
     loaded = _load(session, company)
     if loaded.canonical.empty:
         raise CellNotFound(code)
     try:
         return explain_cell(
-            loaded.canonical, loaded.facts, loaded.items, code, fiscal_year, fiscal_period
+            loaded.canonical,
+            loaded.facts,
+            loaded.items,
+            code,
+            fiscal_year,
+            fiscal_period,
+            adjustments_repo.list_for(session, company.id),
         )
     except KeyError as error:
         raise CellNotFound(str(error)) from error
+
+
+def fiscal_periods(session: Session, company: Company) -> set[tuple[int, str]]:
+    """The (fiscal year, FY or Qn) pairs the company's statements have."""
+    loaded = _load(session, company)
+    if loaded.canonical.empty:
+        return set()
+    calendar = fiscal_calendar(loaded.canonical)
+    return {
+        (p.fiscal_year, p.fiscal_period)
+        for p in annual_periods(calendar) + quarterly_periods(calendar)
+    }
 
 
 def mapping_gaps(session: Session, company: Company) -> MappingGaps:
@@ -131,7 +179,15 @@ def company_key_stats(session: Session, company: Company) -> KeyStats:
     """The company-list stats. Only the concepts they need are loaded."""
     loaded = _load(session, company, codes=_key_stat_codes())
     close = prices_repo.latest_close(session, company.id)
-    shares = facts_repo.latest_shares_outstanding(session, company.id)
+    latest = facts_repo.latest_shares_outstanding(session, company.id)
+    # The dei count is in the shares of its filing's day; bring it to today's.
+    shares = (
+        None
+        if latest is None
+        else plain(
+            latest.value * split_factor(latest.filed_at, actions_repo.list_for(session, company.id))
+        )
+    )
     if loaded.canonical.empty:
         return key_stats(close=close, shares=shares, ttm={}, quarterly_bs=None)
     ttm = {
@@ -151,7 +207,10 @@ def _load(session: Session, company: Company, codes: frozenset[str] | None = Non
     facts = facts_repo.load_facts(session, company.id, wanted)
     # Always the balance-date snapshot: a later filing can restate one total and not the others.
     latest = select_vintage(facts, snapshot=balance_snapshot(mappings))
-    return _Loaded(items, mappings, facts, map_facts(latest, mappings, items))
+    canonical = split_adjust(
+        map_facts(latest, mappings, items), actions_repo.list_for(session, company.id)
+    )
+    return _Loaded(items, mappings, facts, canonical)
 
 
 @cache

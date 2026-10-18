@@ -59,12 +59,14 @@ INCOME_STATEMENT: list[tuple[str, str, str, Decimal]] = [
     ("AAPL", "income_tax", "FY2025", usd(20_719)),
     ("AAPL", "net_income_common", "FY2015", usd(53_394)),
     ("AAPL", "net_income_common", "FY2025", usd(112_010)),
-    ("AAPL", "eps_basic", "FY2015", Decimal("9.28")),
+    # FY2015 per-share and share counts are split-adjusted for the 4-for-1 of 2020-08-31:
+    # the FY2015 10-K says 9.28, 5,753,421 and 5,793,069 thousand.
+    ("AAPL", "eps_basic", "FY2015", Decimal("2.32")),
     ("AAPL", "eps_basic", "FY2020", Decimal("3.31")),
     ("AAPL", "eps_basic", "FY2025", Decimal("7.49")),
-    ("AAPL", "shares_basic", "FY2015", Decimal(5_753_421_000)),
+    ("AAPL", "shares_basic", "FY2015", Decimal(23_013_684_000)),
     ("AAPL", "shares_basic", "FY2020", Decimal(17_352_119_000)),
-    ("AAPL", "shares_diluted", "FY2015", Decimal(5_793_069_000)),
+    ("AAPL", "shares_diluted", "FY2015", Decimal(23_172_276_000)),
     ("AAPL", "shares_diluted", "FY2020", Decimal(17_528_214_000)),
     # AAPL interest expense: companyfacts only (the 10-K face statement does not show it).
     ("AAPL", "interest_expense", "FY2015", usd(733)),
@@ -754,3 +756,271 @@ def test_a_cash_flow_total_equals_its_parts_where_all_are_mapped() -> None:
     parts = [mapped("COST", code, "FY2026") for code in ("cfo", "cfi", "cff", "fx_effect")]
     assert None not in parts
     assert sum(p for p in parts if p is not None) == mapped("COST", "net_change_in_cash", "FY2026")
+
+
+# --- M2 S2: dividends per share, goodwill impairment, temporary equity, shares outstanding -----
+
+M2_LINES: list[tuple[str, str, str, Decimal | None]] = [
+    # Dividends per share declared (a flow). AAPL is split-adjusted by split_adjust (7-for-1 of
+    # 2014-06-09 is already in the filings; the 4-for-1 of 2020-08-31 is applied, so earlier years / 4).
+    # 10-K FY2015 says 1.98 and 1.64 for FY2013, the FY2020 10-K says 0.68 / 0.75 / 0.795, FY2025 1.02.
+    ("AAPL", "dividends_per_share", "FY2013", Decimal("0.41")),  # 1.64 / 4
+    ("AAPL", "dividends_per_share", "FY2015", Decimal("0.495")),  # 1.98 / 4
+    ("AAPL", "dividends_per_share", "FY2018", Decimal("0.68")),  # FY2020 10-K, already post-split
+    ("AAPL", "dividends_per_share", "FY2020", Decimal("0.795")),
+    ("AAPL", "dividends_per_share", "FY2025", Decimal("1.02")),
+    # MSFT 10-Ks FY2020 (0001564590-20-034944): 1.68 / 1.84 / 2.04; FY2026 (0001193125-26-323660): 3 / 3.32 / 3.64
+    ("MSFT", "dividends_per_share", "FY2018", Decimal("1.68")),
+    ("MSFT", "dividends_per_share", "FY2020", Decimal("2.04")),
+    ("MSFT", "dividends_per_share", "FY2024", Decimal("3")),
+    ("MSFT", "dividends_per_share", "FY2026", Decimal("3.64")),
+    # COST: FY2015 10-K says 6.51 (incl. a $5 special), 1.33 and 8.17 (incl. $7 special) for FY2013;
+    # FY2026 10-K note: 5.54 and 4.92. FY2008-FY2013 come from the CashPaid fallback (same figures).
+    ("COST", "dividends_per_share", "FY2013", Decimal("8.17")),
+    ("COST", "dividends_per_share", "FY2014", Decimal("1.33")),
+    ("COST", "dividends_per_share", "FY2015", Decimal("6.51")),
+    ("COST", "dividends_per_share", "FY2025", Decimal("4.92")),
+    ("COST", "dividends_per_share", "FY2026", Decimal("5.54")),
+    ("COST", "dividends_per_share", "FY2021", None),  # FY2020-22 10-Ks show dividend totals only
+    # Goodwill impairment: companyfacts omits zero lines, so only MSFT's FY2012 charge is a real figure.
+    # MSFT 10-K FY2012 (0001193125-12-316848): 6,193 in FY2012, 0 in FY2011 and FY2010.
+    ("MSFT", "goodwill_impairment", "FY2012", usd(6_193)),
+    ("MSFT", "goodwill_impairment", "FY2011", Decimal(0)),
+    ("MSFT", "goodwill_impairment", "FY2020", None),  # none reported
+    ("AAPL", "goodwill_impairment", "FY2020", None),
+    ("COST", "goodwill_impairment", "FY2020", None),
+    # Temporary equity: none of the three has any.
+    ("AAPL", "temporary_equity", "FY2020", None),
+    ("MSFT", "temporary_equity", "FY2020", None),
+    ("COST", "temporary_equity", "FY2020", None),
+    # Period-end shares outstanding (balance sheet parenthetical). AAPL is split-adjusted: the
+    # FY2015 10-K says 5,578,753 thousand (x4), the FY2020 10-K 16,976,763 thousand (post-split).
+    ("AAPL", "shares_outstanding", "FY2015", Decimal(22_315_012_000)),
+    ("AAPL", "shares_outstanding", "FY2019", Decimal(17_772_945_000)),  # 4,443,236 thousand x4
+    ("AAPL", "shares_outstanding", "FY2020", Decimal(16_976_763_000)),
+    ("AAPL", "shares_outstanding", "FY2025", Decimal(14_773_260_000)),
+    # MSFT 10-Ks FY2020: 7,571 and 7,643 million; FY2026: 7,427 and 7,434 million
+    ("MSFT", "shares_outstanding", "FY2019", Decimal(7_643_000_000)),
+    ("MSFT", "shares_outstanding", "FY2020", Decimal(7_571_000_000)),
+    ("MSFT", "shares_outstanding", "FY2026", Decimal(7_427_000_000)),
+    # COST 10-Ks FY2015: 437,952,000 and 437,683,000; FY2020: 441,255,000; FY2026: 443,266,000
+    ("COST", "shares_outstanding", "FY2014", Decimal(437_683_000)),
+    ("COST", "shares_outstanding", "FY2015", Decimal(437_952_000)),
+    ("COST", "shares_outstanding", "FY2020", Decimal(441_255_000)),
+    ("COST", "shares_outstanding", "FY2026", Decimal(443_266_000)),
+]
+
+
+@pytest.mark.parametrize(("ticker", "code", "period", "expected"), M2_LINES)
+def test_m2_line_mapping(ticker: str, code: str, period: str, expected: Decimal | None) -> None:
+    assert mapped(ticker, code, period) == expected
+
+
+def test_a_dividend_per_share_quarter_is_reported_and_q4_is_the_year_less_the_quarters() -> None:
+    # AAPL FY2025: 0.25 + 0.25 + 0.26 reported, FY 1.02, so Q4 = 1.02 - 0.76 = 0.26.
+    quarters = [
+        mapped("AAPL", "dividends_per_share", f"FY2025Q{n}", "quarterly") for n in (1, 2, 3, 4)
+    ]
+
+    assert quarters == [Decimal("0.25"), Decimal("0.25"), Decimal("0.26"), Decimal("0.26")]
+    assert sum(quarters) == mapped("AAPL", "dividends_per_share", "FY2025")  # type: ignore[arg-type]
+
+
+def test_shares_outstanding_is_an_instant_so_q4_is_the_year_end_count() -> None:
+    assert mapped("AAPL", "shares_outstanding", "FY2025Q4", "quarterly") == Decimal(14_773_260_000)
+
+
+# --- M2 S2: Deere & Company (consolidated only) -------------------------------------------------
+# DE: 10-Ks FY2013 (0001104659-13-090354), FY2016 (0001047469-16-017244), FY2017 (0001047469-17-007719),
+# FY2019 (0001558370-19-011614), FY2020 (0001558370-20-014436), FY2023 (0001558370-23-019812),
+# FY2025 (0001104659-25-122321), Q3 FY2025 10-Q (0001558370-25-011789). Figures in millions.
+# DE has an unclassified balance sheet, files cost of sales, PP&E and long-term borrowings under `de:`
+# extension tags from FY2018/FY2021 that companyfacts omits, and shows Financial Services next to
+# Equipment Operations; only the consolidated column is mapped.
+DEERE: list[tuple[str, str, Decimal | None]] = [
+    # Revenue is the income statement's "Net sales and revenues" total (equipment net sales plus
+    # finance and interest income plus other income), not the 38,917 / 31,272 equipment net sales.
+    ("revenue", "FY2015", usd("28862.8")),
+    ("revenue", "FY2020", usd(35_540)),
+    ("revenue", "FY2025", usd(45_684)),
+    # Cost of sales is a us-gaap tag until FY2017 (19,933.5), then `de:`: empty, never another tag.
+    ("cost_of_revenue", "FY2015", usd("20143.2")),
+    ("cost_of_revenue", "FY2017", usd("19933.5")),
+    ("cost_of_revenue", "FY2020", None),  # 10-K FY2020 shows no cost of sales line at all
+    (
+        "cost_of_revenue",
+        "FY2025",
+        None,
+    ),  # 28,159 is a `de:` fact; OtherCostOfOperatingRevenue (82) is a note
+    # Gross profit = total revenue less cost of sales in every period: DE's GrossProfit facts are the
+    # quarterly-data note's equipment-basis figures (FY2009 Q1 1,018 = net sales 4,560.5 - 3,542.5),
+    # excluded in DE.yaml. FY2015: 28,862.8 - 20,143.2. From FY2018 cost of sales is a `de:` fact.
+    ("gross_profit", "FY2015", usd("8719.6")),
+    ("gross_profit", "FY2017", usd("9804.5")),  # 29,738.0 (restated, the FY2018 10-K) - 19,933.5
+    ("gross_profit", "FY2018", None),
+    ("gross_profit", "FY2025", None),
+    # No operating income line on the income statement; OperatingIncomeLoss is the segment note's
+    # "Total operating profit" (FY2020 4,305 against pretax income of 3,883), excluded in DE.yaml.
+    ("operating_income", "FY2015", None),
+    ("operating_income", "FY2020", None),
+    ("operating_income", "FY2023", None),
+    # FY2015 balance sheet (FY2016 10-K, dated Oct. 31, 2015; the fiscal year ends Nov. 1): the
+    # complete sheet, not the FY2017 10-K's partial restated column (57,883, no total liabilities).
+    ("total_assets", "FY2015", usd("57947.6")),
+    ("total_liabilities", "FY2015", usd("51190.0")),
+    ("total_equity", "FY2015", usd("6757.6")),
+    ("inventory", "FY2015", usd("3817.0")),
+    ("temporary_equity", "FY2015", None),
+    # Interest expense is the consolidated income statement line, not Financial Services' own.
+    ("interest_expense", "FY2015", usd("680.0")),
+    ("interest_expense", "FY2020", usd(1_247)),
+    ("interest_expense", "FY2025", usd(3_170)),
+    # Short-term debt = short-term borrowings (DebtCurrent, includes the current maturities of
+    # long-term borrowings) + short-term securitization borrowings (SecuredDebt, its own balance sheet
+    # line). DebtCurrent alone would leave out 4.7-8.4 B of debt (principle 1). Before FY2020 the
+    # short-term borrowings line is not a us-gaap tag, so the item is empty rather than half of it.
+    ("short_term_debt", "FY2020", usd(13_264)),  # 8,582 + 4,682
+    ("short_term_debt", "FY2022", usd(18_303)),  # 12,592 + 5,711
+    ("short_term_debt", "FY2023", usd(24_934)),  # 17,939 + 6,995
+    ("short_term_debt", "FY2024", usd(21_964)),  # 13,533 + 8,431
+    ("short_term_debt", "FY2025", usd(20_392)),  # 13,796 + 6,596
+    ("short_term_debt", "FY2019", None),
+    # Long-term borrowings: LongTermDebtNoncurrent until FY2021, then a `de:` tag.
+    ("long_term_debt", "FY2013", usd("21577.7")),
+    ("long_term_debt", "FY2020", usd(32_734)),
+    ("long_term_debt", "FY2022", None),
+    ("long_term_debt", "FY2025", None),
+    # Marketable securities: AvailableForSaleSecurities until FY2018, MarketableSecurities after.
+    ("short_term_investments", "FY2013", usd("1624.8")),
+    ("short_term_investments", "FY2016", usd("453.5")),
+    ("short_term_investments", "FY2020", usd(641)),
+    ("short_term_investments", "FY2023", usd(946)),
+    ("short_term_investments", "FY2025", usd(1_411)),
+    # "Trade accounts and notes receivable - net": AccountsAndNotesReceivableNet until FY2018, then
+    # AccountsReceivableNet. The financing receivables and "other receivables" lines are not trade.
+    ("receivables", "FY2013", usd("3758.2")),
+    ("receivables", "FY2016", usd("3011.3")),
+    ("receivables", "FY2020", usd(4_171)),
+    ("receivables", "FY2023", usd(7_739)),
+    ("receivables", "FY2025", usd(5_317)),
+    ("inventory", "FY2016", usd("3340.5")),
+    ("inventory", "FY2020", usd(4_999)),
+    ("inventory", "FY2025", usd(7_406)),
+    # Property and equipment: PropertyPlantAndEquipmentNet until FY2019, the finance-lease-inclusive
+    # tag FY2018-20 (the same figure on the balance sheet), then `de:` from FY2021.
+    ("ppe_net", "FY2013", usd("5466.9")),
+    ("ppe_net", "FY2019", usd(5_973)),
+    ("ppe_net", "FY2020", usd(5_817)),
+    ("ppe_net", "FY2025", None),
+    # "Common stock ... at paid-in amount" is one line (par plus paid-in capital): CommonStockValue.
+    ("common_stock_apic", "FY2013", usd("3524.2")),
+    ("common_stock_apic", "FY2020", usd(4_895)),
+    ("common_stock_apic", "FY2025", usd(5_668)),
+    # The balance sheet is unclassified: no current or noncurrent totals, so none of their breakdown.
+    ("total_current_assets", "FY2020", None),
+    ("total_current_liabilities", "FY2025", None),
+    ("total_noncurrent_liabilities", "FY2025", None),
+    ("other_current_assets", "FY2020", None),
+    # "Accounts payable and accrued expenses" is one line; mapping it as accounts payable would
+    # include accruals.
+    ("accounts_payable", "FY2025", None),
+    # Redeemable noncontrolling interest sits between liabilities and equity (temporary equity).
+    ("temporary_equity", "FY2016", usd("14.0")),
+    ("temporary_equity", "FY2019", usd(14)),
+    ("temporary_equity", "FY2020", None),  # none: 62,147 + 12,944 = 75,091
+    ("temporary_equity", "FY2022", usd(92)),
+    ("temporary_equity", "FY2023", usd(97)),
+    ("temporary_equity", "FY2025", usd(51)),
+    (
+        "total_liabilities",
+        "FY2016",
+        usd("51373.7"),
+    ),  # restated in the FY2017 10-K (51,436.6 originally)
+    ("total_liabilities", "FY2020", usd(62_147)),
+    ("total_liabilities", "FY2025", usd(79_989)),
+    ("shares_outstanding", "FY2023", Decimal(281_600_000)),
+    ("shares_outstanding", "FY2025", Decimal(270_400_000)),
+    ("shares_outstanding", "FY2020", None),  # tagged from FY2023 only
+    ("dividends_per_share", "FY2015", Decimal("2.40")),
+    ("dividends_per_share", "FY2020", Decimal("3.04")),
+    ("dividends_per_share", "FY2025", Decimal("6.48")),  # declared; paid was 6.33
+    # Cash flow. "Purchases of marketable securities": 130 / 140 / 703, the default investment
+    # purchase tags stop after FY2018.
+    ("purchases_of_investments", "FY2018", usd(-133)),
+    ("purchases_of_investments", "FY2019", usd(-140)),
+    ("purchases_of_investments", "FY2020", usd(-130)),
+    ("purchases_of_investments", "FY2025", usd(-703)),
+    # "Proceeds from maturities and sales of marketable securities" (one line). FY2011-16 are tagged
+    # ...OfAvailableForSaleSecurities (1,022.5 / 860.7 / 169.4 in the FY2016 10-K). Since FY2017 that tag
+    # holds a note figure (FY2023 37 vs the line's 186), so the Marketable-securities tag must win.
+    ("sales_maturities_of_investments", "FY2014", usd("1022.5")),
+    ("sales_maturities_of_investments", "FY2015", usd("860.7")),
+    ("sales_maturities_of_investments", "FY2016", usd("169.4")),
+    ("sales_maturities_of_investments", "FY2018", usd(76)),
+    ("sales_maturities_of_investments", "FY2023", usd(186)),
+    ("sales_maturities_of_investments", "FY2025", usd(486)),
+    # FX effect: the default tags stop in FY2011 (EffectOfExchangeRateOnCashAndCashEquivalents) and
+    # restart in FY2017 (...RestrictedCash...); FY2012-16 are tagged ...ContinuingOperations.
+    # 10-K FY2016: (73.6) FY2014, (187.3) FY2015, (13.0) FY2016 (FY2017 10-K: same).
+    ("fx_effect", "FY2014", usd("-73.6")),
+    ("fx_effect", "FY2015", usd("-187.3")),
+    ("fx_effect", "FY2016", usd("-13.0")),
+    ("fx_effect", "FY2020", usd(32)),
+    ("fx_effect", "FY2025", usd(77)),
+    ("cfo", "FY2020", usd(7_483)),
+    ("cfo", "FY2025", usd(7_459)),
+    ("capex", "FY2020", usd(-820)),
+    ("capex", "FY2025", usd(-1_360)),
+    ("acquisitions", "FY2018", usd(-5_245)),
+    ("acquisitions", "FY2020", usd(-66)),
+    ("dividends_paid", "FY2020", usd(-956)),
+    ("dividends_paid", "FY2025", usd(-1_720)),
+    # Receivables and payables changes in the cash flow combine lines the balance sheet does not
+    # (financing receivables related to sales; payables with accruals): not the canonical lines.
+    ("change_receivables", "FY2025", None),
+    ("change_payables", "FY2025", None),
+    ("change_inventory", "FY2025", usd(-275)),
+]
+
+
+@pytest.mark.parametrize(("code", "period", "expected"), DEERE)
+def test_deere_mapping(code: str, period: str, expected: Decimal | None) -> None:
+    assert mapped("DE", code, period) == expected
+
+
+DEERE_QUARTERS: list[tuple[str, str, Decimal | None]] = [
+    # Q3 FY2025 10-Q (Jul. 27, 2025): short-term borrowings 14,607 + securitization 7,610,
+    # marketable securities 1,407, trade receivables 6,103, redeemable NCI 84.
+    ("short_term_debt", "FY2025Q3", usd(22_217)),
+    ("short_term_investments", "FY2025Q3", usd(1_407)),
+    ("receivables", "FY2025Q3", usd(6_103)),
+    ("temporary_equity", "FY2025Q3", usd(84)),
+    ("total_liabilities", "FY2025Q3", usd(82_553)),
+]
+
+
+@pytest.mark.parametrize(("code", "period", "expected"), DEERE_QUARTERS)
+def test_deere_quarter_mapping(code: str, period: str, expected: Decimal | None) -> None:
+    assert mapped("DE", code, period, "quarterly") == expected
+
+
+def test_deere_short_term_debt_names_both_balance_sheet_lines() -> None:
+    de = run_pipeline("DE")
+    assert source_concept(de, "short_term_debt", "2025-11-02") == "DebtCurrent + SecuredDebt"
+    assert source_concept(de, "short_term_debt", "2020-11-01") == "DebtCurrent + SecuredDebt"
+
+
+def test_deere_fy2015_balance_sheet_balances() -> None:
+    de = run_pipeline("DE")
+    check = {c.period_key: c for c in de.annual["BS"].balance_check}
+    assert check["FY2015"].ok
+    assert check["FY2015"].difference == 0
+
+
+def test_deere_has_no_total_current_assets_so_the_balance_check_adds_up_without_them() -> None:
+    # 79,989 + 51 + 25,956 = 105,996: liabilities, redeemable NCI and equity make up the assets.
+    de = run_pipeline("DE")
+    check = {c.period_key: c for c in de.annual["BS"].balance_check}
+    assert check["FY2025"].ok
+    assert check["FY2025"].difference == 0
+    assert check["FY2020"].ok

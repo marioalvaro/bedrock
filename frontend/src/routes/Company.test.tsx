@@ -1,16 +1,20 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  getCapitalAllocationApiV1CompaniesTickerCapitalAllocationGet,
   getCompanyApiV1CompaniesTickerGet,
+  getFlagsApiV1CompaniesTickerFlagsGet,
   getMappingGapsApiV1CompaniesTickerMappingGapsGet,
+  getRatiosApiV1CompaniesTickerRatiosGet,
   getStatementApiV1CompaniesTickerStatementsGet,
   refreshApiV1CompaniesTickerRefreshPost,
 } from "@/api/generated/sdk.gen";
 import { createQueryClient } from "@/lib/query-client";
+import { capitalAllocation, flags, ratios } from "@/test/analysis";
 import { companyItem, mappingGaps } from "@/test/companies";
 import { errorResult, okResult } from "@/test/responses";
 import { incomeStatement } from "@/test/statements";
@@ -21,6 +25,9 @@ vi.mock("@/api/generated/sdk.gen", () => ({
   getCompanyApiV1CompaniesTickerGet: vi.fn(),
   getMappingGapsApiV1CompaniesTickerMappingGapsGet: vi.fn(),
   getStatementApiV1CompaniesTickerStatementsGet: vi.fn(),
+  getRatiosApiV1CompaniesTickerRatiosGet: vi.fn(),
+  getFlagsApiV1CompaniesTickerFlagsGet: vi.fn(),
+  getCapitalAllocationApiV1CompaniesTickerCapitalAllocationGet: vi.fn(),
   refreshApiV1CompaniesTickerRefreshPost: vi.fn(),
 }));
 
@@ -45,6 +52,11 @@ beforeEach(() => {
   );
   vi.mocked(getStatementApiV1CompaniesTickerStatementsGet).mockResolvedValue(
     okResult(incomeStatement()) as never,
+  );
+  vi.mocked(getRatiosApiV1CompaniesTickerRatiosGet).mockResolvedValue(okResult(ratios()) as never);
+  vi.mocked(getFlagsApiV1CompaniesTickerFlagsGet).mockResolvedValue(okResult(flags()) as never);
+  vi.mocked(getCapitalAllocationApiV1CompaniesTickerCapitalAllocationGet).mockResolvedValue(
+    okResult(capitalAllocation()) as never,
   );
 });
 
@@ -130,7 +142,7 @@ describe("refresh", () => {
 });
 
 describe("tabs", () => {
-  it("links the four tabs by slug", async () => {
+  it("links the statement tabs by slug", async () => {
     renderAt("/c/AAPL");
     await screen.findByRole("heading", { name: "AAPL" });
 
@@ -164,15 +176,65 @@ describe("tabs", () => {
     expect(await screen.findByText("Revenue")).toBeInTheDocument();
     expect(getStatementApiV1CompaniesTickerStatementsGet).toHaveBeenCalledWith({
       path: { ticker: "AAPL" },
-      query: { type, freq: "annual", common_size_base: "total" },
+      query: { type, freq: "annual", common_size_base: "total", basis: "reported" },
     });
     expect(screen.getByRole("link", { name })).toHaveAttribute("aria-current", "page");
   });
 
   it("falls back to the overview for an unknown tab", async () => {
-    renderAt("/c/AAPL/ratios");
+    renderAt("/c/AAPL/nonsense");
 
     expect(await screen.findByRole("region", { name: "Data gaps" })).toBeInTheDocument();
+  });
+
+  it("lists the seven tabs in order, the analysis tabs after Cash Flow", async () => {
+    renderAt("/c/AAPL");
+    await screen.findByRole("heading", { name: "AAPL" });
+
+    const links = within(screen.getByRole("navigation")).getAllByRole("link");
+    expect(links.map((link) => link.textContent)).toEqual([
+      "Overview",
+      "Income",
+      "Balance",
+      "Cash Flow",
+      "Ratios",
+      "Quality",
+      "Capital",
+    ]);
+    expect(screen.getByRole("link", { name: "Ratios" })).toHaveAttribute("href", "/c/AAPL/ratios");
+    expect(screen.getByRole("link", { name: "Quality" })).toHaveAttribute(
+      "href",
+      "/c/AAPL/quality",
+    );
+    expect(screen.getByRole("link", { name: "Capital" })).toHaveAttribute(
+      "href",
+      "/c/AAPL/capital",
+    );
+  });
+
+  it.each([
+    ["ratios", "Ratios", getRatiosApiV1CompaniesTickerRatiosGet],
+    ["quality", "Quality", getFlagsApiV1CompaniesTickerFlagsGet],
+    ["capital", "Capital", getCapitalAllocationApiV1CompaniesTickerCapitalAllocationGet],
+  ])("routes /%s to its view and marks the tab", async (slug, name, sdk) => {
+    renderAt(`/c/AAPL/${slug}`);
+
+    await waitFor(() =>
+      expect(sdk).toHaveBeenCalledWith(expect.objectContaining({ path: { ticker: "AAPL" } })),
+    );
+    expect(screen.getByRole("link", { name })).toHaveAttribute("aria-current", "page");
+    expect(screen.queryByRole("region", { name: "Data gaps" })).not.toBeInTheDocument();
+  });
+
+  it("requests ratios when the Ratios tab is clicked from Income", async () => {
+    renderAt("/c/AAPL/income");
+    await screen.findByText("Revenue");
+    expect(getRatiosApiV1CompaniesTickerRatiosGet).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole("link", { name: "Ratios" }));
+
+    await waitFor(() => expect(getRatiosApiV1CompaniesTickerRatiosGet).toHaveBeenCalled());
+    expect(screen.getByRole("link", { name: "Ratios" })).toHaveAttribute("aria-current", "page");
   });
 
   it("switches views when a tab is clicked", async () => {
