@@ -258,6 +258,97 @@ EXPECTED = [
         "dividends_per_share (TTM: the TTM sum)",
         "USD/shares",
     ),
+    (
+        "pe",
+        "P/E",
+        "Valuation",
+        "market_cap ÷ net_income_common",
+        "x",
+    ),
+    (
+        "earnings_yield",
+        "Earnings yield",
+        "Valuation",
+        "net_income_common ÷ market_cap",
+        "pct",
+    ),
+    (
+        "peg",
+        "PEG",
+        "Valuation",
+        "pe ÷ earnings_growth (net income growth, percentage points)",
+        "x",
+    ),
+    (
+        "pb",
+        "P/B",
+        "Valuation",
+        "market_cap ÷ equity_parent",
+        "x",
+    ),
+    (
+        "ps",
+        "P/S",
+        "Valuation",
+        "market_cap ÷ revenue",
+        "x",
+    ),
+    (
+        "p_fcf",
+        "P/FCF",
+        "Valuation",
+        "market_cap ÷ free_cash_flow",
+        "x",
+    ),
+    (
+        "fcf_yield",
+        "FCF yield",
+        "Valuation",
+        "free_cash_flow ÷ market_cap",
+        "pct",
+    ),
+    (
+        "ev_sales",
+        "EV/Sales",
+        "Valuation",
+        "enterprise_value ÷ revenue",
+        "x",
+    ),
+    (
+        "ev_ebitda",
+        "EV/EBITDA",
+        "Valuation",
+        "enterprise_value ÷ ebitda",
+        "x",
+    ),
+    (
+        "ev_ebit",
+        "EV/EBIT",
+        "Valuation",
+        "enterprise_value ÷ operating_income",
+        "x",
+    ),
+    (
+        "ev_fcf",
+        "EV/FCF",
+        "Valuation",
+        "enterprise_value ÷ free_cash_flow",
+        "x",
+    ),
+    (
+        "dividend_yield",
+        "Dividend yield",
+        "Valuation",
+        "dps ÷ price",
+        "pct",
+    ),
+    (
+        "payout_ratio",
+        "Payout ratio",
+        "Valuation",
+        "cash_dividends ÷ net_income_common",
+        "pct",
+    ),
 ]
 
 
@@ -270,7 +361,18 @@ def test_shipped_ratio_rows_match_erd_table() -> None:
 
 
 def test_shipped_metric_codes_in_order() -> None:
-    assert [m.code for m in METRICS] == ["ebitda", "tax_rate", "nopat", "invested_capital"]
+    assert [m.code for m in METRICS] == [
+        "ebitda",
+        "tax_rate",
+        "nopat",
+        "invested_capital",
+        "price",
+        "market_cap",
+        "minority_interest",
+        "enterprise_value",
+        "cash_dividends",
+        "earnings_growth",
+    ]
 
 
 def test_shipped_registry_validates_against_canonical_items() -> None:

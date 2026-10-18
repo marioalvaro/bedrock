@@ -10,6 +10,7 @@ import {
   deleteOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdDelete,
   getCapitalAllocationApiV1CompaniesTickerCapitalAllocationGet,
   getFlagsApiV1CompaniesTickerFlagsGet,
+  getMultiplesApiV1CompaniesTickerMultiplesGet,
   getRatiosApiV1CompaniesTickerRatiosGet,
   listCustomRulesApiV1QoeCustomRulesGet,
   listOffBalanceItemsApiV1CompaniesTickerOffBalanceItemsGet,
@@ -22,6 +23,7 @@ import {
 import type {
   CapitalAllocationOut,
   FlagsOut,
+  MultiplesOut,
   OffBalanceItemIn,
   OffBalanceItemOut,
   QoeCustomRuleIn,
@@ -45,6 +47,8 @@ export const capitalAllocationKey = (ticker: string) =>
   [...companyKey(ticker), "capital-allocation"] as const;
 export const offBalanceItemsKey = (ticker: string) =>
   [...companyKey(ticker), "off-balance-items"] as const;
+// Valuation multiples sit under the ratios key, so `invalidateAdjustmentViews` reaches them.
+export const multiplesKey = (ticker: string) => [...ratiosKey(ticker), "multiples"] as const;
 // QoE rules are global (not per company).
 export const qoeRulesKey = ["qoe-rules"] as const;
 // Custom QoE rules are global too.
@@ -63,6 +67,22 @@ export const ratiosQueryOptions = (ticker: string, freq: AnalysisFreq, basis: Ba
         getRatiosApiV1CompaniesTickerRatiosGet({ path: { ticker }, query: { freq, basis } }),
       );
       if (!hasArrays(body, ["periods", "rows"])) throw new ApiError(200, "Unexpected response");
+      return body;
+    },
+  });
+
+/**
+ * GET …/multiples?basis. Key `[...multiplesKey(ticker), basis]`. Rejects a 200 whose body lacks the
+ * `rows` array, as above.
+ */
+export const multiplesQueryOptions = (ticker: string, basis: Basis) =>
+  queryOptions<MultiplesOut>({
+    queryKey: [...multiplesKey(ticker), basis],
+    queryFn: async () => {
+      const body = await unwrap(
+        getMultiplesApiV1CompaniesTickerMultiplesGet({ path: { ticker }, query: { basis } }),
+      );
+      if (!hasArrays(body, ["rows"])) throw new ApiError(200, "Unexpected response");
       return body;
     },
   });

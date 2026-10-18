@@ -8,6 +8,7 @@ from bedrock.api.v1 import (
     corporate_actions,
     flags,
     health,
+    multiples,
     qoe_rules,
     ratios,
     statements,
@@ -26,6 +27,7 @@ protected.include_router(corporate_actions.router)
 protected.include_router(adjustments.router)
 protected.include_router(statements.router)
 protected.include_router(ratios.router)
+protected.include_router(multiples.router)
 protected.include_router(flags.router)
 protected.include_router(qoe_rules.router)
 protected.include_router(qoe_rules.custom_router)

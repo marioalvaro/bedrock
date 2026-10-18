@@ -22,3 +22,11 @@ DE:
       Deere's revenue is net sales and revenues, which include John Deere Financial's finance
       and interest income, so gross margin and days sales outstanding are not comparable with
       an equipment maker's.
+  - codes:
+      - ev_sales
+      - ev_ebitda
+      - ev_ebit
+      - ev_fcf
+    text: >-
+      Enterprise value includes John Deere Financial's debt, which funds customer receivables,
+      so EV multiples are not comparable with an industrial company's.

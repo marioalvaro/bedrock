@@ -104,3 +104,21 @@ annual:
     asset_turnover: 0.428322
     # avg(total assets 105,996, 107,320) = 106,658 / avg(Deere equity 25,950, 22,836) = 24,393 (FY2025 10-K)
     dupont_equity_multiplier: 4.372484
+
+# Valuation goldens (M2 S9, FR-ANL-07): the ratios at an ASSUMED fiscal-year-end close (`price`, an input, not a 10-K figure),
+# computed by hand from the 10-K figures cited in the `annual` block above. Shares are the balance-sheet shares outstanding
+# (millions). Market cap = price x shares; minority interest = total equity - equity attributable to the parent;
+# EV = market cap + total debt + minority interest - cash - short-term investments (no temporary equity in these years).
+valuation:
+  FY2025:
+    price: 500
+    # market cap 500 x 270.4 = 135,200.000; net income 5,027 [10-K FY2025]
+    pe: 26.894768
+    earnings_yield: 0.037182
+    # equity 25,950 -> market cap / equity
+    pb: 5.210019
+    # revenue 45,684
+    ps: 2.959461
+    # EV not asserted: Deere's consolidated debt, cash and redeemable NCI are not among the cited figures
+    # dividends declared per share 6.48
+    dividend_yield: 0.01296

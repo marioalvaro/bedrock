@@ -1,7 +1,9 @@
 """Ratios over the statement tables of one basis (docs/erd/analysis.md "Definitions (M2)"). Pure."""
 
+from bisect import bisect_right
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 from typing import Literal
 
@@ -36,12 +38,17 @@ class RatioInputs:
     - `annual`: income/cash_flow/balance are the annual IS, CF and BS; `quarterly_income` is None.
     - `ttm`: income/cash_flow are the TTM IS and CF, balance is the quarterly BS, and
       `quarterly_income` is the quarterly IS (average-kind lines such as `shares_diluted` are empty
-      in a TTM table: the latest quarter of the window that has a value is used)."""
+      in a TTM table: the latest quarter of the window that has a value is used).
+    - `prices`: `(date, close)` pairs, oldest first (`price_daily.close`, split-adjusted); a
+      period's price is the last close on or before its end date, except that with `as_of` the
+      latest period of `income` reads the last close on or before `as_of` (the current multiple)."""
 
     income: StatementTable
     cash_flow: StatementTable
     balance: StatementTable
     quarterly_income: StatementTable | None = None
+    prices: Sequence[tuple[date, Decimal]] = ()
+    as_of: date | None = None
 
 
 @dataclass(frozen=True)
@@ -148,6 +155,11 @@ class Operands:
         quarterly = inputs.quarterly_income
         self._quarterly = _series([quarterly]) if quarterly is not None else {}
         self._ratios = {r.code: r for r in _merged(ratios)}
+        self._ends = {(p.fiscal_year, p.fiscal_period): p.end for p in inputs.income.periods}
+        self._prices = sorted(inputs.prices)
+        if inputs.as_of is not None and inputs.income.periods:
+            last = inputs.income.periods[-1]
+            self._ends[(last.fiscal_year, last.fiscal_period)] = inputs.as_of
         self._memo: dict[tuple[str, Point], Decimal | None] = {}
 
     def ratio(self, code: str, point: Point) -> Decimal | None:
@@ -195,9 +207,27 @@ class Operands:
         if code in CANONICAL_CODES:
             return self._line(code, point)
         metric = _METRICS.get(code)
+        if metric is not None and metric.at_point:
+            return self._at_point(code, point)
         if metric is not None:
             return metric.fn({name: self.value(name, point) for name in metric.inputs})
         return self.ratio(code, point)
+
+    def _at_point(self, code: str, point: Point) -> Decimal | None:
+        """The `at_point` metrics: `price` (last close on or before the period end) and
+        `earnings_growth` (net income growth over a year earlier in percentage points, None unless
+        both are positive)."""
+        if code == "price":
+            end = self._ends.get(point)
+            if end is None:
+                return None
+            at = bisect_right(self._prices, end, key=lambda row: row[0])
+            return self._prices[at - 1][1] if at else None
+        now = self._line("net_income_common", point)
+        before = self._line("net_income_common", year_earlier(point))
+        if now is None or before is None or now <= 0 or before <= 0:
+            return None
+        return (now / before - 1) * 100
 
     def _line(self, code: str, point: Point) -> Decimal | None:
         kind, values = self._lines.get(code, ("", {}))

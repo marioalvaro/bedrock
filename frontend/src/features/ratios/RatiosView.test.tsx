@@ -3,16 +3,20 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getRatiosApiV1CompaniesTickerRatiosGet } from "@/api/generated/sdk.gen";
+import {
+  getMultiplesApiV1CompaniesTickerMultiplesGet,
+  getRatiosApiV1CompaniesTickerRatiosGet,
+} from "@/api/generated/sdk.gen";
 import { downloadText } from "@/lib/download";
 import { createQueryClient } from "@/lib/query-client";
-import { ratios } from "@/test/analysis";
+import { multiples, ratios } from "@/test/analysis";
 import { errorResult, okResult } from "@/test/responses";
 
 import { RatiosView } from "./RatiosView";
 
 vi.mock("@/api/generated/sdk.gen", () => ({
   getRatiosApiV1CompaniesTickerRatiosGet: vi.fn(),
+  getMultiplesApiV1CompaniesTickerMultiplesGet: vi.fn(),
 }));
 vi.mock("@/lib/download", () => ({ downloadText: vi.fn() }));
 
@@ -34,6 +38,12 @@ const lastQuery = () =>
   vi.mocked(getRatiosApiV1CompaniesTickerRatiosGet).mock.calls.at(-1)![0]!.query;
 
 beforeEach(() => {
+  // no caveat: the "†" notes below the grid are the ratio table's own
+  vi.mocked(getMultiplesApiV1CompaniesTickerMultiplesGet).mockResolvedValue(
+    okResult(
+      multiples({ rows: multiples().rows.map((row) => ({ ...row, caveat: null })) }),
+    ) as never,
+  );
   vi.mocked(getRatiosApiV1CompaniesTickerRatiosGet).mockResolvedValue(okResult(ratios()) as never);
 });
 afterEach(() => {
@@ -41,6 +51,23 @@ afterEach(() => {
 });
 
 describe("RatiosView", () => {
+  it("shows the valuation multiples above the grid, for the chosen basis", async () => {
+    renderView();
+    expect(await screen.findByRole("region", { name: "Valuation multiples" })).toBeInTheDocument();
+    expect(getMultiplesApiV1CompaniesTickerMultiplesGet).toHaveBeenCalledWith({
+      path: { ticker: "DE" },
+      query: { basis: "reported" },
+    });
+
+    await userEvent.click(screen.getByRole("radio", { name: "Normalized" }));
+    await waitFor(() =>
+      expect(getMultiplesApiV1CompaniesTickerMultiplesGet).toHaveBeenLastCalledWith({
+        path: { ticker: "DE" },
+        query: { basis: "normalized" },
+      }),
+    );
+  });
+
   it("requests annual, reported ratios by default", async () => {
     renderView();
     await screen.findByText("Gross margin †");

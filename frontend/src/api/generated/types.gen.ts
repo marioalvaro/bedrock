@@ -568,6 +568,81 @@ export type MissingItemOut = {
 };
 
 /**
+ * MultipleOut
+ *
+ * One valuation ratio. `pct` values are fractions; `percentile` is 0..1 and the range is
+ * null with fewer than three annual values (`n`).
+ */
+export type MultipleOut = {
+    /**
+     * Caveat
+     */
+    caveat: string | null;
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Current
+     */
+    current: string | null;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Max
+     */
+    max: string | null;
+    /**
+     * Median
+     */
+    median: string | null;
+    /**
+     * Min
+     */
+    min: string | null;
+    /**
+     * N
+     */
+    n: number;
+    /**
+     * Percentile
+     */
+    percentile: string | null;
+    /**
+     * Unit
+     */
+    unit: 'pct' | 'x' | 'days' | 'USD/shares';
+};
+
+/**
+ * MultiplesOut
+ */
+export type MultiplesOut = {
+    /**
+     * Basis
+     */
+    basis: 'reported' | 'normalized';
+    /**
+     * Price
+     */
+    price: string | null;
+    /**
+     * Price Date
+     */
+    price_date: string | null;
+    /**
+     * Rows
+     */
+    rows: Array<MultipleOut>;
+    /**
+     * Ticker
+     */
+    ticker: string;
+};
+
+/**
  * OffBalanceItemIn
  *
  * `amount` is in USD units.
@@ -857,7 +932,7 @@ export type RatioRowOut = {
     /**
      * Category
      */
-    category: 'Profitability' | 'DuPont' | 'Liquidity' | 'Solvency' | 'Efficiency' | 'Per share';
+    category: 'Profitability' | 'DuPont' | 'Liquidity' | 'Solvency' | 'Efficiency' | 'Per share' | 'Valuation';
     /**
      * Caveat
      */
@@ -1559,6 +1634,41 @@ export type GetMappingGapsApiV1CompaniesTickerMappingGapsGetResponses = {
 };
 
 export type GetMappingGapsApiV1CompaniesTickerMappingGapsGetResponse = GetMappingGapsApiV1CompaniesTickerMappingGapsGetResponses[keyof GetMappingGapsApiV1CompaniesTickerMappingGapsGetResponses];
+
+export type GetMultiplesApiV1CompaniesTickerMultiplesGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: {
+        /**
+         * Basis
+         */
+        basis?: 'reported' | 'normalized';
+    };
+    url: '/api/v1/companies/{ticker}/multiples';
+};
+
+export type GetMultiplesApiV1CompaniesTickerMultiplesGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetMultiplesApiV1CompaniesTickerMultiplesGetError = GetMultiplesApiV1CompaniesTickerMultiplesGetErrors[keyof GetMultiplesApiV1CompaniesTickerMultiplesGetErrors];
+
+export type GetMultiplesApiV1CompaniesTickerMultiplesGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: MultiplesOut;
+};
+
+export type GetMultiplesApiV1CompaniesTickerMultiplesGetResponse = GetMultiplesApiV1CompaniesTickerMultiplesGetResponses[keyof GetMultiplesApiV1CompaniesTickerMultiplesGetResponses];
 
 export type ListOffBalanceItemsApiV1CompaniesTickerOffBalanceItemsGetData = {
     body?: never;

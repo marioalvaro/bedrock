@@ -43,6 +43,9 @@ describe("FormulaReference", () => {
     expect(codes("Balance sheet lines")).toContain("total_assets");
     expect(codes("Cash flow lines")).toContain("cfo");
     expect(codes("Metrics")).toContain("ebitda");
+    expect(codes("Metrics")).toContain("enterprise_value");
+    expect(codes("Ratios")).toContain("pe (x)");
+    expect(codes("Ratios")).toContain("dividend_yield (pct)");
     expect(codes("Ratios")).toContain("roe (pct)");
     expect(codes("Ratios")).toContain("dso (days)");
   });

@@ -26,6 +26,16 @@ def latest_close(session: Session, company_id: int) -> tuple[date, Decimal] | No
     return None if row is None else (row.date, plain(row.close))
 
 
+def closes(session: Session, company_id: int) -> list[tuple[date, Decimal]]:
+    """Every stored `(date, close)` of the company, oldest first."""
+    stmt = (
+        select(PriceDaily.date, PriceDaily.close)
+        .where(PriceDaily.company_id == company_id)
+        .order_by(PriceDaily.date)
+    )
+    return [(row.date, plain(row.close)) for row in session.execute(stmt)]
+
+
 def insert_new(session: Session, company_id: int, rows: Sequence[PriceRow]) -> int:
     """Store the rows whose date is not stored yet; returns how many were added."""
     stmt = select(PriceDaily.date).where(PriceDaily.company_id == company_id)

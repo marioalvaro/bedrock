@@ -30,7 +30,12 @@ export const FORMULA_GROUPS: FormulaGroup[] = [
       "cfo cf_net_income d_and_a sbc deferred_taxes change_receivables change_inventory change_payables other_operating_activities cfi capex acquisitions purchases_of_investments sales_maturities_of_investments other_investing_activities cff debt_issued debt_repaid buybacks dividends_paid other_financing_activities fx_effect net_change_in_cash free_cash_flow",
     ),
   },
-  { title: "Metrics", names: codes("ebitda tax_rate nopat invested_capital") },
+  {
+    title: "Metrics",
+    names: codes(
+      "ebitda tax_rate nopat invested_capital price market_cap minority_interest enterprise_value cash_dividends earnings_growth",
+    ),
+  },
   {
     title: "Ratios",
     names: [
@@ -50,6 +55,13 @@ export const FORMULA_GROUPS: FormulaGroup[] = [
           "debt_to_equity",
           "asset_turnover",
         ].map((code) => ({ code, unit: "x" })),
+        ["pe", "peg", "pb", "ps", "p_fcf", "ev_sales", "ev_ebitda", "ev_ebit", "ev_fcf"].map(
+          (code) => ({ code, unit: "x" }),
+        ),
+        ["earnings_yield", "fcf_yield", "dividend_yield", "payout_ratio"].map((code) => ({
+          code,
+          unit: "pct",
+        })),
         ["dso", "dio", "dpo", "ccc"].map((code) => ({ code, unit: "days" })),
         ["eps_diluted", "fcf_per_share", "bvps", "dps"].map((code) => ({
           code,

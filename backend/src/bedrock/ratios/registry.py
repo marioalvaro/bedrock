@@ -13,7 +13,9 @@ from typing import Literal
 from bedrock.mapping.config import MappingConfigError, load_canonical_items, parse_formula
 
 Unit = Literal["pct", "x", "days", "USD/shares"]
-Category = Literal["Profitability", "DuPont", "Liquidity", "Solvency", "Efficiency", "Per share"]
+Category = Literal[
+    "Profitability", "DuPont", "Liquidity", "Solvency", "Efficiency", "Per share", "Valuation"
+]
 
 
 class RegistryError(ValueError):
@@ -26,12 +28,15 @@ class Metric:
 
     `inputs` are the operand codes `fn` reads (canonical codes or other metrics); `fn` gets their
     values for one point in time and returns the metric, or None. A None input reaches `fn`, which
-    decides (every shipped metric returns None for a None input)."""
+    decides (every shipped metric returns None for a None input). An `at_point` metric needs more
+    than the values at one point (`price`: the period's end date; `earnings_growth`: the year
+    before): the calculator computes it (`Operands._at_point`) and `fn` is not called."""
 
     code: str
     label: str
     inputs: tuple[str, ...]
     fn: Callable[[Mapping[str, Decimal | None]], Decimal | None]
+    at_point: bool = False
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -83,6 +88,36 @@ def _invested_capital(values: Mapping[str, Decimal | None]) -> Decimal | None:
     return None if got is None else got[0] + got[1] - got[2] - got[3]
 
 
+def _not_called(values: Mapping[str, Decimal | None]) -> Decimal | None:
+    raise AssertionError("an at_point metric is computed by the calculator")
+
+
+def _market_cap(values: Mapping[str, Decimal | None]) -> Decimal | None:
+    got = _known(values, ("price", "shares_outstanding"))
+    return None if got is None else got[0] * got[1]
+
+
+def _minority_interest(values: Mapping[str, Decimal | None]) -> Decimal | None:
+    got = _known(values, ("total_equity", "equity_parent"))
+    return None if got is None else max(got[0] - got[1], Decimal(0))
+
+
+def _enterprise_value(values: Mapping[str, Decimal | None]) -> Decimal | None:
+    """market_cap + debt + minority interest - cash; temporary equity and short-term investments
+    count as 0 when missing."""
+    got = _known(values, ("market_cap", "total_debt", "minority_interest", "cash"))
+    if got is None:
+        return None
+    temporary = values.get("temporary_equity") or Decimal(0)
+    investments = values.get("short_term_investments") or Decimal(0)
+    return got[0] + got[1] + got[2] - got[3] + temporary - investments
+
+
+def _cash_dividends(values: Mapping[str, Decimal | None]) -> Decimal | None:
+    paid = values.get("dividends_paid")
+    return None if paid is None else -paid
+
+
 METRICS: tuple[Metric, ...] = (
     Metric("ebitda", "EBITDA", ("operating_income", "d_and_a"), _ebitda),
     Metric("tax_rate", "Effective tax rate", ("income_tax", "pretax_income"), _tax_rate),
@@ -92,6 +127,31 @@ METRICS: tuple[Metric, ...] = (
         "Invested capital",
         ("total_debt", "total_equity", "cash", "short_term_investments"),
         _invested_capital,
+    ),
+    Metric("price", "Share price", (), _not_called, at_point=True),
+    Metric("market_cap", "Market cap", ("price", "shares_outstanding"), _market_cap),
+    Metric(
+        "minority_interest",
+        "Minority interest",
+        ("total_equity", "equity_parent"),
+        _minority_interest,
+    ),
+    Metric(
+        "enterprise_value",
+        "Enterprise value",
+        (
+            "market_cap",
+            "total_debt",
+            "minority_interest",
+            "cash",
+            "temporary_equity",
+            "short_term_investments",
+        ),
+        _enterprise_value,
+    ),
+    Metric("cash_dividends", "Cash dividends paid", ("dividends_paid",), _cash_dividends),
+    Metric(
+        "earnings_growth", "Earnings growth (points)", ("net_income_common",), _not_called, True
     ),
 )
 
@@ -348,6 +408,124 @@ RATIOS: tuple[Ratio, ...] = (
         unit="USD/shares",
         definition="dividends_per_share (TTM: the TTM sum)",
         numerator="dividends_per_share",
+    ),
+    # Valuation (price = the last close on or before the period end)
+    Ratio(
+        code="pe",
+        label="P/E",
+        category="Valuation",
+        unit="x",
+        definition="market_cap ÷ net_income_common",
+        numerator="market_cap",
+        denominator="net_income_common",
+    ),
+    Ratio(
+        code="earnings_yield",
+        label="Earnings yield",
+        category="Valuation",
+        unit="pct",
+        definition="net_income_common ÷ market_cap",
+        numerator="net_income_common",
+        denominator="market_cap",
+    ),
+    Ratio(
+        code="peg",
+        label="PEG",
+        category="Valuation",
+        unit="x",
+        definition="pe ÷ earnings_growth (net income growth, percentage points)",
+        numerator="pe",
+        denominator="earnings_growth",
+    ),
+    Ratio(
+        code="pb",
+        label="P/B",
+        category="Valuation",
+        unit="x",
+        definition="market_cap ÷ equity_parent",
+        numerator="market_cap",
+        denominator="equity_parent",
+    ),
+    Ratio(
+        code="ps",
+        label="P/S",
+        category="Valuation",
+        unit="x",
+        definition="market_cap ÷ revenue",
+        numerator="market_cap",
+        denominator="revenue",
+    ),
+    Ratio(
+        code="p_fcf",
+        label="P/FCF",
+        category="Valuation",
+        unit="x",
+        definition="market_cap ÷ free_cash_flow",
+        numerator="market_cap",
+        denominator="free_cash_flow",
+    ),
+    Ratio(
+        code="fcf_yield",
+        label="FCF yield",
+        category="Valuation",
+        unit="pct",
+        definition="free_cash_flow ÷ market_cap",
+        numerator="free_cash_flow",
+        denominator="market_cap",
+    ),
+    Ratio(
+        code="ev_sales",
+        label="EV/Sales",
+        category="Valuation",
+        unit="x",
+        definition="enterprise_value ÷ revenue",
+        numerator="enterprise_value",
+        denominator="revenue",
+    ),
+    Ratio(
+        code="ev_ebitda",
+        label="EV/EBITDA",
+        category="Valuation",
+        unit="x",
+        definition="enterprise_value ÷ ebitda",
+        numerator="enterprise_value",
+        denominator="ebitda",
+    ),
+    Ratio(
+        code="ev_ebit",
+        label="EV/EBIT",
+        category="Valuation",
+        unit="x",
+        definition="enterprise_value ÷ operating_income",
+        numerator="enterprise_value",
+        denominator="operating_income",
+    ),
+    Ratio(
+        code="ev_fcf",
+        label="EV/FCF",
+        category="Valuation",
+        unit="x",
+        definition="enterprise_value ÷ free_cash_flow",
+        numerator="enterprise_value",
+        denominator="free_cash_flow",
+    ),
+    Ratio(
+        code="dividend_yield",
+        label="Dividend yield",
+        category="Valuation",
+        unit="pct",
+        definition="dps ÷ price",
+        numerator="dps",
+        denominator="price",
+    ),
+    Ratio(
+        code="payout_ratio",
+        label="Payout ratio",
+        category="Valuation",
+        unit="pct",
+        definition="cash_dividends ÷ net_income_common",
+        numerator="cash_dividends",
+        denominator="net_income_common",
     ),
 )
 

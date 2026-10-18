@@ -98,3 +98,45 @@ annual:
     asset_turnover: 3.649292
     # avg(total assets 89,045, 77,099) = 83,072 / avg(equity 35,803, 29,164) = 32,483.5 (FY2026 10-K)
     dupont_equity_multiplier: 2.55736
+
+# Valuation goldens (M2 S9, FR-ANL-07): the ratios at an ASSUMED fiscal-year-end close (`price`, an input, not a 10-K figure),
+# computed by hand from the 10-K figures cited in the `annual` block above. Shares are the balance-sheet shares outstanding
+# (millions). Market cap = price x shares; minority interest = total equity - equity attributable to the parent;
+# EV = market cap + total debt + minority interest - cash - short-term investments (no temporary equity in these years).
+valuation:
+  FY2020:
+    price: 300
+    # market cap 300 x 441.255 = 132,376.500; net income 4,002 [10-K FY2021/FY2022]
+    pe: 33.077586
+    earnings_yield: 0.030232
+    # equity 18,284 -> market cap / equity
+    pb: 7.240019
+    # revenue 166,761
+    ps: 0.79381
+    # free cash flow 6,051
+    p_fcf: 21.876797
+    fcf_yield: 0.045711
+    # EV = 132,376.500 + debt 7,609 + minority 421 - cash 12,277 - short-term investments 1,028 = 127,101.500
+    ev_sales: 0.762178
+    # operating income 5,435
+    ev_ebit: 23.385741
+    ev_fcf: 21.00504
+  FY2026:
+    price: 900
+    # market cap 900 x 443.266 = 398,939.400; net income 9,226 [10-K FY2026]
+    pe: 43.240776
+    earnings_yield: 0.023126
+    # equity 35,803 -> market cap / equity
+    pb: 11.142625
+    # revenue 303,154
+    ps: 1.315963
+    # free cash flow 9,382
+    p_fcf: 42.521786
+    fcf_yield: 0.023517
+    # EV = 398,939.400 + debt 6,162 + minority 0 - cash 20,207 - short-term investments 1,094 = 383,800.400
+    ev_sales: 1.266025
+    # operating income 11,685
+    ev_ebit: 32.845563
+    ev_fcf: 40.908165
+    # dividends declared per share 5.54
+    dividend_yield: 0.006156

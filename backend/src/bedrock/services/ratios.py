@@ -1,12 +1,17 @@
 """The ratio table of a followed company (FR-ANL-01..04)."""
 
+from dataclasses import replace
+from datetime import date
+from decimal import Decimal
 from functools import cache
 
 from sqlalchemy.orm import Session
 
+from bedrock.analysis.multiples import MultipleSummary, valuation_summary
 from bedrock.models.company import Company
 from bedrock.ratios.calculator import RatioFreq, RatioInputs, RatioTable, compute_ratios
 from bedrock.ratios.caveats import Caveat, load_caveats
+from bedrock.repositories import prices as price_repo
 from bedrock.services.statements import Basis, statement_tables
 
 
@@ -20,7 +25,7 @@ def ratios(session: Session, company: Company, freq: RatioFreq, basis: Basis) ->
 def ratio_inputs(session: Session, company: Company, freq: RatioFreq, basis: Basis) -> RatioInputs:
     """The `RatioInputs` of `freq` on `basis` from one load of the company's facts (annual: annual
     IS, CF, BS; ttm: TTM IS and CF, quarterly BS and IS), untrimmed. Also read by the analysis
-    engines (QoE flags, capital allocation)."""
+    engines (QoE flags, capital allocation). `prices` holds the company's stored closes."""
     if freq == "annual":
         tables = statement_tables(
             session, company, [("IS", "annual"), ("CF", "annual"), ("BS", "annual")], basis
@@ -41,9 +46,23 @@ def ratio_inputs(session: Session, company: Company, freq: RatioFreq, basis: Bas
             tables[("BS", "quarterly")],
             tables[("IS", "quarterly")],
         )
-    return inputs
+    return replace(inputs, prices=price_repo.closes(session, company.id))
 
 
 @cache
 def _caveats() -> dict[str, tuple[Caveat, ...]]:
     return load_caveats()
+
+
+def multiples(
+    session: Session, company: Company, basis: Basis
+) -> tuple[tuple[date, Decimal] | None, list[MultipleSummary]]:
+    """The latest close and the valuation summary: annual history against the current multiples
+    (TTM figures at the latest close). Without stored prices every number is null."""
+    annual = ratios(session, company, "annual", basis)
+    close = price_repo.latest_close(session, company.id)
+    inputs = ratio_inputs(session, company, "ttm", basis)
+    if close is not None:
+        inputs = replace(inputs, as_of=close[0])
+    current = compute_ratios(inputs, "ttm", _caveats().get(company.ticker.upper(), ()))
+    return close, valuation_summary(annual, current)

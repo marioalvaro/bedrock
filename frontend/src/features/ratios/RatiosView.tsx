@@ -10,6 +10,7 @@ import { DataGrid, type DataGridHandle } from "@/components/DataGrid";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { downloadText } from "@/lib/download";
+import { MultiplesTable } from "@/features/ratios/MultiplesTable";
 import { formatCsvRatio, formatRatio, type RatioUnit } from "@/lib/format";
 
 const FREQS: { value: AnalysisFreq; label: string }[] = [
@@ -186,6 +187,7 @@ export function RatiosView({ ticker }: RatiosViewProps) {
           <Download /> CSV
         </Button>
       </div>
+      <MultiplesTable ticker={ticker} basis={basis} />
       {isPending && <p className="text-muted-foreground p-4 text-sm">Loading…</p>}
       {isError && <p className="text-destructive p-4 text-sm">Could not load the ratios.</p>}
       {empty && <p className="text-muted-foreground p-4 text-sm">No ratios for this company.</p>}

@@ -4,6 +4,7 @@ import type {
   OffBalanceItemOut,
   PeriodOut,
   QoeCustomRuleOut,
+  MultiplesOut,
   QoeRuleOut,
   RatiosOut,
 } from "@/api/generated/types.gen";
@@ -360,6 +361,56 @@ export function qoeCustomRule(overrides: Partial<QoeCustomRuleOut> = {}): QoeCus
     error: null,
     created_at: "2026-10-17T10:00:00Z",
     updated_at: "2026-10-17T10:00:00Z",
+    ...overrides,
+  };
+}
+
+// GET …/multiples: a P/E with a full history (range + percentile), an EV/Sales with a caveat and
+// too little history, and a yield with no current value.
+export function multiples(overrides: Partial<MultiplesOut> = {}): MultiplesOut {
+  return {
+    ticker: "AAPL",
+    basis: "reported",
+    price: "250.5",
+    price_date: "2026-10-07",
+    rows: [
+      {
+        code: "pe",
+        label: "P/E",
+        unit: "x",
+        caveat: null,
+        current: "32.5",
+        min: "10.2",
+        median: "24.9",
+        max: "38.1",
+        percentile: "0.85",
+        n: 12,
+      },
+      {
+        code: "ev_sales",
+        label: "EV/Sales",
+        unit: "x",
+        caveat: "Enterprise value includes John Deere Financial's debt.",
+        current: "7.4",
+        min: null,
+        median: null,
+        max: null,
+        percentile: null,
+        n: 2,
+      },
+      {
+        code: "fcf_yield",
+        label: "FCF yield",
+        unit: "pct",
+        caveat: null,
+        current: null,
+        min: "0.02",
+        median: "0.04",
+        max: "0.07",
+        percentile: null,
+        n: 5,
+      },
+    ],
     ...overrides,
   };
 }

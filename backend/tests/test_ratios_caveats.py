@@ -32,17 +32,25 @@ DE_REVENUE_TEXT = (
 )
 
 
+DE_EV_CODES = frozenset({"ev_sales", "ev_ebitda", "ev_ebit", "ev_fcf"})
+DE_EV_TEXT = (
+    "Enterprise value includes John Deere Financial's debt, which funds customer receivables, "
+    "so EV multiples are not comparable with an industrial company's."
+)
+
+
 def write(tmp_path: Path, text: str) -> Path:
     path = tmp_path / "caveats.yaml"
     path.write_text(text)
     return path
 
 
-def test_shipped_file_has_exactly_the_two_de_entries_in_order() -> None:
+def test_shipped_file_has_exactly_the_three_de_entries_in_order() -> None:
     assert load_caveats() == {
         "DE": (
             Caveat(codes=DE_CODES, text=DE_TEXT),
             Caveat(codes=frozenset({"gross_margin", "dso"}), text=DE_REVENUE_TEXT),
+            Caveat(codes=DE_EV_CODES, text=DE_EV_TEXT),
         )
     }
 

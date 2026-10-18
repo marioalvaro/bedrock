@@ -102,3 +102,47 @@ annual:
     bvps: 4.9910
     # dividends declared per share or RSU, FY2025: 1.02 [10-K FY2025 shareholders' equity statement]
     dps: 1.02
+
+# Valuation goldens (M2 S9, FR-ANL-07): the ratios at an ASSUMED fiscal-year-end close (`price`, an input, not a 10-K figure),
+# computed by hand from the 10-K figures cited in the `annual` block above. Shares are the balance-sheet shares outstanding
+# (millions). Market cap = price x shares; minority interest = total equity - equity attributable to the parent;
+# EV = market cap + total debt + minority interest - cash - short-term investments (no temporary equity in these years).
+valuation:
+  FY2020:
+    price: 100
+    # market cap 100 x 16,976.763 = 1,697,676.300; net income 57,411 [10-K FY2021/FY2022]
+    pe: 29.570575
+    earnings_yield: 0.033817
+    # equity 65,339 -> market cap / equity
+    pb: 25.982588
+    # revenue 274,515
+    ps: 6.184275
+    # free cash flow 73,365
+    p_fcf: 23.140139
+    fcf_yield: 0.043215
+    # EV = 1,697,676.300 + debt 112,436 + minority 0 - cash 38,016 - short-term investments 52,927 = 1,719,169.300
+    ev_sales: 6.26257
+    # operating income 66,288
+    ev_ebit: 25.934849
+    ev_fcf: 23.433099
+    # dividends declared per share 0.795
+    dividend_yield: 0.00795
+  FY2025:
+    price: 250
+    # market cap 250 x 14,773.26 = 3,693,315.000; net income 112,010 [10-K FY2025]
+    pe: 32.973083
+    earnings_yield: 0.030328
+    # equity 73,733 -> market cap / equity
+    pb: 50.090394
+    # revenue 416,161
+    ps: 8.874726
+    # free cash flow 98,767
+    p_fcf: 37.394221
+    fcf_yield: 0.026742
+    # EV = 3,693,315.000 + debt 98,657 + minority 0 - cash 35,934 - short-term investments 18,763 = 3,737,275.000
+    ev_sales: 8.980359
+    # operating income 133,050
+    ev_ebit: 28.089252
+    ev_fcf: 37.839309
+    # dividends declared per share 1.02
+    dividend_yield: 0.00408

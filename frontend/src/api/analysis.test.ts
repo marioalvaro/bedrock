@@ -25,6 +25,8 @@ import {
   useCreateQoeCustomRule,
   useDeleteQoeCustomRule,
   useUpdateQoeCustomRule,
+  multiplesKey,
+  multiplesQueryOptions,
   ratiosQueryOptions,
   useCreateOffBalanceItem,
   useDeleteOffBalanceItem,
@@ -39,6 +41,7 @@ import {
   deleteOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdDelete,
   getCapitalAllocationApiV1CompaniesTickerCapitalAllocationGet,
   getFlagsApiV1CompaniesTickerFlagsGet,
+  getMultiplesApiV1CompaniesTickerMultiplesGet,
   getRatiosApiV1CompaniesTickerRatiosGet,
   listOffBalanceItemsApiV1CompaniesTickerOffBalanceItemsGet,
   listQoeRulesApiV1QoeRulesGet,
@@ -53,6 +56,7 @@ import {
 import {
   capitalAllocation,
   flags,
+  multiples,
   offBalanceItem,
   offBalanceItems,
   qoeCustomRule,
@@ -64,6 +68,7 @@ import { errorResult, networkErrorResult, okResult } from "@/test/responses";
 
 vi.mock("@/api/generated/sdk.gen", () => ({
   getRatiosApiV1CompaniesTickerRatiosGet: vi.fn(),
+  getMultiplesApiV1CompaniesTickerMultiplesGet: vi.fn(),
   getFlagsApiV1CompaniesTickerFlagsGet: vi.fn(),
   getCapitalAllocationApiV1CompaniesTickerCapitalAllocationGet: vi.fn(),
   listOffBalanceItemsApiV1CompaniesTickerOffBalanceItemsGet: vi.fn(),
@@ -80,6 +85,7 @@ vi.mock("@/api/generated/sdk.gen", () => ({
 }));
 
 const getRatios = vi.mocked(getRatiosApiV1CompaniesTickerRatiosGet);
+const getMultiples = vi.mocked(getMultiplesApiV1CompaniesTickerMultiplesGet);
 const getFlags = vi.mocked(getFlagsApiV1CompaniesTickerFlagsGet);
 const getCapital = vi.mocked(getCapitalAllocationApiV1CompaniesTickerCapitalAllocationGet);
 const listItems = vi.mocked(listOffBalanceItemsApiV1CompaniesTickerOffBalanceItemsGet);
@@ -124,6 +130,15 @@ const queries = [
     args: { path: { ticker: "DE" }, query: { freq: "ttm", basis: "normalized" } },
     body: ratios(),
     bad: [{ periods: [] }, "<html></html>"],
+  },
+  {
+    name: "multiplesQueryOptions",
+    options: () => multiplesQueryOptions("AAPL", "normalized"),
+    key: [...multiplesKey("AAPL"), "normalized"],
+    sdk: getMultiples,
+    args: { path: { ticker: "AAPL" }, query: { basis: "normalized" } },
+    body: multiples(),
+    bad: [{ rows: "x" }, "<html></html>"],
   },
   {
     name: "flagsQueryOptions",
@@ -203,6 +218,12 @@ describe.each(queries)("$name", ({ options: makeOptions, key, sdk, args, body, b
     const err = await queryClient.fetchQuery(options()).catch((e) => e);
     expect(err).toBeInstanceOf(ApiError);
     expect(err).toMatchObject({ status, detail: "nope" });
+  });
+});
+
+describe("multiples key", () => {
+  it("sits under the ratios key, so an adjustment change reaches it", () => {
+    expect(multiplesKey("AAPL").slice(0, ratiosKey("AAPL").length)).toEqual(ratiosKey("AAPL"));
   });
 });
 
