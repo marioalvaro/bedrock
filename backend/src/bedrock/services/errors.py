@@ -71,6 +71,22 @@ class InvalidCompsSet(Exception):
     """The comps set breaks a rule (name, members); the message says which."""
 
 
+class GuidanceNotFound(Exception):
+    """No guidance entry with this id on the company (another company's id counts as unknown)."""
+
+
+class InvalidGuidance(Exception):
+    """The guidance entry breaks a rule (metric, period, range); the message says which."""
+
+
+class NoteNotFound(Exception):
+    """No note with this id on the company (another company's id counts as unknown)."""
+
+
+class InvalidNote(Exception):
+    """The note breaks a rule (body, link, filter); the message says which."""
+
+
 class InvalidImport(Exception):
     """A segment import has errors; nothing was written. `issues` lists every one."""
 
@@ -97,7 +113,11 @@ DOMAIN_ERRORS = (
     InvalidSeries,
     CompsSetNotFound,
     InvalidCompsSet,
+    GuidanceNotFound,
+    InvalidGuidance,
+    InvalidNote,
     InvalidImport,
+    NoteNotFound,
     UnknownTicker,
     SourceNotConfigured,
     SourceUnavailable,
@@ -125,6 +145,10 @@ def user_message(error: Exception) -> str:
             return f"No such segment or KPI series: {error}"
         case CompsSetNotFound():
             return f"No such comps set: {error}"
+        case GuidanceNotFound():
+            return f"No such guidance entry: {error}"
+        case NoteNotFound():
+            return f"No such note: {error}"
         case CompanyExists():
             return f"{error} is already followed"
         case SourceNotConfigured():
