@@ -13,10 +13,13 @@ from bedrock.services.errors import (
     InvalidAdjustment,
     InvalidCustomRule,
     InvalidFormula,
+    InvalidImport,
     InvalidOffBalanceItem,
+    InvalidSeries,
     InvalidThreshold,
     OffBalanceItemNotFound,
     RuleNotFound,
+    SeriesNotFound,
     user_message,
 )
 
@@ -33,6 +36,8 @@ _STATUS: dict[type[Exception], int] = {
     CustomRuleNotFound: 404,
     InvalidFormula: 422,
     InvalidCustomRule: 422,
+    SeriesNotFound: 404,
+    InvalidSeries: 422,
     CompanyExists: 409,
     SourceNotConfigured: 503,
     SourceUnavailable: 502,
@@ -45,5 +50,18 @@ def register_error_handlers(app: FastAPI) -> None:
             status_code=_STATUS[type(error)], content={"detail": user_message(error)}
         )
 
+    async def handle_import(_: Request, error: Exception) -> JSONResponse:
+        assert isinstance(error, InvalidImport)
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": user_message(error),
+                "errors": [
+                    {"row": i.row, "column": i.column, "message": i.message} for i in error.issues
+                ],
+            },
+        )
+
     for error_type in _STATUS:
         app.add_exception_handler(error_type, handle)
+    app.add_exception_handler(InvalidImport, handle_import)

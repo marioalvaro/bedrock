@@ -1,4 +1,5 @@
 from bedrock.ingest.protocol import SourceNotConfigured, SourceUnavailable, UnknownTicker
+from bedrock.statements.segments import ImportIssue
 
 
 class CompanyNotFound(Exception):
@@ -53,6 +54,23 @@ class InvalidOffBalanceItem(Exception):
     """The off-balance-sheet item breaks a rule; the message says which."""
 
 
+class SeriesNotFound(Exception):
+    """No segment or KPI series with this id on the company (another company's id counts as
+    unknown)."""
+
+
+class InvalidSeries(Exception):
+    """The series or one of its values breaks a rule; the message says which."""
+
+
+class InvalidImport(Exception):
+    """A segment import has errors; nothing was written. `issues` lists every one."""
+
+    def __init__(self, issues: list[ImportIssue]) -> None:
+        super().__init__(f"The import has {len(issues)} error(s)")
+        self.issues = issues
+
+
 # What a use-case can raise on purpose; the API maps these to statuses, the CLI prints them.
 DOMAIN_ERRORS = (
     CompanyNotFound,
@@ -67,6 +85,9 @@ DOMAIN_ERRORS = (
     InvalidCustomRule,
     OffBalanceItemNotFound,
     InvalidOffBalanceItem,
+    SeriesNotFound,
+    InvalidSeries,
+    InvalidImport,
     UnknownTicker,
     SourceNotConfigured,
     SourceUnavailable,
@@ -90,6 +111,8 @@ def user_message(error: Exception) -> str:
             return f"No such custom quality-of-earnings rule: {error}"
         case OffBalanceItemNotFound():
             return f"No such off-balance-sheet item: {error}"
+        case SeriesNotFound():
+            return f"No such segment or KPI series: {error}"
         case CompanyExists():
             return f"{error} is already followed"
         case SourceNotConfigured():

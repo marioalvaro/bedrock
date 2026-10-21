@@ -522,6 +522,40 @@ export type HttpValidationError = {
 };
 
 /**
+ * ImportErrorOut
+ */
+export type ImportErrorOut = {
+    /**
+     * Detail
+     */
+    detail: string;
+    /**
+     * Errors
+     */
+    errors: Array<ImportIssueOut>;
+};
+
+/**
+ * ImportIssueOut
+ *
+ * One entry of the 422 body's `errors`; documented here for the OpenAPI client.
+ */
+export type ImportIssueOut = {
+    /**
+     * Column
+     */
+    column: number | null;
+    /**
+     * Message
+     */
+    message: string;
+    /**
+     * Row
+     */
+    row: number;
+};
+
+/**
  * LoginRequest
  */
 export type LoginRequest = {
@@ -1071,6 +1105,248 @@ export type RowOut = {
      * Yoy
      */
     yoy: Array<string | null>;
+};
+
+/**
+ * SegmentBlockOut
+ */
+export type SegmentBlockOut = {
+    /**
+     * Dimension
+     */
+    dimension: string;
+    /**
+     * Metric
+     */
+    metric: string | null;
+    /**
+     * Series
+     */
+    series: Array<SegmentSeriesRowOut>;
+    /**
+     * Unallocated
+     */
+    unallocated: Array<string | null> | null;
+};
+
+/**
+ * SegmentImportIn
+ */
+export type SegmentImportIn = {
+    /**
+     * Dimension
+     */
+    dimension: 'business' | 'geo' | 'kpi';
+    /**
+     * Scale
+     */
+    scale: 'units' | 'K' | 'M' | 'B';
+    /**
+     * Text
+     */
+    text: string;
+};
+
+/**
+ * SegmentImportOut
+ */
+export type SegmentImportOut = {
+    /**
+     * Series Created
+     */
+    series_created: number;
+    /**
+     * Values Created
+     */
+    values_created: number;
+    /**
+     * Values Updated
+     */
+    values_updated: number;
+};
+
+/**
+ * SegmentPeriodOut
+ *
+ * Like `PeriodOut`, but the dates are null for a period that has only segment values.
+ */
+export type SegmentPeriodOut = {
+    /**
+     * Fiscal Period
+     */
+    fiscal_period: string;
+    /**
+     * Fiscal Year
+     */
+    fiscal_year: number;
+    /**
+     * Is Forecast
+     */
+    is_forecast: boolean;
+    /**
+     * Key
+     */
+    key: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Period End
+     */
+    period_end: string | null;
+    /**
+     * Period Start
+     */
+    period_start: string | null;
+};
+
+/**
+ * SegmentSeriesIn
+ */
+export type SegmentSeriesIn = {
+    /**
+     * Dimension
+     */
+    dimension: 'business' | 'geo' | 'kpi';
+    /**
+     * Metric
+     */
+    metric: string;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Unit
+     */
+    unit: 'USD' | 'pct' | 'count' | 'USD_per_unit';
+};
+
+/**
+ * SegmentSeriesOut
+ */
+export type SegmentSeriesOut = {
+    /**
+     * Dimension
+     */
+    dimension: string;
+    /**
+     * Display Order
+     */
+    display_order: number;
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Metric
+     */
+    metric: string;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Unit
+     */
+    unit: string;
+};
+
+/**
+ * SegmentSeriesRowOut
+ */
+export type SegmentSeriesRowOut = {
+    /**
+     * Display Order
+     */
+    display_order: number;
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Metric
+     */
+    metric: string;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Unit
+     */
+    unit: string;
+    /**
+     * Values
+     */
+    values: Array<string | null>;
+};
+
+/**
+ * SegmentSeriesUpdate
+ *
+ * Dimension, metric and unit are fixed once created.
+ */
+export type SegmentSeriesUpdate = {
+    /**
+     * Display Order
+     */
+    display_order: number;
+    /**
+     * Name
+     */
+    name: string;
+};
+
+/**
+ * SegmentValueIn
+ */
+export type SegmentValueIn = {
+    /**
+     * Fiscal Period
+     */
+    fiscal_period: 'FY' | 'Q1' | 'Q2' | 'Q3' | 'Q4';
+    /**
+     * Fiscal Year
+     */
+    fiscal_year: number;
+    /**
+     * Value
+     */
+    value: number | string | null;
+};
+
+/**
+ * SegmentValuesIn
+ */
+export type SegmentValuesIn = {
+    /**
+     * Values
+     */
+    values: Array<SegmentValueIn>;
+};
+
+/**
+ * SegmentsOut
+ */
+export type SegmentsOut = {
+    /**
+     * Blocks
+     */
+    blocks: Array<SegmentBlockOut>;
+    /**
+     * Freq
+     */
+    freq: string;
+    /**
+     * Periods
+     */
+    periods: Array<SegmentPeriodOut>;
+    /**
+     * Ticker
+     */
+    ticker: string;
 };
 
 /**
@@ -1868,6 +2144,203 @@ export type RefreshApiV1CompaniesTickerRefreshPostResponses = {
 };
 
 export type RefreshApiV1CompaniesTickerRefreshPostResponse = RefreshApiV1CompaniesTickerRefreshPostResponses[keyof RefreshApiV1CompaniesTickerRefreshPostResponses];
+
+export type CreateSeriesApiV1CompaniesTickerSegmentSeriesPostData = {
+    body: SegmentSeriesIn;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/segment-series';
+};
+
+export type CreateSeriesApiV1CompaniesTickerSegmentSeriesPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateSeriesApiV1CompaniesTickerSegmentSeriesPostError = CreateSeriesApiV1CompaniesTickerSegmentSeriesPostErrors[keyof CreateSeriesApiV1CompaniesTickerSegmentSeriesPostErrors];
+
+export type CreateSeriesApiV1CompaniesTickerSegmentSeriesPostResponses = {
+    /**
+     * Successful Response
+     */
+    201: SegmentSeriesOut;
+};
+
+export type CreateSeriesApiV1CompaniesTickerSegmentSeriesPostResponse = CreateSeriesApiV1CompaniesTickerSegmentSeriesPostResponses[keyof CreateSeriesApiV1CompaniesTickerSegmentSeriesPostResponses];
+
+export type DeleteSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdDeleteData = {
+    body?: never;
+    path: {
+        /**
+         * Series Id
+         */
+        series_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/segment-series/{series_id}';
+};
+
+export type DeleteSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdDeleteErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeleteSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdDeleteError = DeleteSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdDeleteErrors[keyof DeleteSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdDeleteErrors];
+
+export type DeleteSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeleteSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdDeleteResponse = DeleteSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdDeleteResponses[keyof DeleteSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdDeleteResponses];
+
+export type UpdateSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdPutData = {
+    body: SegmentSeriesUpdate;
+    path: {
+        /**
+         * Series Id
+         */
+        series_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/segment-series/{series_id}';
+};
+
+export type UpdateSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdPutErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdPutError = UpdateSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdPutErrors[keyof UpdateSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdPutErrors];
+
+export type UpdateSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdPutResponses = {
+    /**
+     * Successful Response
+     */
+    200: SegmentSeriesOut;
+};
+
+export type UpdateSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdPutResponse = UpdateSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdPutResponses[keyof UpdateSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdPutResponses];
+
+export type SetValuesApiV1CompaniesTickerSegmentSeriesSeriesIdValuesPutData = {
+    body: SegmentValuesIn;
+    path: {
+        /**
+         * Series Id
+         */
+        series_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/segment-series/{series_id}/values';
+};
+
+export type SetValuesApiV1CompaniesTickerSegmentSeriesSeriesIdValuesPutErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SetValuesApiV1CompaniesTickerSegmentSeriesSeriesIdValuesPutError = SetValuesApiV1CompaniesTickerSegmentSeriesSeriesIdValuesPutErrors[keyof SetValuesApiV1CompaniesTickerSegmentSeriesSeriesIdValuesPutErrors];
+
+export type SetValuesApiV1CompaniesTickerSegmentSeriesSeriesIdValuesPutResponses = {
+    /**
+     * Successful Response
+     */
+    200: SegmentSeriesOut;
+};
+
+export type SetValuesApiV1CompaniesTickerSegmentSeriesSeriesIdValuesPutResponse = SetValuesApiV1CompaniesTickerSegmentSeriesSeriesIdValuesPutResponses[keyof SetValuesApiV1CompaniesTickerSegmentSeriesSeriesIdValuesPutResponses];
+
+export type GetSegmentsApiV1CompaniesTickerSegmentsGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: {
+        /**
+         * Freq
+         */
+        freq?: 'annual' | 'quarterly';
+    };
+    url: '/api/v1/companies/{ticker}/segments';
+};
+
+export type GetSegmentsApiV1CompaniesTickerSegmentsGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetSegmentsApiV1CompaniesTickerSegmentsGetError = GetSegmentsApiV1CompaniesTickerSegmentsGetErrors[keyof GetSegmentsApiV1CompaniesTickerSegmentsGetErrors];
+
+export type GetSegmentsApiV1CompaniesTickerSegmentsGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: SegmentsOut;
+};
+
+export type GetSegmentsApiV1CompaniesTickerSegmentsGetResponse = GetSegmentsApiV1CompaniesTickerSegmentsGetResponses[keyof GetSegmentsApiV1CompaniesTickerSegmentsGetResponses];
+
+export type ImportSegmentsApiV1CompaniesTickerSegmentsImportPostData = {
+    body: SegmentImportIn;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/segments/import';
+};
+
+export type ImportSegmentsApiV1CompaniesTickerSegmentsImportPostErrors = {
+    /**
+     * Unprocessable Entity
+     */
+    422: ImportErrorOut;
+};
+
+export type ImportSegmentsApiV1CompaniesTickerSegmentsImportPostError = ImportSegmentsApiV1CompaniesTickerSegmentsImportPostErrors[keyof ImportSegmentsApiV1CompaniesTickerSegmentsImportPostErrors];
+
+export type ImportSegmentsApiV1CompaniesTickerSegmentsImportPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: SegmentImportOut;
+};
+
+export type ImportSegmentsApiV1CompaniesTickerSegmentsImportPostResponse = ImportSegmentsApiV1CompaniesTickerSegmentsImportPostResponses[keyof ImportSegmentsApiV1CompaniesTickerSegmentsImportPostResponses];
 
 export type GetStatementApiV1CompaniesTickerStatementsGetData = {
     body?: never;

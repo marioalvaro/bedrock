@@ -983,6 +983,58 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "ImportErrorOut": {
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/ImportIssueOut"
+            },
+            "title": "Errors",
+            "type": "array"
+          }
+        },
+        "required": [
+          "detail",
+          "errors"
+        ],
+        "title": "ImportErrorOut",
+        "type": "object"
+      },
+      "ImportIssueOut": {
+        "description": "One entry of the 422 body's `errors`; documented here for the OpenAPI client.",
+        "properties": {
+          "column": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "row": {
+            "title": "Row",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "row",
+          "column",
+          "message"
+        ],
+        "title": "ImportIssueOut",
+        "type": "object"
+      },
       "LoginRequest": {
         "properties": {
           "password": {
@@ -2075,6 +2127,415 @@
           "adjustable"
         ],
         "title": "RowOut",
+        "type": "object"
+      },
+      "SegmentBlockOut": {
+        "properties": {
+          "dimension": {
+            "title": "Dimension",
+            "type": "string"
+          },
+          "metric": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metric"
+          },
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/SegmentSeriesRowOut"
+            },
+            "title": "Series",
+            "type": "array"
+          },
+          "unallocated": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unallocated"
+          }
+        },
+        "required": [
+          "dimension",
+          "metric",
+          "series",
+          "unallocated"
+        ],
+        "title": "SegmentBlockOut",
+        "type": "object"
+      },
+      "SegmentImportIn": {
+        "properties": {
+          "dimension": {
+            "enum": [
+              "business",
+              "geo",
+              "kpi"
+            ],
+            "title": "Dimension",
+            "type": "string"
+          },
+          "scale": {
+            "enum": [
+              "units",
+              "K",
+              "M",
+              "B"
+            ],
+            "title": "Scale",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dimension",
+          "text",
+          "scale"
+        ],
+        "title": "SegmentImportIn",
+        "type": "object"
+      },
+      "SegmentImportOut": {
+        "properties": {
+          "series_created": {
+            "title": "Series Created",
+            "type": "integer"
+          },
+          "values_created": {
+            "title": "Values Created",
+            "type": "integer"
+          },
+          "values_updated": {
+            "title": "Values Updated",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "series_created",
+          "values_created",
+          "values_updated"
+        ],
+        "title": "SegmentImportOut",
+        "type": "object"
+      },
+      "SegmentPeriodOut": {
+        "description": "Like `PeriodOut`, but the dates are null for a period that has only segment values.",
+        "properties": {
+          "fiscal_period": {
+            "title": "Fiscal Period",
+            "type": "string"
+          },
+          "fiscal_year": {
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "is_forecast": {
+            "title": "Is Forecast",
+            "type": "boolean"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          },
+          "period_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "fiscal_year",
+          "fiscal_period",
+          "period_start",
+          "period_end",
+          "is_forecast"
+        ],
+        "title": "SegmentPeriodOut",
+        "type": "object"
+      },
+      "SegmentSeriesIn": {
+        "properties": {
+          "dimension": {
+            "enum": [
+              "business",
+              "geo",
+              "kpi"
+            ],
+            "title": "Dimension",
+            "type": "string"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "unit": {
+            "enum": [
+              "USD",
+              "pct",
+              "count",
+              "USD_per_unit"
+            ],
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dimension",
+          "name",
+          "metric",
+          "unit"
+        ],
+        "title": "SegmentSeriesIn",
+        "type": "object"
+      },
+      "SegmentSeriesOut": {
+        "properties": {
+          "dimension": {
+            "title": "Dimension",
+            "type": "string"
+          },
+          "display_order": {
+            "title": "Display Order",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "dimension",
+          "name",
+          "metric",
+          "unit",
+          "display_order"
+        ],
+        "title": "SegmentSeriesOut",
+        "type": "object"
+      },
+      "SegmentSeriesRowOut": {
+        "properties": {
+          "display_order": {
+            "title": "Display Order",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          },
+          "values": {
+            "items": {
+              "anyOf": [
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Values",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "metric",
+          "unit",
+          "display_order",
+          "values"
+        ],
+        "title": "SegmentSeriesRowOut",
+        "type": "object"
+      },
+      "SegmentSeriesUpdate": {
+        "description": "Dimension, metric and unit are fixed once created.",
+        "properties": {
+          "display_order": {
+            "title": "Display Order",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "display_order"
+        ],
+        "title": "SegmentSeriesUpdate",
+        "type": "object"
+      },
+      "SegmentValueIn": {
+        "properties": {
+          "fiscal_period": {
+            "enum": [
+              "FY",
+              "Q1",
+              "Q2",
+              "Q3",
+              "Q4"
+            ],
+            "title": "Fiscal Period",
+            "type": "string"
+          },
+          "fiscal_year": {
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "fiscal_year",
+          "fiscal_period",
+          "value"
+        ],
+        "title": "SegmentValueIn",
+        "type": "object"
+      },
+      "SegmentValuesIn": {
+        "properties": {
+          "values": {
+            "items": {
+              "$ref": "#/components/schemas/SegmentValueIn"
+            },
+            "title": "Values",
+            "type": "array"
+          }
+        },
+        "required": [
+          "values"
+        ],
+        "title": "SegmentValuesIn",
+        "type": "object"
+      },
+      "SegmentsOut": {
+        "properties": {
+          "blocks": {
+            "items": {
+              "$ref": "#/components/schemas/SegmentBlockOut"
+            },
+            "title": "Blocks",
+            "type": "array"
+          },
+          "freq": {
+            "title": "Freq",
+            "type": "string"
+          },
+          "periods": {
+            "items": {
+              "$ref": "#/components/schemas/SegmentPeriodOut"
+            },
+            "title": "Periods",
+            "type": "array"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticker",
+          "freq",
+          "periods",
+          "blocks"
+        ],
+        "title": "SegmentsOut",
         "type": "object"
       },
       "SourceOut": {
@@ -3272,6 +3733,330 @@
         "summary": "Refresh",
         "tags": [
           "companies"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/segment-series": {
+      "post": {
+        "operationId": "create_series_api_v1_companies__ticker__segment_series_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SegmentSeriesIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SegmentSeriesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Series",
+        "tags": [
+          "segments"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/segment-series/{series_id}": {
+      "delete": {
+        "operationId": "delete_series_api_v1_companies__ticker__segment_series__series_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "series_id",
+            "required": true,
+            "schema": {
+              "title": "Series Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Series",
+        "tags": [
+          "segments"
+        ]
+      },
+      "put": {
+        "operationId": "update_series_api_v1_companies__ticker__segment_series__series_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "series_id",
+            "required": true,
+            "schema": {
+              "title": "Series Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SegmentSeriesUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SegmentSeriesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Series",
+        "tags": [
+          "segments"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/segment-series/{series_id}/values": {
+      "put": {
+        "operationId": "set_values_api_v1_companies__ticker__segment_series__series_id__values_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "series_id",
+            "required": true,
+            "schema": {
+              "title": "Series Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SegmentValuesIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SegmentSeriesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Values",
+        "tags": [
+          "segments"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/segments": {
+      "get": {
+        "operationId": "get_segments_api_v1_companies__ticker__segments_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "freq",
+            "required": false,
+            "schema": {
+              "default": "annual",
+              "enum": [
+                "annual",
+                "quarterly"
+              ],
+              "title": "Freq",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SegmentsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Segments",
+        "tags": [
+          "segments"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/segments/import": {
+      "post": {
+        "operationId": "import_segments_api_v1_companies__ticker__segments_import_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SegmentImportIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SegmentImportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Import Segments",
+        "tags": [
+          "segments"
         ]
       }
     },
