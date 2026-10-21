@@ -63,6 +63,14 @@ class InvalidSeries(Exception):
     """The series or one of its values breaks a rule; the message says which."""
 
 
+class CompsSetNotFound(Exception):
+    """No comps set with this id on the company (another company's id counts as unknown)."""
+
+
+class InvalidCompsSet(Exception):
+    """The comps set breaks a rule (name, members); the message says which."""
+
+
 class InvalidImport(Exception):
     """A segment import has errors; nothing was written. `issues` lists every one."""
 
@@ -87,6 +95,8 @@ DOMAIN_ERRORS = (
     InvalidOffBalanceItem,
     SeriesNotFound,
     InvalidSeries,
+    CompsSetNotFound,
+    InvalidCompsSet,
     InvalidImport,
     UnknownTicker,
     SourceNotConfigured,
@@ -113,6 +123,8 @@ def user_message(error: Exception) -> str:
             return f"No such off-balance-sheet item: {error}"
         case SeriesNotFound():
             return f"No such segment or KPI series: {error}"
+        case CompsSetNotFound():
+            return f"No such comps set: {error}"
         case CompanyExists():
             return f"{error} is already followed"
         case SourceNotConfigured():

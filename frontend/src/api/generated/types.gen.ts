@@ -220,6 +220,20 @@ export type CellAdjustmentOut = {
 };
 
 /**
+ * CellCaveatOut
+ */
+export type CellCaveatOut = {
+    /**
+     * Text
+     */
+    text: string;
+    /**
+     * Ticker
+     */
+    ticker: string;
+};
+
+/**
  * CellDetailOut
  */
 export type CellDetailOut = {
@@ -340,6 +354,168 @@ export type CompanyListItem = {
      * Ticker
      */
     ticker: string;
+};
+
+/**
+ * ComparedCompanyOut
+ */
+export type ComparedCompanyOut = {
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Price Date
+     */
+    price_date: string | null;
+    /**
+     * Ticker
+     */
+    ticker: string;
+    /**
+     * Ttm Period
+     */
+    ttm_period: string | null;
+};
+
+/**
+ * CompsMemberOut
+ */
+export type CompsMemberOut = {
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Ticker
+     */
+    ticker: string;
+};
+
+/**
+ * CompsOut
+ */
+export type CompsOut = {
+    /**
+     * Basis
+     */
+    basis: 'reported' | 'normalized';
+    /**
+     * Companies
+     */
+    companies: Array<ComparedCompanyOut>;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Rows
+     */
+    rows: Array<CompsRowOut>;
+    /**
+     * Set Id
+     */
+    set_id: number;
+    /**
+     * Ticker
+     */
+    ticker: string;
+};
+
+/**
+ * CompsRowOut
+ *
+ * `pct` values are fractions. `peers` is aligned with `CompsOut.companies[1:]`; `n` counts
+ * the peer values the statistics use. `target_vs_median` is a ratio minus one for `x` and
+ * `days` rows and a difference for `pct` rows; `target_rank` is 1 for the highest.
+ */
+export type CompsRowOut = {
+    /**
+     * Category
+     */
+    category: 'Valuation' | 'Profitability' | 'Solvency' | 'Efficiency' | 'Growth';
+    /**
+     * Caveats
+     */
+    caveats: Array<CellCaveatOut>;
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * N
+     */
+    n: number;
+    /**
+     * Peer Max
+     */
+    peer_max: string | null;
+    /**
+     * Peer Median
+     */
+    peer_median: string | null;
+    /**
+     * Peer Min
+     */
+    peer_min: string | null;
+    /**
+     * Peers
+     */
+    peers: Array<string | null>;
+    /**
+     * Target
+     */
+    target: string | null;
+    /**
+     * Target Rank
+     */
+    target_rank: number | null;
+    /**
+     * Target Vs Median
+     */
+    target_vs_median: string | null;
+    /**
+     * Unit
+     */
+    unit: 'pct' | 'x' | 'days' | 'USD/shares';
+};
+
+/**
+ * CompsSetIn
+ *
+ * `members` are tickers of followed companies; a PUT replaces them all.
+ */
+export type CompsSetIn = {
+    /**
+     * Members
+     */
+    members: Array<string>;
+    /**
+     * Name
+     */
+    name: string;
+};
+
+/**
+ * CompsSetOut
+ */
+export type CompsSetOut = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Members
+     */
+    members: Array<CompsMemberOut>;
+    /**
+     * Name
+     */
+    name: string;
 };
 
 /**
@@ -740,6 +916,36 @@ export type OffBalanceItemOut = {
      * Updated At
      */
     updated_at: string;
+};
+
+/**
+ * PeerSuggestionOut
+ */
+export type PeerSuggestionOut = {
+    /**
+     * In Set
+     */
+    in_set: boolean;
+    /**
+     * Market Cap
+     */
+    market_cap: string | null;
+    /**
+     * Match
+     */
+    match: 'industry' | 'industry group' | 'major group';
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Sic
+     */
+    sic: string;
+    /**
+     * Ticker
+     */
+    ticker: string;
 };
 
 /**
@@ -1814,6 +2020,175 @@ export type GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetResponse
 
 export type GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetResponse = GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetResponses[keyof GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetResponses];
 
+export type ListSetsApiV1CompaniesTickerCompsSetsGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/comps-sets';
+};
+
+export type ListSetsApiV1CompaniesTickerCompsSetsGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListSetsApiV1CompaniesTickerCompsSetsGetError = ListSetsApiV1CompaniesTickerCompsSetsGetErrors[keyof ListSetsApiV1CompaniesTickerCompsSetsGetErrors];
+
+export type ListSetsApiV1CompaniesTickerCompsSetsGetResponses = {
+    /**
+     * Response List Sets Api V1 Companies  Ticker  Comps Sets Get
+     *
+     * Successful Response
+     */
+    200: Array<CompsSetOut>;
+};
+
+export type ListSetsApiV1CompaniesTickerCompsSetsGetResponse = ListSetsApiV1CompaniesTickerCompsSetsGetResponses[keyof ListSetsApiV1CompaniesTickerCompsSetsGetResponses];
+
+export type CreateSetApiV1CompaniesTickerCompsSetsPostData = {
+    body: CompsSetIn;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/comps-sets';
+};
+
+export type CreateSetApiV1CompaniesTickerCompsSetsPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateSetApiV1CompaniesTickerCompsSetsPostError = CreateSetApiV1CompaniesTickerCompsSetsPostErrors[keyof CreateSetApiV1CompaniesTickerCompsSetsPostErrors];
+
+export type CreateSetApiV1CompaniesTickerCompsSetsPostResponses = {
+    /**
+     * Successful Response
+     */
+    201: CompsSetOut;
+};
+
+export type CreateSetApiV1CompaniesTickerCompsSetsPostResponse = CreateSetApiV1CompaniesTickerCompsSetsPostResponses[keyof CreateSetApiV1CompaniesTickerCompsSetsPostResponses];
+
+export type DeleteSetApiV1CompaniesTickerCompsSetsSetIdDeleteData = {
+    body?: never;
+    path: {
+        /**
+         * Set Id
+         */
+        set_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/comps-sets/{set_id}';
+};
+
+export type DeleteSetApiV1CompaniesTickerCompsSetsSetIdDeleteErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeleteSetApiV1CompaniesTickerCompsSetsSetIdDeleteError = DeleteSetApiV1CompaniesTickerCompsSetsSetIdDeleteErrors[keyof DeleteSetApiV1CompaniesTickerCompsSetsSetIdDeleteErrors];
+
+export type DeleteSetApiV1CompaniesTickerCompsSetsSetIdDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeleteSetApiV1CompaniesTickerCompsSetsSetIdDeleteResponse = DeleteSetApiV1CompaniesTickerCompsSetsSetIdDeleteResponses[keyof DeleteSetApiV1CompaniesTickerCompsSetsSetIdDeleteResponses];
+
+export type UpdateSetApiV1CompaniesTickerCompsSetsSetIdPutData = {
+    body: CompsSetIn;
+    path: {
+        /**
+         * Set Id
+         */
+        set_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/comps-sets/{set_id}';
+};
+
+export type UpdateSetApiV1CompaniesTickerCompsSetsSetIdPutErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateSetApiV1CompaniesTickerCompsSetsSetIdPutError = UpdateSetApiV1CompaniesTickerCompsSetsSetIdPutErrors[keyof UpdateSetApiV1CompaniesTickerCompsSetsSetIdPutErrors];
+
+export type UpdateSetApiV1CompaniesTickerCompsSetsSetIdPutResponses = {
+    /**
+     * Successful Response
+     */
+    200: CompsSetOut;
+};
+
+export type UpdateSetApiV1CompaniesTickerCompsSetsSetIdPutResponse = UpdateSetApiV1CompaniesTickerCompsSetsSetIdPutResponses[keyof UpdateSetApiV1CompaniesTickerCompsSetsSetIdPutResponses];
+
+export type GetComparisonApiV1CompaniesTickerCompsSetsSetIdComparisonGetData = {
+    body?: never;
+    path: {
+        /**
+         * Set Id
+         */
+        set_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: {
+        /**
+         * Basis
+         */
+        basis?: 'reported' | 'normalized';
+    };
+    url: '/api/v1/companies/{ticker}/comps-sets/{set_id}/comparison';
+};
+
+export type GetComparisonApiV1CompaniesTickerCompsSetsSetIdComparisonGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetComparisonApiV1CompaniesTickerCompsSetsSetIdComparisonGetError = GetComparisonApiV1CompaniesTickerCompsSetsSetIdComparisonGetErrors[keyof GetComparisonApiV1CompaniesTickerCompsSetsSetIdComparisonGetErrors];
+
+export type GetComparisonApiV1CompaniesTickerCompsSetsSetIdComparisonGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: CompsOut;
+};
+
+export type GetComparisonApiV1CompaniesTickerCompsSetsSetIdComparisonGetResponse = GetComparisonApiV1CompaniesTickerCompsSetsSetIdComparisonGetResponses[keyof GetComparisonApiV1CompaniesTickerCompsSetsSetIdComparisonGetResponses];
+
 export type ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetData = {
     body?: never;
     path: {
@@ -2075,6 +2450,43 @@ export type UpdateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdPutResp
 };
 
 export type UpdateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdPutResponse = UpdateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdPutResponses[keyof UpdateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdPutResponses];
+
+export type GetPeerSuggestionsApiV1CompaniesTickerPeerSuggestionsGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: {
+        /**
+         * Set Id
+         */
+        set_id?: number | null;
+    };
+    url: '/api/v1/companies/{ticker}/peer-suggestions';
+};
+
+export type GetPeerSuggestionsApiV1CompaniesTickerPeerSuggestionsGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetPeerSuggestionsApiV1CompaniesTickerPeerSuggestionsGetError = GetPeerSuggestionsApiV1CompaniesTickerPeerSuggestionsGetErrors[keyof GetPeerSuggestionsApiV1CompaniesTickerPeerSuggestionsGetErrors];
+
+export type GetPeerSuggestionsApiV1CompaniesTickerPeerSuggestionsGetResponses = {
+    /**
+     * Response Get Peer Suggestions Api V1 Companies  Ticker  Peer Suggestions Get
+     *
+     * Successful Response
+     */
+    200: Array<PeerSuggestionOut>;
+};
+
+export type GetPeerSuggestionsApiV1CompaniesTickerPeerSuggestionsGetResponse = GetPeerSuggestionsApiV1CompaniesTickerPeerSuggestionsGetResponses[keyof GetPeerSuggestionsApiV1CompaniesTickerPeerSuggestionsGetResponses];
 
 export type GetRatiosApiV1CompaniesTickerRatiosGetData = {
     body?: never;

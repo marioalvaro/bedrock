@@ -369,6 +369,24 @@
         "title": "CellAdjustmentOut",
         "type": "object"
       },
+      "CellCaveatOut": {
+        "properties": {
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticker",
+          "text"
+        ],
+        "title": "CellCaveatOut",
+        "type": "object"
+      },
       "CellDetailOut": {
         "properties": {
           "adjustments": {
@@ -646,6 +664,311 @@
           "revenue_growth"
         ],
         "title": "CompanyListItem",
+        "type": "object"
+      },
+      "ComparedCompanyOut": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "price_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Date"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          },
+          "ttm_period": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ttm Period"
+          }
+        },
+        "required": [
+          "ticker",
+          "name",
+          "price_date",
+          "ttm_period"
+        ],
+        "title": "ComparedCompanyOut",
+        "type": "object"
+      },
+      "CompsMemberOut": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticker",
+          "name"
+        ],
+        "title": "CompsMemberOut",
+        "type": "object"
+      },
+      "CompsOut": {
+        "properties": {
+          "basis": {
+            "enum": [
+              "reported",
+              "normalized"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
+          "companies": {
+            "items": {
+              "$ref": "#/components/schemas/ComparedCompanyOut"
+            },
+            "title": "Companies",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/CompsRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "set_id": {
+            "title": "Set Id",
+            "type": "integer"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticker",
+          "set_id",
+          "name",
+          "basis",
+          "companies",
+          "rows"
+        ],
+        "title": "CompsOut",
+        "type": "object"
+      },
+      "CompsRowOut": {
+        "description": "`pct` values are fractions. `peers` is aligned with `CompsOut.companies[1:]`; `n` counts\nthe peer values the statistics use. `target_vs_median` is a ratio minus one for `x` and\n`days` rows and a difference for `pct` rows; `target_rank` is 1 for the highest.",
+        "properties": {
+          "category": {
+            "enum": [
+              "Valuation",
+              "Profitability",
+              "Solvency",
+              "Efficiency",
+              "Growth"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "caveats": {
+            "items": {
+              "$ref": "#/components/schemas/CellCaveatOut"
+            },
+            "title": "Caveats",
+            "type": "array"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "peer_max": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Peer Max"
+          },
+          "peer_median": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Peer Median"
+          },
+          "peer_min": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Peer Min"
+          },
+          "peers": {
+            "items": {
+              "anyOf": [
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Peers",
+            "type": "array"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "target_rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Rank"
+          },
+          "target_vs_median": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Vs Median"
+          },
+          "unit": {
+            "enum": [
+              "pct",
+              "x",
+              "days",
+              "USD/shares"
+            ],
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "label",
+          "category",
+          "unit",
+          "target",
+          "peers",
+          "peer_median",
+          "peer_min",
+          "peer_max",
+          "n",
+          "target_vs_median",
+          "target_rank",
+          "caveats"
+        ],
+        "title": "CompsRowOut",
+        "type": "object"
+      },
+      "CompsSetIn": {
+        "description": "`members` are tickers of followed companies; a PUT replaces them all.",
+        "properties": {
+          "members": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Members",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "members"
+        ],
+        "title": "CompsSetIn",
+        "type": "object"
+      },
+      "CompsSetOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/CompsMemberOut"
+            },
+            "title": "Members",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "members"
+        ],
+        "title": "CompsSetOut",
         "type": "object"
       },
       "CorporateActionOut": {
@@ -1400,6 +1723,57 @@
           "updated_at"
         ],
         "title": "OffBalanceItemOut",
+        "type": "object"
+      },
+      "PeerSuggestionOut": {
+        "properties": {
+          "in_set": {
+            "title": "In Set",
+            "type": "boolean"
+          },
+          "market_cap": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Market Cap"
+          },
+          "match": {
+            "enum": [
+              "industry",
+              "industry group",
+              "major group"
+            ],
+            "title": "Match",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "sic": {
+            "title": "Sic",
+            "type": "string"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticker",
+          "name",
+          "sic",
+          "match",
+          "market_cap",
+          "in_set"
+        ],
+        "title": "PeerSuggestionOut",
         "type": "object"
       },
       "PeriodOut": {
@@ -3227,6 +3601,270 @@
         ]
       }
     },
+    "/api/v1/companies/{ticker}/comps-sets": {
+      "get": {
+        "operationId": "list_sets_api_v1_companies__ticker__comps_sets_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CompsSetOut"
+                  },
+                  "title": "Response List Sets Api V1 Companies  Ticker  Comps Sets Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Sets",
+        "tags": [
+          "comps"
+        ]
+      },
+      "post": {
+        "operationId": "create_set_api_v1_companies__ticker__comps_sets_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompsSetIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompsSetOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Set",
+        "tags": [
+          "comps"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/comps-sets/{set_id}": {
+      "delete": {
+        "operationId": "delete_set_api_v1_companies__ticker__comps_sets__set_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "set_id",
+            "required": true,
+            "schema": {
+              "title": "Set Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Set",
+        "tags": [
+          "comps"
+        ]
+      },
+      "put": {
+        "operationId": "update_set_api_v1_companies__ticker__comps_sets__set_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "set_id",
+            "required": true,
+            "schema": {
+              "title": "Set Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompsSetIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompsSetOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Set",
+        "tags": [
+          "comps"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/comps-sets/{set_id}/comparison": {
+      "get": {
+        "operationId": "get_comparison_api_v1_companies__ticker__comps_sets__set_id__comparison_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "set_id",
+            "required": true,
+            "schema": {
+              "title": "Set Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "basis",
+            "required": false,
+            "schema": {
+              "default": "reported",
+              "enum": [
+                "reported",
+                "normalized"
+              ],
+              "title": "Basis",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Comparison",
+        "tags": [
+          "comps"
+        ]
+      }
+    },
     "/api/v1/companies/{ticker}/corporate-actions": {
       "get": {
         "operationId": "list_corporate_actions_api_v1_companies__ticker__corporate_actions_get",
@@ -3622,6 +4260,68 @@
         "summary": "Update Off Balance Item",
         "tags": [
           "analysis"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/peer-suggestions": {
+      "get": {
+        "operationId": "get_peer_suggestions_api_v1_companies__ticker__peer_suggestions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "set_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Set Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PeerSuggestionOut"
+                  },
+                  "title": "Response Get Peer Suggestions Api V1 Companies  Ticker  Peer Suggestions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Peer Suggestions",
+        "tags": [
+          "comps"
         ]
       }
     },
