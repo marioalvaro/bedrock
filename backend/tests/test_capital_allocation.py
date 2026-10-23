@@ -7,6 +7,7 @@ from decimal import Decimal
 import pytest
 
 from bedrock.analysis.capital_allocation import (
+    CAPITAL_METRICS,
     CapitalAllocationTable,
     CapitalRow,
     capital_allocation,
@@ -332,3 +333,8 @@ def test_aapl_net_share_change_is_split_adjusted() -> None:
     ]
     assert checked
     assert all(abs(v) < Decimal("0.1") for v in checked), checked
+
+
+def test_capital_metrics_are_the_row_codes_and_labels(annual: CapitalAllocationTable) -> None:
+    # Notes validate a capital link against this mapping.
+    assert CAPITAL_METRICS == {r.code: r.label for r in annual.rows}

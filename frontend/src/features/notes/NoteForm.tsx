@@ -6,13 +6,18 @@ import type { NoteIn, NoteOut } from "@/api/generated/types.gen";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { localIsoDate, useNow } from "@/lib/now";
 
-import { PERIODS, SELECT } from "./constants";
-import type { LineGroup } from "./lines";
+import { SELECT } from "./constants";
+import type { PeriodOptions } from "./periods";
+import type { SubjectGroup } from "./subjectGroups";
+import { parseSubjectKey, subjectKey } from "./subjects";
 
 // A link the form cannot change (a note added from a cell or a line sheet).
 export interface FixedLink {
   canonical_code: string | null;
+  metric_kind?: NonNullable<NoteIn["metric_kind"]>; // omitted for a line link
+  metric_code?: string;
   fiscal_year: number | null;
   fiscal_period: FiscalPeriod | null;
   description: string; // "Revenue · FY2024"
@@ -21,42 +26,93 @@ export interface FixedLink {
 interface NoteFormProps {
   ticker: string;
   editing: NoteOut | null;
-  lines?: LineGroup[]; // for the line select; unused with a fixed link
+  subjects?: SubjectGroup[]; // for the subject select; unused with a fixed link
+  periods?: PeriodOptions; // for the year and period selects; unused with a fixed link
   fixedLink?: FixedLink;
+  embedded?: boolean; // inside an already padded sheet: no padding or rule of its own
   onDone: () => void;
 }
 
+const NO_PERIODS: PeriodOptions = { loaded: false, years: [], periodsOf: () => [] };
+
+// The select value of a note's subject: its line or metric, or "" for none.
+function subjectOf(note: NoteOut): string {
+  if (note.metric_kind && note.metric_code) return subjectKey(note.metric_kind, note.metric_code);
+  return note.canonical_code ? subjectKey("line", note.canonical_code) : "";
+}
+
 /** Writes or edits a note: Markdown body, date, and an optional line / fiscal period link. */
-export function NoteForm({ ticker, editing, lines = [], fixedLink, onDone }: NoteFormProps) {
+export function NoteForm({
+  ticker,
+  editing,
+  subjects = [],
+  periods = NO_PERIODS,
+  fixedLink,
+  embedded = false,
+  onDone,
+}: NoteFormProps) {
   const create = useCreateNote(ticker);
   const update = useUpdateNote(ticker);
   const [body, setBody] = useState(editing?.body_md ?? "");
-  const [date, setDate] = useState(editing?.note_date ?? "");
-  const [code, setCode] = useState(editing?.canonical_code ?? "");
+  const now = useNow();
+  const [date, setDate] = useState(editing?.note_date ?? localIsoDate(now));
+  const [subject, setSubject] = useState(editing ? subjectOf(editing) : "");
   const [year, setYear] = useState(editing?.fiscal_year?.toString() ?? "");
   const [period, setPeriod] = useState<string>(editing?.fiscal_period ?? "");
   const [error, setError] = useState<string | null>(null);
   const pending = create.isPending || update.isPending;
+  // A stored year the company has no statements for stays selectable, flagged, so the select
+  // never shows a different year than the one that would be saved.
+  const unknownYear = periods.loaded && year !== "" && !periods.years.includes(Number(year));
+  const periodChoices = unknownYear
+    ? [period].filter((p) => p !== "")
+    : year === ""
+      ? []
+      : periods.periodsOf(Number(year));
+
+  // A stored subject that is no longer listed (a deleted custom rule) stays selectable, so the
+  // select never shows a different subject than the one that would be saved.
+  const storedOnly =
+    editing !== null &&
+    subject !== "" &&
+    subject === subjectOf(editing) &&
+    !subjects.some((group) => group.options.some((entry) => entry.value === subject)) &&
+    subjects.length > 0;
+
+  function pickYear(next: string) {
+    setYear(next);
+    if (next === "" || !periods.periodsOf(Number(next)).includes(period as FiscalPeriod)) {
+      setPeriod("");
+    }
+  }
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
     if (body.trim() === "") return setError("Enter a note");
-    let link: Pick<NoteIn, "canonical_code" | "fiscal_year" | "fiscal_period">;
+    let link: Pick<
+      NoteIn,
+      "canonical_code" | "metric_kind" | "metric_code" | "fiscal_year" | "fiscal_period"
+    >;
     if (fixedLink) {
       link = {
         canonical_code: fixedLink.canonical_code,
+        ...(fixedLink.metric_kind && {
+          metric_kind: fixedLink.metric_kind,
+          metric_code: fixedLink.metric_code,
+        }),
         fiscal_year: fixedLink.fiscal_year,
         fiscal_period: fixedLink.fiscal_period,
       };
     } else {
-      const yearText = year.trim();
-      if ((yearText === "") !== (period === "")) {
+      if ((year === "") !== (period === "")) {
         return setError("Pick both a fiscal year and a period");
       }
-      if (yearText !== "" && !/^\d{4}$/.test(yearText)) return setError("Enter a four-digit year");
+      const picked = parseSubjectKey(subject);
       link = {
-        canonical_code: code === "" ? null : code,
-        fiscal_year: yearText === "" ? null : Number(yearText),
+        canonical_code: picked?.kind === "line" ? picked.code : null,
+        metric_kind: picked && picked.kind !== "line" ? picked.kind : null,
+        metric_code: picked && picked.kind !== "line" ? picked.code : null,
+        fiscal_year: year === "" ? null : Number(year),
         fiscal_period: period === "" ? null : (period as FiscalPeriod),
       };
     }
@@ -71,7 +127,11 @@ export function NoteForm({ ticker, editing, lines = [], fixedLink, onDone }: Not
   }
 
   return (
-    <form onSubmit={submit} className="border-border space-y-2 border-b px-4 py-3" noValidate>
+    <form
+      onSubmit={submit}
+      className={embedded ? "mt-2 space-y-2" : "border-border space-y-2 border-b px-4 py-3"}
+      noValidate
+    >
       <div className="space-y-1">
         <Label htmlFor="note-body">Note</Label>
         <textarea
@@ -100,19 +160,24 @@ export function NoteForm({ ticker, editing, lines = [], fixedLink, onDone }: Not
         ) : (
           <>
             <div className="space-y-1">
-              <Label htmlFor="note-line">Line</Label>
+              <Label htmlFor="note-subject">Subject</Label>
               <select
-                id="note-line"
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
+                id="note-subject"
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
                 className={SELECT}
               >
                 <option value="">None</option>
-                {lines.map((group) => (
-                  <optgroup key={group.statement} label={group.statement}>
-                    {group.lines.map((line) => (
-                      <option key={line.code} value={line.code}>
-                        {line.label}
+                {storedOnly && (
+                  <option value={subject}>
+                    {editing?.label ?? editing?.metric_code ?? subject}
+                  </option>
+                )}
+                {subjects.map((group) => (
+                  <optgroup key={group.group} label={group.group}>
+                    {group.options.map((entry) => (
+                      <option key={entry.value} value={entry.value}>
+                        {entry.label}
                       </option>
                     ))}
                   </optgroup>
@@ -121,12 +186,20 @@ export function NoteForm({ ticker, editing, lines = [], fixedLink, onDone }: Not
             </div>
             <div className="space-y-1">
               <Label htmlFor="note-year">Fiscal year</Label>
-              <Input
+              <select
                 id="note-year"
-                type="number"
                 value={year}
-                onChange={(e) => setYear(e.target.value)}
-              />
+                onChange={(e) => pickYear(e.target.value)}
+                className={SELECT}
+              >
+                <option value="">None</option>
+                {unknownYear && <option value={year}>{year} (no statements)</option>}
+                {periods.years.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="space-y-1">
               <Label htmlFor="note-period">Period</Label>
@@ -134,10 +207,11 @@ export function NoteForm({ ticker, editing, lines = [], fixedLink, onDone }: Not
                 id="note-period"
                 value={period}
                 onChange={(e) => setPeriod(e.target.value)}
+                disabled={year === ""}
                 className={SELECT}
               >
                 <option value="">None</option>
-                {PERIODS.map((p) => (
+                {periodChoices.map((p) => (
                   <option key={p} value={p}>
                     {p}
                   </option>

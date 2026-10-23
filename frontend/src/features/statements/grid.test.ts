@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { PeriodOut, StatementOut } from "@/api/generated/types.gen";
-import { noteLinks } from "@/test/context";
+import { noteLink, noteLinks } from "@/test/context";
 import { balanceStatement, incomeStatement } from "@/test/statements";
 
 import {
@@ -537,7 +537,7 @@ describe("note markers", () => {
 
   it("marks a quarter cell", () => {
     const quarterly = noteIndex([
-      { canonical_code: "revenue", fiscal_year: 2024, fiscal_period: "Q4", count: 1 },
+      noteLink({ canonical_code: "revenue", fiscal_year: 2024, fiscal_period: "Q4" }),
     ]);
     expect(
       cellNoteCount(quarterly, revenue, { ...fy2024, key: "Q42024", fiscal_period: "Q4" }),
@@ -550,9 +550,7 @@ describe("note markers", () => {
   });
 
   it("ignores period-only links", () => {
-    const periodOnly = noteIndex([
-      { canonical_code: null, fiscal_year: 2024, fiscal_period: "FY", count: 4 },
-    ]);
+    const periodOnly = noteIndex([noteLink({ fiscal_year: 2024, fiscal_period: "FY", count: 4 })]);
     expect(cellNoteCount(periodOnly, revenue, fy2024)).toBe(0);
   });
 

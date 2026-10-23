@@ -1,14 +1,29 @@
 import { useQuery } from "@tanstack/react-query";
-import type { CellClassParams, ColDef, ProcessCellForExportParams } from "ag-grid-community";
+import type {
+  CellClassParams,
+  CellClickedEvent,
+  ColDef,
+  ProcessCellForExportParams,
+} from "ag-grid-community";
 import { Download } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 
 import { capitalAllocationQueryOptions, type AnalysisFreq } from "@/api/analysis";
-import type { CapitalAllocationOut } from "@/api/generated/types.gen";
+import type { CapitalAllocationOut, PeriodOut } from "@/api/generated/types.gen";
 import { DataGrid, type DataGridHandle } from "@/components/DataGrid";
 import { UnitToggle } from "@/components/UnitToggle";
 import { Button } from "@/components/ui/button";
 import { Toggle } from "@/components/ui/toggle";
+import { NoteMarker } from "@/features/notes/NoteMarker";
+import { SubjectNotesSheet } from "@/features/notes/SubjectNotesSheet";
+import {
+  cellNotes,
+  cellTarget,
+  subjectNotes,
+  type NoteIndex,
+  type SubjectTarget,
+} from "@/features/notes/subjects";
+import { useNoteIndex } from "@/features/notes/useNoteIndex";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { downloadText } from "@/lib/download";
 import {
@@ -71,6 +86,11 @@ function toGridRows(data: CapitalAllocationOut, showPercents: boolean): GridRow[
   });
 }
 
+// Notes sit on a capital line's FY or quarter cell: not on a "% of" sub-row, not on TTM.
+function notable(row: GridRow, period: PeriodOut): boolean {
+  return !row.isSub && !period.key.startsWith("TTM");
+}
+
 function periodValue(row: GridRow, index: number): string | null {
   return row.values[index] ?? null;
 }
@@ -89,7 +109,12 @@ function csvCell(row: GridRow, index: number, scale: Scale): string {
   return formatCsvValue(value, row.unit, scale);
 }
 
-function columnDefs(data: CapitalAllocationOut, scale: Scale): ColDef<GridRow>[] {
+function columnDefs(
+  data: CapitalAllocationOut,
+  scale: Scale,
+  notes: NoteIndex,
+  onSubjectNotes: (row: GridRow) => void,
+): ColDef<GridRow>[] {
   const labelColumn: ColDef<GridRow> = {
     colId: LABEL_COLUMN,
     headerName: scaleLabel("USD", scale),
@@ -108,6 +133,9 @@ function columnDefs(data: CapitalAllocationOut, scale: Scale): ColDef<GridRow>[]
           title={row.label}
         >
           <span className="truncate">{row.label}</span>
+          {!row.isSub && subjectNotes(notes, "capital", row.id) > 0 && (
+            <NoteMarker label={row.label} onClick={() => onSubjectNotes(row)} />
+          )}
           {hint && <span className="text-muted-foreground shrink-0">· {hint}</span>}
         </span>
       );
@@ -122,7 +150,18 @@ function columnDefs(data: CapitalAllocationOut, scale: Scale): ColDef<GridRow>[]
     headerClass: ["num", "ag-right-aligned-header"],
     valueGetter: ({ data: row }) => (row ? periodValue(row, index) : null),
     valueFormatter: ({ data: row }) => (row ? formatCell(row, index, scale) : ""),
-    cellClass: ["num", "ag-right-aligned-cell"],
+    cellClass: ({ data: row }: CellClassParams<GridRow>) => {
+      const classes = ["num", "ag-right-aligned-cell"];
+      if (row && notable(row, period)) classes.push("cursor-pointer", "hover:underline");
+      if (
+        row &&
+        notable(row, period) &&
+        cellNotes(notes, "capital", row.id, period.fiscal_year, period.fiscal_period) > 0
+      ) {
+        classes.push("has-note");
+      }
+      return classes;
+    },
   }));
 
   return [labelColumn, ...periodColumns];
@@ -141,12 +180,28 @@ export function CapitalView({ ticker }: CapitalViewProps) {
   const [showPercents, setShowPercents] = useState(false);
   const scale = useScale();
   const grid = useRef<DataGridHandle>(null);
+  const notes = useNoteIndex(ticker);
+  const [target, setTarget] = useState<SubjectTarget | null>(null);
 
   const { data, isPending, isError } = useQuery(capitalAllocationQueryOptions(ticker, freq));
 
   const rows = useMemo(() => (data ? toGridRows(data, showPercents) : []), [data, showPercents]);
-  const columns = useMemo(() => (data ? columnDefs(data, scale) : []), [data, scale]);
+  const columns = useMemo(
+    () =>
+      data
+        ? columnDefs(data, scale, notes, (row) =>
+            setTarget({ kind: "capital", code: row.id, label: row.label }),
+          )
+        : [],
+    [data, scale, notes],
+  );
   const empty = data !== undefined && (data.rows.length === 0 || data.periods.length === 0);
+
+  function openCell({ data: row, column }: CellClickedEvent<GridRow>) {
+    const period = data?.periods.find((p) => p.key === column.getColId());
+    if (!row || !period || !notable(row, period)) return;
+    setTarget(cellTarget("capital", row.id, row.label, period));
+  }
 
   function exportCsv() {
     if (!data) return;
@@ -216,8 +271,10 @@ export function CapitalView({ ticker }: CapitalViewProps) {
           rowData={rows}
           columnDefs={columns}
           getRowId={(row) => row.id}
+          onCellClicked={openCell}
         />
       )}
+      <SubjectNotesSheet ticker={ticker} target={target} onClose={() => setTarget(null)} />
     </div>
   );
 }

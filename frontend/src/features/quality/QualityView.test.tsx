@@ -3,17 +3,29 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getFlagsApiV1CompaniesTickerFlagsGet } from "@/api/generated/sdk.gen";
+import {
+  createNoteApiV1CompaniesTickerNotesPost,
+  getFlagsApiV1CompaniesTickerFlagsGet,
+  listLinksApiV1CompaniesTickerNotesLinksGet,
+  listNotesApiV1CompaniesTickerNotesGet,
+} from "@/api/generated/sdk.gen";
 import { createQueryClient } from "@/lib/query-client";
 import { setScale } from "@/lib/scale";
 import { flags } from "@/test/analysis";
+import { note, noteLink } from "@/test/context";
 import { errorResult, okResult } from "@/test/responses";
 
 import { QualityView } from "./QualityView";
 
 vi.mock("@/api/generated/sdk.gen", () => ({
   getFlagsApiV1CompaniesTickerFlagsGet: vi.fn(),
+  listLinksApiV1CompaniesTickerNotesLinksGet: vi.fn(),
+  listNotesApiV1CompaniesTickerNotesGet: vi.fn(),
+  createNoteApiV1CompaniesTickerNotesPost: vi.fn(),
 }));
+const links = vi.mocked(listLinksApiV1CompaniesTickerNotesLinksGet);
+const listNotes = vi.mocked(listNotesApiV1CompaniesTickerNotesGet);
+const createNote = vi.mocked(createNoteApiV1CompaniesTickerNotesPost);
 
 vi.mock("./OffBalanceItems", () => ({
   OffBalanceItems: ({ ticker }: { ticker: string }) => (
@@ -37,9 +49,13 @@ const cell = (row: string, period: string) =>
 beforeEach(() => {
   setScale("M");
   vi.mocked(getFlagsApiV1CompaniesTickerFlagsGet).mockResolvedValue(okResult(flags()) as never);
+  links.mockResolvedValue(okResult([]) as never);
+  listNotes.mockResolvedValue(okResult([]) as never);
+  createNote.mockResolvedValue(okResult(note({ id: 9 }), 201) as never);
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.clearAllMocks();
 });
 
@@ -223,5 +239,118 @@ describe("QualityView", () => {
       expect(cell("custom_bad", "FY2023")).toHaveTextContent("—");
       expect(cell("custom_bad", "FY2024")).toHaveTextContent("—");
     });
+  });
+});
+
+describe("QualityView notes", () => {
+  const accruals = (overrides = {}) =>
+    noteLink({ metric_kind: "quality", metric_code: "accruals_ratio", ...overrides });
+
+  it("marks the cell of a rule note, keeping the severity colour", async () => {
+    links.mockResolvedValue(
+      okResult([
+        accruals({ fiscal_year: 2023, fiscal_period: "FY" }),
+        noteLink({
+          metric_kind: "ratio",
+          metric_code: "cfo_to_net_income",
+          fiscal_year: 2024,
+          fiscal_period: "FY",
+        }),
+      ]) as never,
+    );
+    renderView();
+    await screen.findByText("Accruals ratio");
+    await waitFor(() => expect(cell("accruals_ratio", "FY2023")).toHaveClass("has-note"));
+    expect(cell("accruals_ratio", "FY2023")).toHaveClass("flag-warn");
+    expect(cell("accruals_ratio", "FY2024")).not.toHaveClass("has-note");
+    expect(cell("cfo_to_net_income", "FY2024")).not.toHaveClass("has-note");
+  });
+
+  it("shows a label marker for a rule with notes and opens its notes", async () => {
+    links.mockResolvedValue(okResult([accruals()]) as never);
+    listNotes.mockResolvedValue(
+      okResult([
+        note({
+          id: 6,
+          body_md: "Watch the working-capital build",
+          canonical_code: null,
+          metric_kind: "quality",
+          metric_code: "accruals_ratio",
+          label: "Accruals ratio",
+          fiscal_year: null,
+          fiscal_period: null,
+        }),
+      ]) as never,
+    );
+    renderView();
+    await userEvent.click(await screen.findByRole("button", { name: "Notes on Accruals ratio" }));
+    expect(await screen.findByText("Watch the working-capital build")).toBeVisible();
+    expect(listNotes).toHaveBeenCalledWith({
+      path: { ticker: "AAPL" },
+      query: { metric_kind: "quality", metric_code: "accruals_ratio" },
+    });
+  });
+
+  it("opens a cell's notes on a click and adds a note linked to the rule and period", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 9, 23, 22, 30));
+    renderView();
+    await waitFor(() => expect(cell("accruals_ratio", "FY2024")).not.toBeNull());
+    await userEvent.click(cell("accruals_ratio", "FY2024"));
+    const sheet = await screen.findByRole("dialog");
+    expect(listNotes).toHaveBeenCalledWith({
+      path: { ticker: "AAPL" },
+      query: {
+        metric_kind: "quality",
+        metric_code: "accruals_ratio",
+        fiscal_year: 2024,
+        fiscal_period: "FY",
+      },
+    });
+    await userEvent.click(await within(sheet).findByRole("button", { name: "Add note" }));
+    expect(within(sheet).getByText("Linked to Accruals ratio · FY2024")).toBeVisible();
+    await userEvent.type(within(sheet).getByLabelText("Note"), "Alert: one-off");
+    await userEvent.click(within(sheet).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(createNote).toHaveBeenCalledTimes(1));
+    expect(createNote).toHaveBeenCalledWith({
+      path: { ticker: "AAPL" },
+      body: {
+        body_md: "Alert: one-off",
+        canonical_code: null,
+        metric_kind: "quality",
+        metric_code: "accruals_ratio",
+        fiscal_year: 2024,
+        fiscal_period: "FY",
+        note_date: "2026-10-23",
+      },
+    });
+  });
+
+  it("opens no sheet from the rule, definition or thresholds cells or a TTM column", async () => {
+    renderView();
+    await waitFor(() => expect(cell("accruals_ratio", "rule")).not.toBeNull());
+    for (const col of ["label", "rule", "thresholds"]) {
+      await userEvent.click(cell("accruals_ratio", col));
+    }
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    vi.mocked(getFlagsApiV1CompaniesTickerFlagsGet).mockResolvedValue(
+      okResult(
+        flags({
+          freq: "ttm",
+          periods: flags().periods.map((p) => ({ ...p, key: `TTM-${p.key}` })),
+        }),
+      ) as never,
+    );
+    await userEvent.click(screen.getByRole("radio", { name: "TTM" }));
+    await userEvent.click(await waitFor(() => cell("accruals_ratio", "TTM-FY2024")));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("keeps the grid without markers when the links cannot load", async () => {
+    links.mockResolvedValue(errorResult(500) as never);
+    renderView();
+    expect(await screen.findByText("Accruals ratio")).toBeVisible();
+    expect(document.querySelector(".has-note")).toBeNull();
   });
 });

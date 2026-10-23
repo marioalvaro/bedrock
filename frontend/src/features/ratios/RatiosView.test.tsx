@@ -1,15 +1,19 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  createNoteApiV1CompaniesTickerNotesPost,
   getMultiplesApiV1CompaniesTickerMultiplesGet,
   getRatiosApiV1CompaniesTickerRatiosGet,
+  listLinksApiV1CompaniesTickerNotesLinksGet,
+  listNotesApiV1CompaniesTickerNotesGet,
 } from "@/api/generated/sdk.gen";
 import { downloadText } from "@/lib/download";
 import { createQueryClient } from "@/lib/query-client";
 import { multiples, ratios } from "@/test/analysis";
+import { note, noteLink } from "@/test/context";
 import { errorResult, okResult } from "@/test/responses";
 
 import { RatiosView } from "./RatiosView";
@@ -17,7 +21,13 @@ import { RatiosView } from "./RatiosView";
 vi.mock("@/api/generated/sdk.gen", () => ({
   getRatiosApiV1CompaniesTickerRatiosGet: vi.fn(),
   getMultiplesApiV1CompaniesTickerMultiplesGet: vi.fn(),
+  listLinksApiV1CompaniesTickerNotesLinksGet: vi.fn(),
+  listNotesApiV1CompaniesTickerNotesGet: vi.fn(),
+  createNoteApiV1CompaniesTickerNotesPost: vi.fn(),
 }));
+const links = vi.mocked(listLinksApiV1CompaniesTickerNotesLinksGet);
+const listNotes = vi.mocked(listNotesApiV1CompaniesTickerNotesGet);
+const createNote = vi.mocked(createNoteApiV1CompaniesTickerNotesPost);
 vi.mock("@/lib/download", () => ({ downloadText: vi.fn() }));
 
 function renderView() {
@@ -45,8 +55,12 @@ beforeEach(() => {
     ) as never,
   );
   vi.mocked(getRatiosApiV1CompaniesTickerRatiosGet).mockResolvedValue(okResult(ratios()) as never);
+  links.mockResolvedValue(okResult([]) as never);
+  listNotes.mockResolvedValue(okResult([]) as never);
+  createNote.mockResolvedValue(okResult(note({ id: 9 }), 201) as never);
 });
 afterEach(() => {
+  vi.useRealTimers();
   vi.clearAllMocks();
 });
 
@@ -236,5 +250,108 @@ describe("RatiosView", () => {
     await userEvent.click(screen.getByRole("button", { name: "Download CSV" }));
 
     expect(vi.mocked(downloadText).mock.calls.at(-1)![0]).toBe("DE_ratios_ttm.csv");
+  });
+});
+
+describe("RatiosView notes", () => {
+  const roe = (overrides = {}) =>
+    noteLink({ metric_kind: "ratio", metric_code: "roe", ...overrides });
+
+  it("marks the cell of a ratio note and nothing else", async () => {
+    links.mockResolvedValue(
+      okResult([
+        roe({ fiscal_year: 2024, fiscal_period: "FY" }),
+        // a capital metric and a line with ratio-like codes are other subjects
+        noteLink({
+          metric_kind: "capital",
+          metric_code: "gross_margin",
+          fiscal_year: 2023,
+          fiscal_period: "FY",
+        }),
+      ]) as never,
+    );
+    renderView();
+    await screen.findByText("Return on equity");
+    await waitFor(() => expect(cell("roe", "FY2024")).toHaveClass("has-note"));
+    expect(cell("roe", "FY2023")).not.toHaveClass("has-note");
+    expect(cell("gross_margin", "FY2023")).not.toHaveClass("has-note");
+  });
+
+  it("shows a label marker for a ratio with notes and opens its notes", async () => {
+    links.mockResolvedValue(okResult([roe()]) as never);
+    listNotes.mockResolvedValue(
+      okResult([
+        note({
+          id: 5,
+          body_md: "ROE flattered by buybacks",
+          canonical_code: null,
+          metric_kind: "ratio",
+          metric_code: "roe",
+          label: "Return on equity",
+          fiscal_year: null,
+          fiscal_period: null,
+        }),
+      ]) as never,
+    );
+    renderView();
+    await userEvent.click(await screen.findByRole("button", { name: "Notes on Return on equity" }));
+    expect(await screen.findByText("ROE flattered by buybacks")).toBeVisible();
+    expect(listNotes).toHaveBeenCalledWith({
+      path: { ticker: "DE" },
+      query: { metric_kind: "ratio", metric_code: "roe" },
+    });
+  });
+
+  it("opens a cell's notes on a click and adds a note linked to the ratio and period", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 9, 23, 22, 30));
+    renderView();
+    await screen.findByText("Return on equity");
+    await userEvent.click(cell("roe", "FY2024"));
+    const sheet = await screen.findByRole("dialog");
+    expect(listNotes).toHaveBeenCalledWith({
+      path: { ticker: "DE" },
+      query: { metric_kind: "ratio", metric_code: "roe", fiscal_year: 2024, fiscal_period: "FY" },
+    });
+    await userEvent.click(await within(sheet).findByRole("button", { name: "Add note" }));
+    expect(within(sheet).getByText("Linked to Return on equity · FY2024")).toBeVisible();
+    await userEvent.type(within(sheet).getByLabelText("Note"), "Check leverage");
+    await userEvent.click(within(sheet).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(createNote).toHaveBeenCalledTimes(1));
+    expect(createNote).toHaveBeenCalledWith({
+      path: { ticker: "DE" },
+      body: {
+        body_md: "Check leverage",
+        canonical_code: null,
+        metric_kind: "ratio",
+        metric_code: "roe",
+        fiscal_year: 2024,
+        fiscal_period: "FY",
+        note_date: "2026-10-23",
+      },
+    });
+  });
+
+  it("opens no sheet from a category heading, a TTM column or the label cell", async () => {
+    renderView();
+    await screen.findByText("Return on equity");
+    await userEvent.click(cell("category:Profitability", "FY2024"));
+    await userEvent.click(labelCell("roe"));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    const periods = ratios().periods.map((p) => ({ ...p, key: `TTM-${p.key}` }));
+    vi.mocked(getRatiosApiV1CompaniesTickerRatiosGet).mockResolvedValue(
+      okResult(ratios({ freq: "ttm", periods })) as never,
+    );
+    await userEvent.click(screen.getByRole("radio", { name: "TTM" }));
+    await userEvent.click(await waitFor(() => cell("roe", "TTM-FY2024")));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("keeps the grid without markers when the links cannot load", async () => {
+    links.mockResolvedValue(errorResult(500) as never);
+    renderView();
+    expect(await screen.findByText("Return on equity")).toBeVisible();
+    expect(document.querySelector(".has-note")).toBeNull();
   });
 });

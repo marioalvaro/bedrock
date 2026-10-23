@@ -83,6 +83,8 @@ def test_create_list_update_and_delete_a_note(aapl_client: TestClient) -> None:
         "id",
         "body_md",
         "canonical_code",
+        "metric_kind",
+        "metric_code",
         "label",
         "fiscal_year",
         "fiscal_period",
@@ -151,9 +153,69 @@ def test_a_note_can_link_to_a_cell_a_line_a_period_or_nothing(aapl_client: TestC
     assert got(free) == (None, None, None)
 
 
-def test_a_period_need_not_exist_in_the_statements(aapl_client: TestClient) -> None:
-    far = make(aapl_client, "next year", fiscal_year=2031, fiscal_period="Q2")
-    assert (far["fiscal_year"], far["fiscal_period"]) == (2031, "Q2")
+@pytest.mark.parametrize(
+    "link",
+    [
+        {"fiscal_year": 2031, "fiscal_period": "FY"},
+        {"canonical_code": "revenue", "fiscal_year": 2031, "fiscal_period": "Q2"},
+        {"fiscal_year": 2007, "fiscal_period": "Q4"},  # a year that has only an FY
+    ],
+)
+def test_a_period_the_company_lacks_is_a_422_and_nothing_is_stored(
+    aapl_client: TestClient, db_session: Session, link: dict[str, Any]
+) -> None:
+    response = aapl_client.post(NOTES, json={"body_md": "x", **link})
+    assert response.status_code == 422, response.text
+    assert _count(db_session) == 0
+
+
+def test_the_missing_period_422_names_the_period_and_the_company(aapl_client: TestClient) -> None:
+    detail = aapl_client.post(
+        NOTES, json={"body_md": "x", "fiscal_year": 2031, "fiscal_period": "FY"}
+    ).json()
+    assert detail["detail"] == "FY2031 is not a period of AAPL"
+    detail = aapl_client.post(
+        NOTES, json={"body_md": "x", "fiscal_year": 2007, "fiscal_period": "Q4"}
+    ).json()
+    assert detail["detail"] == "Q4 FY2007 is not a period of AAPL"
+
+
+def test_an_existing_period_is_accepted_on_post_and_put(aapl_client: TestClient) -> None:
+    created = make(aapl_client, "x", fiscal_year=2007, fiscal_period="FY")
+    assert (created["fiscal_year"], created["fiscal_period"]) == (2007, "FY")
+    response = aapl_client.put(
+        f"{NOTES}/{created['id']}",
+        json={"body_md": "y", "fiscal_year": 2024, "fiscal_period": "Q4"},
+    )
+    assert response.status_code == 200, response.text
+
+
+def test_a_put_to_a_missing_period_is_a_422_and_the_note_is_unchanged(
+    aapl_client: TestClient,
+) -> None:
+    created = make(aapl_client, "keep", **CELL)
+    response = aapl_client.put(
+        f"{NOTES}/{created['id']}",
+        json={"body_md": "changed", "fiscal_year": 2031, "fiscal_period": "FY"},
+    )
+    assert response.status_code == 422, response.text
+    assert notes(aapl_client) == [created]
+
+
+def test_a_stored_note_on_a_missing_period_still_lists_and_can_be_unlinked(
+    aapl_client: TestClient, db_session: Session
+) -> None:
+    created = make(aapl_client, "legacy", **CELL)
+    stored = db_session.get(Note, created["id"])
+    assert stored is not None
+    stored.fiscal_year = 2031  # as a note saved before the rule
+    db_session.commit()
+    assert bodies(aapl_client) == ["legacy"]
+    assert bodies(aapl_client, fiscal_year=2031, fiscal_period="FY") == ["legacy"]
+    assert bodies(aapl_client, fiscal_year=2030, fiscal_period="FY") == []  # lenient filter
+    assert (
+        aapl_client.put(f"{NOTES}/{created['id']}", json={"body_md": "legacy"}).status_code == 200
+    )
 
 
 @pytest.mark.parametrize(
@@ -311,7 +373,16 @@ def test_links_counts_notes_per_distinct_link_and_leaves_unlinked_notes_out(
     assert response.status_code == 200
     links = response.json()
     assert all(
-        set(link) == {"canonical_code", "fiscal_year", "fiscal_period", "count"} for link in links
+        set(link)
+        == {
+            "canonical_code",
+            "metric_kind",
+            "metric_code",
+            "fiscal_year",
+            "fiscal_period",
+            "count",
+        }
+        for link in links
     )
     counted = {
         (link["canonical_code"], link["fiscal_year"], link["fiscal_period"]): link["count"]
@@ -405,3 +476,172 @@ def test_deleting_the_company_removes_its_notes(
     assert _count(db_session) == 2
     assert aapl_client.delete(COMPANY).status_code == 204
     assert _count(db_session) == 0
+
+
+# --- metric links (ratio, capital, quality) ---------------------------------------------------
+
+ROE: dict[str, Any] = {"metric_kind": "ratio", "metric_code": "roe"}
+CAPEX: dict[str, Any] = {"metric_kind": "capital", "metric_code": "capex"}
+ACCRUALS: dict[str, Any] = {"metric_kind": "quality", "metric_code": "accruals_ratio"}
+RULES_API = f"{API}/qoe-custom-rules"
+
+
+def test_a_note_links_to_a_metric_with_its_label(aapl_client: TestClient) -> None:
+    ratio = make(aapl_client, "r", **ROE)
+    capital = make(aapl_client, "c", **CAPEX, fiscal_year=2024, fiscal_period="FY")
+    quality = make(aapl_client, "q", **ACCRUALS)
+    assert (ratio["metric_kind"], ratio["metric_code"], ratio["label"]) == (
+        "ratio",
+        "roe",
+        "Return on equity",
+    )
+    assert (capital["label"], capital["fiscal_year"], capital["fiscal_period"]) == (
+        "Capital expenditures",
+        2024,
+        "FY",
+    )
+    assert quality["label"] == "Accruals ratio"
+    assert ratio["canonical_code"] is None
+    assert make(aapl_client, "line", **LINE)["metric_kind"] is None
+
+
+def test_a_note_on_a_custom_qoe_rule_is_labelled_with_the_rule(aapl_client: TestClient) -> None:
+    rule = aapl_client.post(
+        RULES_API,
+        json={
+            "label": "Accruals (mine)",
+            "formula": "(net_income - cfo) / avg(total_assets)",
+            "direction": "above",
+            "unit": "pct",
+        },
+    ).json()
+    created = make(aapl_client, "mine", metric_kind="quality", metric_code=f"custom_{rule['id']}")
+    assert created["label"] == "Accruals (mine)"
+    assert [n["label"] for n in notes(aapl_client)] == ["Accruals (mine)"]
+
+
+@pytest.mark.parametrize(
+    "link",
+    [
+        {"metric_kind": "ratio", "metric_code": "not_a_ratio"},
+        {"metric_kind": "ratio", "metric_code": "capex"},  # a capital code is not a ratio
+        {"metric_kind": "capital", "metric_code": "roe"},
+        {"metric_kind": "quality", "metric_code": "custom_999"},
+        {"metric_kind": "ratio"},
+        {"metric_code": "roe"},
+        {"metric_kind": "valuation", "metric_code": "roe"},
+        {"canonical_code": "revenue", "metric_kind": "ratio", "metric_code": "roe"},
+    ],
+)
+def test_an_invalid_metric_link_is_a_422_and_nothing_is_stored(
+    aapl_client: TestClient, db_session: Session, link: dict[str, Any]
+) -> None:
+    response = aapl_client.post(NOTES, json={"body_md": "x", **link})
+    assert response.status_code == 422, response.text
+    assert _count(db_session) == 0
+
+
+def test_the_metric_422_names_the_problem(aapl_client: TestClient) -> None:
+    detail = aapl_client.post(
+        NOTES, json={"body_md": "x", "metric_kind": "ratio", "metric_code": "rooe"}
+    ).json()
+    assert "rooe" in detail["detail"]
+    detail = aapl_client.post(
+        NOTES, json={"body_md": "x", "canonical_code": "revenue", **ROE}
+    ).json()
+    assert "line" in detail["detail"].lower() and "metric" in detail["detail"].lower()
+
+
+def test_the_period_rule_applies_to_a_metric_note(aapl_client: TestClient) -> None:
+    response = aapl_client.post(
+        NOTES, json={"body_md": "x", **ROE, "fiscal_year": 2031, "fiscal_period": "FY"}
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"] == "FY2031 is not a period of AAPL"
+
+
+def test_put_changes_a_note_between_a_line_and_a_metric(aapl_client: TestClient) -> None:
+    created = make(aapl_client, "x", **LINE)
+    url = f"{NOTES}/{created['id']}"
+    to_metric = aapl_client.put(url, json={"body_md": "x", **ROE}).json()
+    assert (to_metric["canonical_code"], to_metric["metric_code"]) == (None, "roe")
+    back = aapl_client.put(url, json={"body_md": "x", **LINE}).json()
+    assert (back["canonical_code"], back["metric_kind"], back["metric_code"]) == (
+        "revenue",
+        None,
+        None,
+    )
+    unlinked = aapl_client.put(url, json={"body_md": "x"}).json()
+    assert (unlinked["canonical_code"], unlinked["metric_code"]) == (None, None)
+
+
+@pytest.fixture
+def with_metrics(aapl_client: TestClient) -> TestClient:
+    make(aapl_client, "roe line", **ROE)
+    make(aapl_client, "roe FY24", **ROE, **PERIOD)
+    make(aapl_client, "roe FY23", **ROE, fiscal_year=2023, fiscal_period="FY")
+    make(aapl_client, "capex line", **CAPEX)
+    make(aapl_client, "revenue line", **LINE)
+    make(aapl_client, "period only", **PERIOD)
+    return aapl_client
+
+
+def test_the_metric_filter_has_the_cell_and_line_semantics_of_code(
+    with_metrics: TestClient,
+) -> None:
+    assert set(bodies(with_metrics, metric_kind="ratio", metric_code="roe")) == {
+        "roe line",
+        "roe FY24",
+        "roe FY23",
+    }
+    assert set(
+        bodies(
+            with_metrics,
+            metric_kind="ratio",
+            metric_code="roe",
+            fiscal_year=2024,
+            fiscal_period="FY",
+        )
+    ) == {"roe line", "roe FY24"}
+    assert bodies(with_metrics, metric_kind="capital", metric_code="capex") == ["capex line"]
+
+
+def test_the_metric_filter_matches_the_kind_as_well_as_the_code(with_metrics: TestClient) -> None:
+    assert notes(with_metrics, metric_kind="capital", metric_code="roe") == []
+    assert notes(with_metrics, metric_kind="ratio", metric_code="no_such") == []
+    # a line filter never returns metric notes, and the reverse
+    assert bodies(with_metrics, code="revenue") == ["revenue line"]
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"metric_kind": "ratio"},
+        {"metric_code": "roe"},
+        {"metric_kind": "ratio", "metric_code": "roe", "code": "revenue"},
+        {"metric_kind": "valuation", "metric_code": "roe"},
+    ],
+)
+def test_a_bad_metric_filter_is_a_422(with_metrics: TestClient, params: dict[str, str]) -> None:
+    assert with_metrics.get(NOTES, params=params).status_code == 422
+
+
+def test_links_carry_the_metric_and_keep_line_and_metric_apart(with_metrics: TestClient) -> None:
+    counted = {
+        (
+            link["canonical_code"],
+            link["metric_kind"],
+            link["metric_code"],
+            link["fiscal_year"],
+            link["fiscal_period"],
+        ): link["count"]
+        for link in with_metrics.get(LINKS).json()
+    }
+    assert counted == {
+        (None, "capital", "capex", None, None): 1,
+        (None, "ratio", "roe", None, None): 1,
+        (None, "ratio", "roe", 2023, "FY"): 1,
+        (None, "ratio", "roe", 2024, "FY"): 1,
+        ("revenue", None, None, None, None): 1,
+        (None, None, None, 2024, "FY"): 1,
+    }

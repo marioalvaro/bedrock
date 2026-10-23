@@ -6,12 +6,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createNoteApiV1CompaniesTickerNotesPost,
   deleteNoteApiV1CompaniesTickerNotesNoteIdDelete,
+  getCapitalAllocationApiV1CompaniesTickerCapitalAllocationGet,
+  getFlagsApiV1CompaniesTickerFlagsGet,
+  getRatiosApiV1CompaniesTickerRatiosGet,
   getStatementApiV1CompaniesTickerStatementsGet,
   listNotesApiV1CompaniesTickerNotesGet,
   updateNoteApiV1CompaniesTickerNotesNoteIdPut,
 } from "@/api/generated/sdk.gen";
 import type { NoteOut } from "@/api/generated/types.gen";
 import { createQueryClient } from "@/lib/query-client";
+import { capitalAllocation, flags, ratios } from "@/test/analysis";
 import { note } from "@/test/context";
 import { errorResult, okResult } from "@/test/responses";
 import { balanceStatement, incomeStatement } from "@/test/statements";
@@ -24,6 +28,9 @@ vi.mock("@/api/generated/sdk.gen", () => ({
   updateNoteApiV1CompaniesTickerNotesNoteIdPut: vi.fn(),
   deleteNoteApiV1CompaniesTickerNotesNoteIdDelete: vi.fn(),
   getStatementApiV1CompaniesTickerStatementsGet: vi.fn(),
+  getRatiosApiV1CompaniesTickerRatiosGet: vi.fn(),
+  getCapitalAllocationApiV1CompaniesTickerCapitalAllocationGet: vi.fn(),
+  getFlagsApiV1CompaniesTickerFlagsGet: vi.fn(),
 }));
 
 const list = vi.mocked(listNotesApiV1CompaniesTickerNotesGet);
@@ -71,9 +78,29 @@ beforeEach(() => {
     statement: "CF",
     rows: [{ ...incomeStatement().rows[0]!, code: "cfo", label: "Operating cash flow" }],
   });
-  statement.mockImplementation((async ({ query }: { query: { type: string } }) =>
+  vi.mocked(getRatiosApiV1CompaniesTickerRatiosGet).mockResolvedValue(okResult(ratios()) as never);
+  vi.mocked(getCapitalAllocationApiV1CompaniesTickerCapitalAllocationGet).mockResolvedValue(
+    okResult(capitalAllocation()) as never,
+  );
+  vi.mocked(getFlagsApiV1CompaniesTickerFlagsGet).mockResolvedValue(okResult(flags()) as never);
+  const annual = incomeStatement();
+  const quarter = (period: "Q1" | "Q2") => ({
+    ...annual.periods[1]!,
+    key: `${period}2024`,
+    label: `${period} FY24`,
+    fiscal_period: period,
+  });
+  // FY2024 has two quarters, FY2023 only its annual column.
+  const quarterly = incomeStatement({ freq: "quarterly", periods: [quarter("Q1"), quarter("Q2")] });
+  statement.mockImplementation((async ({ query }: { query: { type: string; freq: string } }) =>
     okResult(
-      query.type === "BS" ? balanceStatement() : query.type === "CF" ? cashFlow : incomeStatement(),
+      query.freq === "quarterly"
+        ? quarterly
+        : query.type === "BS"
+          ? balanceStatement()
+          : query.type === "CF"
+            ? cashFlow
+            : incomeStatement(),
     )) as never);
 });
 
@@ -152,7 +179,7 @@ describe("NotesView filters", () => {
   it("sends the line filter", async () => {
     await renderLoaded();
     await screen.findByRole("option", { name: "Gross profit" });
-    await userEvent.selectOptions(screen.getByLabelText("Filter by line"), "revenue");
+    await userEvent.selectOptions(screen.getByLabelText("Filter by subject"), "line:revenue");
     await waitFor(() =>
       expect(list).toHaveBeenLastCalledWith({
         path: { ticker: "AAPL" },
@@ -177,7 +204,7 @@ describe("NotesView filters", () => {
   it("sends the line and the period together", async () => {
     await renderLoaded();
     await screen.findByRole("option", { name: "Gross profit" });
-    await userEvent.selectOptions(screen.getByLabelText("Filter by line"), "gross_profit");
+    await userEvent.selectOptions(screen.getByLabelText("Filter by subject"), "line:gross_profit");
     await userEvent.type(screen.getByLabelText("Filter by year"), "2023");
     await userEvent.selectOptions(screen.getByLabelText("Filter by period"), "FY");
     await waitFor(() =>
@@ -188,40 +215,174 @@ describe("NotesView filters", () => {
     );
   });
 
-  it("offers the lines grouped by statement", async () => {
+  it("offers the subjects grouped: the statements, then ratios, capital and quality", async () => {
     await renderLoaded();
-    await screen.findByRole("option", { name: "Gross profit" });
-    const groups = within(screen.getByLabelText("Filter by line"))
+    await screen.findByRole("option", { name: "Accruals ratio" });
+    const groups = within(screen.getByLabelText("Filter by subject"))
       .getAllByRole("group")
       .map((group) => group.getAttribute("label"));
-    expect(groups).toEqual(["Income", "Balance", "Cash flow"]);
+    expect(groups).toEqual(["Income", "Balance", "Cash flow", "Ratios", "Capital", "Quality"]);
+  });
+
+  it("sends a metric filter as its kind and code", async () => {
+    await renderLoaded();
+    await screen.findByRole("option", { name: "Return on equity" });
+    await userEvent.selectOptions(screen.getByLabelText("Filter by subject"), "ratio:roe");
+    await waitFor(() =>
+      expect(list).toHaveBeenLastCalledWith({
+        path: { ticker: "AAPL" },
+        query: { metric_kind: "ratio", metric_code: "roe" },
+      }),
+    );
+  });
+
+  it("sends a quality metric and a period together", async () => {
+    await renderLoaded();
+    await screen.findByRole("option", { name: "Accruals ratio" });
+    await userEvent.selectOptions(
+      screen.getByLabelText("Filter by subject"),
+      "quality:accruals_ratio",
+    );
+    await userEvent.type(screen.getByLabelText("Filter by year"), "2024");
+    await userEvent.selectOptions(screen.getByLabelText("Filter by period"), "FY");
+    await waitFor(() =>
+      expect(list).toHaveBeenLastCalledWith({
+        path: { ticker: "AAPL" },
+        query: {
+          metric_kind: "quality",
+          metric_code: "accruals_ratio",
+          fiscal_year: 2024,
+          fiscal_period: "FY",
+        },
+      }),
+    );
+  });
+
+  it("labels a metric note and a metric cell note, and falls back to the code", async () => {
+    const metric = { canonical_code: null, metric_kind: "ratio" as const, metric_code: "roe" };
+    await renderLoaded([
+      note({ id: 3, ...metric, label: "Return on equity", fiscal_year: null, fiscal_period: null }),
+      note({ id: 4, ...metric, label: "Return on equity" }),
+      note({
+        id: 5,
+        canonical_code: null,
+        metric_kind: "quality",
+        metric_code: "custom_9",
+        label: null,
+        fiscal_year: 2024,
+        fiscal_period: "Q1",
+      }),
+    ]);
+    const items = screen.getAllByRole("listitem");
+    expect(within(items[0]!).getByText("Return on equity")).toBeVisible();
+    expect(within(items[1]!).getByText("Return on equity · FY2024")).toBeVisible();
+    expect(within(items[2]!).getByText("custom_9 · Q1 FY2024")).toBeVisible();
   });
 });
 
 describe("NotesView form", () => {
   const open = () => userEvent.click(screen.getByRole("button", { name: "New note" }));
   const save = () => userEvent.click(screen.getByRole("button", { name: "Save" }));
+  const optionsOf = (label: string) =>
+    within(screen.getByLabelText(label))
+      .getAllByRole("option")
+      .map((option) => option.textContent);
 
-  it("creates an unlinked note with explicit nulls and no date", async () => {
+  // Only Date is faked, so timers and userEvent run as usual. 22:30 local, so a UTC date would
+  // already be tomorrow in most time zones east of Greenwich.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 9, 23, 22, 30));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("starts a new note dated today and sends that date", async () => {
     await renderLoaded();
     await open();
+    expect(screen.getByLabelText("Note date")).toHaveValue("2026-10-23");
     await userEvent.type(screen.getByLabelText("Note"), "Thesis");
     await save();
     await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
     expect(create).toHaveBeenCalledWith({
       path: { ticker: "AAPL" },
-      body: { body_md: "Thesis", canonical_code: null, fiscal_year: null, fiscal_period: null },
+      body: {
+        body_md: "Thesis",
+        canonical_code: null,
+        metric_kind: null,
+        metric_code: null,
+        fiscal_year: null,
+        fiscal_period: null,
+        note_date: "2026-10-23",
+      },
     });
+  });
+
+  it("sends no date when the date is cleared", async () => {
+    await renderLoaded();
+    await open();
+    await userEvent.clear(screen.getByLabelText("Note date"));
+    await userEvent.type(screen.getByLabelText("Note"), "Thesis");
+    await save();
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    expect(create).toHaveBeenCalledWith({
+      path: { ticker: "AAPL" },
+      body: {
+        body_md: "Thesis",
+        canonical_code: null,
+        metric_kind: null,
+        metric_code: null,
+        fiscal_year: null,
+        fiscal_period: null,
+      },
+    });
+  });
+
+  it("offers only the company's fiscal years, newest first", async () => {
+    await renderLoaded();
+    await open();
+    await within(screen.getByLabelText("Fiscal year")).findByRole("option", { name: "2024" });
+    expect(optionsOf("Fiscal year")).toEqual(["None", "2024", "2023"]);
+  });
+
+  it("offers a year only the periods that year has", async () => {
+    await renderLoaded();
+    await open();
+    await within(screen.getByLabelText("Fiscal year")).findByRole("option", { name: "2024" });
+    expect(optionsOf("Period")).toEqual(["None"]);
+    await userEvent.selectOptions(screen.getByLabelText("Fiscal year"), "2024");
+    expect(optionsOf("Period")).toEqual(["None", "FY", "Q1", "Q2"]);
+    await userEvent.selectOptions(screen.getByLabelText("Fiscal year"), "2023");
+    expect(optionsOf("Period")).toEqual(["None", "FY"]);
+  });
+
+  it("drops a picked period that the new year does not have", async () => {
+    await renderLoaded();
+    await open();
+    await within(screen.getByLabelText("Fiscal year")).findByRole("option", { name: "2024" });
+    await userEvent.selectOptions(screen.getByLabelText("Fiscal year"), "2024");
+    await userEvent.selectOptions(screen.getByLabelText("Period"), "Q2");
+    await userEvent.selectOptions(screen.getByLabelText("Fiscal year"), "2023");
+    expect(screen.getByLabelText("Period")).toHaveValue("");
+  });
+
+  it("keeps a stored year the company lacks visible, so the user must change it", async () => {
+    await renderLoaded([note({ id: 7, fiscal_year: 2031, fiscal_period: "FY" })]);
+    await userEvent.click(screen.getByRole("button", { name: "Edit note 7" }));
+    await within(screen.getByLabelText("Fiscal year")).findByRole("option", { name: "2024" });
+    expect(screen.getByLabelText("Fiscal year")).toHaveValue("2031");
+    expect(optionsOf("Fiscal year")).toContain("2031 (no statements)");
   });
 
   it("creates a note linked to a cell with a date", async () => {
     await renderLoaded();
     await open();
-    await within(screen.getByLabelText("Line")).findByRole("option", { name: "Gross profit" });
+    await within(screen.getByLabelText("Subject")).findByRole("option", { name: "Gross profit" });
+    await within(screen.getByLabelText("Fiscal year")).findByRole("option", { name: "2024" });
     await userEvent.type(screen.getByLabelText("Note"), "Margin up");
-    await userEvent.selectOptions(screen.getByLabelText("Line"), "gross_profit");
-    await userEvent.type(screen.getByLabelText("Fiscal year"), "2024");
+    await userEvent.selectOptions(screen.getByLabelText("Subject"), "line:gross_profit");
+    await userEvent.selectOptions(screen.getByLabelText("Fiscal year"), "2024");
     await userEvent.selectOptions(screen.getByLabelText("Period"), "FY");
+    await userEvent.clear(screen.getByLabelText("Note date"));
     await userEvent.type(screen.getByLabelText("Note date"), "2024-11-05");
     await save();
     await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
@@ -230,11 +391,85 @@ describe("NotesView form", () => {
       body: {
         body_md: "Margin up",
         canonical_code: "gross_profit",
+        metric_kind: null,
+        metric_code: null,
         fiscal_year: 2024,
         fiscal_period: "FY",
         note_date: "2024-11-05",
       },
     });
+  });
+
+  it("creates a note linked to a ratio and a period", async () => {
+    await renderLoaded();
+    await open();
+    await within(screen.getByLabelText("Subject")).findByRole("option", {
+      name: "Return on equity",
+    });
+    await within(screen.getByLabelText("Fiscal year")).findByRole("option", { name: "2024" });
+    await userEvent.type(screen.getByLabelText("Note"), "ROE up on buybacks");
+    await userEvent.selectOptions(screen.getByLabelText("Subject"), "ratio:roe");
+    await userEvent.selectOptions(screen.getByLabelText("Fiscal year"), "2024");
+    await userEvent.selectOptions(screen.getByLabelText("Period"), "FY");
+    await save();
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    expect(create).toHaveBeenCalledWith({
+      path: { ticker: "AAPL" },
+      body: {
+        body_md: "ROE up on buybacks",
+        canonical_code: null,
+        metric_kind: "ratio",
+        metric_code: "roe",
+        fiscal_year: 2024,
+        fiscal_period: "FY",
+        note_date: "2026-10-23",
+      },
+    });
+  });
+
+  it("edits a metric note with its subject prefilled and can move it to a line", async () => {
+    const metricNote = note({
+      id: 8,
+      canonical_code: null,
+      metric_kind: "capital",
+      metric_code: "capex",
+      label: "Capital expenditures",
+      fiscal_year: null,
+      fiscal_period: null,
+    });
+    await renderLoaded([metricNote]);
+    await userEvent.click(screen.getByRole("button", { name: "Edit note 8" }));
+    await within(screen.getByLabelText("Subject")).findByRole("option", { name: "Gross profit" });
+    expect(screen.getByLabelText("Subject")).toHaveValue("capital:capex");
+    await userEvent.selectOptions(screen.getByLabelText("Subject"), "line:gross_profit");
+    await save();
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+    expect(update).toHaveBeenCalledWith({
+      path: { ticker: "AAPL", note_id: 8 },
+      body: expect.objectContaining({
+        canonical_code: "gross_profit",
+        metric_kind: null,
+        metric_code: null,
+      }),
+    });
+  });
+
+  it("keeps a stored subject that is no longer listed, so it is not silently dropped", async () => {
+    await renderLoaded([
+      note({
+        id: 9,
+        canonical_code: null,
+        metric_kind: "quality",
+        metric_code: "custom_9",
+        label: "Gone rule",
+        fiscal_year: null,
+        fiscal_period: null,
+      }),
+    ]);
+    await userEvent.click(screen.getByRole("button", { name: "Edit note 9" }));
+    await within(screen.getByLabelText("Subject")).findByRole("option", { name: "Gross profit" });
+    expect(screen.getByLabelText("Subject")).toHaveValue("quality:custom_9");
+    expect(optionsOf("Subject")).toContain("Gone rule");
   });
 
   it("refuses a blank note without a request", async () => {
@@ -249,7 +484,8 @@ describe("NotesView form", () => {
     await renderLoaded();
     await open();
     await userEvent.type(screen.getByLabelText("Note"), "x");
-    await userEvent.type(screen.getByLabelText("Fiscal year"), "2024");
+    await within(screen.getByLabelText("Fiscal year")).findByRole("option", { name: "2024" });
+    await userEvent.selectOptions(screen.getByLabelText("Fiscal year"), "2024");
     await save();
     expect(await screen.findByText("Pick both a fiscal year and a period")).toBeVisible();
     expect(create).not.toHaveBeenCalled();
@@ -267,12 +503,13 @@ describe("NotesView form", () => {
   it("edits a note with its body, link and date prefilled", async () => {
     await renderLoaded();
     await userEvent.click(screen.getByRole("button", { name: "Edit note 2" }));
-    await within(screen.getByLabelText("Line")).findByRole("option", { name: "Gross profit" });
+    await within(screen.getByLabelText("Subject")).findByRole("option", { name: "Gross profit" });
     expect(screen.getByLabelText("Note")).toHaveValue("# Thesis\n\nServices **mix** is rising.");
-    expect(screen.getByLabelText("Line")).toHaveValue("revenue");
-    expect(screen.getByLabelText("Fiscal year")).toHaveValue(2024);
+    expect(screen.getByLabelText("Subject")).toHaveValue("line:revenue");
+    await within(screen.getByLabelText("Fiscal year")).findByRole("option", { name: "2024" });
+    expect(screen.getByLabelText("Fiscal year")).toHaveValue("2024");
     expect(screen.getByLabelText("Period")).toHaveValue("FY");
-    expect(screen.getByLabelText("Note date")).toHaveValue("2024-11-02");
+    expect(screen.getByLabelText("Note date")).toHaveValue("2024-11-02"); // not today
     await userEvent.clear(screen.getByLabelText("Note"));
     await userEvent.type(screen.getByLabelText("Note"), "Changed");
     await save();
@@ -282,6 +519,8 @@ describe("NotesView form", () => {
       body: {
         body_md: "Changed",
         canonical_code: "revenue",
+        metric_kind: null,
+        metric_code: null,
         fiscal_year: 2024,
         fiscal_period: "FY",
         note_date: "2024-11-02",
@@ -292,16 +531,18 @@ describe("NotesView form", () => {
   it("can unlink a note when editing", async () => {
     await renderLoaded();
     await userEvent.click(screen.getByRole("button", { name: "Edit note 2" }));
-    await within(screen.getByLabelText("Line")).findByRole("option", { name: "Gross profit" });
-    await userEvent.selectOptions(screen.getByLabelText("Line"), "");
-    await userEvent.clear(screen.getByLabelText("Fiscal year"));
-    await userEvent.selectOptions(screen.getByLabelText("Period"), "");
+    await within(screen.getByLabelText("Subject")).findByRole("option", { name: "Gross profit" });
+    await userEvent.selectOptions(screen.getByLabelText("Subject"), "");
+    await within(screen.getByLabelText("Fiscal year")).findByRole("option", { name: "2024" });
+    await userEvent.selectOptions(screen.getByLabelText("Fiscal year"), "");
     await save();
     await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
     expect(update).toHaveBeenCalledWith({
       path: { ticker: "AAPL", note_id: 2 },
       body: expect.objectContaining({
         canonical_code: null,
+        metric_kind: null,
+        metric_code: null,
         fiscal_year: null,
         fiscal_period: null,
       }),

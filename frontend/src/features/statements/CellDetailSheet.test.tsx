@@ -91,6 +91,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.clearAllMocks();
   setScale("M");
 });
@@ -399,9 +400,12 @@ describe("CellDetailSheet notes", () => {
   });
 
   it("adds a note linked to the cell", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 9, 23, 22, 30));
     renderSheet();
     await userEvent.click(await screen.findByRole("button", { name: "Add note" }));
     expect(screen.getByText("Linked to SG&A · FY2024")).toBeVisible();
+    expect(screen.getByLabelText("Note date")).toHaveValue("2026-10-23");
     await userEvent.type(screen.getByLabelText("Note"), "Check the footnote");
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(createNote).toHaveBeenCalledTimes(1));
@@ -412,6 +416,7 @@ describe("CellDetailSheet notes", () => {
         canonical_code: "sga",
         fiscal_year: 2024,
         fiscal_period: "FY",
+        note_date: "2026-10-23",
       },
     });
   });

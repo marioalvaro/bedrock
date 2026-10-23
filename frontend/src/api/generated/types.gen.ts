@@ -1094,8 +1094,9 @@ export type MultiplesOut = {
 /**
  * NoteIn
  *
- * The link is `canonical_code` and/or `fiscal_year` + `fiscal_period` (a cell, a line, a
- * period or none). A PUT replaces the whole note, so leaving the link out unlinks it;
+ * The link is a subject (`canonical_code` for a line, or `metric_kind` + `metric_code` for a
+ * ratio, capital or quality metric; not both) and/or `fiscal_year` + `fiscal_period` (a cell,
+ * a subject, a period or none). A PUT replaces the whole note, so leaving the link out unlinks it;
  * `note_date` defaults to today (UTC) on a POST and keeps the stored date on a PUT.
  */
 export type NoteIn = {
@@ -1115,6 +1116,14 @@ export type NoteIn = {
      * Fiscal Year
      */
     fiscal_year?: number | null;
+    /**
+     * Metric Code
+     */
+    metric_code?: string | null;
+    /**
+     * Metric Kind
+     */
+    metric_kind?: 'ratio' | 'capital' | 'quality' | null;
     /**
      * Note Date
      */
@@ -1143,6 +1152,14 @@ export type NoteLinkOut = {
      * Fiscal Year
      */
     fiscal_year: number | null;
+    /**
+     * Metric Code
+     */
+    metric_code: string | null;
+    /**
+     * Metric Kind
+     */
+    metric_kind: 'ratio' | 'capital' | 'quality' | null;
 };
 
 /**
@@ -1177,6 +1194,14 @@ export type NoteOut = {
      * Label
      */
     label: string | null;
+    /**
+     * Metric Code
+     */
+    metric_code: string | null;
+    /**
+     * Metric Kind
+     */
+    metric_kind: 'ratio' | 'capital' | 'quality' | null;
     /**
      * Note Date
      */
@@ -2837,6 +2862,14 @@ export type ListNotesApiV1CompaniesTickerNotesGetData = {
          * Fiscal Period
          */
         fiscal_period?: 'FY' | 'Q1' | 'Q2' | 'Q3' | 'Q4' | null;
+        /**
+         * Metric Kind
+         */
+        metric_kind?: 'ratio' | 'capital' | 'quality' | null;
+        /**
+         * Metric Code
+         */
+        metric_code?: string | null;
     };
     url: '/api/v1/companies/{ticker}/notes';
 };

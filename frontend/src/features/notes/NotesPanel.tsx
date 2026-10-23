@@ -45,6 +45,7 @@ export function NotesPanel({ ticker, filter, addLink }: NotesPanelProps) {
           ticker={ticker}
           editing={null}
           fixedLink={addLink}
+          embedded
           onDone={() => setAdding(false)}
         />
       ) : (

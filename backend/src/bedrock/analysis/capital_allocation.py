@@ -96,6 +96,10 @@ _ROWS = (
 )
 
 
+# code -> label of every capital metric (what a note links to).
+CAPITAL_METRICS: dict[str, str] = {spec.code: spec.label for spec in _ROWS}
+
+
 def _value(operands: Operands, spec: _RowSpec, point: Point) -> Decimal | None:
     if spec.code == "capex_to_da":
         capex = operands.operand("capex", point)

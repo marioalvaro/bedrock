@@ -12,7 +12,7 @@ import {
 } from "@/api/generated/sdk.gen";
 import { createQueryClient } from "@/lib/query-client";
 import { setScale } from "@/lib/scale";
-import { note, noteLinks } from "@/test/context";
+import { note, noteLink, noteLinks } from "@/test/context";
 import { errorResult, okResult } from "@/test/responses";
 import { balanceStatement, incomeStatement } from "@/test/statements";
 
@@ -123,6 +123,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.clearAllMocks();
 });
 
@@ -828,7 +829,7 @@ describe("StatementView note markers", () => {
     );
     links.mockResolvedValue(
       okResult([
-        { canonical_code: "revenue", fiscal_year: 2024, fiscal_period: "Q4", count: 1 },
+        noteLink({ canonical_code: "revenue", fiscal_year: 2024, fiscal_period: "Q4" }),
       ]) as never,
     );
     renderView();
@@ -863,7 +864,7 @@ describe("StatementView note markers", () => {
     );
     links.mockResolvedValue(
       okResult([
-        { canonical_code: "revenue", fiscal_year: 2024, fiscal_period: "Q3", count: 1 },
+        noteLink({ canonical_code: "revenue", fiscal_year: 2024, fiscal_period: "Q3" }),
       ]) as never,
     );
     renderView();
@@ -885,22 +886,16 @@ describe("StatementView note markers", () => {
   });
 
   it("puts a line marker after the label of a line with a line note", async () => {
-    links.mockResolvedValue(
-      okResult([
-        { canonical_code: "gross_profit", fiscal_year: null, fiscal_period: null, count: 1 },
-      ]) as never,
-    );
+    links.mockResolvedValue(okResult([noteLink({ canonical_code: "gross_profit" })]) as never);
     renderView();
     expect(await screen.findByRole("button", { name: "Notes on Gross profit" })).toBeVisible();
     expect(screen.queryByRole("button", { name: "Notes on Revenue" })).not.toBeInTheDocument();
   });
 
   it("opens the line's notes from the line marker and adds a line note", async () => {
-    links.mockResolvedValue(
-      okResult([
-        { canonical_code: "gross_profit", fiscal_year: null, fiscal_period: null, count: 1 },
-      ]) as never,
-    );
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 9, 23, 22, 30));
+    links.mockResolvedValue(okResult([noteLink({ canonical_code: "gross_profit" })]) as never);
     notes.mockResolvedValue(
       okResult([
         note({
@@ -932,6 +927,7 @@ describe("StatementView note markers", () => {
           canonical_code: "gross_profit",
           fiscal_year: null,
           fiscal_period: null,
+          note_date: "2026-10-23",
         },
       }),
     );

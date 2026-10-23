@@ -457,3 +457,60 @@ def test_0005_kpi_code_is_unique_per_company_among_kpi_series_only(
         _series(connection, first, dimension="business", name="Stores", metric="stores")
         _series(connection, first, dimension="geo", name="Stores", metric="stores")
         _series(connection, second, dimension="kpi", name="Stores", metric="stores")
+
+
+def test_0006_adds_metric_link_columns_and_index_and_downgrade_keeps_notes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    inspector = inspect(create_engine(database_url))
+    columns = {c["name"]: c for c in inspector.get_columns("note")}
+    assert columns["metric_kind"]["nullable"]
+    assert columns["metric_code"]["nullable"]
+    indexes = {i["name"]: i["column_names"] for i in inspector.get_indexes("note")}
+    assert indexes["ix_note_company_metric"] == ["company_id", "metric_kind", "metric_code"]
+
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        company_id = _company(connection, "AAA")
+        _note(connection, company_id, metric_kind="ratio", metric_code="roe")
+        _note(connection, company_id, canonical_code="revenue")
+
+    database_url = _run_alembic(tmp_path, monkeypatch, ("downgrade", "0005"))
+    inspector = inspect(create_engine(database_url))
+    assert {c["name"] for c in inspector.get_columns("note")} & {
+        "metric_kind",
+        "metric_code",
+    } == set()
+    with create_engine(database_url).connect() as connection:
+        assert connection.execute(text("SELECT count(*) FROM note")).scalar_one() == 2
+
+
+def test_0006_checks_hold_at_the_database_level(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        company_id = _company(connection, "AAA")
+    bad_rows = (
+        lambda c: _note(c, company_id, metric_kind="ratio"),
+        lambda c: _note(c, company_id, metric_code="roe"),
+        lambda c: _note(c, company_id, metric_kind="valuation", metric_code="roe"),
+        lambda c: _note(
+            c, company_id, canonical_code="revenue", metric_kind="ratio", metric_code="roe"
+        ),
+    )
+    for bad in bad_rows:
+        with pytest.raises(IntegrityError), engine.begin() as connection:
+            bad(connection)
+    with engine.begin() as connection:
+        _note(connection, company_id, metric_kind="capital", metric_code="capex")
+        _note(
+            connection,
+            company_id,
+            metric_kind="quality",
+            metric_code="custom_3",
+            fiscal_year=2025,
+            fiscal_period="FY",
+        )

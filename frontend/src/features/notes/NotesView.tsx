@@ -18,10 +18,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 import { noteLinkText } from "./link";
-import { useLineGroups } from "./lines";
 import { NoteBody } from "./NoteBody";
 import { PERIODS, SELECT } from "./constants";
 import { NoteForm } from "./NoteForm";
+import { usePeriodOptions } from "./periods";
+import { useSubjectGroups } from "./subjectGroups";
+import { parseSubjectKey } from "./subjects";
 
 interface NotesViewProps {
   ticker: string;
@@ -29,8 +31,9 @@ interface NotesViewProps {
 
 /** The Notes tab: the Markdown journal of the company, filterable by line and period. */
 export function NotesView({ ticker }: NotesViewProps) {
-  const lines = useLineGroups(ticker);
-  const [code, setCode] = useState("");
+  const subjects = useSubjectGroups(ticker);
+  const periods = usePeriodOptions(ticker);
+  const [subject, setSubject] = useState("");
   const [year, setYear] = useState("");
   const [period, setPeriod] = useState("");
   // `null` closed, "new" writing, otherwise the note being edited.
@@ -41,8 +44,10 @@ export function NotesView({ ticker }: NotesViewProps) {
 
   // The API takes a year and a period together, so the period filter waits for both.
   const yearValue = /^\d{4}$/.test(year.trim()) ? Number(year.trim()) : null;
+  const picked = parseSubjectKey(subject);
   const filter = {
-    ...(code !== "" && { code }),
+    ...(picked?.kind === "line" && { code: picked.code }),
+    ...(picked && picked.kind !== "line" && { metricKind: picked.kind, metricCode: picked.code }),
     ...(yearValue !== null && period !== "" && { fiscalYear: yearValue }),
     ...(yearValue !== null && period !== "" && { fiscalPeriod: period as FiscalPeriod }),
   };
@@ -52,17 +57,17 @@ export function NotesView({ ticker }: NotesViewProps) {
     <div>
       <div className="border-border flex flex-wrap items-end gap-2 border-b px-4 py-2">
         <select
-          aria-label="Filter by line"
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
+          aria-label="Filter by subject"
+          value={subject}
+          onChange={(e) => setSubject(e.target.value)}
           className={`${SELECT} w-auto`}
         >
-          <option value="">All lines</option>
-          {lines.map((group) => (
-            <optgroup key={group.statement} label={group.statement}>
-              {group.lines.map((line) => (
-                <option key={line.code} value={line.code}>
-                  {line.label}
+          <option value="">All subjects</option>
+          {subjects.map((group) => (
+            <optgroup key={group.group} label={group.group}>
+              {group.options.map((entry) => (
+                <option key={entry.value} value={entry.value}>
+                  {entry.label}
                 </option>
               ))}
             </optgroup>
@@ -104,7 +109,8 @@ export function NotesView({ ticker }: NotesViewProps) {
           key={form === "new" ? "new" : form.id}
           ticker={ticker}
           editing={form === "new" ? null : form}
-          lines={lines}
+          subjects={subjects}
+          periods={periods}
           onDone={() => setForm(null)}
         />
       )}

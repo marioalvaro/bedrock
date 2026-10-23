@@ -124,6 +124,23 @@ const queries = [
     bad: [{}, "<html></html>"],
   },
   {
+    name: "notesQueryOptions (a metric subject)",
+    options: () =>
+      notesQueryOptions("AAPL", {
+        metricKind: "ratio",
+        metricCode: "roe",
+        fiscalYear: 2024,
+        fiscalPeriod: "FY",
+      }),
+    sdk: listNotes,
+    args: {
+      path: { ticker: "AAPL" },
+      query: { metric_kind: "ratio", metric_code: "roe", fiscal_year: 2024, fiscal_period: "FY" },
+    },
+    body: [note()],
+    bad: [{}, "<html></html>"],
+  },
+  {
     name: "noteLinksQueryOptions",
     options: () => noteLinksQueryOptions("AAPL"),
     sdk: listLinks,

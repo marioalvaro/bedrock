@@ -41,7 +41,9 @@ export type FiscalPeriod = NonNullable<NoteIn["fiscal_period"]>;
 
 // The Notes filters, as the API takes them (an unset field is not sent).
 export interface NoteFilter {
-  code?: string;
+  code?: string; // a line
+  metricKind?: NonNullable<NoteIn["metric_kind"]>; // a ratio / capital / quality metric, with its code
+  metricCode?: string;
   fiscalYear?: number;
   fiscalPeriod?: FiscalPeriod;
 }
@@ -68,6 +70,8 @@ export const notesQueryOptions = (ticker: string, filter: NoteFilter) =>
     queryFn: async () => {
       const query = {
         ...(filter.code !== undefined && { code: filter.code }),
+        ...(filter.metricKind !== undefined && { metric_kind: filter.metricKind }),
+        ...(filter.metricCode !== undefined && { metric_code: filter.metricCode }),
         ...(filter.fiscalYear !== undefined && { fiscal_year: filter.fiscalYear }),
         ...(filter.fiscalPeriod !== undefined && { fiscal_period: filter.fiscalPeriod }),
       };

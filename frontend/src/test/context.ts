@@ -85,6 +85,8 @@ export function note(overrides: Partial<NoteOut> = {}): NoteOut {
     id: 1,
     body_md: "Services **mix** is rising.",
     canonical_code: "revenue",
+    metric_kind: null,
+    metric_code: null,
     label: "Revenue",
     fiscal_year: 2024,
     fiscal_period: "FY",
@@ -95,10 +97,23 @@ export function note(overrides: Partial<NoteOut> = {}): NoteOut {
   };
 }
 
+// A link to a line (the default), a metric, or a period only; the period defaults to none.
+export function noteLink(overrides: Partial<NoteLinkOut> = {}): NoteLinkOut {
+  return {
+    canonical_code: null,
+    metric_kind: null,
+    metric_code: null,
+    fiscal_year: null,
+    fiscal_period: null,
+    count: 1,
+    ...overrides,
+  };
+}
+
 export function noteLinks(): NoteLinkOut[] {
   return [
-    { canonical_code: "revenue", fiscal_year: 2024, fiscal_period: "FY", count: 2 },
-    { canonical_code: "sga", fiscal_year: null, fiscal_period: null, count: 1 },
-    { canonical_code: null, fiscal_year: 2024, fiscal_period: "Q4", count: 1 },
+    noteLink({ canonical_code: "revenue", fiscal_year: 2024, fiscal_period: "FY", count: 2 }),
+    noteLink({ canonical_code: "sga" }),
+    noteLink({ fiscal_year: 2024, fiscal_period: "Q4" }),
   ];
 }

@@ -1,21 +1,33 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getCapitalAllocationApiV1CompaniesTickerCapitalAllocationGet } from "@/api/generated/sdk.gen";
+import {
+  createNoteApiV1CompaniesTickerNotesPost,
+  getCapitalAllocationApiV1CompaniesTickerCapitalAllocationGet,
+  listLinksApiV1CompaniesTickerNotesLinksGet,
+  listNotesApiV1CompaniesTickerNotesGet,
+} from "@/api/generated/sdk.gen";
 import { createQueryClient } from "@/lib/query-client";
 import { setScale } from "@/lib/scale";
 import { capitalAllocation } from "@/test/analysis";
+import { note, noteLink } from "@/test/context";
 import { errorResult, okResult } from "@/test/responses";
 
 import { CapitalView } from "./CapitalView";
 
 vi.mock("@/api/generated/sdk.gen", () => ({
   getCapitalAllocationApiV1CompaniesTickerCapitalAllocationGet: vi.fn(),
+  listLinksApiV1CompaniesTickerNotesLinksGet: vi.fn(),
+  listNotesApiV1CompaniesTickerNotesGet: vi.fn(),
+  createNoteApiV1CompaniesTickerNotesPost: vi.fn(),
 }));
 
 const mockedGet = vi.mocked(getCapitalAllocationApiV1CompaniesTickerCapitalAllocationGet);
+const links = vi.mocked(listLinksApiV1CompaniesTickerNotesLinksGet);
+const listNotes = vi.mocked(listNotesApiV1CompaniesTickerNotesGet);
+const createNote = vi.mocked(createNoteApiV1CompaniesTickerNotesPost);
 
 function renderView() {
   const queryClient = createQueryClient();
@@ -71,9 +83,13 @@ function readText(blob: Blob): Promise<string> {
 beforeEach(() => {
   setScale("M");
   mockedGet.mockResolvedValue(okResult(capitalAllocation()) as never);
+  links.mockResolvedValue(okResult([]) as never);
+  listNotes.mockResolvedValue(okResult([]) as never);
+  createNote.mockResolvedValue(okResult(note({ id: 9 }), 201) as never);
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
@@ -376,5 +392,123 @@ describe("CapitalView", () => {
       expect(lines.some((line) => line.includes("Acquisitions %"))).toBe(false);
       expect(lines).toHaveLength(11 + PCT_PARENTS.length * 2);
     });
+  });
+});
+
+describe("CapitalView notes", () => {
+  const capex = (overrides = {}) =>
+    noteLink({ metric_kind: "capital", metric_code: "capex", ...overrides });
+
+  it("marks a cell with a capital note, not one with a line note of the same code", async () => {
+    links.mockResolvedValue(
+      okResult([
+        capex({ fiscal_year: 2024, fiscal_period: "FY" }),
+        noteLink({ canonical_code: "cfo", fiscal_year: 2023, fiscal_period: "FY" }),
+      ]) as never,
+    );
+    renderView();
+    await screen.findByText("Cash from operations");
+    await waitFor(() => expect(cell("capex", "FY2024")).toHaveClass("has-note"));
+    expect(cell("capex", "FY2023")).not.toHaveClass("has-note");
+    expect(cell("cfo", "FY2023")).not.toHaveClass("has-note");
+  });
+
+  it("shows a marker on the label of a metric with notes and opens its notes", async () => {
+    links.mockResolvedValue(okResult([capex()]) as never);
+    listNotes.mockResolvedValue(
+      okResult([
+        note({
+          id: 3,
+          body_md: "Capex guided down",
+          canonical_code: null,
+          metric_kind: "capital",
+          metric_code: "capex",
+          label: "Capital expenditures",
+          fiscal_year: null,
+          fiscal_period: null,
+        }),
+      ]) as never,
+    );
+    renderView();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Notes on Capital expenditures" }),
+    );
+    expect(await screen.findByText("Capex guided down")).toBeVisible();
+    expect(listNotes).toHaveBeenCalledWith({
+      path: { ticker: "AAPL" },
+      query: { metric_kind: "capital", metric_code: "capex" },
+    });
+  });
+
+  it("shows no label marker without metric notes", async () => {
+    renderView();
+    await screen.findByText("Cash from operations");
+    expect(screen.queryByRole("button", { name: /^Notes on/ })).not.toBeInTheDocument();
+  });
+
+  it("opens the cell's notes on a click and adds a note linked to metric and period", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 9, 23, 22, 30));
+    renderView();
+    await screen.findByText("Cash from operations");
+    await userEvent.click(cell("capex", "FY2024"));
+
+    const sheet = await screen.findByRole("dialog");
+    expect(within(sheet).getByText("Capital expenditures")).toBeVisible();
+    expect(listNotes).toHaveBeenCalledWith({
+      path: { ticker: "AAPL" },
+      query: {
+        metric_kind: "capital",
+        metric_code: "capex",
+        fiscal_year: 2024,
+        fiscal_period: "FY",
+      },
+    });
+    await userEvent.click(await within(sheet).findByRole("button", { name: "Add note" }));
+    expect(within(sheet).getByText("Linked to Capital expenditures · FY2024")).toBeVisible();
+    await userEvent.type(within(sheet).getByLabelText("Note"), "Lower on plant sale");
+    await userEvent.click(within(sheet).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(createNote).toHaveBeenCalledTimes(1));
+    expect(createNote).toHaveBeenCalledWith({
+      path: { ticker: "AAPL" },
+      body: {
+        body_md: "Lower on plant sale",
+        canonical_code: null,
+        metric_kind: "capital",
+        metric_code: "capex",
+        fiscal_year: 2024,
+        fiscal_period: "FY",
+        note_date: "2026-10-23",
+      },
+    });
+  });
+
+  it("opens no sheet from a % sub-row, the label cell or a TTM column", async () => {
+    renderView();
+    await screen.findByText("Cash from operations");
+    await userEvent.click(percentToggle());
+    await userEvent.click(cell("capex:pct_of_cfo", "FY2024"));
+    await userEvent.click(cell("capex", "label"));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    mockedGet.mockResolvedValue(
+      okResult(
+        capitalAllocation({
+          freq: "ttm",
+          periods: capitalAllocation().periods.map((p) => ({ ...p, key: `TTM-${p.key}` })),
+        }),
+      ) as never,
+    );
+    await userEvent.click(screen.getByRole("radio", { name: "TTM" }));
+    await waitFor(() => expect(lastQuery()).toEqual({ freq: "ttm" }));
+    await userEvent.click(await waitFor(() => cell("capex", "TTM-FY2024")));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("keeps the grid without markers when the links cannot load", async () => {
+    links.mockResolvedValue(errorResult(500) as never);
+    renderView();
+    expect(await screen.findByText("Cash from operations")).toBeVisible();
+    expect(document.querySelector(".has-note")).toBeNull();
   });
 });

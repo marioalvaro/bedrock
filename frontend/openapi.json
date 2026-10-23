@@ -2014,7 +2014,7 @@
         "type": "object"
       },
       "NoteIn": {
-        "description": "The link is `canonical_code` and/or `fiscal_year` + `fiscal_period` (a cell, a line, a\nperiod or none). A PUT replaces the whole note, so leaving the link out unlinks it;\n`note_date` defaults to today (UTC) on a POST and keeps the stored date on a PUT.",
+        "description": "The link is a subject (`canonical_code` for a line, or `metric_kind` + `metric_code` for a\nratio, capital or quality metric; not both) and/or `fiscal_year` + `fiscal_period` (a cell,\na subject, a period or none). A PUT replaces the whole note, so leaving the link out unlinks it;\n`note_date` defaults to today (UTC) on a POST and keeps the stored date on a PUT.",
         "properties": {
           "body_md": {
             "title": "Body Md",
@@ -2059,6 +2059,33 @@
               }
             ],
             "title": "Fiscal Year"
+          },
+          "metric_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metric Code"
+          },
+          "metric_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "ratio",
+                  "capital",
+                  "quality"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metric Kind"
           },
           "note_date": {
             "anyOf": [
@@ -2118,10 +2145,39 @@
               }
             ],
             "title": "Fiscal Year"
+          },
+          "metric_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metric Code"
+          },
+          "metric_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "ratio",
+                  "capital",
+                  "quality"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metric Kind"
           }
         },
         "required": [
           "canonical_code",
+          "metric_kind",
+          "metric_code",
           "fiscal_year",
           "fiscal_period",
           "count"
@@ -2188,6 +2244,33 @@
             ],
             "title": "Label"
           },
+          "metric_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metric Code"
+          },
+          "metric_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "ratio",
+                  "capital",
+                  "quality"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metric Kind"
+          },
           "note_date": {
             "format": "date",
             "title": "Note Date",
@@ -2203,6 +2286,8 @@
           "id",
           "body_md",
           "canonical_code",
+          "metric_kind",
+          "metric_code",
           "label",
           "fiscal_year",
           "fiscal_period",
@@ -4990,6 +5075,43 @@
                 }
               ],
               "title": "Fiscal Period"
+            }
+          },
+          {
+            "in": "query",
+            "name": "metric_kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "ratio",
+                    "capital",
+                    "quality"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Metric Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "metric_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Metric Code"
             }
           }
         ],
