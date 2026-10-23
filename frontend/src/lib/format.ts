@@ -232,6 +232,82 @@ export function formatSegmentValue(value: string | null, unit: SegmentUnit, scal
   );
 }
 
+// A fraction as a signed percent with 1 decimal ("+12.3%", "-5.1%"); a value that rounds to
+// zero has no sign.
+function signed(number: number, suffix: string): string {
+  const text = Math.abs(number).toFixed(1);
+  if (Number(text) === 0) return `${text}${suffix}`;
+  return `${number < 0 ? "-" : "+"}${text}${suffix}`;
+}
+
+/** A relative difference (a fraction) as a signed percent: "0.123" → "+12.3%"; null "—". */
+export function formatSignedPercent(value: string | null): string {
+  return value === null ? DASH : signed(Number(value) * 100, "%");
+}
+
+/** A guidance hit rate (a fraction) as a whole percent: "0.846154" → "85%"; null "—". */
+export function formatHitRate(value: string | null): string {
+  return value === null ? DASH : `${Math.round(Number(value) * 100)}%`;
+}
+
+/**
+ * The comps "vs median": a `pct` row is a difference of fractions, shown in percentage points
+ * ("+2.1 pts"); every other unit a relative difference ("+12.3%"). Null "—".
+ */
+export function formatVsMedian(value: string | null, unit: RatioUnit): string {
+  if (value === null) return DASH;
+  return unit === "pct" ? signed(Number(value) * 100, " pts") : formatSignedPercent(value);
+}
+
+/** The peer range by unit: "12.1x – 30.4x"; "—" when either end is missing. */
+export function formatRange(min: string | null, max: string | null, unit: RatioUnit): string {
+  if (min === null || max === null) return DASH;
+  return `${formatRatio(min, unit)} – ${formatRatio(max, unit)}`;
+}
+
+/** The target's rank among itself and the `n` peer values used ("2 / 4"); "—" when n = 0. */
+export function formatRank(rank: number | null, n: number): string {
+  return rank === null || n === 0 ? DASH : `${rank} / ${n + 1}`;
+}
+
+const RATIO_UNITS: readonly string[] = ["pct", "x", "days", "USD/shares"];
+const SEGMENT_UNITS: readonly string[] = ["count", "USD_per_unit"];
+
+/**
+ * A guidance range end or actual by the metric's unit: USD and shares in the page scale, ratios
+ * by `formatRatio`, KPI counts and per-unit amounts by `formatSegmentValue`. A null unit (a
+ * deleted KPI) shows the plain number. Null "—".
+ */
+export function formatGuidanceValue(
+  value: string | null,
+  unit: string | null,
+  scale: Scale,
+): string {
+  if (value === null) return DASH;
+  if (unit === "USD" || unit === "shares") return formatValue(value, unit, scale);
+  if (unit !== null && RATIO_UNITS.includes(unit)) return formatRatio(value, unit as RatioUnit);
+  if (unit !== null && SEGMENT_UNITS.includes(unit)) {
+    return formatSegmentValue(value, unit as SegmentUnit, scale);
+  }
+  return toThresholdText(value, "x");
+}
+
+/**
+ * A guidance value typed in the form, to the API's decimal string: USD and shares in the page
+ * scale (`parseScaled`), `pct` as a percent with an optional "%" ("46" → "0.46"), anything else
+ * as a plain number. Null for blank or malformed text.
+ */
+export function parseGuidanceValue(text: string, unit: string, scale: Scale): string | null {
+  if (unit === "USD" || unit === "shares") return parseScaled(text, scale);
+  return parseSegmentValue(text, unit === "pct" ? "pct" : "count", scale);
+}
+
+/** The exact inverse of `parseGuidanceValue`, for prefilling the edit form. */
+export function toGuidanceText(value: string, unit: string, scale: Scale): string {
+  if (unit === "USD" || unit === "shares") return toScaledText(value, scale);
+  return toThresholdText(value, unit === "pct" ? "pct" : "x");
+}
+
 export function scaleLabel(unit: string, scale: Scale): string {
   if (unit === "USD/shares") return "USD/share";
   return `${unit} ${SCALE_WORDS[scale]}`;

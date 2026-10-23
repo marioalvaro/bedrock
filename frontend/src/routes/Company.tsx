@@ -9,6 +9,8 @@ import type { CompanyListItem } from "@/api/generated/types.gen";
 import type { StatementType } from "@/api/statements";
 import { Button } from "@/components/ui/button";
 import { CapitalView } from "@/features/capital/CapitalView";
+import { CompsView } from "@/features/comps/CompsView";
+import { GuidanceView } from "@/features/guidance/GuidanceView";
 import { NotesView } from "@/features/notes/NotesView";
 import { Overview } from "@/features/overview/Overview";
 import { QualityView } from "@/features/quality/QualityView";
@@ -31,6 +33,8 @@ const TABS: { slug: string; label: string; render: (company: CompanyListItem) =>
   { slug: "quality", label: "Quality", render: (c) => <QualityView ticker={c.ticker} /> },
   { slug: "capital", label: "Capital", render: (c) => <CapitalView ticker={c.ticker} /> },
   { slug: "segments", label: "Segments", render: (c) => <SegmentsView ticker={c.ticker} /> },
+  { slug: "comps", label: "Comps", render: (c) => <CompsView ticker={c.ticker} /> },
+  { slug: "guidance", label: "Guidance", render: (c) => <GuidanceView ticker={c.ticker} /> },
   { slug: "notes", label: "Notes", render: (c) => <NotesView ticker={c.ticker} /> },
 ];
 

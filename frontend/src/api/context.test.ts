@@ -10,7 +10,23 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { companyKey } from "@/api/companies";
 import {
+  comparisonQueryOptions,
+  compsKey,
+  compsSetsKey,
+  compsSetsQueryOptions,
+  guidanceKey,
+  guidanceMetricsKey,
+  guidanceMetricsQueryOptions,
+  guidanceQueryOptions,
   ImportFailed,
+  peerSuggestionsKey,
+  peerSuggestionsQueryOptions,
+  useCreateCompsSet,
+  useCreateGuidance,
+  useDeleteCompsSet,
+  useDeleteGuidance,
+  useUpdateCompsSet,
+  useUpdateGuidance,
   noteLinksKey,
   noteLinksQueryOptions,
   notesKey,
@@ -29,6 +45,17 @@ import {
 } from "@/api/context";
 import { ApiError } from "@/api/errors";
 import {
+  createSetApiV1CompaniesTickerCompsSetsPost,
+  deleteSetApiV1CompaniesTickerCompsSetsSetIdDelete,
+  updateSetApiV1CompaniesTickerCompsSetsSetIdPut,
+  listSetsApiV1CompaniesTickerCompsSetsGet,
+  getComparisonApiV1CompaniesTickerCompsSetsSetIdComparisonGet,
+  getPeerSuggestionsApiV1CompaniesTickerPeerSuggestionsGet,
+  getGuidanceApiV1CompaniesTickerGuidanceGet,
+  listMetricsApiV1CompaniesTickerGuidanceMetricsGet,
+  createEntryApiV1CompaniesTickerGuidancePost,
+  updateEntryApiV1CompaniesTickerGuidanceGuidanceIdPut,
+  deleteEntryApiV1CompaniesTickerGuidanceGuidanceIdDelete,
   createNoteApiV1CompaniesTickerNotesPost,
   createSeriesApiV1CompaniesTickerSegmentSeriesPost,
   deleteNoteApiV1CompaniesTickerNotesNoteIdDelete,
@@ -42,10 +69,30 @@ import {
   updateNoteApiV1CompaniesTickerNotesNoteIdPut,
   updateSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdPut,
 } from "@/api/generated/sdk.gen";
-import { note, noteLinks, segments } from "@/test/context";
+import {
+  comparison,
+  compsSets,
+  guidance,
+  guidanceMetrics,
+  note,
+  noteLinks,
+  peerSuggestions,
+  segments,
+} from "@/test/context";
 import { errorResult, networkErrorResult, okResult } from "@/test/responses";
 
 vi.mock("@/api/generated/sdk.gen", () => ({
+  createSetApiV1CompaniesTickerCompsSetsPost: vi.fn(),
+  deleteSetApiV1CompaniesTickerCompsSetsSetIdDelete: vi.fn(),
+  updateSetApiV1CompaniesTickerCompsSetsSetIdPut: vi.fn(),
+  listSetsApiV1CompaniesTickerCompsSetsGet: vi.fn(),
+  getComparisonApiV1CompaniesTickerCompsSetsSetIdComparisonGet: vi.fn(),
+  getPeerSuggestionsApiV1CompaniesTickerPeerSuggestionsGet: vi.fn(),
+  getGuidanceApiV1CompaniesTickerGuidanceGet: vi.fn(),
+  listMetricsApiV1CompaniesTickerGuidanceMetricsGet: vi.fn(),
+  createEntryApiV1CompaniesTickerGuidancePost: vi.fn(),
+  updateEntryApiV1CompaniesTickerGuidanceGuidanceIdPut: vi.fn(),
+  deleteEntryApiV1CompaniesTickerGuidanceGuidanceIdDelete: vi.fn(),
   getSegmentsApiV1CompaniesTickerSegmentsGet: vi.fn(),
   createSeriesApiV1CompaniesTickerSegmentSeriesPost: vi.fn(),
   updateSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdPut: vi.fn(),
@@ -72,6 +119,17 @@ const listLinks = vi.mocked(listLinksApiV1CompaniesTickerNotesLinksGet);
 const createNote = vi.mocked(createNoteApiV1CompaniesTickerNotesPost);
 const updateNote = vi.mocked(updateNoteApiV1CompaniesTickerNotesNoteIdPut);
 const deleteNote = vi.mocked(deleteNoteApiV1CompaniesTickerNotesNoteIdDelete);
+const listSets = vi.mocked(listSetsApiV1CompaniesTickerCompsSetsGet);
+const createSet = vi.mocked(createSetApiV1CompaniesTickerCompsSetsPost);
+const updateSet = vi.mocked(updateSetApiV1CompaniesTickerCompsSetsSetIdPut);
+const deleteSet = vi.mocked(deleteSetApiV1CompaniesTickerCompsSetsSetIdDelete);
+const getComparison = vi.mocked(getComparisonApiV1CompaniesTickerCompsSetsSetIdComparisonGet);
+const getSuggestions = vi.mocked(getPeerSuggestionsApiV1CompaniesTickerPeerSuggestionsGet);
+const getGuidance = vi.mocked(getGuidanceApiV1CompaniesTickerGuidanceGet);
+const listMetrics = vi.mocked(listMetricsApiV1CompaniesTickerGuidanceMetricsGet);
+const createEntry = vi.mocked(createEntryApiV1CompaniesTickerGuidancePost);
+const updateEntry = vi.mocked(updateEntryApiV1CompaniesTickerGuidanceGuidanceIdPut);
+const deleteEntry = vi.mocked(deleteEntryApiV1CompaniesTickerGuidanceGuidanceIdDelete);
 
 function setup() {
   const queryClient = new QueryClient({
@@ -102,6 +160,33 @@ describe("keys", () => {
     ]);
     expect(noteLinksKey("AAPL")).toEqual([...aapl, "note-links"]);
     expect(noteLinksQueryOptions("AAPL").queryKey).toEqual([...aapl, "note-links"]);
+  });
+
+  it("follow the comps and guidance contract", () => {
+    expect(compsSetsKey("AAPL")).toEqual([...aapl, "comps-sets"]);
+    expect(compsSetsQueryOptions("AAPL").queryKey).toEqual([...aapl, "comps-sets"]);
+    expect(compsKey("AAPL")).toEqual([...aapl, "comps"]);
+    expect(comparisonQueryOptions("AAPL", 3, "normalized").queryKey).toEqual([
+      ...aapl,
+      "comps",
+      3,
+      "normalized",
+    ]);
+    expect(peerSuggestionsKey("AAPL")).toEqual([...aapl, "peer-suggestions"]);
+    expect(peerSuggestionsQueryOptions("AAPL", 3).queryKey).toEqual([
+      ...aapl,
+      "peer-suggestions",
+      3,
+    ]);
+    expect(peerSuggestionsQueryOptions("AAPL", null).queryKey).toEqual([
+      ...aapl,
+      "peer-suggestions",
+      null,
+    ]);
+    expect(guidanceKey("AAPL")).toEqual([...aapl, "guidance"]);
+    expect(guidanceQueryOptions("AAPL").queryKey).toEqual([...aapl, "guidance"]);
+    expect(guidanceMetricsKey("AAPL")).toEqual([...aapl, "guidance-metrics"]);
+    expect(guidanceMetricsQueryOptions("AAPL").queryKey).toEqual([...aapl, "guidance-metrics"]);
   });
 });
 
@@ -150,6 +235,54 @@ const queries = [
     sdk: listLinks,
     args: { path: { ticker: "AAPL" } },
     body: noteLinks(),
+    bad: [{}, "<html></html>"],
+  },
+  {
+    name: "compsSetsQueryOptions",
+    options: () => compsSetsQueryOptions("AAPL"),
+    sdk: listSets,
+    args: { path: { ticker: "AAPL" } },
+    body: compsSets(),
+    bad: [{}, "<html></html>"],
+  },
+  {
+    name: "comparisonQueryOptions",
+    options: () => comparisonQueryOptions("AAPL", 1, "normalized"),
+    sdk: getComparison,
+    args: { path: { ticker: "AAPL", set_id: 1 }, query: { basis: "normalized" } },
+    body: comparison(),
+    bad: [{ rows: [] }, "<html></html>"],
+  },
+  {
+    name: "peerSuggestionsQueryOptions (a set)",
+    options: () => peerSuggestionsQueryOptions("AAPL", 1),
+    sdk: getSuggestions,
+    args: { path: { ticker: "AAPL" }, query: { set_id: 1 } },
+    body: peerSuggestions(),
+    bad: [{}, "<html></html>"],
+  },
+  {
+    name: "peerSuggestionsQueryOptions (no set)",
+    options: () => peerSuggestionsQueryOptions("AAPL", null),
+    sdk: getSuggestions,
+    args: { path: { ticker: "AAPL" } },
+    body: peerSuggestions(),
+    bad: [{}, "<html></html>"],
+  },
+  {
+    name: "guidanceQueryOptions",
+    options: () => guidanceQueryOptions("AAPL"),
+    sdk: getGuidance,
+    args: { path: { ticker: "AAPL" } },
+    body: guidance(),
+    bad: [{ entries: [] }, "<html></html>"],
+  },
+  {
+    name: "guidanceMetricsQueryOptions",
+    options: () => guidanceMetricsQueryOptions("AAPL"),
+    sdk: listMetrics,
+    args: { path: { ticker: "AAPL" } },
+    body: guidanceMetrics(),
     bad: [{}, "<html></html>"],
   },
 ];
@@ -201,6 +334,7 @@ const segmentStale = () => [
   [...segmentsKey("AAPL"), "annual"],
   [...segmentsKey("AAPL"), "quarterly"],
   [...aapl, "guidance"],
+  [...aapl, "guidance-metrics"],
 ];
 const segmentFresh = () => [
   [...aapl, "notes", {}],
@@ -239,6 +373,55 @@ function useSegmentsImport() {
 function useAnnualFill() {
   return useFillAnnualSegments("AAPL");
 }
+function useSetCreate() {
+  return useCreateCompsSet("AAPL");
+}
+function useSetUpdate() {
+  return useUpdateCompsSet("AAPL");
+}
+function useSetDelete() {
+  return useDeleteCompsSet("AAPL");
+}
+function useEntryCreate() {
+  return useCreateGuidance("AAPL");
+}
+function useEntryUpdate() {
+  return useUpdateGuidance("AAPL");
+}
+function useEntryDelete() {
+  return useDeleteGuidance("AAPL");
+}
+
+const setBody = { name: "Peers", members: ["DE"] };
+const entryBody = {
+  metric: "revenue",
+  fiscal_year: 2024,
+  fiscal_period: "FY",
+  low: "380000000000",
+  high: "390000000000",
+  basis: "reported",
+  given_on: "2023-11-02",
+} as never;
+const compsStale = () => [
+  [...aapl, "comps-sets"],
+  [...aapl, "comps", 1, "reported"],
+  [...aapl, "peer-suggestions", 1],
+  [...aapl, "peer-suggestions", null],
+];
+const compsFresh = () => [
+  [...aapl, "guidance"],
+  [...aapl, "notes", {}],
+  [...companyKey("MSFT"), "comps-sets"],
+  [...companyKey("MSFT"), "comps", 1, "reported"],
+];
+const guidanceStale = () => [[...aapl, "guidance"]];
+const guidanceFresh = () => [
+  [...aapl, "guidance-metrics"],
+  [...aapl, "comps-sets"],
+  [...segmentsKey("AAPL"), "annual"],
+  [...companyKey("MSFT"), "guidance"],
+];
+
 function useNoteCreate() {
   return useCreateNote("AAPL");
 }
@@ -250,6 +433,60 @@ function useNoteDelete() {
 }
 
 const mutations = [
+  {
+    name: "useCreateCompsSet",
+    hook: useSetCreate,
+    vars: setBody,
+    sdk: createSet,
+    args: { path: { ticker: "AAPL" }, body: setBody },
+    stale: compsStale,
+    fresh: compsFresh,
+  },
+  {
+    name: "useUpdateCompsSet",
+    hook: useSetUpdate,
+    vars: { id: 1, body: setBody },
+    sdk: updateSet,
+    args: { path: { ticker: "AAPL", set_id: 1 }, body: setBody },
+    stale: compsStale,
+    fresh: compsFresh,
+  },
+  {
+    name: "useDeleteCompsSet",
+    hook: useSetDelete,
+    vars: 1,
+    sdk: deleteSet,
+    args: { path: { ticker: "AAPL", set_id: 1 } },
+    stale: compsStale,
+    fresh: compsFresh,
+  },
+  {
+    name: "useCreateGuidance",
+    hook: useEntryCreate,
+    vars: entryBody,
+    sdk: createEntry,
+    args: { path: { ticker: "AAPL" }, body: entryBody },
+    stale: guidanceStale,
+    fresh: guidanceFresh,
+  },
+  {
+    name: "useUpdateGuidance",
+    hook: useEntryUpdate,
+    vars: { id: 4, body: entryBody },
+    sdk: updateEntry,
+    args: { path: { ticker: "AAPL", guidance_id: 4 }, body: entryBody },
+    stale: guidanceStale,
+    fresh: guidanceFresh,
+  },
+  {
+    name: "useDeleteGuidance",
+    hook: useEntryDelete,
+    vars: 4,
+    sdk: deleteEntry,
+    args: { path: { ticker: "AAPL", guidance_id: 4 } },
+    stale: guidanceStale,
+    fresh: guidanceFresh,
+  },
   {
     name: "useCreateSeries",
     hook: useSeriesCreate,

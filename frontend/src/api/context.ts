@@ -3,6 +3,17 @@ import { queryOptions, useMutation, useQueryClient, type QueryClient } from "@ta
 import { companyKey } from "@/api/companies";
 import { ApiError, unwrap } from "@/api/errors";
 import {
+  createEntryApiV1CompaniesTickerGuidancePost,
+  createSetApiV1CompaniesTickerCompsSetsPost,
+  deleteEntryApiV1CompaniesTickerGuidanceGuidanceIdDelete,
+  deleteSetApiV1CompaniesTickerCompsSetsSetIdDelete,
+  getComparisonApiV1CompaniesTickerCompsSetsSetIdComparisonGet,
+  getGuidanceApiV1CompaniesTickerGuidanceGet,
+  getPeerSuggestionsApiV1CompaniesTickerPeerSuggestionsGet,
+  listMetricsApiV1CompaniesTickerGuidanceMetricsGet,
+  listSetsApiV1CompaniesTickerCompsSetsGet,
+  updateEntryApiV1CompaniesTickerGuidanceGuidanceIdPut,
+  updateSetApiV1CompaniesTickerCompsSetsSetIdPut,
   createNoteApiV1CompaniesTickerNotesPost,
   createSeriesApiV1CompaniesTickerSegmentSeriesPost,
   deleteNoteApiV1CompaniesTickerNotesNoteIdDelete,
@@ -17,7 +28,15 @@ import {
   updateSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdPut,
 } from "@/api/generated/sdk.gen";
 import type {
+  CompsOut,
+  CompsSetIn,
+  CompsSetOut,
+  GuidanceEntryOut,
+  GuidanceIn,
+  GuidanceOut,
   ImportIssueOut,
+  MetricChoiceOut,
+  PeerSuggestionOut,
   NoteIn,
   NoteLinkOut,
   NoteOut,
@@ -30,12 +49,18 @@ import type {
   SegmentSeriesUpdate,
   SegmentValuesIn,
 } from "@/api/generated/types.gen";
+import type { Basis } from "@/api/statements";
 
-// Keys of the M3 context views. S5 adds comps and guidance queries under `compsKey` and
-// `guidanceKey`, so `invalidateAdjustmentViews` (which reaches both) needs no change then.
+// Keys of the M3 context views. `invalidateAdjustmentViews` reaches `compsKey` (the comparisons)
+// and `guidanceKey` (the log), whose actuals follow the normalized statements.
 export const segmentsKey = (ticker: string) => [...companyKey(ticker), "segments"] as const;
 export const guidanceKey = (ticker: string) => [...companyKey(ticker), "guidance"] as const;
+export const guidanceMetricsKey = (ticker: string) =>
+  [...companyKey(ticker), "guidance-metrics"] as const;
 export const compsKey = (ticker: string) => [...companyKey(ticker), "comps"] as const;
+export const compsSetsKey = (ticker: string) => [...companyKey(ticker), "comps-sets"] as const;
+export const peerSuggestionsKey = (ticker: string) =>
+  [...companyKey(ticker), "peer-suggestions"] as const;
 export const notesKey = (ticker: string) => [...companyKey(ticker), "notes"] as const;
 export const noteLinksKey = (ticker: string) => [...companyKey(ticker), "note-links"] as const;
 
@@ -95,10 +120,84 @@ export const noteLinksQueryOptions = (ticker: string) =>
     },
   });
 
-/** A segment change moves the segment grids and the KPI actuals of the guidance log. */
+/** GET …/comps-sets (ordered by name, members by ticker). */
+export const compsSetsQueryOptions = (ticker: string) =>
+  queryOptions<CompsSetOut[]>({
+    queryKey: compsSetsKey(ticker),
+    queryFn: async () => {
+      const sets = await unwrap(listSetsApiV1CompaniesTickerCompsSetsGet({ path: { ticker } }));
+      if (!Array.isArray(sets)) throw new ApiError(200, "Unexpected response");
+      return sets;
+    },
+  });
+
+/** GET …/comps-sets/{id}/comparison. Rejects a 200 without `companies` and `rows` arrays. */
+export const comparisonQueryOptions = (ticker: string, setId: number, basis: Basis) =>
+  queryOptions<CompsOut>({
+    queryKey: [...compsKey(ticker), setId, basis],
+    queryFn: async () => {
+      const table = await unwrap(
+        getComparisonApiV1CompaniesTickerCompsSetsSetIdComparisonGet({
+          path: { ticker, set_id: setId },
+          query: { basis },
+        }),
+      );
+      if (!Array.isArray(table?.companies) || !Array.isArray(table?.rows)) {
+        throw new ApiError(200, "Unexpected response");
+      }
+      return table;
+    },
+  });
+
+/** GET …/peer-suggestions, with `in_set` against the set being edited (none: all false). */
+export const peerSuggestionsQueryOptions = (ticker: string, setId: number | null) =>
+  queryOptions<PeerSuggestionOut[]>({
+    queryKey: [...peerSuggestionsKey(ticker), setId],
+    queryFn: async () => {
+      const list = await unwrap(
+        getPeerSuggestionsApiV1CompaniesTickerPeerSuggestionsGet({
+          path: { ticker },
+          ...(setId !== null && { query: { set_id: setId } }),
+        }),
+      );
+      if (!Array.isArray(list)) throw new ApiError(200, "Unexpected response");
+      return list;
+    },
+  });
+
+/** GET …/guidance: the evaluated entries, the summary and the per-metric counts. */
+export const guidanceQueryOptions = (ticker: string) =>
+  queryOptions<GuidanceOut>({
+    queryKey: guidanceKey(ticker),
+    queryFn: async () => {
+      const log = await unwrap(getGuidanceApiV1CompaniesTickerGuidanceGet({ path: { ticker } }));
+      if (!Array.isArray(log?.entries) || !Array.isArray(log?.by_metric) || !log?.summary) {
+        throw new ApiError(200, "Unexpected response");
+      }
+      return log;
+    },
+  });
+
+/** GET …/guidance/metrics: the metric choices of the guidance form. */
+export const guidanceMetricsQueryOptions = (ticker: string) =>
+  queryOptions<MetricChoiceOut[]>({
+    queryKey: guidanceMetricsKey(ticker),
+    queryFn: async () => {
+      const list = await unwrap(
+        listMetricsApiV1CompaniesTickerGuidanceMetricsGet({ path: { ticker } }),
+      );
+      if (!Array.isArray(list)) throw new ApiError(200, "Unexpected response");
+      return list;
+    },
+  });
+
+/**
+ * A segment change moves the segment grids, the KPI actuals of the guidance log and the guidance
+ * metric choices (a KPI series is a metric).
+ */
 export function invalidateSegmentViews(queryClient: QueryClient, ticker: string): Promise<void> {
   return Promise.all(
-    [segmentsKey(ticker), guidanceKey(ticker)].map((queryKey) =>
+    [segmentsKey(ticker), guidanceKey(ticker), guidanceMetricsKey(ticker)].map((queryKey) =>
       queryClient.invalidateQueries({ queryKey }),
     ),
   ).then(() => undefined);
@@ -111,6 +210,86 @@ export function invalidateNoteViews(queryClient: QueryClient, ticker: string): P
       queryClient.invalidateQueries({ queryKey }),
     ),
   ).then(() => undefined);
+}
+
+/** A comps-set change moves the sets, every comparison and the suggestions (`in_set`). */
+export function invalidateCompsViews(queryClient: QueryClient, ticker: string): Promise<void> {
+  return Promise.all(
+    [compsSetsKey(ticker), compsKey(ticker), peerSuggestionsKey(ticker)].map((queryKey) =>
+      queryClient.invalidateQueries({ queryKey }),
+    ),
+  ).then(() => undefined);
+}
+
+/** POST …/comps-sets; on success invalidates the comps views. */
+export function useCreateCompsSet(ticker: string) {
+  const queryClient = useQueryClient();
+  return useMutation<CompsSetOut, Error, CompsSetIn>({
+    mutationFn: (body) =>
+      unwrap(createSetApiV1CompaniesTickerCompsSetsPost({ path: { ticker }, body })),
+    onSuccess: () => invalidateCompsViews(queryClient, ticker),
+  });
+}
+
+/** PUT …/comps-sets/{id} (name and members, replaced); on success invalidates the comps views. */
+export function useUpdateCompsSet(ticker: string) {
+  const queryClient = useQueryClient();
+  return useMutation<CompsSetOut, Error, { id: number; body: CompsSetIn }>({
+    mutationFn: ({ id, body }) =>
+      unwrap(
+        updateSetApiV1CompaniesTickerCompsSetsSetIdPut({ path: { ticker, set_id: id }, body }),
+      ),
+    onSuccess: () => invalidateCompsViews(queryClient, ticker),
+  });
+}
+
+/** DELETE …/comps-sets/{id}; on success invalidates the comps views. */
+export function useDeleteCompsSet(ticker: string) {
+  const queryClient = useQueryClient();
+  return useMutation<unknown, Error, number>({
+    mutationFn: (id) =>
+      unwrap(deleteSetApiV1CompaniesTickerCompsSetsSetIdDelete({ path: { ticker, set_id: id } })),
+    onSuccess: () => invalidateCompsViews(queryClient, ticker),
+  });
+}
+
+/** POST …/guidance; on success invalidates the guidance log. */
+export function useCreateGuidance(ticker: string) {
+  const queryClient = useQueryClient();
+  return useMutation<GuidanceEntryOut, Error, GuidanceIn>({
+    mutationFn: (body) =>
+      unwrap(createEntryApiV1CompaniesTickerGuidancePost({ path: { ticker }, body })),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: guidanceKey(ticker) }),
+  });
+}
+
+/** PUT …/guidance/{id} (replaces the entry); on success invalidates the guidance log. */
+export function useUpdateGuidance(ticker: string) {
+  const queryClient = useQueryClient();
+  return useMutation<GuidanceEntryOut, Error, { id: number; body: GuidanceIn }>({
+    mutationFn: ({ id, body }) =>
+      unwrap(
+        updateEntryApiV1CompaniesTickerGuidanceGuidanceIdPut({
+          path: { ticker, guidance_id: id },
+          body,
+        }),
+      ),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: guidanceKey(ticker) }),
+  });
+}
+
+/** DELETE …/guidance/{id}; on success invalidates the guidance log. */
+export function useDeleteGuidance(ticker: string) {
+  const queryClient = useQueryClient();
+  return useMutation<unknown, Error, number>({
+    mutationFn: (id) =>
+      unwrap(
+        deleteEntryApiV1CompaniesTickerGuidanceGuidanceIdDelete({
+          path: { ticker, guidance_id: id },
+        }),
+      ),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: guidanceKey(ticker) }),
+  });
 }
 
 /** POST …/segment-series; on success invalidates the segment views. */
