@@ -7,11 +7,14 @@ import {
   createAdjustmentApiV1CompaniesTickerAdjustmentsPost,
   deleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDelete,
   getCellApiV1CompaniesTickerStatementsCellGet,
+  createNoteApiV1CompaniesTickerNotesPost,
+  listNotesApiV1CompaniesTickerNotesGet,
   updateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPut,
 } from "@/api/generated/sdk.gen";
 import { createQueryClient } from "@/lib/query-client";
 import { setScale, type Scale } from "@/lib/scale";
 import { adjustment, cellAdjustment } from "@/test/adjustments";
+import { note } from "@/test/context";
 import { errorResult, okResult } from "@/test/responses";
 
 import { CellDetailSheet, type CellTarget } from "./CellDetailSheet";
@@ -21,6 +24,8 @@ vi.mock("@/api/generated/sdk.gen", () => ({
   createAdjustmentApiV1CompaniesTickerAdjustmentsPost: vi.fn(),
   updateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPut: vi.fn(),
   deleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDelete: vi.fn(),
+  listNotesApiV1CompaniesTickerNotesGet: vi.fn(),
+  createNoteApiV1CompaniesTickerNotesPost: vi.fn(),
 }));
 
 const cell = {
@@ -72,6 +77,8 @@ function renderSheet(t: Partial<CellTarget> = {}, scale: Scale = "M") {
 const create = vi.mocked(createAdjustmentApiV1CompaniesTickerAdjustmentsPost);
 const update = vi.mocked(updateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPut);
 const remove = vi.mocked(deleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDelete);
+const listNotes = vi.mocked(listNotesApiV1CompaniesTickerNotesGet);
+const createNote = vi.mocked(createNoteApiV1CompaniesTickerNotesPost);
 
 beforeEach(() => {
   setScale("M");
@@ -79,6 +86,8 @@ beforeEach(() => {
   create.mockResolvedValue(okResult(adjustment({ id: 9 }), 201) as never);
   update.mockResolvedValue(okResult(adjustment()) as never);
   remove.mockResolvedValue(okResult(null, 204) as never);
+  listNotes.mockResolvedValue(okResult([]) as never);
+  createNote.mockResolvedValue(okResult(note({ id: 9 }), 201) as never);
 });
 
 afterEach(() => {
@@ -350,5 +359,72 @@ describe("CellDetailSheet adjustments", () => {
       within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Delete" }),
     );
     expect(await screen.findByText("Adjustment not found")).toBeInTheDocument();
+  });
+});
+
+describe("CellDetailSheet notes", () => {
+  it("asks for the cell's notes and lists them rendered", async () => {
+    listNotes.mockResolvedValue(
+      okResult([
+        note({ id: 1, body_md: "Cell **note**", canonical_code: "sga", label: "SG&A" }),
+        note({
+          id: 2,
+          body_md: "Line note",
+          canonical_code: "sga",
+          label: "SG&A",
+          fiscal_year: null,
+          fiscal_period: null,
+          note_date: "2024-10-01",
+        }),
+      ]) as never,
+    );
+    renderSheet();
+    expect(await screen.findByText("note")).toBeVisible();
+    expect(screen.getByText("Line note")).toBeVisible();
+    expect(listNotes).toHaveBeenCalledWith({
+      path: { ticker: "AAPL" },
+      query: { code: "sga", fiscal_year: 2024, fiscal_period: "FY" },
+    });
+  });
+
+  it("says when there are no notes", async () => {
+    renderSheet();
+    expect(await screen.findByText("Notes: none")).toBeVisible();
+  });
+
+  it("shows an error when the notes cannot load", async () => {
+    listNotes.mockResolvedValue(errorResult(500) as never);
+    renderSheet();
+    expect(await screen.findByText("Could not load the notes.")).toBeVisible();
+  });
+
+  it("adds a note linked to the cell", async () => {
+    renderSheet();
+    await userEvent.click(await screen.findByRole("button", { name: "Add note" }));
+    expect(screen.getByText("Linked to SG&A · FY2024")).toBeVisible();
+    await userEvent.type(screen.getByLabelText("Note"), "Check the footnote");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(createNote).toHaveBeenCalledTimes(1));
+    expect(createNote).toHaveBeenCalledWith({
+      path: { ticker: "AAPL" },
+      body: {
+        body_md: "Check the footnote",
+        canonical_code: "sga",
+        fiscal_year: 2024,
+        fiscal_period: "FY",
+      },
+    });
+  });
+
+  it("links a quarter cell with its quarter", async () => {
+    renderSheet({ fiscalPeriod: "Q2" });
+    await userEvent.click(await screen.findByRole("button", { name: "Add note" }));
+    expect(screen.getByText("Linked to SG&A · Q2 FY2024")).toBeVisible();
+  });
+
+  it("offers no Add note on a TTM column", async () => {
+    renderSheet({ fiscalPeriod: "TTM" });
+    await screen.findByText("Notes: none");
+    expect(screen.queryByRole("button", { name: "Add note" })).not.toBeInTheDocument();
   });
 });

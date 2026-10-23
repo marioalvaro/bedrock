@@ -5,6 +5,7 @@ import { useCreateAdjustment, useDeleteAdjustment, useUpdateAdjustment } from "@
 import { companyErrorMessage } from "@/api/companies";
 import type { AdjustmentIn, CellAdjustmentOut } from "@/api/generated/types.gen";
 import { cellDetailQueryOptions } from "@/api/statements";
+import type { FiscalPeriod } from "@/api/context";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,6 +34,7 @@ import {
   toScaledText,
 } from "@/lib/format";
 import type { Scale } from "@/lib/scale";
+import { NotesPanel } from "@/features/notes/NotesPanel";
 
 export interface CellTarget {
   code: string;
@@ -371,6 +373,26 @@ function Body({
       </Field>
       <Field name="Adjustments">
         <Adjustments ticker={ticker} target={target} scale={scale} adjustments={data.adjustments} />
+      </Field>
+      <Field name="Notes">
+        {PERIODS.includes(target.fiscalPeriod) ? (
+          <NotesPanel
+            ticker={ticker}
+            filter={{
+              code: target.code,
+              fiscalYear: target.fiscalYear,
+              fiscalPeriod: target.fiscalPeriod as FiscalPeriod,
+            }}
+            addLink={{
+              canonical_code: target.code,
+              fiscal_year: target.fiscalYear,
+              fiscal_period: target.fiscalPeriod as FiscalPeriod,
+              description: `${target.label} · ${formatFiscalPeriod(target.fiscalYear, target.fiscalPeriod)}`,
+            }}
+          />
+        ) : (
+          <span className="text-muted-foreground">Notes: none</span>
+        )}
       </Field>
     </div>
   );

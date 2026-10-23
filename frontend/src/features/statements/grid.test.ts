@@ -1,9 +1,19 @@
 import { describe, expect, it } from "vitest";
 
-import type { StatementOut } from "@/api/generated/types.gen";
+import type { PeriodOut, StatementOut } from "@/api/generated/types.gen";
+import { noteLinks } from "@/test/context";
 import { balanceStatement, incomeStatement } from "@/test/statements";
 
-import { canExplain, csvLabel, expandableCodes, rowUnitHint, toGridRows } from "./grid";
+import {
+  canExplain,
+  cellNoteCount,
+  csvLabel,
+  expandableCodes,
+  lineNoteCount,
+  noteIndex,
+  rowUnitHint,
+  toGridRows,
+} from "./grid";
 
 const NONE: ReadonlySet<string> = new Set();
 const OFF = { yoy: false, commonSize: false, expanded: NONE };
@@ -494,5 +504,60 @@ describe("showEmpty with a hidden ancestor", () => {
         annual,
       ),
     ).toBe(true);
+  });
+});
+
+describe("note markers", () => {
+  const index = noteIndex(noteLinks());
+  const rows = toGridRows(incomeStatement(), { ...OFF, yoy: true });
+  const revenue = rows[0]!;
+  const yoy = rows[1]!;
+  const [fy2023, fy2024] = incomeStatement().periods as [PeriodOut, PeriodOut];
+
+  it("counts the notes of a cell by code, year and period", () => {
+    expect(cellNoteCount(index, revenue, fy2024)).toBe(2);
+    expect(cellNoteCount(index, revenue, fy2023)).toBe(0);
+  });
+
+  it("counts the line-only notes of a line", () => {
+    const sga = { ...revenue, code: "sga" };
+    expect(lineNoteCount(index, sga)).toBe(1);
+    expect(lineNoteCount(index, revenue)).toBe(0);
+  });
+
+  it("does not mix a cell note into the line count or the reverse", () => {
+    const sga = { ...revenue, code: "sga" };
+    expect(cellNoteCount(index, sga, fy2024)).toBe(0);
+  });
+
+  it("never marks a TTM column", () => {
+    const ttm = { ...fy2024, key: "TTM-FY2024Q3", fiscal_period: "FY" };
+    expect(cellNoteCount(index, revenue, ttm)).toBe(0);
+  });
+
+  it("marks a quarter cell", () => {
+    const quarterly = noteIndex([
+      { canonical_code: "revenue", fiscal_year: 2024, fiscal_period: "Q4", count: 1 },
+    ]);
+    expect(
+      cellNoteCount(quarterly, revenue, { ...fy2024, key: "Q42024", fiscal_period: "Q4" }),
+    ).toBe(1);
+  });
+
+  it("never marks a sub-row", () => {
+    expect(cellNoteCount(index, yoy, fy2024)).toBe(0);
+    expect(lineNoteCount(index, { ...yoy, code: "sga" })).toBe(0);
+  });
+
+  it("ignores period-only links", () => {
+    const periodOnly = noteIndex([
+      { canonical_code: null, fiscal_year: 2024, fiscal_period: "FY", count: 4 },
+    ]);
+    expect(cellNoteCount(periodOnly, revenue, fy2024)).toBe(0);
+  });
+
+  it("marks nothing without links", () => {
+    expect(cellNoteCount(noteIndex([]), revenue, fy2024)).toBe(0);
+    expect(lineNoteCount(noteIndex([]), revenue)).toBe(0);
   });
 });

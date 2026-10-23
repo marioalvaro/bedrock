@@ -200,6 +200,38 @@ export function formatThreshold(level: string, unit: ThresholdUnit): string {
   return `${toThresholdText(level, unit)}${unit === "pct" ? "%" : "x"}`;
 }
 
+export type SegmentUnit = "USD" | "pct" | "count" | "USD_per_unit";
+
+/**
+ * A segment or KPI value typed in a grid cell, to the stored decimal string: USD in the page
+ * scale (`parseScaled`), `pct` as a percent with an optional "%" ("5.2" → "0.052"), `count` and
+ * `USD_per_unit` as plain numbers (a per-unit amount is never scaled, like EPS). Null for
+ * malformed text; blank is the caller's "delete".
+ */
+export function parseSegmentValue(text: string, unit: SegmentUnit, scale: Scale): string | null {
+  if (unit === "USD") return parseScaled(text, scale);
+  if (unit === "pct") return parseThreshold(text.trim().replace(/\s*%$/, ""), "pct");
+  return parseThreshold(text, "x");
+}
+
+/** The exact inverse of `parseSegmentValue`, for the cell editor's starting text. */
+export function toSegmentText(value: string, unit: SegmentUnit, scale: Scale): string {
+  if (unit === "USD") return toScaledText(value, scale);
+  return toThresholdText(value, unit === "pct" ? "pct" : "x");
+}
+
+/** A segment or KPI value for display: null "—", negatives in parentheses. */
+export function formatSegmentValue(value: string | null, unit: SegmentUnit, scale: Scale): string {
+  if (value === null) return DASH;
+  if (unit === "USD") return formatValue(value, "USD", scale);
+  if (unit === "pct") return formatRatio(value, "pct");
+  if (unit === "USD_per_unit") return formatRatio(value, "USD/shares");
+  return formatNumber(Number(value), Number.isInteger(Number(value)) ? 0 : 2).replace(
+    /(\.\d)0$/,
+    "$1",
+  );
+}
+
 export function scaleLabel(unit: string, scale: Scale): string {
   if (unit === "USD/shares") return "USD/share";
   return `${unit} ${SCALE_WORDS[scale]}`;

@@ -4,11 +4,15 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  createNoteApiV1CompaniesTickerNotesPost,
   getCellApiV1CompaniesTickerStatementsCellGet,
   getStatementApiV1CompaniesTickerStatementsGet,
+  listLinksApiV1CompaniesTickerNotesLinksGet,
+  listNotesApiV1CompaniesTickerNotesGet,
 } from "@/api/generated/sdk.gen";
 import { createQueryClient } from "@/lib/query-client";
 import { setScale } from "@/lib/scale";
+import { note, noteLinks } from "@/test/context";
 import { errorResult, okResult } from "@/test/responses";
 import { balanceStatement, incomeStatement } from "@/test/statements";
 
@@ -20,6 +24,9 @@ vi.mock("@/api/generated/sdk.gen", () => ({
   createAdjustmentApiV1CompaniesTickerAdjustmentsPost: vi.fn(),
   updateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPut: vi.fn(),
   deleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDelete: vi.fn(),
+  listLinksApiV1CompaniesTickerNotesLinksGet: vi.fn(),
+  listNotesApiV1CompaniesTickerNotesGet: vi.fn(),
+  createNoteApiV1CompaniesTickerNotesPost: vi.fn(),
 }));
 
 function renderView(type: "IS" | "BS" | "CF" = "IS") {
@@ -107,6 +114,11 @@ beforeEach(() => {
   setScale("M");
   vi.mocked(getStatementApiV1CompaniesTickerStatementsGet).mockResolvedValue(
     okResult(incomeStatement()) as never,
+  );
+  vi.mocked(listLinksApiV1CompaniesTickerNotesLinksGet).mockResolvedValue(okResult([]) as never);
+  vi.mocked(listNotesApiV1CompaniesTickerNotesGet).mockResolvedValue(okResult([]) as never);
+  vi.mocked(createNoteApiV1CompaniesTickerNotesPost).mockResolvedValue(
+    okResult(note({ id: 9 }), 201) as never,
   );
 });
 
@@ -766,5 +778,169 @@ describe("StatementView", () => {
       expect(lines.some((line) => line.includes("Cost of revenue"))).toBe(false); // collapsed
       expect(lines.some((line) => line.includes("Research"))).toBe(false);
     });
+  });
+});
+
+describe("StatementView note markers", () => {
+  const links = vi.mocked(listLinksApiV1CompaniesTickerNotesLinksGet);
+  const notes = vi.mocked(listNotesApiV1CompaniesTickerNotesGet);
+
+  it("marks the cell a note is linked to, and only that one", async () => {
+    links.mockResolvedValue(okResult(noteLinks()) as never);
+    renderView();
+    await screen.findByText("391,035");
+    await waitFor(() => expect(cell("revenue", "FY2024")).toHaveClass("has-note"));
+    expect(cell("revenue", "FY2023")).not.toHaveClass("has-note");
+    expect(cell("gross_profit", "FY2024")).not.toHaveClass("has-note");
+  });
+
+  it("marks nothing without links", async () => {
+    renderView();
+    await screen.findByText("391,035");
+    expect(document.querySelector(".has-note")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Notes on/ })).not.toBeInTheDocument();
+  });
+
+  it("marks a quarter cell on the quarterly grid", async () => {
+    const quarterly = incomeStatement({
+      freq: "quarterly",
+      periods: [
+        {
+          key: "Q42024",
+          label: "Q4 FY24",
+          fiscal_year: 2024,
+          fiscal_period: "Q4",
+          period_start: "2024-06-30",
+          period_end: "2024-09-28",
+          is_forecast: false,
+        },
+      ],
+      rows: incomeStatement().rows.map((row) => ({
+        ...row,
+        values: row.values.slice(1),
+        provenance: row.provenance.slice(1),
+        yoy: row.yoy.slice(1),
+        common_size: row.common_size.slice(1),
+      })),
+    });
+    vi.mocked(getStatementApiV1CompaniesTickerStatementsGet).mockResolvedValue(
+      okResult(quarterly) as never,
+    );
+    links.mockResolvedValue(
+      okResult([
+        { canonical_code: "revenue", fiscal_year: 2024, fiscal_period: "Q4", count: 1 },
+      ]) as never,
+    );
+    renderView();
+    await screen.findByText("391,035");
+    await waitFor(() => expect(cell("revenue", "Q42024")).toHaveClass("has-note"));
+  });
+
+  it("never marks a TTM column", async () => {
+    const ttm = incomeStatement({
+      freq: "ttm",
+      periods: [
+        {
+          key: "TTM2024Q3",
+          label: "TTM Q3 FY24",
+          fiscal_year: 2024,
+          fiscal_period: "Q3",
+          period_start: "2023-07-01",
+          period_end: "2024-06-29",
+          is_forecast: false,
+        },
+      ],
+      rows: incomeStatement().rows.map((row) => ({
+        ...row,
+        values: row.values.slice(1),
+        provenance: row.provenance.slice(1),
+        yoy: row.yoy.slice(1),
+        common_size: row.common_size.slice(1),
+      })),
+    });
+    vi.mocked(getStatementApiV1CompaniesTickerStatementsGet).mockResolvedValue(
+      okResult(ttm) as never,
+    );
+    links.mockResolvedValue(
+      okResult([
+        { canonical_code: "revenue", fiscal_year: 2024, fiscal_period: "Q3", count: 1 },
+      ]) as never,
+    );
+    renderView();
+    await screen.findByText("391,035");
+    await waitFor(() => expect(links).toHaveBeenCalled());
+    expect(cell("revenue", "TTM2024Q3")).not.toHaveClass("has-note");
+  });
+
+  it("still opens the cell details from a marked cell", async () => {
+    links.mockResolvedValue(okResult(noteLinks()) as never);
+    vi.mocked(getCellApiV1CompaniesTickerStatementsCellGet).mockResolvedValue(
+      okResult(cellDetail) as never,
+    );
+    renderView();
+    await screen.findByText("391,035");
+    await waitFor(() => expect(cell("revenue", "FY2024")).toHaveClass("has-note"));
+    await userEvent.click(cell("revenue", "FY2024"));
+    expect(await screen.findByText("Vintages")).toBeVisible();
+  });
+
+  it("puts a line marker after the label of a line with a line note", async () => {
+    links.mockResolvedValue(
+      okResult([
+        { canonical_code: "gross_profit", fiscal_year: null, fiscal_period: null, count: 1 },
+      ]) as never,
+    );
+    renderView();
+    expect(await screen.findByRole("button", { name: "Notes on Gross profit" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Notes on Revenue" })).not.toBeInTheDocument();
+  });
+
+  it("opens the line's notes from the line marker and adds a line note", async () => {
+    links.mockResolvedValue(
+      okResult([
+        { canonical_code: "gross_profit", fiscal_year: null, fiscal_period: null, count: 1 },
+      ]) as never,
+    );
+    notes.mockResolvedValue(
+      okResult([
+        note({
+          id: 4,
+          body_md: "Watch services mix",
+          canonical_code: "gross_profit",
+          label: "Gross profit",
+          fiscal_year: null,
+          fiscal_period: null,
+        }),
+      ]) as never,
+    );
+    renderView();
+    await userEvent.click(await screen.findByRole("button", { name: "Notes on Gross profit" }));
+    expect(await screen.findByText("Watch services mix")).toBeVisible();
+    expect(notes).toHaveBeenCalledWith({
+      path: { ticker: "AAPL" },
+      query: { code: "gross_profit" },
+    });
+    await userEvent.click(screen.getByRole("button", { name: "Add note" }));
+    expect(screen.getByText("Linked to Gross profit")).toBeVisible();
+    await userEvent.type(screen.getByLabelText("Note"), "New thought");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(vi.mocked(createNoteApiV1CompaniesTickerNotesPost)).toHaveBeenCalledWith({
+        path: { ticker: "AAPL" },
+        body: {
+          body_md: "New thought",
+          canonical_code: "gross_profit",
+          fiscal_year: null,
+          fiscal_period: null,
+        },
+      }),
+    );
+  });
+
+  it("keeps the statement when the links cannot load", async () => {
+    links.mockResolvedValue(errorResult(500) as never);
+    renderView();
+    expect(await screen.findByText("391,035")).toBeVisible();
+    expect(document.querySelector(".has-note")).toBeNull();
   });
 });

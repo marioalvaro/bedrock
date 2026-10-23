@@ -12,6 +12,9 @@ import {
   formatRatio,
   formatThreshold,
   formatRelative,
+  formatSegmentValue,
+  parseSegmentValue,
+  toSegmentText,
   formatSplitRatio,
   formatValue,
   toScaledText,
@@ -419,5 +422,61 @@ describe("formatThreshold", () => {
     ["1E-7", "x", "0.0000001x"],
   ] as const)("shows %j (%s) as %j", (level, unit, text) => {
     expect(formatThreshold(level, unit)).toBe(text);
+  });
+});
+
+describe("segment values by unit", () => {
+  it.each([
+    ["USD", "M", "391,035", "391035000000"],
+    ["USD", "B", "(1.5)", "-1500000000"],
+    ["pct", "M", "5.2", "0.052"],
+    ["pct", "M", "5.2%", "0.052"],
+    ["pct", "M", " (3) % ", "-0.03"],
+    ["count", "M", "4,230", "4230"],
+    ["count", "B", "1.5", "1.5"],
+    ["USD_per_unit", "M", "4.50", "4.5"],
+  ] as const)("parses %s typed in %s as %j", (unit, scale, text, stored) => {
+    expect(parseSegmentValue(text, unit, scale)).toBe(stored);
+  });
+
+  it.each([
+    ["USD", "abc"],
+    ["USD", "1e3"],
+    ["pct", "5.2 percent"],
+    ["pct", "%"],
+    ["count", "1,23"],
+    ["USD_per_unit", "$4"],
+  ] as const)("rejects %s text %j", (unit, text) => {
+    expect(parseSegmentValue(text, unit, "M")).toBeNull();
+  });
+
+  it("shows a stored value as editable text that parses back to it", () => {
+    const cases = [
+      ["USD", "167045000000", "167045"],
+      ["pct", "0.052", "5.2"],
+      ["count", "4230", "4230"],
+      ["USD_per_unit", "4.5", "4.5"],
+    ] as const;
+    for (const [unit, stored, text] of cases) {
+      expect(toSegmentText(stored, unit, "M")).toBe(text);
+      expect(parseSegmentValue(text, unit, "M")).toBe(stored);
+    }
+  });
+
+  it.each([
+    ["USD", "167045000000", "167,045"],
+    ["USD", "-1500000", "(2)"],
+    ["pct", "0.052", "5.2%"],
+    ["pct", "-0.031", "(3.1%)"],
+    ["count", "4230", "4,230"],
+    ["count", "1.5", "1.5"],
+    ["count", "1.234", "1.23"],
+    ["USD_per_unit", "4.5", "4.50"],
+  ] as const)("formats %s %s as %j", (unit, value, text) => {
+    expect(formatSegmentValue(value, unit, "M")).toBe(text);
+  });
+
+  it("formats null as an em dash", () => {
+    expect(formatSegmentValue(null, "USD", "M")).toBe("—");
   });
 });

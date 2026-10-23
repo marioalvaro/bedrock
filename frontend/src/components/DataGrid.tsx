@@ -8,6 +8,7 @@ import {
   type FirstDataRenderedEvent,
   type GridReadyEvent,
   type CellClickedEvent,
+  type CellValueChangedEvent,
 } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
 import { useCallback, useImperativeHandle, useMemo, useRef, type Ref } from "react";
@@ -24,6 +25,8 @@ interface DataGridProps<T> {
   columnDefs: ColDef<T>[];
   getRowId: (row: T) => string;
   onCellClicked?: (event: CellClickedEvent<T>) => void;
+  // Fires when an editable column's edit is committed with a changed value.
+  onCellValueChanged?: (event: CellValueChangedEvent<T>) => void;
   ref?: Ref<DataGridHandle>;
 }
 
@@ -53,6 +56,7 @@ export function DataGrid<T>({
   columnDefs,
   getRowId,
   onCellClicked,
+  onCellValueChanged,
   ref,
 }: DataGridProps<T>) {
   const theme = useTheme();
@@ -89,7 +93,9 @@ export function DataGrid<T>({
       defaultColDef={{ sortable: false, resizable: false, suppressHeaderMenuButton: true }}
       onGridReady={onGridReady}
       onFirstDataRendered={onFirstDataRendered}
+      stopEditingWhenCellsLoseFocus
       onCellClicked={onCellClicked}
+      onCellValueChanged={onCellValueChanged}
     />
   );
 }

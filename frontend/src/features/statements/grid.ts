@@ -1,4 +1,4 @@
-import type { PeriodOut, RowOut, StatementOut } from "@/api/generated/types.gen";
+import type { NoteLinkOut, PeriodOut, RowOut, StatementOut } from "@/api/generated/types.gen";
 import { scaleLabel } from "@/lib/format";
 import type { Scale } from "@/lib/scale";
 
@@ -183,4 +183,40 @@ export function rowUnitHint(unit: string, scale: Scale): string | null {
 // The first CSV column: a sub-row is named after its line item.
 export function csvLabel(row: GridRow): string {
   return row.parentLabel ? `${row.parentLabel} ${row.label}` : row.label;
+}
+
+// The note-links index of a company: how many notes sit on each cell (code, year, period) and
+// on each line alone (code with no period). Period-only links belong to no statement row.
+export interface NoteIndex {
+  cells: ReadonlyMap<string, number>;
+  lines: ReadonlyMap<string, number>;
+}
+
+const cellKey = (code: string, fiscalYear: number, fiscalPeriod: string) =>
+  `${code}|${fiscalYear}|${fiscalPeriod}`;
+
+export function noteIndex(links: NoteLinkOut[]): NoteIndex {
+  const cells = new Map<string, number>();
+  const lines = new Map<string, number>();
+  for (const link of links) {
+    if (link.canonical_code === null) continue;
+    if (link.fiscal_year === null || link.fiscal_period === null) {
+      lines.set(link.canonical_code, (lines.get(link.canonical_code) ?? 0) + link.count);
+    } else {
+      const key = cellKey(link.canonical_code, link.fiscal_year, link.fiscal_period);
+      cells.set(key, (cells.get(key) ?? 0) + link.count);
+    }
+  }
+  return { cells, lines };
+}
+
+// Notes on a line item's FY or quarter cell; sub-rows and TTM columns carry no notes.
+export function cellNoteCount(index: NoteIndex, row: GridRow, period: PeriodOut): number {
+  if (row.kind !== "line" || period.key.startsWith("TTM")) return 0;
+  return index.cells.get(cellKey(row.code, period.fiscal_year, period.fiscal_period)) ?? 0;
+}
+
+// Notes linked to a line item as a whole.
+export function lineNoteCount(index: NoteIndex, row: GridRow): number {
+  return row.kind === "line" ? (index.lines.get(row.code) ?? 0) : 0;
 }
