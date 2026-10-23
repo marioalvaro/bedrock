@@ -1070,6 +1070,41 @@
         "title": "FilingOut",
         "type": "object"
       },
+      "FillAnnualIn": {
+        "description": "`dry_run` counts what would change and writes nothing.",
+        "properties": {
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          }
+        },
+        "title": "FillAnnualIn",
+        "type": "object"
+      },
+      "FillAnnualOut": {
+        "properties": {
+          "values_created": {
+            "title": "Values Created",
+            "type": "integer"
+          },
+          "values_overwritten": {
+            "title": "Values Overwritten",
+            "type": "integer"
+          },
+          "values_unchanged": {
+            "title": "Values Unchanged",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "values_created",
+          "values_overwritten",
+          "values_unchanged"
+        ],
+        "title": "FillAnnualOut",
+        "type": "object"
+      },
       "FlagRuleOut": {
         "description": "One rule's values and severities, aligned with `periods`; `warn`/`alert` are the effective\nnumber levels and `warn_formula`/`alert_formula` the formula ones (as typed), with\n`warn_levels`/`alert_levels` each level's value per period. A null value has a null\nseverity. `error` is set when a stored formula of the rule no longer parses.",
         "properties": {
@@ -5985,6 +6020,58 @@
           }
         },
         "summary": "Get Segments",
+        "tags": [
+          "segments"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/segments/fill-annual": {
+      "post": {
+        "operationId": "fill_annual_api_v1_companies__ticker__segments_fill_annual_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FillAnnualIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FillAnnualOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Fill Annual",
         "tags": [
           "segments"
         ]

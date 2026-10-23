@@ -10,6 +10,12 @@ export default defineConfig({
       "@": path.resolve(import.meta.dirname, "./src"),
     },
   },
+  server: {
+    // The import-template test reads the backend fixtures it must equal (`?raw`).
+    fs: {
+      allow: [import.meta.dirname, path.resolve(import.meta.dirname, "../backend/tests/fixtures")],
+    },
+  },
   test: {
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],

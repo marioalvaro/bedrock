@@ -3,6 +3,7 @@
 import random
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
@@ -14,10 +15,12 @@ from bedrock.statements.segments import (
     METRICS,
     NAME_MAX,
     VALUE_LIMIT,
+    AnnualSum,
     ImportIssue,
     SegmentGrid,
     SeriesData,
     ValueData,
+    fill_annual,
     parse_import,
     segment_grid,
 )
@@ -677,3 +680,104 @@ def test_rows_drops_rows_with_a_bad_identity() -> None:
 
 def test_empty_text_has_no_rows() -> None:
     assert parse_import("", "business", "units").rows == []
+
+
+# --- import template (S4c) -------------------------------------------------------------------
+
+TEMPLATES = Path(__file__).parent / "fixtures" / "segments"
+
+
+@pytest.mark.parametrize("dimension", ["business", "geo", "kpi"])
+def test_the_download_template_of_each_dimension_imports_without_errors(dimension: str) -> None:
+    text = (TEMPLATES / f"template_{dimension}.csv").read_text()
+
+    series = _ok(text, dimension, "M")
+
+    assert series
+    assert all(s.values for s in series)
+
+
+def test_the_kpi_template_shows_pct_and_count_units_with_a_slug_code() -> None:
+    series = _ok((TEMPLATES / "template_kpi.csv").read_text(), "kpi")
+
+    assert {s.unit for s in series} >= {"pct", "count"}
+    assert all(KPI_CODE.fullmatch(s.metric) for s in series)
+
+
+# --- fill_annual (S4f) -----------------------------------------------------------------------
+
+
+def _quarters(series_id: int, year: int, *amounts: str) -> list[ValueData]:
+    return [_v(series_id, year, a, f"Q{i}") for i, a in enumerate(amounts, start=1)]
+
+
+def test_fill_annual_sums_the_four_quarters_of_a_usd_series() -> None:
+    fills = fill_annual([_s(1)], _quarters(1, 2024, "10.5", "20", "30", "40.25"))
+
+    assert fills == [AnnualSum(1, 2024, D("100.75"))]
+
+
+def test_fill_annual_gives_one_sum_per_series_and_year_in_series_then_year_order() -> None:
+    fills = fill_annual(
+        [_s(2, name="B"), _s(1, name="A")],
+        [
+            *_quarters(2, 2024, "1", "1", "1", "1"),
+            *_quarters(1, 2024, "2", "2", "2", "2"),
+            *_quarters(1, 2023, "3", "3", "3", "3"),
+        ],
+    )
+
+    assert fills == [
+        AnnualSum(1, 2023, D("12")),
+        AnnualSum(1, 2024, D("8")),
+        AnnualSum(2, 2024, D("4")),
+    ]
+
+
+@pytest.mark.parametrize("missing", ["Q1", "Q2", "Q3", "Q4"])
+def test_fill_annual_skips_a_year_missing_any_quarter(missing: str) -> None:
+    values = [v for v in _quarters(1, 2024, "1", "2", "3", "4") if v.fiscal_period != missing]
+
+    assert fill_annual([_s(1)], values) == []
+
+
+def test_fill_annual_fills_the_complete_year_next_to_an_incomplete_one() -> None:
+    values = [*_quarters(1, 2023, "1", "2"), *_quarters(1, 2024, "1", "2", "3", "4")]
+
+    assert fill_annual([_s(1)], values) == [AnnualSum(1, 2024, D("10"))]
+
+
+@pytest.mark.parametrize("unit", ["pct", "count", "USD_per_unit"])
+def test_fill_annual_skips_units_that_do_not_add_up(unit: str) -> None:
+    series = _s(1, dimension="kpi", name="K", metric="k", unit=unit)
+
+    assert fill_annual([series], _quarters(1, 2024, "1", "2", "3", "4")) == []
+
+
+def test_fill_annual_includes_a_usd_kpi() -> None:
+    series = _s(1, dimension="kpi", name="ARR", metric="arr", unit="USD")
+
+    assert fill_annual([series], _quarters(1, 2024, "1", "2", "3", "4")) == [
+        AnnualSum(1, 2024, D("10"))
+    ]
+
+
+def test_fill_annual_keeps_negative_quarters_and_ignores_the_stored_fy_value() -> None:
+    values = [*_quarters(1, 2024, "-5", "10", "-2", "1"), _v(1, 2024, "999")]
+
+    assert fill_annual([_s(1)], values) == [AnnualSum(1, 2024, D("4"))]
+
+
+def test_fill_annual_ignores_values_of_unknown_series_and_empty_input() -> None:
+    assert fill_annual([_s(1)], _quarters(9, 2024, "1", "2", "3", "4")) == []
+    assert fill_annual([], []) == []
+
+
+def test_property_fill_annual_sum_equals_the_exact_decimal_sum_of_its_quarters() -> None:
+    rng = random.Random(7)
+    for _ in range(50):
+        amounts = [str(Decimal(rng.randint(-(10**9), 10**9)) / 100) for _ in range(4)]
+
+        (fill,) = fill_annual([_s(1)], _quarters(1, 2024, *amounts))
+
+        assert fill.value == sum((Decimal(a) for a in amounts), Decimal(0))

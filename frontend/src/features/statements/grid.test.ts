@@ -134,6 +134,29 @@ describe("toGridRows", () => {
   });
 });
 
+describe("toGridRows stability", () => {
+  // AG Grid diffs rows by id: a toggle must add or remove rows, never rename the others.
+  const ids = (rows: { id: string }[]) => rows.map((row) => row.id);
+
+  it("keeps every line's id when YoY and common size are switched on", () => {
+    const off = ids(toGridRows(incomeStatement(), OPEN));
+    const on = ids(toGridRows(incomeStatement(), { ...OPEN, yoy: true, commonSize: true }));
+
+    expect(on.filter((id) => !id.includes(":"))).toEqual(off);
+    expect(on.filter((id) => id.includes(":")).every((id) => /:(yoy|common_size)$/.test(id))).toBe(
+      true,
+    );
+  });
+
+  it("keeps the other rows' ids when a breakdown opens", () => {
+    const closed = ids(toGridRows(incomeStatement(), OFF));
+    const open = ids(toGridRows(incomeStatement(), { ...OFF, expanded: new Set(["gross_profit"]) }));
+
+    expect(open.filter((id) => closed.includes(id))).toEqual(closed);
+    expect(open).toEqual(["revenue", "gross_profit", "cost_of_revenue", "eps_diluted"]);
+  });
+});
+
 describe("toGridRows hierarchy", () => {
   const ids = (rows: { id: string }[]) => rows.map((row) => row.id);
 

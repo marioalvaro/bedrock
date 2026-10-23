@@ -6,17 +6,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createSeriesApiV1CompaniesTickerSegmentSeriesPost,
   deleteSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdDelete,
+  fillAnnualApiV1CompaniesTickerSegmentsFillAnnualPost,
   getSegmentsApiV1CompaniesTickerSegmentsGet,
   importSegmentsApiV1CompaniesTickerSegmentsImportPost,
   setValuesApiV1CompaniesTickerSegmentSeriesSeriesIdValuesPut,
   updateSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdPut,
 } from "@/api/generated/sdk.gen";
+import { downloadText } from "@/lib/download";
 import { createQueryClient } from "@/lib/query-client";
 import { setScale } from "@/lib/scale";
 import { segments } from "@/test/context";
 import { errorResult, okResult } from "@/test/responses";
 
+import geoTemplate from "../../../../backend/tests/fixtures/segments/template_geo.csv?raw";
+import kpiTemplate from "../../../../backend/tests/fixtures/segments/template_kpi.csv?raw";
 import { SegmentsView } from "./SegmentsView";
+
+vi.mock("@/lib/download", () => ({ downloadText: vi.fn() }));
 
 vi.mock("@/api/generated/sdk.gen", () => ({
   getSegmentsApiV1CompaniesTickerSegmentsGet: vi.fn(),
@@ -25,6 +31,7 @@ vi.mock("@/api/generated/sdk.gen", () => ({
   deleteSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdDelete: vi.fn(),
   setValuesApiV1CompaniesTickerSegmentSeriesSeriesIdValuesPut: vi.fn(),
   importSegmentsApiV1CompaniesTickerSegmentsImportPost: vi.fn(),
+  fillAnnualApiV1CompaniesTickerSegmentsFillAnnualPost: vi.fn(),
 }));
 
 const getSegments = vi.mocked(getSegmentsApiV1CompaniesTickerSegmentsGet);
@@ -33,6 +40,7 @@ const updateSeries = vi.mocked(updateSeriesApiV1CompaniesTickerSegmentSeriesSeri
 const deleteSeries = vi.mocked(deleteSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdDelete);
 const setValues = vi.mocked(setValuesApiV1CompaniesTickerSegmentSeriesSeriesIdValuesPut);
 const importSegments = vi.mocked(importSegmentsApiV1CompaniesTickerSegmentsImportPost);
+const fillAnnual = vi.mocked(fillAnnualApiV1CompaniesTickerSegmentsFillAnnualPost);
 
 function renderView() {
   const queryClient = createQueryClient();
@@ -290,6 +298,118 @@ describe("SegmentsView series", () => {
   });
 });
 
+describe("SegmentsView fill annual from quarterly", () => {
+  const counts = (created: number, overwritten: number, unchanged = 0) =>
+    okResult({
+      values_created: created,
+      values_overwritten: overwritten,
+      values_unchanged: unchanged,
+    }) as never;
+  const fillButton = () => screen.getByRole("button", { name: "Fill from quarterly" });
+
+  it("is offered on the annual view only", async () => {
+    await renderLoaded();
+    expect(fillButton()).toBeVisible();
+
+    await userEvent.click(screen.getByRole("radio", { name: "Quarterly" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Fill from quarterly" })).toBeNull(),
+    );
+  });
+
+  it("fills straight away when no annual value would be replaced", async () => {
+    fillAnnual.mockResolvedValueOnce(counts(2, 0)).mockResolvedValueOnce(counts(2, 0));
+    await renderLoaded();
+
+    await userEvent.click(fillButton());
+
+    expect(await screen.findByText("Filled 2 annual values from the quarters.")).toBeVisible();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(fillAnnual.mock.calls.map(([options]) => options.body)).toEqual([
+      { dry_run: true },
+      { dry_run: false },
+    ]);
+    expect(fillAnnual).toHaveBeenCalledWith(expect.objectContaining({ path: { ticker: "AAPL" } }));
+  });
+
+  it("warns before replacing annual values and writes only after Replace", async () => {
+    fillAnnual.mockResolvedValueOnce(counts(1, 2)).mockResolvedValueOnce(counts(1, 2));
+    await renderLoaded();
+
+    await userEvent.click(fillButton());
+
+    const dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).getByText("Replace annual values?")).toBeVisible();
+    expect(
+      within(dialog).getByText(
+        "2 annual values already entered will be replaced by the sum of their quarters.",
+      ),
+    ).toBeVisible();
+    expect(fillAnnual).toHaveBeenCalledTimes(1);
+    expect(fillAnnual.mock.calls[0]![0].body).toEqual({ dry_run: true });
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Replace" }));
+
+    expect(await screen.findByText("Filled 3 annual values from the quarters.")).toBeVisible();
+    expect(fillAnnual).toHaveBeenCalledTimes(2);
+    expect(fillAnnual.mock.calls[1]![0].body).toEqual({ dry_run: false });
+  });
+
+  it("writes nothing when the warning is cancelled", async () => {
+    fillAnnual.mockResolvedValueOnce(counts(0, 1));
+    await renderLoaded();
+
+    await userEvent.click(fillButton());
+    const dialog = await screen.findByRole("alertdialog");
+    expect(
+      within(dialog).getByText(/1 annual value already entered will be replaced/),
+    ).toBeVisible();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(fillAnnual).toHaveBeenCalledTimes(1);
+  });
+
+  it("says so when no series has all four quarters, without a second request", async () => {
+    fillAnnual.mockResolvedValueOnce(counts(0, 0));
+    await renderLoaded();
+
+    await userEvent.click(fillButton());
+
+    expect(
+      await screen.findByText("Nothing to fill: a USD series needs all four quarters of a year."),
+    ).toBeVisible();
+    expect(fillAnnual).toHaveBeenCalledTimes(1);
+  });
+
+  it("says so when the annual values already equal their quarters", async () => {
+    fillAnnual.mockResolvedValueOnce(counts(0, 0, 3));
+    await renderLoaded();
+
+    await userEvent.click(fillButton());
+
+    expect(
+      await screen.findByText("Annual values already equal the sum of their quarters."),
+    ).toBeVisible();
+    expect(fillAnnual).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the API's reason when the check or the fill fails", async () => {
+    fillAnnual.mockResolvedValueOnce(
+      errorResult(422, {
+        detail: "A value must be below 1,000,000,000,000,000 in magnitude",
+      }) as never,
+    );
+    await renderLoaded();
+
+    await userEvent.click(fillButton());
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "A value must be below 1,000,000,000,000,000 in magnitude",
+    );
+  });
+});
+
 const CSV = "name,metric,unit,FY2024\nAmericas,revenue,USD,167045\n";
 
 describe("SegmentsView import", () => {
@@ -299,10 +419,58 @@ describe("SegmentsView import", () => {
     return screen.findByRole("dialog");
   }
 
-  it("explains the header and defaults the scale to the page scale", async () => {
+  it("opens with the Format helper showing the rules, and defaults the scale to the page scale", async () => {
     const dialog = await openImport();
-    expect(within(dialog).getByText(/FY2024/)).toBeVisible();
+    expect(within(dialog).getByText("Format")).toBeVisible();
+    expect(within(dialog).getByText(/Period headers read FY2024 or Q1 FY2024/)).toBeVisible();
+    expect(within(dialog).getByText(/The grid shows FY24/)).toBeVisible();
+    expect(within(dialog).getByText(/all or nothing/)).toBeVisible();
     expect(within(dialog).getByLabelText("Scale")).toHaveValue("M");
+  });
+
+  it("collapses and reopens the Format helper", async () => {
+    const dialog = await openImport();
+    const rule = within(dialog).getByText(/all or nothing/);
+
+    await userEvent.click(within(dialog).getByText("Format"));
+    expect(rule).not.toBeVisible();
+    await userEvent.click(within(dialog).getByText("Format"));
+    expect(rule).toBeVisible();
+  });
+
+  it("shows an example table for the selected dimension", async () => {
+    const dialog = await openImport();
+    const example = () => within(dialog).getByRole("table", { name: "Example" });
+
+    expect(within(example()).getByText("Americas")).toBeVisible();
+    expect(within(example()).getByRole("columnheader", { name: "unit" })).toBeVisible();
+
+    await userEvent.selectOptions(within(dialog).getByLabelText("Dimension"), "business");
+    expect(within(example()).getByText("iPhone")).toBeVisible();
+    expect(within(example()).queryByText("Americas")).toBeNull();
+
+    await userEvent.selectOptions(within(dialog).getByLabelText("Dimension"), "kpi");
+    expect(within(example()).getByText("Same-store sales (U.S.)")).toBeVisible();
+    expect(within(example()).getByText("USD_per_unit")).toBeVisible();
+  });
+
+  it("downloads the template of the selected dimension, equal to the backend fixture", async () => {
+    const dialog = await openImport();
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Download template" }));
+    expect(downloadText).toHaveBeenLastCalledWith(
+      "segments_template_geo.csv",
+      geoTemplate,
+      "text/csv",
+    );
+
+    await userEvent.selectOptions(within(dialog).getByLabelText("Dimension"), "kpi");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Download template" }));
+    expect(downloadText).toHaveBeenLastCalledWith(
+      "segments_template_kpi.csv",
+      kpiTemplate,
+      "text/csv",
+    );
   });
 
   it("sends the dimension, scale and text, and reports the counts", async () => {
@@ -346,8 +514,12 @@ describe("SegmentsView import", () => {
     await userEvent.click(within(dialog).getByLabelText("CSV or TSV"));
     await userEvent.paste(CSV);
     await userEvent.click(within(dialog).getByRole("button", { name: "Import" }));
-    const items = await within(dialog).findAllByRole("listitem");
-    expect(items.map((item) => item.textContent)).toEqual([
+    const errors = await within(dialog).findByRole("alert");
+    expect(
+      within(errors)
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual([
       "row 3, FY2024: 'abc' is not a number",
       "row 5: duplicate series",
       "row 2, column 9: a value with no period column",

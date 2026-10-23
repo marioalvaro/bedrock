@@ -1,12 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import type { CellClassParams, CellValueChangedEvent, ColDef } from "ag-grid-community";
-import { Pencil, Trash2, Upload } from "lucide-react";
+import { Pencil, Sigma, Trash2, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { companyErrorMessage } from "@/api/companies";
 import {
   segmentsQueryOptions,
   useDeleteSeries,
+  useFillAnnualSegments,
   useSetSegmentValues,
   type SegmentFreq,
 } from "@/api/context";
@@ -57,6 +58,8 @@ const METRIC_TITLES: Record<string, string> = {
 };
 
 const LABEL_COLUMN = "label";
+
+const annualValues = (count: number) => `${count} annual value${count === 1 ? "" : "s"}`;
 
 function blockTitle(block: SegmentBlockOut): string {
   if (block.dimension === "kpi") return "KPIs";
@@ -251,10 +254,14 @@ export function SegmentsView({ ticker }: SegmentsViewProps) {
   const { data, isPending, isError } = useQuery(segmentsQueryOptions(ticker, freq));
   const setValues = useSetSegmentValues(ticker);
   const remove = useDeleteSeries(ticker);
+  const fill = useFillAnnualSegments(ticker);
   const [form, setForm] = useState<SeriesFormMode | null>(null);
   const [importing, setImporting] = useState(false);
   const [toDelete, setToDelete] = useState<SegmentRow | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  // How many stored annual values a fill would replace, while the user is asked to confirm.
+  const [replacing, setReplacing] = useState<number | null>(null);
 
   const handlers = useMemo<Handlers>(
     () => ({
@@ -296,6 +303,37 @@ export function SegmentsView({ ticker }: SegmentsViewProps) {
     );
   }
 
+  // Counts first (a dry run); the fill itself runs at once, or after the user confirms a replace.
+  async function startFill() {
+    setMessage(null);
+    setNotice(null);
+    try {
+      const check = await fill.mutateAsync({ dry_run: true });
+      if (check.values_created + check.values_overwritten === 0) {
+        return setNotice(
+          check.values_unchanged > 0
+            ? "Annual values already equal the sum of their quarters."
+            : "Nothing to fill: a USD series needs all four quarters of a year.",
+        );
+      }
+      if (check.values_overwritten > 0) return setReplacing(check.values_overwritten);
+      await runFill();
+    } catch (e) {
+      setMessage(companyErrorMessage(e, "Could not fill the annual values."));
+    }
+  }
+
+  async function runFill() {
+    const done = await fill.mutateAsync({ dry_run: false });
+    setNotice(
+      `Filled ${annualValues(done.values_created + done.values_overwritten)} from the quarters.`,
+    );
+  }
+
+  function confirmFill() {
+    runFill().catch((e) => setMessage(companyErrorMessage(e, "Could not fill the annual values.")));
+  }
+
   return (
     <div>
       <div className="border-border flex flex-wrap items-center gap-2 border-b px-4 py-2">
@@ -315,22 +353,39 @@ export function SegmentsView({ ticker }: SegmentsViewProps) {
           ))}
         </ToggleGroup>
         <UnitToggle />
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className="ml-auto"
-          onClick={() => setForm({ type: "new", dimension: "business", metric: "revenue" })}
-        >
-          Add series
-        </Button>
-        <Button type="button" size="sm" variant="outline" onClick={() => setImporting(true)}>
-          <Upload /> Import
-        </Button>
+        <div className="ml-auto flex flex-wrap gap-2">
+          {freq === "annual" && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={fill.isPending}
+              onClick={startFill}
+            >
+              <Sigma /> Fill from quarterly
+            </Button>
+          )}
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => setForm({ type: "new", dimension: "business", metric: "revenue" })}
+          >
+            Add series
+          </Button>
+          <Button type="button" size="sm" variant="outline" onClick={() => setImporting(true)}>
+            <Upload /> Import
+          </Button>
+        </div>
       </div>
       {message && (
         <p role="alert" className="text-destructive px-4 py-2 text-sm">
           {message}
+        </p>
+      )}
+      {notice && (
+        <p role="status" className="text-muted-foreground px-4 py-2 text-sm">
+          {notice}
         </p>
       )}
       {form && (
@@ -379,6 +434,21 @@ export function SegmentsView({ ticker }: SegmentsViewProps) {
         scale={scale}
         onClose={() => setImporting(false)}
       />
+      <AlertDialog open={replacing !== null} onOpenChange={(open) => !open && setReplacing(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Replace annual values?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {replacing !== null &&
+                `${annualValues(replacing)} already entered will be replaced by the sum of their quarters.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmFill}>Replace</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog open={toDelete !== null} onOpenChange={(open) => !open && setToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>

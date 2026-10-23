@@ -8,6 +8,7 @@ import {
   deleteNoteApiV1CompaniesTickerNotesNoteIdDelete,
   deleteSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdDelete,
   getSegmentsApiV1CompaniesTickerSegmentsGet,
+  fillAnnualApiV1CompaniesTickerSegmentsFillAnnualPost,
   importSegmentsApiV1CompaniesTickerSegmentsImportPost,
   listLinksApiV1CompaniesTickerNotesLinksGet,
   listNotesApiV1CompaniesTickerNotesGet,
@@ -20,6 +21,8 @@ import type {
   NoteIn,
   NoteLinkOut,
   NoteOut,
+  FillAnnualIn,
+  FillAnnualOut,
   SegmentImportIn,
   SegmentImportOut,
   SegmentSeriesIn,
@@ -199,6 +202,20 @@ export function useImportSegments(ticker: string) {
       return unwrap(Promise.resolve(result ?? {}));
     },
     onSuccess: () => invalidateSegmentViews(queryClient, ticker),
+  });
+}
+
+/**
+ * POST …/segments/fill-annual: FY values from the sum of the quarters. A dry run only counts what
+ * would change, so only a real run invalidates the segment views.
+ */
+export function useFillAnnualSegments(ticker: string) {
+  const queryClient = useQueryClient();
+  return useMutation<FillAnnualOut, Error, FillAnnualIn>({
+    mutationFn: (body) =>
+      unwrap(fillAnnualApiV1CompaniesTickerSegmentsFillAnnualPost({ path: { ticker }, body })),
+    onSuccess: (_counts, body) =>
+      body.dry_run ? undefined : invalidateSegmentViews(queryClient, ticker),
   });
 }
 

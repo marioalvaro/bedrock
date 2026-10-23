@@ -26,11 +26,13 @@ from bedrock.statements.segments import (
 from bedrock.statements.view import trim_periods
 
 __all__ = [
+    "FillResult",
     "ImportResult",
     "SeriesInput",
     "ValueInput",
     "create_series",
     "delete_series",
+    "fill_annual",
     "import_segments",
     "segment_grid",
     "set_values",
@@ -58,6 +60,13 @@ class ImportResult:
     series_created: int
     values_created: int
     values_updated: int
+
+
+@dataclass(frozen=True)
+class FillResult:
+    values_created: int
+    values_overwritten: int
+    values_unchanged: int
 
 
 _YEAR_RANGE = (1000, 9999)  # four digits, as the import grammar
@@ -279,6 +288,51 @@ def import_segments(
                 updated += 1
     session.commit()
     return ImportResult(created, added, updated)
+
+
+def fill_annual(session: Session, company: Company, dry_run: bool, now: datetime) -> FillResult:
+    """Sets each FY value to the sum of its quarters (`statements/segments.py::fill_annual`: USD
+    series, years with all four quarters) and commits. A stored FY value that differs is
+    overwritten, an equal one is left untouched and counted unchanged. `dry_run` returns the same
+    counts and writes nothing. Raises InvalidSeries for a sum outside the value limit (G21),
+    with nothing written."""
+    series = repo.list_series(session, company.id)
+    stored = repo.list_values(session, [s.id for s in series])
+    fills = engine.fill_annual(
+        [SeriesData(s.id, s.dimension, s.name, s.metric, s.unit, s.display_order) for s in series],
+        [ValueData(v.series_id, v.fiscal_year, v.fiscal_period, v.value) for v in stored],
+    )
+    for fill in fills:
+        _check_value(fill.value)
+    current = {(v.series_id, v.fiscal_year): v for v in stored if v.fiscal_period == "FY"}
+    stamp = _naive_utc(now)
+    created = overwritten = unchanged = 0
+    for fill in fills:
+        old = current.get((fill.series_id, fill.fiscal_year))
+        if old is None:
+            created += 1
+            if not dry_run:
+                repo.add_value(
+                    session,
+                    SegmentValue(
+                        series_id=fill.series_id,
+                        fiscal_year=fill.fiscal_year,
+                        fiscal_period="FY",
+                        value=fill.value,
+                        created_at=stamp,
+                        updated_at=stamp,
+                    ),
+                )
+        elif old.value == fill.value:
+            unchanged += 1
+        else:
+            overwritten += 1
+            if not dry_run:
+                old.value = fill.value
+                old.updated_at = stamp
+    if not dry_run:
+        session.commit()
+    return FillResult(created, overwritten, unchanged)
 
 
 def _stored(session: Session, company: Company, series_id: int) -> SegmentSeries:

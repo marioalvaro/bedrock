@@ -8,6 +8,8 @@ from bedrock.api.deps import get_clock, get_session
 from bedrock.api.v1.statements import followed_company
 from bedrock.models.company import Company
 from bedrock.schemas.segments import (
+    FillAnnualIn,
+    FillAnnualOut,
     ImportErrorOut,
     SegmentImportIn,
     SegmentImportOut,
@@ -91,4 +93,19 @@ def import_segments(
         series_created=result.series_created,
         values_created=result.values_created,
         values_updated=result.values_updated,
+    )
+
+
+@router.post("/companies/{ticker}/segments/fill-annual")
+def fill_annual(
+    body: FillAnnualIn,
+    company: Company = Depends(followed_company),
+    session: Session = Depends(get_session),
+    now: datetime = Depends(get_clock),
+) -> FillAnnualOut:
+    result = service.fill_annual(session, company, body.dry_run, now)
+    return FillAnnualOut(
+        values_created=result.values_created,
+        values_overwritten=result.values_overwritten,
+        values_unchanged=result.values_unchanged,
     )

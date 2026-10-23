@@ -142,6 +142,18 @@ class SegmentImportOut(BaseModel):
     values_updated: int
 
 
+class FillAnnualIn(BaseModel):
+    """`dry_run` counts what would change and writes nothing."""
+
+    dry_run: bool = False
+
+
+class FillAnnualOut(BaseModel):
+    values_created: int
+    values_overwritten: int  # a stored FY value that differs from the sum of its quarters
+    values_unchanged: int  # a stored FY value already equal to that sum
+
+
 class ImportIssueOut(BaseModel):
     """One entry of the 422 body's `errors`; documented here for the OpenAPI client."""
 

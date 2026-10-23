@@ -591,6 +591,36 @@ export type FilingOut = {
 };
 
 /**
+ * FillAnnualIn
+ *
+ * `dry_run` counts what would change and writes nothing.
+ */
+export type FillAnnualIn = {
+    /**
+     * Dry Run
+     */
+    dry_run?: boolean;
+};
+
+/**
+ * FillAnnualOut
+ */
+export type FillAnnualOut = {
+    /**
+     * Values Created
+     */
+    values_created: number;
+    /**
+     * Values Overwritten
+     */
+    values_overwritten: number;
+    /**
+     * Values Unchanged
+     */
+    values_unchanged: number;
+};
+
+/**
  * FlagRuleOut
  *
  * One rule's values and severities, aligned with `periods`; `warn`/`alert` are the effective
@@ -3426,6 +3456,36 @@ export type GetSegmentsApiV1CompaniesTickerSegmentsGetResponses = {
 };
 
 export type GetSegmentsApiV1CompaniesTickerSegmentsGetResponse = GetSegmentsApiV1CompaniesTickerSegmentsGetResponses[keyof GetSegmentsApiV1CompaniesTickerSegmentsGetResponses];
+
+export type FillAnnualApiV1CompaniesTickerSegmentsFillAnnualPostData = {
+    body: FillAnnualIn;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/segments/fill-annual';
+};
+
+export type FillAnnualApiV1CompaniesTickerSegmentsFillAnnualPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type FillAnnualApiV1CompaniesTickerSegmentsFillAnnualPostError = FillAnnualApiV1CompaniesTickerSegmentsFillAnnualPostErrors[keyof FillAnnualApiV1CompaniesTickerSegmentsFillAnnualPostErrors];
+
+export type FillAnnualApiV1CompaniesTickerSegmentsFillAnnualPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: FillAnnualOut;
+};
+
+export type FillAnnualApiV1CompaniesTickerSegmentsFillAnnualPostResponse = FillAnnualApiV1CompaniesTickerSegmentsFillAnnualPostResponses[keyof FillAnnualApiV1CompaniesTickerSegmentsFillAnnualPostResponses];
 
 export type ImportSegmentsApiV1CompaniesTickerSegmentsImportPostData = {
     body: SegmentImportIn;

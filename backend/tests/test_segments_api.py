@@ -373,3 +373,151 @@ def test_an_unknown_scale_or_dimension_on_import_is_a_422(aapl_client: TestClien
 
     assert aapl_client.post(IMPORT, json=bad_scale).status_code == 422
     assert aapl_client.post(IMPORT, json=bad_dimension).status_code == 422
+
+
+# --- fill annual from quarterly (S4f) --------------------------------------------------------
+
+FILL = f"{GRID}/fill-annual"
+
+
+def put_values(client: TestClient, series_id: int, values: dict[str, str | None]) -> None:
+    """`values` maps "FY2024" or "Q1 FY2024" style keys, e.g. {"Q1:2024": "10"}, to amounts."""
+    body = []
+    for key, amount in values.items():
+        period, year = key.split(":")
+        body.append({"fiscal_year": int(year), "fiscal_period": period, "value": amount})
+    response = client.put(f"{SERIES}/{series_id}/values", json={"values": body})
+    assert response.status_code == 200, response.text
+
+
+def quarters(year: int, *amounts: str) -> dict[str, str | None]:
+    return {f"Q{i}:{year}": a for i, a in enumerate(amounts, start=1)}
+
+
+def annual(client: TestClient, series_id: int, year: int) -> Decimal | None:
+    body = grid(client, freq="annual")
+    for block in body["blocks"]:
+        for row in block["series"]:
+            if row["id"] == series_id:
+                value = row["values"][column(body, f"FY{year}")]
+                return None if value is None else Decimal(value)
+    raise AssertionError("series not in the grid")
+
+
+def fill(client: TestClient, **body: Any) -> dict[str, Any]:
+    response = client.post(FILL, json=body)
+    assert response.status_code == 200, response.text
+    out: dict[str, Any] = response.json()
+    return out
+
+
+def test_fill_annual_requires_a_session(client: TestClient) -> None:
+    assert client.post(FILL, json={}).status_code == 401
+
+
+def test_fill_annual_on_an_unfollowed_ticker_is_a_404(authed_client: TestClient) -> None:
+    assert authed_client.post(FILL, json={}).status_code == 404
+
+
+def test_fill_annual_sums_the_quarters_into_the_fy_value(aapl_client: TestClient) -> None:
+    sid = create(aapl_client)["id"]
+    put_values(aapl_client, sid, quarters(2024, "10.5", "20", "30", "40.25"))
+
+    out = fill(aapl_client)
+
+    assert out == {"values_created": 1, "values_overwritten": 0, "values_unchanged": 0}
+    assert annual(aapl_client, sid, 2024) == Decimal("100.75")
+
+
+def test_fill_annual_dry_run_reports_the_counts_and_writes_nothing(
+    aapl_client: TestClient, db_session: Session
+) -> None:
+    sid = create(aapl_client)["id"]
+    put_values(aapl_client, sid, {**quarters(2024, "1", "2", "3", "4"), "FY:2024": "7"})
+    before = _count(db_session, SegmentValue)
+
+    out = fill(aapl_client, dry_run=True)
+
+    assert out == {"values_created": 0, "values_overwritten": 1, "values_unchanged": 0}
+    assert annual(aapl_client, sid, 2024) == Decimal("7")
+    db_session.expire_all()
+    assert _count(db_session, SegmentValue) == before
+
+
+def test_fill_annual_overwrites_a_different_fy_value_and_counts_an_equal_one_unchanged(
+    aapl_client: TestClient,
+) -> None:
+    sid = create(aapl_client)["id"]
+    put_values(
+        aapl_client,
+        sid,
+        {
+            **quarters(2023, "1", "2", "3", "4"),
+            "FY:2023": "10",  # equal to the sum
+            **quarters(2024, "5", "5", "5", "5"),
+            "FY:2024": "99",  # differs
+            **quarters(2022, "1", "1", "1", "1"),  # no FY yet
+        },
+    )
+
+    out = fill(aapl_client)
+
+    assert out == {"values_created": 1, "values_overwritten": 1, "values_unchanged": 1}
+    assert annual(aapl_client, sid, 2024) == Decimal("20")
+    assert annual(aapl_client, sid, 2022) == Decimal("4")
+    assert annual(aapl_client, sid, 2023) == Decimal("10")
+
+
+def test_fill_annual_is_idempotent(aapl_client: TestClient) -> None:
+    sid = create(aapl_client)["id"]
+    put_values(aapl_client, sid, quarters(2024, "1", "2", "3", "4"))
+    fill(aapl_client)
+
+    assert fill(aapl_client) == {
+        "values_created": 0,
+        "values_overwritten": 0,
+        "values_unchanged": 1,
+    }
+
+
+def test_fill_annual_leaves_incomplete_years_and_non_additive_units_alone(
+    aapl_client: TestClient,
+) -> None:
+    usd = create(aapl_client)["id"]
+    put_values(aapl_client, usd, quarters(2024, "1", "2", "3"))  # Q4 missing
+    stores = create(aapl_client, KPI)["id"]
+    put_values(aapl_client, stores, quarters(2024, "1", "2", "3", "4"))
+    pct = create(aapl_client, {"dimension": "kpi", "name": "GM", "metric": "gm", "unit": "pct"})[
+        "id"
+    ]
+    put_values(aapl_client, pct, quarters(2024, "0.1", "0.1", "0.1", "0.1"))
+
+    out = fill(aapl_client)
+
+    assert out == {"values_created": 0, "values_overwritten": 0, "values_unchanged": 0}
+    for sid in (usd, stores, pct):
+        assert annual(aapl_client, sid, 2024) is None
+
+
+def test_fill_annual_with_no_series_is_all_zero(aapl_client: TestClient) -> None:
+    assert fill(aapl_client) == {
+        "values_created": 0,
+        "values_overwritten": 0,
+        "values_unchanged": 0,
+    }
+
+
+def test_fill_annual_refuses_a_sum_over_the_limit_and_writes_nothing(
+    aapl_client: TestClient,
+) -> None:
+    ok = create(aapl_client)["id"]
+    put_values(aapl_client, ok, quarters(2024, "1", "1", "1", "1"))
+    big = create(aapl_client, {**NEW_SERIES, "name": "Big"})["id"]
+    put_values(aapl_client, big, quarters(2024, *["600000000000000"] * 4))
+
+    response = aapl_client.post(FILL, json={})
+
+    assert response.status_code == 422
+    assert "below" in response.json()["detail"]
+    assert annual(aapl_client, ok, 2024) is None
+    assert annual(aapl_client, big, 2024) is None

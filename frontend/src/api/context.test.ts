@@ -21,6 +21,7 @@ import {
   useCreateSeries,
   useDeleteNote,
   useDeleteSeries,
+  useFillAnnualSegments,
   useImportSegments,
   useSetSegmentValues,
   useUpdateNote,
@@ -32,6 +33,7 @@ import {
   createSeriesApiV1CompaniesTickerSegmentSeriesPost,
   deleteNoteApiV1CompaniesTickerNotesNoteIdDelete,
   deleteSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdDelete,
+  fillAnnualApiV1CompaniesTickerSegmentsFillAnnualPost,
   getSegmentsApiV1CompaniesTickerSegmentsGet,
   importSegmentsApiV1CompaniesTickerSegmentsImportPost,
   listLinksApiV1CompaniesTickerNotesLinksGet,
@@ -50,6 +52,7 @@ vi.mock("@/api/generated/sdk.gen", () => ({
   deleteSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdDelete: vi.fn(),
   setValuesApiV1CompaniesTickerSegmentSeriesSeriesIdValuesPut: vi.fn(),
   importSegmentsApiV1CompaniesTickerSegmentsImportPost: vi.fn(),
+  fillAnnualApiV1CompaniesTickerSegmentsFillAnnualPost: vi.fn(),
   listNotesApiV1CompaniesTickerNotesGet: vi.fn(),
   listLinksApiV1CompaniesTickerNotesLinksGet: vi.fn(),
   createNoteApiV1CompaniesTickerNotesPost: vi.fn(),
@@ -63,6 +66,7 @@ const updateSeries = vi.mocked(updateSeriesApiV1CompaniesTickerSegmentSeriesSeri
 const deleteSeries = vi.mocked(deleteSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdDelete);
 const setValues = vi.mocked(setValuesApiV1CompaniesTickerSegmentSeriesSeriesIdValuesPut);
 const importSegments = vi.mocked(importSegmentsApiV1CompaniesTickerSegmentsImportPost);
+const fillAnnual = vi.mocked(fillAnnualApiV1CompaniesTickerSegmentsFillAnnualPost);
 const listNotes = vi.mocked(listNotesApiV1CompaniesTickerNotesGet);
 const listLinks = vi.mocked(listLinksApiV1CompaniesTickerNotesLinksGet);
 const createNote = vi.mocked(createNoteApiV1CompaniesTickerNotesPost);
@@ -232,6 +236,9 @@ function useSegmentValuesSet() {
 function useSegmentsImport() {
   return useImportSegments("AAPL");
 }
+function useAnnualFill() {
+  return useFillAnnualSegments("AAPL");
+}
 function useNoteCreate() {
   return useCreateNote("AAPL");
 }
@@ -294,6 +301,15 @@ const mutations = [
       path: { ticker: "AAPL" },
       body: { dimension: "geo", scale: "M", text: "name,metric,unit,FY2024" },
     },
+    stale: segmentStale,
+    fresh: segmentFresh,
+  },
+  {
+    name: "useFillAnnualSegments",
+    hook: useAnnualFill,
+    vars: { dry_run: false },
+    sdk: fillAnnual,
+    args: { path: { ticker: "AAPL" }, body: { dry_run: false } },
     stale: segmentStale,
     fresh: segmentFresh,
   },
@@ -365,6 +381,26 @@ describe.each(mutations)("$name", ({ hook, vars, sdk, args, stale, fresh }) => {
     result.current.mutate(vars as never);
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect((result.current.error as ApiError).status).toBeUndefined();
+  });
+});
+
+describe("useFillAnnualSegments", () => {
+  const counts = { values_created: 2, values_overwritten: 1, values_unchanged: 0 };
+
+  it("returns the counts and leaves the views alone on a dry run", async () => {
+    fillAnnual.mockResolvedValue(okResult(counts, 200) as never);
+    const { wrapper, queryClient } = setup();
+    for (const key of segmentStale()) queryClient.setQueryData(key, {});
+    const { result } = renderHook(() => useFillAnnualSegments("AAPL"), { wrapper });
+
+    result.current.mutate({ dry_run: true });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toEqual(counts);
+    expect(fillAnnual).toHaveBeenCalledWith({ path: { ticker: "AAPL" }, body: { dry_run: true } });
+    for (const key of segmentStale()) {
+      expect(queryClient.getQueryState(key)?.isInvalidated, JSON.stringify(key)).toBe(false);
+    }
   });
 });
 

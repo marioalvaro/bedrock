@@ -131,6 +131,39 @@ class ImportPlan:
     rows: list[ImportRow]
 
 
+@dataclass(frozen=True)
+class AnnualSum:
+    """The FY value of a series, as the sum of its four quarters."""
+
+    series_id: int
+    fiscal_year: int
+    value: Decimal
+
+
+_QUARTER_PERIODS = frozenset({"Q1", "Q2", "Q3", "Q4"})
+
+
+def fill_annual(series: Sequence[SeriesData], values: Sequence[ValueData]) -> list[AnnualSum]:
+    """The FY value each `USD` series gets from its quarters: Q1 + Q2 + Q3 + Q4 for every fiscal
+    year in which all four exist. Other units are skipped (`pct` and `USD_per_unit` do not add
+    up, and a `count` may be a stock such as a store count), as is a year missing any quarter and
+    a value of an unknown series. A stored FY value is ignored. Ordered by series id, then year."""
+    quarters: dict[tuple[int, int], dict[str, Decimal]] = {}
+    for v in values:
+        if v.fiscal_period in _QUARTER_PERIODS:
+            quarters.setdefault((v.series_id, v.fiscal_year), {})[v.fiscal_period] = v.value
+    fills: list[AnnualSum] = []
+    for s in sorted(series, key=lambda s: s.id):
+        if s.unit != "USD":
+            continue
+        years = sorted(year for (sid, year) in quarters if sid == s.id)
+        for year in years:
+            found = quarters[(s.id, year)]
+            if found.keys() == _QUARTER_PERIODS:
+                fills.append(AnnualSum(s.id, year, sum(found.values(), Decimal(0))))
+    return fills
+
+
 def segment_grid(
     series: Sequence[SeriesData],
     values: Sequence[ValueData],

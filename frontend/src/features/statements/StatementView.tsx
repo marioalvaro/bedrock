@@ -191,7 +191,7 @@ export function StatementView({ ticker, cik, type }: StatementViewProps) {
   const scale = useScale();
   const grid = useRef<DataGridHandle>(null);
 
-  const { data, isPending, isError } = useQuery(
+  const { data, isPending, isError, isPlaceholderData } = useQuery(
     statementQueryOptions(ticker, type, freq, base, basis),
   );
 
@@ -311,7 +311,7 @@ export function StatementView({ ticker, cik, type }: StatementViewProps) {
           size="sm"
           className="ml-auto"
           aria-label="Download CSV"
-          disabled={!data}
+          disabled={!data || isPlaceholderData}
           onClick={exportCsv}
         >
           <Download /> CSV

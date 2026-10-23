@@ -12,7 +12,10 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { downloadText } from "@/lib/download";
 import type { Scale } from "@/lib/scale";
+
+import { FORMAT_RULES, templateCsv, templateFileName, templateRows } from "./importFormat";
 
 type Dimension = SegmentImportIn["dimension"];
 type ImportScale = SegmentImportIn["scale"];
@@ -42,6 +45,55 @@ function issueText(issue: ImportIssueOut, header: string[]): string {
   if (issue.column === null) return `row ${issue.row}: ${issue.message}`;
   const name = header[issue.column - 1];
   return `row ${issue.row}, ${name ? name : `column ${issue.column}`}: ${issue.message}`;
+}
+
+/** The rules of the import, an example for the dimension and the template download. */
+function FormatHelper({ dimension }: { dimension: Dimension }) {
+  const [header = [], ...rows] = templateRows(dimension);
+  return (
+    <details open className="space-y-2 px-4 pb-3 text-xs">
+      <summary className="cursor-pointer text-sm font-medium">Format</summary>
+      <ul className="text-muted-foreground list-disc space-y-1 pl-4">
+        {FORMAT_RULES.map((rule) => (
+          <li key={rule}>{rule}</li>
+        ))}
+      </ul>
+      <div className="overflow-x-auto">
+        <table aria-label="Example" className="w-full border-collapse font-mono">
+          <thead>
+            <tr>
+              {header.map((cell) => (
+                <th key={cell} className="border px-2 py-1 text-left font-medium">
+                  {cell}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.join("|")}>
+                {row.map((cell, index) => (
+                  <td key={`${header[index]}-${cell}`} className="border px-2 py-1">
+                    {cell}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() =>
+          downloadText(templateFileName(dimension), templateCsv(dimension), "text/csv")
+        }
+      >
+        Download template
+      </Button>
+    </details>
+  );
 }
 
 interface ImportSheetProps {
@@ -98,11 +150,10 @@ export function ImportSheet({ ticker, open, scale, onClose }: ImportSheetProps) 
         <SheetHeader>
           <SheetTitle>Import segments or KPIs</SheetTitle>
           <SheetDescription>
-            Header: name,metric,unit, then one column per period written FY2024 or Q1 FY2024 (the
-            grid shows FY24). A blank cell keeps the stored value. USD values are multiplied by the
-            scale; a percent is typed as 5.2 or 5.2%.
+            Paste or choose a CSV or TSV of segment or KPI series.
           </SheetDescription>
         </SheetHeader>
+        <FormatHelper dimension={dimension} />
         <form onSubmit={submit} className="space-y-3 px-4 pb-4" noValidate>
           <div className="grid gap-2 sm:grid-cols-2">
             <div className="space-y-1">
