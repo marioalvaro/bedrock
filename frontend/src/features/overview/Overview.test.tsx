@@ -115,6 +115,79 @@ describe("Overview", () => {
     );
   });
 
+  describe("classified concepts", () => {
+    async function openGaps() {
+      vi.mocked(getMappingGapsApiV1CompaniesTickerMappingGapsGet).mockResolvedValue(
+        okResult(mappingGaps()) as never,
+      );
+      renderOverview();
+      return screen.findByRole("region", { name: "Data gaps" });
+    }
+
+    it("counts only the unclassified concepts and hides the classified by default", async () => {
+      const gaps = await openGaps();
+
+      expect(
+        await within(gaps).findByText(/Unmapped concepts in the latest 10-K \(2\)/),
+      ).toBeVisible();
+      expect(within(gaps).getByText("us-gaap:LongTermDebtCurrent")).toBeInTheDocument();
+      expect(
+        within(gaps).queryByText("us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInYearTwo"),
+      ).not.toBeInTheDocument();
+      expect(within(gaps).queryByText("us-gaap:Land")).not.toBeInTheDocument();
+      expect(within(gaps).getByRole("button", { name: "Show classified (2)" })).toBeInTheDocument();
+    });
+
+    it("shows each classified concept with its type and reason when asked", async () => {
+      const gaps = await openGaps();
+
+      await userEvent.click(
+        await within(gaps).findByRole("button", { name: "Show classified (2)" }),
+      );
+
+      const ladder = (
+        await within(gaps).findByText(
+          "us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInYearTwo",
+        )
+      ).closest("tr") as HTMLElement;
+      expect(within(ladder).getByText("disclosure")).toBeInTheDocument();
+      expect(within(ladder).getByText("debt maturity schedule")).toBeInTheDocument();
+      const land = within(gaps).getByText("us-gaap:Land").closest("tr") as HTMLElement;
+      expect(within(land).getByText("component")).toBeInTheDocument();
+      expect(within(land).getByText("ppe_net")).toBeInTheDocument();
+      expect(
+        within(land).getByText("gross property component of the PP&E note"),
+      ).toBeInTheDocument();
+      // the open concepts stay listed, and the button now hides the classified again
+      expect(within(gaps).getByText("us-gaap:LongTermDebtCurrent")).toBeInTheDocument();
+      await userEvent.click(within(gaps).getByRole("button", { name: "Hide classified (2)" }));
+      expect(within(gaps).queryByText("us-gaap:Land")).not.toBeInTheDocument();
+    });
+
+    it("has no toggle when nothing is classified", async () => {
+      const open = mappingGaps().unmapped_concepts.filter((c) => c.classification === null);
+      vi.mocked(getMappingGapsApiV1CompaniesTickerMappingGapsGet).mockResolvedValue(
+        okResult({ missing_items: [], unmapped_concepts: open }) as never,
+      );
+      renderOverview();
+
+      const gaps = await screen.findByRole("region", { name: "Data gaps" });
+      expect(await within(gaps).findByText("us-gaap:LongTermDebtCurrent")).toBeInTheDocument();
+      expect(within(gaps).queryByRole("button", { name: /classified/ })).not.toBeInTheDocument();
+    });
+
+    it("says nothing is left to classify when every concept has a verdict", async () => {
+      const done = mappingGaps().unmapped_concepts.filter((c) => c.classification !== null);
+      vi.mocked(getMappingGapsApiV1CompaniesTickerMappingGapsGet).mockResolvedValue(
+        okResult({ missing_items: [], unmapped_concepts: done }) as never,
+      );
+      renderOverview();
+
+      expect(await screen.findByText("No unclassified concepts.")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Show classified (2)" })).toBeInTheDocument();
+    });
+  });
+
   it("says so when there are no gaps", async () => {
     vi.mocked(getMappingGapsApiV1CompaniesTickerMappingGapsGet).mockResolvedValue(
       okResult({ missing_items: [], unmapped_concepts: [] }) as never,

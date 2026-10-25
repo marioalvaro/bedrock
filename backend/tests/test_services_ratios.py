@@ -52,7 +52,9 @@ def test_statement_tables_uses_the_requested_common_size_base(
     db_session: Session, aapl: Company
 ) -> None:
     pipeline = run_pipeline("AAPL")
-    expected = build_statement(pipeline.canonical, pipeline.items, "IS", "annual", "parent")
+    expected = build_statement(
+        pipeline.canonical, pipeline.items, "IS", "annual", "parent", rules=pipeline.rules
+    )
 
     tables = statement_tables(db_session, aapl, [("IS", "annual")], common_size_base="parent")
 

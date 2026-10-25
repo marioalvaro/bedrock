@@ -10,9 +10,11 @@ import pandas as pd
 
 from bedrock.mapping.config import CanonicalItemDef
 from bedrock.mapping.vintage import BALANCE_DATE_TOLERANCE
-from bedrock.statements.cells import Derivation, Provenance, compute_cells
+from bedrock.statements.cell_types import Derivation, Provenance
+from bedrock.statements.cells import compute_cells
 from bedrock.statements.normalize import AdjustmentLike, AppliedAdjustment, apply_adjustments
 from bedrock.statements.periods import annual_periods, fiscal_calendar, quarterly_periods
+from bedrock.statements.rules import NO_RULES, Rules
 
 
 @dataclass(frozen=True)
@@ -64,6 +66,7 @@ def explain_cell(
     fiscal_year: int,
     fiscal_period: str,
     adjustments: Sequence[AdjustmentLike] = (),
+    rules: Rules = NO_RULES,
 ) -> CellExplanation:
     """`frame` is the canonical (latest) frame, `all_vintages` the fact frame before
     `select_vintage`. Raises KeyError for an unknown code or a period that does not exist."""
@@ -81,9 +84,9 @@ def explain_cell(
     )
     if period is None:
         raise KeyError(f"FY{fiscal_year} {fiscal_period}")
-    cells = compute_cells(frame, items, calendar)
+    cells = compute_cells(frame, items, calendar, rules)
     cell = cells[(code, period.key)]
-    normalized, applied = apply_adjustments(cells, items, adjustments, calendar)
+    normalized, applied = apply_adjustments(cells, items, adjustments, calendar, rules.identities)
     behind = applied.get((code, period.key), [])
 
     source = filing = None

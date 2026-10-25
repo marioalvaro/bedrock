@@ -450,7 +450,8 @@
                 "enum": [
                   "reported",
                   "derived",
-                  "normalized"
+                  "normalized",
+                  "zero_inferred"
                 ],
                 "type": "string"
               },
@@ -969,6 +970,32 @@
           "members"
         ],
         "title": "CompsSetOut",
+        "type": "object"
+      },
+      "ConceptClassificationOut": {
+        "properties": {
+          "codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Codes",
+            "type": "array"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "reason",
+          "codes"
+        ],
+        "title": "ConceptClassificationOut",
         "type": "object"
       },
       "CorporateActionOut": {
@@ -3179,7 +3206,8 @@
                   "enum": [
                     "reported",
                     "derived",
-                    "normalized"
+                    "normalized",
+                    "zero_inferred"
                   ],
                   "type": "string"
                 },
@@ -3754,6 +3782,16 @@
       },
       "UnmappedConceptOut": {
         "properties": {
+          "classification": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConceptClassificationOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "concept": {
             "title": "Concept",
             "type": "string"
@@ -3795,7 +3833,8 @@
           "latest_value",
           "latest_period_end",
           "facts",
-          "suggested_codes"
+          "suggested_codes",
+          "classification"
         ],
         "title": "UnmappedConceptOut",
         "type": "object"

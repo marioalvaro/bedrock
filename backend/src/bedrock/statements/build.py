@@ -8,7 +8,8 @@ from typing import Literal
 import pandas as pd
 
 from bedrock.mapping.config import CanonicalItemDef, is_adjustable
-from bedrock.statements.cells import EMPTY, Cell, CellKey, Provenance, compute_cells
+from bedrock.statements.cell_types import EMPTY, Cell, CellKey, Provenance, RuleWarning
+from bedrock.statements.cells import solve_cells
 from bedrock.statements.normalize import AdjustmentLike, apply_adjustments
 from bedrock.statements.periods import (
     Period,
@@ -17,6 +18,7 @@ from bedrock.statements.periods import (
     quarterly_periods,
     ttm_windows,
 )
+from bedrock.statements.rules import BALANCE_FLOOR, BALANCE_RELATIVE, NO_RULES, Rules
 
 Freq = Literal["annual", "quarterly", "ttm"]
 CommonSizeBase = Literal["total", "parent"]
@@ -52,11 +54,11 @@ class StatementTable:
     rows: list[Row]
     balance_check: list[BalanceCheck] | None
     warnings: list[str]
+    # rules whose result a guard refused (the same list on every table of one company)
+    rule_warnings: tuple[RuleWarning, ...] = ()
 
 
 RATIO_PLACES = Decimal("0.000001")
-BALANCE_FLOOR = Decimal(1_000_000)
-BALANCE_RELATIVE = Decimal("0.00001")
 
 
 def build_statement(
@@ -66,18 +68,20 @@ def build_statement(
     freq: Freq,
     common_size_base: CommonSizeBase = "total",
     adjustments: Sequence[AdjustmentLike] = (),
+    rules: Rules = NO_RULES,
 ) -> StatementTable:
-    """Evaluation order: discrete periods -> formulas -> adjustments (normalized basis) -> TTM ->
-    YoY / common-size.
+    """Evaluation order: discrete periods -> formulas and rules (`solve_cells`) -> adjustments
+    (normalized basis) -> TTM -> YoY / common-size.
 
     Common-size divides every row by one base row of the same period: `total` is revenue (IS, CF)
     or total assets (BS); `parent` is the row's parent, and a row without one uses the total."""
     if statement == "BS" and freq == "ttm":
         raise ValueError("TTM is only defined for flow statements, not the balance sheet")
     calendar = fiscal_calendar(frame)
-    cells = compute_cells(frame, items, calendar)
+    solved = solve_cells(frame, items, calendar, rules)
+    cells = solved.cells
     if adjustments:
-        cells, _ = apply_adjustments(cells, items, adjustments, calendar)
+        cells, _ = apply_adjustments(cells, items, adjustments, calendar, rules.identities)
     if freq == "annual":
         periods = annual_periods(calendar)
     elif freq == "quarterly":
@@ -99,7 +103,9 @@ def build_statement(
         if item.statement == statement
     ]
     balance = _balance_check(periods, cells) if statement == "BS" else None
-    return StatementTable(statement, freq, periods, rows, balance, list(calendar.warnings))
+    return StatementTable(
+        statement, freq, periods, rows, balance, list(calendar.warnings), solved.warnings
+    )
 
 
 def _ttm_cell(item: CanonicalItemDef, quarter_keys: list[str], cells: dict[CellKey, Cell]) -> Cell:
@@ -111,9 +117,12 @@ def _ttm_cell(item: CanonicalItemDef, quarter_keys: list[str], cells: dict[CellK
     normalized = any(
         cells.get((item.code, key), EMPTY).provenance == "normalized" for key in quarter_keys
     )
+    inferred = all(
+        cells.get((item.code, key), EMPTY).provenance == "zero_inferred" for key in quarter_keys
+    )
     return Cell(
         sum((v for v in values if v is not None), Decimal(0)),
-        "normalized" if normalized else "derived",
+        "zero_inferred" if inferred else "normalized" if normalized else "derived",
     )
 
 

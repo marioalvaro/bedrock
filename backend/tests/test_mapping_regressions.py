@@ -27,6 +27,14 @@ def mapped(ticker: str, code: str, period_key: str, freq: str = "annual") -> Dec
     return row.values[[p.key for p in table.periods].index(period_key)]
 
 
+def provenance_of(ticker: str, code: str, period_key: str, freq: str = "annual") -> str | None:
+    pipeline = run_pipeline(ticker)
+    statement = next(i.statement for i in pipeline.items if i.code == code)
+    table = (pipeline.annual if freq == "annual" else pipeline.quarterly)[statement]
+    row = next(r for r in table.rows if r.code == code)
+    return row.provenance[[p.key for p in table.periods].index(period_key)]
+
+
 def source_concept(pipeline: Pipeline, code: str, fiscal_year_end: str) -> str:
     """The concept that supplied the full-year (or instant) value of `code` ending that day."""
     frame = pipeline.canonical
@@ -174,7 +182,9 @@ def test_costco_reports_no_research_and_development() -> None:
 
 @pytest.mark.parametrize("ticker", ["AAPL", "MSFT"])
 def test_companies_without_noncontrolling_interests_have_no_nci_income(ticker: str) -> None:
-    assert mapped(ticker, "net_income_nci", "FY2020") is None
+    # nothing is mapped, and the filing tags no NCI concept: the rule engine infers an exact 0
+    assert mapped(ticker, "net_income_nci", "FY2020") == 0
+    assert provenance_of(ticker, "net_income_nci", "FY2020") == "zero_inferred"
     # net income and net income to common are both mapped, so neither depends on the missing NCI.
     assert mapped(ticker, "net_income", "FY2020") == mapped(ticker, "net_income_common", "FY2020")
 
@@ -251,8 +261,8 @@ BALANCE_SHEET: list[tuple[str, str, str, Decimal]] = [
         "FY2015",
         usd(53_329),
     ),  # 53,463 in the FY2015 10-K, restated in FY2016
-    ("AAPL", "long_term_debt", "FY2020", usd(98_667)),
-    ("AAPL", "long_term_debt", "FY2025", usd(78_328)),
+    ("AAPL", "long_term_debt", "FY2020", usd(99_304)),  # 98,667 + finance lease 637 (M3 S6)
+    ("AAPL", "long_term_debt", "FY2025", usd(79_020)),  # 78,328 + finance lease 692 (M3 S6)
     ("AAPL", "common_stock_apic", "FY2015", usd(27_416)),
     ("AAPL", "common_stock_apic", "FY2020", usd(50_779)),
     ("AAPL", "common_stock_apic", "FY2025", usd(93_568)),
@@ -319,8 +329,13 @@ BALANCE_SHEET: list[tuple[str, str, str, Decimal]] = [
     ("MSFT", "total_current_liabilities", "FY2020", usd(72_310)),
     ("MSFT", "total_current_liabilities", "FY2026", usd(168_825)),
     ("MSFT", "long_term_debt", "FY2015", usd(27_808)),
-    ("MSFT", "long_term_debt", "FY2020", usd(59_578)),
-    ("MSFT", "long_term_debt", "FY2026", usd(31_067)),
+    ("MSFT", "long_term_debt", "FY2020", usd(69_074)),  # 59,578 + finance leases 9,496 (M3 S6)
+    (
+        "MSFT",
+        "long_term_debt",
+        "FY2026",
+        usd(97_661),
+    ),  # 31,067 + finance leases 66,594 (companyfacts, M3 S6)
     ("MSFT", "operating_lease_liabilities_noncurrent", "FY2020", usd(7_671)),
     ("MSFT", "operating_lease_liabilities_noncurrent", "FY2026", usd(16_532)),
     ("MSFT", "common_stock_apic", "FY2015", usd(68_465)),
@@ -366,8 +381,18 @@ BALANCE_SHEET: list[tuple[str, str, str, Decimal]] = [
     ("COST", "accrued_liabilities", "FY2026", usd(3_037)),
     ("COST", "total_current_liabilities", "FY2020", usd(24_844)),
     ("COST", "total_current_liabilities", "FY2026", usd(43_952)),
-    ("COST", "long_term_debt", "FY2020", usd(7_514)),
-    ("COST", "long_term_debt", "FY2026", usd(3_914)),
+    (
+        "COST",
+        "long_term_debt",
+        "FY2020",
+        usd(8_171),
+    ),  # 7,514 + finance lease 657 (companyfacts, M3 S6)
+    (
+        "COST",
+        "long_term_debt",
+        "FY2026",
+        usd(5_233),
+    ),  # 3,914 + finance lease 1,319 (companyfacts, M3 S6)
     ("COST", "operating_lease_liabilities_noncurrent", "FY2020", usd(2_558)),
     ("COST", "operating_lease_liabilities_noncurrent", "FY2026", usd(2_414)),
     # Costco books par value (2) apart from additional paid-in capital: the APIC line maps.
@@ -402,7 +427,8 @@ def test_companies_without_a_separate_line_leave_the_item_empty() -> None:
     # The neighbouring items are mapped, so an empty cell means "not reported", not "nothing built".
     assert mapped("AAPL", "total_assets", "FY2020") == usd(323_888)
     assert mapped("COST", "total_assets", "FY2020") == usd(55_556)
-    assert mapped("AAPL", "nci", "FY2020") is None
+    assert mapped("AAPL", "nci", "FY2020") == 0  # no NCI line: an inferred zero (M3 S7)
+    assert provenance_of("AAPL", "nci", "FY2020") == "zero_inferred"
     assert mapped("AAPL", "accrued_liabilities", "FY2020") is None  # relabelled "other" from FY2018
     assert mapped("AAPL", "goodwill", "FY2020") is None  # no separate goodwill line since FY2018
     assert (
@@ -415,9 +441,9 @@ SHORT_TERM_DEBT: list[tuple[str, str, str, Decimal]] = [
     # AAPL, 10-Ks FY2015 (commercial paper 8,499 + current portion of long-term debt 2,500), FY2020
     # (4,996 + 8,773), FY2024 (9,967 + 10,912), FY2025 (7,979 + 12,350).
     ("AAPL", "short_term_debt", "FY2015", usd(10_999)),
-    ("AAPL", "short_term_debt", "FY2020", usd(13_769)),
-    ("AAPL", "short_term_debt", "FY2024", usd(20_879)),
-    ("AAPL", "short_term_debt", "FY2025", usd(20_329)),
+    ("AAPL", "short_term_debt", "FY2020", usd(13_793)),  # + current finance lease 24 (M3 S6)
+    ("AAPL", "short_term_debt", "FY2024", usd(21_023)),  # + current finance lease 144
+    ("AAPL", "short_term_debt", "FY2025", usd(20_867)),  # + current finance lease 538
     # AAPL FY2014: commercial paper 6,308 and a current portion of 0.
     ("AAPL", "short_term_debt", "FY2014", usd(6_308)),
     # The FY2020 Q2 and Q3 10-Qs call the first line "Commercial paper and repurchase agreement(s)"
@@ -437,9 +463,9 @@ SHORT_TERM_DEBT: list[tuple[str, str, str, Decimal]] = [
     ("MSFT", "short_term_debt", "FY2026Q1", usd(7_832)),
     ("MSFT", "short_term_debt", "FY2026Q3", usd(8_839)),
     # COST: the current portion is its only line.
-    ("COST", "short_term_debt", "FY2015", usd(1_283)),
-    ("COST", "short_term_debt", "FY2020", usd(95)),
-    ("COST", "short_term_debt", "FY2026", usd(2_248)),
+    ("COST", "short_term_debt", "FY2015", usd(1_293)),  # + current capital lease 10 (M3 S6)
+    ("COST", "short_term_debt", "FY2020", usd(126)),  # + current finance lease 31
+    ("COST", "short_term_debt", "FY2026", usd(2_342)),  # + current finance lease 94
 ]
 
 
@@ -454,7 +480,10 @@ def test_short_term_debt_is_the_whole_item(
 def test_a_summed_short_term_debt_names_all_its_sources() -> None:
     aapl, msft = run_pipeline("AAPL"), run_pipeline("MSFT")
     assert source_concept(aapl, "short_term_debt", "2025-09-27") == (
-        "CommercialPaper + LongTermDebtCurrent"
+        "CommercialPaper + LongTermDebtCurrent + FinanceLeaseLiabilityCurrent"
+    )
+    assert source_concept(aapl, "short_term_debt", "2015-09-26") == (
+        "CommercialPaper + LongTermDebtCurrent"  # no lease tag before FY2020
     )
     assert source_concept(msft, "short_term_debt", "2015-06-30") == (
         "ShortTermBorrowings + LongTermDebtCurrent"
@@ -479,8 +508,9 @@ def test_the_current_portion_alone_is_never_shown_for_apple() -> None:
 
 def test_residual_lines_absorb_the_components_that_have_no_concept() -> None:
     # AAPL FY2020: other current liabilities = total (105,392) - payables (42,296) - short-term debt
-    # (13,769) - deferred revenue (6,643) = 42,684, the reported "other current liabilities" line.
-    assert mapped("AAPL", "other_current_liabilities", "FY2020") == usd(42_684)
+    # (13,793, now with the 24 current finance lease) - deferred revenue (6,643) = 42,660: the
+    # reported "other current liabilities" line (42,684) less that lease, which moved into debt.
+    assert mapped("AAPL", "other_current_liabilities", "FY2020") == usd(42_660)
     # MSFT FY2020: 72,310 - 12,530 - 3,749 - 36,000 = 20,031 (accrued compensation, taxes and other).
     assert mapped("MSFT", "other_current_liabilities", "FY2020") == usd(20_031)
 
@@ -636,11 +666,11 @@ CASH_FLOW: list[tuple[str, str, str, Decimal]] = [
     ("COST", "sales_maturities_of_investments", "FY2015", usd(1_434)),
     ("COST", "sales_maturities_of_investments", "FY2020", usd(1_678)),
     ("COST", "sales_maturities_of_investments", "FY2026", usd(811)),
-    ("COST", "debt_issued", "FY2015", usd(1_125)),
+    ("COST", "debt_issued", "FY2015", usd(1_176)),  # long-term 1,125 + short-term 51 (companyfacts)
     ("COST", "debt_issued", "FY2020", usd(3_992)),
-    ("COST", "debt_issued", "FY2026", usd(496)),
+    ("COST", "debt_issued", "FY2026", usd(1_049)),  # long-term 496 + short-term 553
     ("COST", "debt_repaid", "FY2020", usd(-3_200)),
-    ("COST", "debt_repaid", "FY2026", usd(-69)),
+    ("COST", "debt_repaid", "FY2026", usd(-646)),  # long-term 69 + short-term 577
     ("COST", "buybacks", "FY2015", usd(-481)),
     ("COST", "buybacks", "FY2020", usd(-196)),
     ("COST", "buybacks", "FY2026", usd(-848)),
@@ -679,8 +709,10 @@ def test_cash_flow_lines_without_a_matching_concept_stay_empty() -> None:
     # FY2018 (the later "Sales of investments" is a custom tag companyfacts omits): see
     # `test_microsoft_investment_sales_and_maturities_are_left_empty`.
     assert mapped("MSFT", "sales_maturities_of_investments", "FY2020") is None
-    # Apple has no FX line and no receivables line at Costco.
-    assert mapped("AAPL", "fx_effect", "FY2020") is None
+    # Apple has no FX line: the cash roll-forward gives it (0 in FY2020, derived, M3 S7). Costco
+    # has no receivables line.
+    assert mapped("AAPL", "fx_effect", "FY2020") == 0
+    assert provenance_of("AAPL", "fx_effect", "FY2020") == "derived"
     assert mapped("COST", "change_receivables", "FY2020") is None
     assert mapped("AAPL", "cfo", "FY2020") == usd(80_674)  # the neighbours are mapped
 
@@ -789,10 +821,11 @@ M2_LINES: list[tuple[str, str, str, Decimal | None]] = [
     ("MSFT", "goodwill_impairment", "FY2020", None),  # none reported
     ("AAPL", "goodwill_impairment", "FY2020", None),
     ("COST", "goodwill_impairment", "FY2020", None),
-    # Temporary equity: none of the three has any.
-    ("AAPL", "temporary_equity", "FY2020", None),
-    ("MSFT", "temporary_equity", "FY2020", None),
-    ("COST", "temporary_equity", "FY2020", None),
+    # Temporary equity: none of the three has any; the balance sheet foots without it, so the rule
+    # engine infers an exact 0 (M3 S7).
+    ("AAPL", "temporary_equity", "FY2020", Decimal(0)),
+    ("MSFT", "temporary_equity", "FY2020", Decimal(0)),
+    ("COST", "temporary_equity", "FY2020", Decimal(0)),
     # Period-end shares outstanding (balance sheet parenthetical). AAPL is split-adjusted: the
     # FY2015 10-K says 5,578,753 thousand (x4), the FY2020 10-K 16,976,763 thousand (post-split).
     ("AAPL", "shares_outstanding", "FY2015", Decimal(22_315_012_000)),
@@ -870,7 +903,7 @@ DEERE: list[tuple[str, str, Decimal | None]] = [
     ("total_liabilities", "FY2015", usd("51190.0")),
     ("total_equity", "FY2015", usd("6757.6")),
     ("inventory", "FY2015", usd("3817.0")),
-    ("temporary_equity", "FY2015", None),
+    ("temporary_equity", "FY2015", Decimal(0)),  # inferred: the sheet foots without it (S7)
     # Interest expense is the consolidated income statement line, not Financial Services' own.
     ("interest_expense", "FY2015", usd("680.0")),
     ("interest_expense", "FY2020", usd(1_247)),
@@ -927,7 +960,7 @@ DEERE: list[tuple[str, str, Decimal | None]] = [
     # Redeemable noncontrolling interest sits between liabilities and equity (temporary equity).
     ("temporary_equity", "FY2016", usd("14.0")),
     ("temporary_equity", "FY2019", usd(14)),
-    ("temporary_equity", "FY2020", None),  # none: 62,147 + 12,944 = 75,091
+    ("temporary_equity", "FY2020", Decimal(0)),  # none: 62,147 + 12,944 = 75,091 (inferred 0, S7)
     ("temporary_equity", "FY2022", usd(92)),
     ("temporary_equity", "FY2023", usd(97)),
     ("temporary_equity", "FY2025", usd(51)),
@@ -975,9 +1008,10 @@ DEERE: list[tuple[str, str, Decimal | None]] = [
     ("acquisitions", "FY2020", usd(-66)),
     ("dividends_paid", "FY2020", usd(-956)),
     ("dividends_paid", "FY2025", usd(-1_720)),
-    # Receivables and payables changes in the cash flow combine lines the balance sheet does not
-    # (financing receivables related to sales; payables with accruals): not the canonical lines.
-    ("change_receivables", "FY2025", None),
+    # The cash flow's "Receivables related to sales" is its one operating receivables line (M3 S6
+    # verified it, see DEERE_RECEIVABLES); "Accounts payable and accrued expenses" combines two
+    # balance-sheet lines, so it is not the canonical payables line.
+    ("change_receivables", "FY2025", usd(1_084)),
     ("change_payables", "FY2025", None),
     ("change_inventory", "FY2025", usd(-275)),
 ]
@@ -1024,3 +1058,209 @@ def test_deere_has_no_total_current_assets_so_the_balance_check_adds_up_without_
     assert check["FY2025"].ok
     assert check["FY2025"].difference == 0
     assert check["FY2020"].ok
+
+
+# --- M3 S6: verified candidates, finance leases in debt, short-term borrowings in the debt flows ---
+
+_FY_END = {"DE": {"FY2025": "2025-11-02", "FY2024": "2024-10-27", "FY2023": "2023-10-29"}}
+DEERE_RECEIVABLES: list[tuple[str, Decimal]] = [
+    # Deere cash flow, "Receivables related to sales" (IncreaseDecreaseInReceivables, whose sign is
+    # the opposite of the cash effect). 10-K FY2025 (accession 0001104659-25-122321): FY2025 1,084,
+    # FY2024 421, FY2023 (4,253); read from the filing's R6 page on sec.gov.
+    ("FY2025", usd(1_084)),
+    ("FY2024", usd(421)),
+    ("FY2023", usd(-4_253)),
+]
+
+
+@pytest.mark.parametrize(("period", "expected"), DEERE_RECEIVABLES)
+def test_deere_change_in_receivables_is_the_receivables_related_to_sales_line(
+    period: str, expected: Decimal
+) -> None:
+    assert mapped("DE", "change_receivables", period) == expected
+    assert source_concept(run_pipeline("DE"), "change_receivables", _FY_END["DE"][period]) == (
+        "IncreaseDecreaseInReceivables"
+    )
+
+
+def test_the_receivables_fallback_ranks_after_accounts_receivable() -> None:
+    # Apple's, Microsoft's and Costco's cash flows are untouched (the baseline guard checks every
+    # cell); the fallback only fills a period the first concept leaves empty.
+    items = {i.code: i for i in run_pipeline("DE").items}
+    assert items["change_receivables"].concepts == (
+        "us-gaap:IncreaseDecreaseInAccountsReceivable",
+        "us-gaap:IncreaseDecreaseInReceivables",
+    )
+    assert mapped("AAPL", "change_receivables", "FY2020") == usd(6_917)
+    assert mapped("COST", "change_receivables", "FY2020") is None
+
+
+COSTCO_DEBT_FLOWS: list[tuple[str, str, Decimal]] = [
+    # Costco cash flow, 10-K FY2025 (accession 0000909832-25-000101, R8 page): short-term borrowings
+    # are separate lines next to the long-term ones, and both count (user decision 2026-10-25).
+    # FY2025: proceeds 816 + 0, repayments (862) + (103); FY2024: 928 + 498, (920) + (1,077);
+    # FY2023: 917 + 0, (935) + (75).
+    ("debt_issued", "FY2025", usd(816)),
+    ("debt_issued", "FY2024", usd(1_426)),
+    ("debt_issued", "FY2023", usd(917)),
+    ("debt_repaid", "FY2025", usd(-965)),
+    ("debt_repaid", "FY2024", usd(-1_997)),
+    ("debt_repaid", "FY2023", usd(-1_010)),
+]
+
+
+@pytest.mark.parametrize(("code", "period", "expected"), COSTCO_DEBT_FLOWS)
+def test_costco_debt_flows_include_the_short_term_borrowings(
+    code: str, period: str, expected: Decimal
+) -> None:
+    assert mapped("COST", code, period) == expected
+
+
+def test_a_debt_flow_names_the_long_term_anchor_and_the_short_term_member() -> None:
+    cost = run_pipeline("COST")
+    assert source_concept(cost, "debt_issued", "2025-08-31") == (
+        "ProceedsFromIssuanceOfLongTermDebt + ProceedsFromShortTermDebt"
+    )
+    assert source_concept(cost, "debt_repaid", "2025-08-31") == (
+        "RepaymentsOfLongTermDebt + RepaymentsOfShortTermDebt"
+    )
+
+
+def test_a_year_without_short_term_flows_keeps_the_long_term_figure_alone() -> None:
+    # Costco FY2020 (3,992 and (3,200) in the 10-K): no short-term proceeds or repayments facts.
+    assert mapped("COST", "debt_issued", "FY2020") == usd(3_992)
+    assert mapped("COST", "debt_repaid", "FY2020") == usd(-3_200)
+
+
+def test_a_net_short_term_flow_stays_in_other_financing() -> None:
+    # Apple's commercial paper is one net line (ProceedsFromRepaymentsOfCommercialPaper): it is
+    # not split by sign, so no net concept feeds debt_issued or debt_repaid.
+    aapl = run_pipeline("AAPL")
+    flows = aapl.mappings[aapl.mappings["canonical_code"].isin(["debt_issued", "debt_repaid"])]
+    assert not [c for c in flows["concept"] if c.startswith("ProceedsFromRepayments")]
+    frame = aapl.canonical
+    assert "ProceedsFromRepaymentsOfCommercialPaper" not in set(frame["concept"])
+
+
+FINANCE_LEASES_IN_DEBT: list[tuple[str, str, str, Decimal]] = [
+    # Finance leases count as debt (user decision 2026-10-25); each company's 10-K shows where the
+    # lease liability sat, and the figures below are the debt line plus that liability.
+    #
+    # AAPL: the lease note puts the liabilities in "Other current liabilities" and "Other non-current
+    # liabilities", outside the term-debt lines. 10-K FY2025 (R56): current 538 / 144, non-current
+    # 692 / 752 for FY2025 / FY2024; 10-K FY2023 (R60): 165 / 129 and 859 / 812 for FY2023 / FY2022.
+    # Short-term: commercial paper + current term debt + current lease, e.g. FY2025 7,979 + 12,350 + 538.
+    ("AAPL", "short_term_debt", "FY2025", usd(20_867)),
+    ("AAPL", "short_term_debt", "FY2024", usd(21_023)),
+    ("AAPL", "short_term_debt", "FY2023", usd(15_972)),  # 15,807 + 165
+    ("AAPL", "short_term_debt", "FY2022", usd(21_239)),  # 21,110 + 129
+    ("AAPL", "long_term_debt", "FY2025", usd(79_020)),  # 78,328 + 692
+    ("AAPL", "long_term_debt", "FY2024", usd(86_502)),  # 85,750 + 752
+    ("AAPL", "long_term_debt", "FY2023", usd(96_140)),  # 95,281 + 859
+    ("AAPL", "long_term_debt", "FY2022", usd(99_771)),  # 98,959 + 812
+    ("AAPL", "total_debt", "FY2025", usd(99_887)),
+    # Before FY2020 Apple tags no finance lease liability: the lines are the debt alone.
+    ("AAPL", "short_term_debt", "FY2019", usd(16_240)),
+    ("AAPL", "long_term_debt", "FY2019", usd(91_807)),
+    # MSFT: one total (FinanceLeaseLiability), half current and mostly long-term, all in "Other
+    # current liabilities" and "Other long-term liabilities". Companyfacts has no split, so the
+    # whole liability joins long-term debt. 10-Ks: FY2025 46,172 (R90), FY2024 27,145, FY2020
+    # 9,496 (R95), FY2019 6,574, FY2018 4,301 and FY2017 2,538 (R103).
+    ("MSFT", "long_term_debt", "FY2025", usd(86_324)),  # 40,152 + 46,172
+    ("MSFT", "long_term_debt", "FY2024", usd(69_833)),  # 42,688 + 27,145
+    ("MSFT", "long_term_debt", "FY2020", usd(69_074)),  # 59,578 + 9,496
+    ("MSFT", "long_term_debt", "FY2019", usd(73_236)),  # 66,662 + 6,574
+    ("MSFT", "long_term_debt", "FY2018", usd(76_543)),  # 72,242 + 4,301
+    ("MSFT", "long_term_debt", "FY2017", usd(78_611)),  # 76,073 + 2,538
+    ("MSFT", "total_debt", "FY2025", usd(89_323)),  # 2,999 + 86,324
+    # MSFT before FY2017 has no finance lease liability tag.
+    ("MSFT", "long_term_debt", "FY2016", usd(40_557)),
+    # COST: current leases in "Other current liabilities", long-term in "Other long-term
+    # liabilities". 10-K FY2025 (R52): 78 / 1,401, FY2024: 147 / 1,351; 10-K FY2018 (R43, capital
+    # leases): 7 / 390.
+    ("COST", "short_term_debt", "FY2025", usd(153)),  # 75 + 78
+    ("COST", "short_term_debt", "FY2024", usd(250)),  # 103 + 147
+    ("COST", "short_term_debt", "FY2018", usd(97)),  # 90 + 7
+    ("COST", "long_term_debt", "FY2025", usd(7_114)),  # 5,713 + 1,401
+    ("COST", "long_term_debt", "FY2024", usd(7_145)),  # 5,794 + 1,351
+    ("COST", "long_term_debt", "FY2018", usd(6_877)),  # 6,487 + 390
+    # COST FY2021-FY2023: companyfacts carries no lease liability, so those years are the debt alone.
+    ("COST", "short_term_debt", "FY2021", usd(799)),
+    ("COST", "long_term_debt", "FY2021", usd(6_692)),
+    # DE: the lease note says the finance leases are inside "Short-term borrowings" and "Long-term
+    # borrowings" (10-K FY2025 R147: 39 / 73, FY2024 33 / 72; R24 lists them in the short-term
+    # table), so adding them again would count them twice: Deere's lines are unchanged.
+    ("DE", "short_term_debt", "FY2025", usd(20_392)),
+    ("DE", "short_term_debt", "FY2020", usd(13_264)),
+    ("DE", "long_term_debt", "FY2020", usd(32_734)),
+    ("DE", "long_term_debt", "FY2021", usd(32_888)),
+]
+
+
+@pytest.mark.parametrize(("ticker", "code", "period", "expected"), FINANCE_LEASES_IN_DEBT)
+def test_finance_leases_are_in_debt_where_the_10k_shows_them_outside_it(
+    ticker: str, code: str, period: str, expected: Decimal
+) -> None:
+    assert mapped(ticker, code, period) == expected
+
+
+def test_the_lease_leaves_the_residual_it_sat_in_so_the_subtotals_still_foot() -> None:
+    # Apple FY2025: other non-current liabilities 30,638 before, less the 692 now in long-term debt.
+    assert mapped("AAPL", "other_noncurrent_liabilities", "FY2025") == usd(29_946)
+    assert mapped("AAPL", "other_current_liabilities", "FY2025") == usd(65_849)  # 66,387 - 538
+    for ticker in ("AAPL", "MSFT", "COST"):
+        annual = run_pipeline(ticker).annual["BS"]
+        keys = [p.key for p in annual.periods]
+        rows = {r.code: r.values for r in annual.rows}
+        for key in ("FY2024", "FY2025"):
+            i = keys.index(key)
+            for total, parts in (
+                (
+                    "total_noncurrent_liabilities",
+                    ("long_term_debt", "operating_lease_liabilities_noncurrent"),
+                ),
+            ):
+                assert rows[total][i] is not None
+                rest = rows["other_noncurrent_liabilities"][i]
+                assert rest is not None and rest > 0
+                known = sum((rows[p][i] or Decimal(0) for p in parts), Decimal(0))
+                assert known + rest == rows[total][i]
+
+
+def test_net_debt_follows_the_debt_lines() -> None:
+    # Microsoft FY2025: debt 89,323 less cash and short-term investments.
+    msft = run_pipeline("MSFT").annual["BS"]
+    rows = {r.code: r.values for r in msft.rows}
+    i = [p.key for p in msft.periods].index("FY2025")
+    assert rows["net_debt"][i] == (
+        rows["total_debt"][i] - rows["cash"][i] - (rows["short_term_investments"][i] or 0)
+    )
+
+
+def test_a_lease_member_names_its_source_and_a_pre_842_lease_is_never_added_twice() -> None:
+    cost, aapl, msft = run_pipeline("COST"), run_pipeline("AAPL"), run_pipeline("MSFT")
+    assert source_concept(cost, "long_term_debt", "2025-08-31") == (
+        "LongTermDebtNoncurrent + FinanceLeaseLiabilityNoncurrent"
+    )
+    assert source_concept(cost, "long_term_debt", "2018-09-02") == (
+        "LongTermDebtNoncurrent + CapitalLeaseObligationsNoncurrent"
+    )
+    assert source_concept(aapl, "short_term_debt", "2025-09-27") == (
+        "CommercialPaper + LongTermDebtCurrent + FinanceLeaseLiabilityCurrent"
+    )
+    assert source_concept(msft, "long_term_debt", "2025-06-30") == (
+        "LongTermDebtNoncurrent + FinanceLeaseLiability"
+    )
+    # The two lease tags of one liability never both feed one cell: the ASC 842 switch is a clean cut.
+    for ticker in ("AAPL", "MSFT", "COST", "DE"):
+        frame = run_pipeline(ticker).canonical
+        debt = frame[frame["code"].isin(["short_term_debt", "long_term_debt"])]
+        both = [c for c in debt["concept"] if ("CapitalLease" in c and "FinanceLease" in c)]
+        assert both == []
+
+
+def test_deere_has_no_lease_member_in_its_debt_lines() -> None:
+    de = run_pipeline("DE")
+    frame = de.canonical
+    debt = frame[frame["code"].isin(["short_term_debt", "long_term_debt"])]
+    assert not [c for c in debt["concept"] if "Lease" in c]

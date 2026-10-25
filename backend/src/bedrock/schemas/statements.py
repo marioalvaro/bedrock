@@ -12,7 +12,7 @@ from bedrock.statements.build import StatementTable
 from bedrock.statements.explain import CellExplanation
 from bedrock.statements.periods import Period
 
-Provenance = Literal["reported", "derived", "normalized"]
+Provenance = Literal["reported", "derived", "normalized", "zero_inferred"]
 
 
 class PeriodOut(BaseModel):
@@ -213,6 +213,12 @@ class MissingItemOut(BaseModel):
     missing_periods: list[str]
 
 
+class ConceptClassificationOut(BaseModel):
+    type: str  # disclosure | component | rejected | scope | candidate
+    reason: str
+    codes: list[str]  # the canonical codes the verdict is about; empty for a disclosure
+
+
 class UnmappedConceptOut(BaseModel):
     taxonomy: str
     concept: str
@@ -221,6 +227,7 @@ class UnmappedConceptOut(BaseModel):
     latest_period_end: date
     facts: int
     suggested_codes: list[str]  # canonical codes it might belong to: a hint, not a mapping
+    classification: ConceptClassificationOut | None  # the triage verdict; null while undecided
 
 
 class MappingGapsOut(BaseModel):
@@ -248,6 +255,15 @@ class MappingGapsOut(BaseModel):
                     latest_period_end=u.latest_period_end,
                     facts=u.facts,
                     suggested_codes=u.suggested_codes,
+                    classification=(
+                        ConceptClassificationOut(
+                            type=u.classification.type,
+                            reason=u.classification.reason,
+                            codes=list(u.classification.codes),
+                        )
+                        if u.classification is not None
+                        else None
+                    ),
                 )
                 for u in gaps.unmapped_concepts
             ],

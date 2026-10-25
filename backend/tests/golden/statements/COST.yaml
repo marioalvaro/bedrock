@@ -37,6 +37,8 @@ annual:
     total_equity: 18705000000
     cfo: 8861000000
     capex: -2810000000
+    short_term_debt: 126000000       # current portion of long-term debt 95 + current finance lease 31 (lease note, 10-K FY2021; finance leases count as debt, M3 S6)
+    long_term_debt: 8171000000       # long-term debt, excluding current portion 7,514 + non-current finance lease 657
   FY2026:
     revenue: 303154000000
     gross_profit: 38875000000
@@ -49,6 +51,8 @@ annual:
     total_equity: 35803000000
     cfo: 15817000000
     capex: -6435000000
+    short_term_debt: 2342000000      # current portion of long-term debt 2,248 + current finance lease 94 (lease note, 10-K FY2026)
+    long_term_debt: 5233000000       # long-term debt, excluding current portion 3,914 + non-current finance lease 1,319
 
 # Q4 (16 weeks) of the latest FY = 10-K FY revenue minus the 36-week revenue of the Q3 10-Q
 # (accession 0000909832-26-000051, 36 weeks ended 2026-05-10: 207,431 million).
@@ -85,13 +89,11 @@ expected_missing:
   total_debt: "derived from short-term and long-term debt, so absent where either is (FY2008)"
   net_debt: "derived from total debt, so absent where that is (FY2008)"
   operating_lease_liabilities_noncurrent: "no XBRL fact before FY2019"
-  total_liabilities: "no XBRL fact before FY2009"
   common_stock_apic: "no XBRL fact before FY2009"
   retained_earnings: "no XBRL fact before FY2009"
   aoci: "no XBRL fact before FY2009"
   equity_parent: "no XBRL fact before FY2009"
   nci: "noncontrolling interests ended in FY2023"
-  total_liabilities_and_equity: "no XBRL fact before FY2009"
   deferred_taxes: "tagged IncreaseDecreaseInDeferredIncomeTaxes, of opposite polarity: one sign cannot fit both (see S3 log)"
   change_receivables: "no receivables line in Costco's cash flow statement"
   acquisitions: "acquisitions only in FY2019-22"
@@ -112,8 +114,6 @@ acknowledged_unmapped:
   us-gaap:ConstructionInProgressGross: "property-note component, gross of depreciation; ppe_net is the net balance-sheet line"
   us-gaap:DebtInstrumentCarryingAmount: "debt-note amount of the notes (long-term total with its current part), not a balance-sheet line; the short- and long-term debt lines are mapped"
   us-gaap:FinanceLeaseInterestExpense: "lease-note component of interest; interest_expense is the total interest line"
-  us-gaap:FinanceLeaseLiabilityCurrent: "finance lease liabilities sit in other liabilities, outside the debt lines (the mapped debt lines match the 10-K face lines without them)"
-  us-gaap:FinanceLeaseLiabilityNoncurrent: "finance lease liabilities sit in other liabilities, outside the debt lines (the mapped debt lines match the 10-K face lines without them)"
   us-gaap:FinanceLeaseLiabilityUndiscountedExcessAmount: "lease maturity-note detail (undiscounted excess), not a balance-sheet line"
   us-gaap:FixturesAndEquipmentGross: "property-note component, gross of depreciation; ppe_net is the net balance-sheet line"
   us-gaap:HeldToMaturitySecurities: "investments-note component, not a balance-sheet line"
@@ -128,5 +128,3 @@ acknowledged_unmapped:
   us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInYearThree: "debt maturity schedule, not a balance-sheet line"
   us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInYearTwo: "debt maturity schedule, not a balance-sheet line"
   us-gaap:OperatingLeaseLiability: "current plus noncurrent operating lease liability; the canonical line is the noncurrent one"
-  us-gaap:ProceedsFromShortTermDebt: "short-term borrowings are a separate cash-flow line; debt_issued holds long-term issuance and the financing residual absorbs this line (decision to review)"
-  us-gaap:RepaymentsOfShortTermDebt: "short-term repayments are a separate cash-flow line; debt_repaid holds long-term repayment and the financing residual absorbs this line (decision to review)"

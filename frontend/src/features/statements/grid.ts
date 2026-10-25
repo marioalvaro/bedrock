@@ -3,7 +3,7 @@ import { cellNotes, subjectNotes, type NoteIndex } from "@/features/notes/subjec
 import { scaleLabel } from "@/lib/format";
 import type { Scale } from "@/lib/scale";
 
-export type Provenance = "reported" | "derived" | "normalized";
+export type Provenance = "reported" | "derived" | "normalized" | "zero_inferred";
 export type GridRowKind = "line" | "yoy" | "common_size" | "balance_check";
 
 // One AG Grid row. Values stay the API's decimal strings: the grid formats them at

@@ -266,7 +266,7 @@ export type CellDetailOut = {
     /**
      * Provenance
      */
-    provenance: 'reported' | 'derived' | 'normalized' | null;
+    provenance: 'reported' | 'derived' | 'normalized' | 'zero_inferred' | null;
     source: SourceOut | null;
     /**
      * Value
@@ -516,6 +516,24 @@ export type CompsSetOut = {
      * Name
      */
     name: string;
+};
+
+/**
+ * ConceptClassificationOut
+ */
+export type ConceptClassificationOut = {
+    /**
+     * Codes
+     */
+    codes: Array<string>;
+    /**
+     * Reason
+     */
+    reason: string;
+    /**
+     * Type
+     */
+    type: string;
 };
 
 /**
@@ -1688,7 +1706,7 @@ export type RowOut = {
     /**
      * Provenance
      */
-    provenance: Array<'reported' | 'derived' | 'normalized' | null>;
+    provenance: Array<'reported' | 'derived' | 'normalized' | 'zero_inferred' | null>;
     /**
      * Unit
      */
@@ -2005,6 +2023,7 @@ export type StatementOut = {
  * UnmappedConceptOut
  */
 export type UnmappedConceptOut = {
+    classification: ConceptClassificationOut | null;
     /**
      * Concept
      */

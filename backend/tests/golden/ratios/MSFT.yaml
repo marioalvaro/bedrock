@@ -15,7 +15,8 @@
 # Canonical lines as Microsoft maps them (canonical_items.yaml + overrides/MSFT.yaml):
 #   short_term_debt = current portion of long-term debt in all four year ends used here (no short-term debt line at
 #   FY2019, FY2020, FY2026; the FY2025 10-K shows short-term debt (CommercialPaper) of 0 at 2025-06-30 and the FY2026 10-K
-#   drops the line); long_term_debt = non-current long-term debt; short_term_investments = short-term investments;
+#   drops the line); long_term_debt = non-current long-term debt + the total finance lease liability (finance leases count as
+#   debt, M3 S6; Microsoft's note gives one total, in other current and other long-term liabilities); short_term_investments = short-term investments;
 #   receivables = accounts receivable, net; total_equity = equity_parent (no noncontrolling interests);
 #   shares_outstanding = us-gaap CommonStockSharesOutstanding (balance-sheet parenthetical, reported in whole millions);
 #   dividends_per_share = CommonStockDividendsPerShareDeclared (declared, from the stockholders' equity statement);
@@ -39,13 +40,14 @@ annual:
     # net income 44,281 [10-K FY2022] / avg(total assets 301,311 [10-K FY2021], 286,556 [10-K FY2020]) = 293,933.5
     roa: 0.150650
     # tax rate = provision 8,755 / pretax 53,036 = 0.165077; nopat = operating income 52,959 x (1 - 0.165077) = 44,216.711 [10-K FY2022]
-    # invested capital FY2020 = debt (current portion 3,749 + long-term debt 59,578 = 63,327) + equity 118,304
-    #   - cash 13,576 - short-term investments 122,951 = 45,104 [10-K FY2021]
-    # invested capital FY2019 = debt (5,516 + 66,662 = 72,178) + equity 102,330 - cash 11,356 - 122,463 = 40,689 [10-K FY2020]
-    # 44,216.711 / avg(45,104, 40,689) = 42,896.5
-    roic: 1.030777
-    # total debt 63,327 (3,749 + 59,578) / total equity 118,304 [10-K FY2021]
-    debt_to_equity: 0.535290
+    # invested capital FY2020 = debt (current portion 3,749 + long-term debt 59,578 = 63,327, + finance lease liabilities 9,496
+    #   [10-K FY2020 lease note] = 72,823) + equity 118,304 - cash 13,576 - short-term investments 122,951 = 54,600 [10-K FY2021]
+    # invested capital FY2019 = debt (5,516 + 66,662 = 72,178, + finance leases 6,574 = 78,752) + equity 102,330 - cash 11,356
+    #   - 122,463 = 47,263 [10-K FY2020]
+    # 44,216.711 / avg(54,600, 47,263) = 50,931.5
+    roic: 0.868160
+    # total debt 72,823 (3,749 + 59,578 + finance leases 9,496, M3 S6) / total equity 118,304 [10-K FY2021]
+    debt_to_equity: 0.615558
     # total current assets 181,915 / total current liabilities 72,310 [10-K FY2021]
     current_ratio: 2.515765
     # (cash 13,576 + short-term investments 122,951 + accounts receivable 32,011) = 168,538 / current liabilities 72,310 [10-K FY2021]
@@ -80,13 +82,14 @@ annual:
     # net income 133,749 / avg(total assets 758,376, 619,003) = 688,689.5 [10-K FY2026]
     roa: 0.194208
     # tax rate = provision 32,185 / pretax 165,934 = 0.193963; nopat = operating income 155,237 x (1 - 0.193963) = 125,126.819
-    # invested capital FY2026 = debt (current portion 9,227 + long-term debt 31,067 = 40,294) + equity 442,387
-    #   - cash 20,935 - short-term investments 55,908 = 405,838
-    # invested capital FY2025 = debt (2,999 + 40,152 = 43,151) + equity 343,479 - cash 30,242 - 64,323 = 292,065
-    # 125,126.819 / avg(405,838, 292,065) = 348,951.5 [all 10-K FY2026]
-    roic: 0.358579
-    # total debt 40,294 (9,227 + 31,067) / total equity 442,387 [10-K FY2026]
-    debt_to_equity: 0.091083
+    # invested capital FY2026 = debt (current portion 9,227 + long-term debt 31,067 = 40,294, + finance lease liabilities 66,594
+    #   = 106,888) + equity 442,387 - cash 20,935 - short-term investments 55,908 = 472,432
+    # invested capital FY2025 = debt (2,999 + 40,152 = 43,151, + finance leases 46,172 = 89,323) + equity 343,479 - cash 30,242
+    #   - 64,323 = 338,237
+    # 125,126.819 / avg(472,432, 338,237) = 405,334.5 [all 10-K FY2026]
+    roic: 0.308700
+    # total debt 106,888 (9,227 + 31,067 + finance leases 66,594, M3 S6) / total equity 442,387 [10-K FY2026]
+    debt_to_equity: 0.241617
     # total current assets 207,710 / total current liabilities 168,825 [10-K FY2026]
     current_ratio: 1.230327
     # (cash 20,935 + short-term investments 55,908 + accounts receivable 80,876) = 157,719 / current liabilities 168,825 [10-K FY2026]
@@ -125,11 +128,11 @@ valuation:
     # free cash flow 45,234
     p_fcf: 33.47482
     fcf_yield: 0.029873
-    # EV = 1,514,200.000 + debt 63,327 + minority 0 - cash 13,576 - short-term investments 122,951 = 1,441,000.000
-    ev_sales: 10.075866
+    # EV = 1,514,200.000 + debt 72,823 (with finance leases) + minority 0 - cash 13,576 - short-term investments 122,951 = 1,450,496.000
+    ev_sales: 10.142265
     # operating income 52,959
-    ev_ebit: 27.209728
-    ev_fcf: 31.856568
+    ev_ebit: 27.389037
+    ev_fcf: 32.066499
     # dividends declared per share 2.04
     dividend_yield: 0.0102
   FY2026:
@@ -144,10 +147,10 @@ valuation:
     # free cash flow 66,987
     p_fcf: 44.348904
     fcf_yield: 0.022548
-    # EV = 2,970,800.000 + debt 40,294 + minority 0 - cash 20,935 - short-term investments 55,908 = 2,934,251.000
-    ev_sales: 8.842393
+    # EV = 2,970,800.000 + debt 106,888 (with finance leases) + minority 0 - cash 20,935 - short-term investments 55,908 = 3,000,845.000
+    ev_sales: 9.043075
     # operating income 155,237
-    ev_ebit: 18.90175
-    ev_fcf: 43.80329
+    ev_ebit: 19.330733
+    ev_fcf: 44.797423
     # dividends declared per share 3.64
     dividend_yield: 0.0091

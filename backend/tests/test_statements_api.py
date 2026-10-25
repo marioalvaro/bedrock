@@ -209,6 +209,52 @@ def test_a_derived_cell_has_its_derivation(aapl_client: TestClient) -> None:
     assert {"code", "fiscal_period", "value"} <= set(cell["derivation"]["inputs"][0])
 
 
+def test_an_inferred_zero_has_its_own_provenance_and_derivation(aapl_client: TestClient) -> None:
+    body = _statement(aapl_client, "IS", "annual")
+    row = _row(body, "net_income_nci")
+    assert set(row["provenance"]) == {"zero_inferred"}  # type: ignore[arg-type]
+    assert set(row["values"]) == {"0"}  # type: ignore[arg-type]
+    year = body["periods"][-1]["fiscal_year"]  # type: ignore[index]
+
+    cell = aapl_client.get(
+        f"{STATEMENTS}/cell",
+        params={"code": "net_income_nci", "fiscal_year": year, "fiscal_period": "FY"},
+    ).json()
+
+    assert (cell["value"], cell["provenance"]) == ("0", "zero_inferred")
+    assert cell["source"] is None and cell["filing"] is None
+    assert cell["derivation"]["formula"].startswith(
+        "no NCI-inclusive total or NCI concept tagged in 10-K "
+    )
+    assert cell["derivation"]["inputs"] == []
+
+
+def test_an_identity_solved_cell_explains_the_identity(aapl_client: TestClient) -> None:
+    body = _statement(aapl_client, "BS", "annual")
+    row = _row(body, "temporary_equity")
+    latest = len(row["values"]) - 1  # type: ignore[arg-type]
+    assert (row["values"][latest], row["provenance"][latest]) == ("0", "zero_inferred")  # type: ignore[index]
+
+    cell = aapl_client.get(
+        f"{STATEMENTS}/cell",
+        params={
+            "code": "temporary_equity",
+            "fiscal_year": body["periods"][latest]["fiscal_year"],  # type: ignore[index]
+            "fiscal_period": "FY",
+        },
+    ).json()
+
+    assert cell["derivation"]["formula"] == (
+        "identity balance_sheet: temporary_equity = "
+        "total_liabilities_and_equity - total_liabilities - total_equity"
+    )
+    assert [i["code"] for i in cell["derivation"]["inputs"]] == [
+        "total_liabilities_and_equity",
+        "total_liabilities",
+        "total_equity",
+    ]
+
+
 def _annual(client: TestClient, code: str) -> dict[int, str]:
     body = _statement(client, "IS", "annual")
     values = _row(body, code)["values"]
@@ -283,11 +329,31 @@ def test_mapping_gaps_list_missing_items_and_unmapped_concepts(aapl_client: Test
         "latest_period_end",
         "facts",
         "suggested_codes",
+        "classification",
     }
     assert isinstance(unmapped["latest_value"], str)
     assert isinstance(unmapped["suggested_codes"], list)
-    suggested = [bool(u["suggested_codes"]) for u in gaps["unmapped_concepts"]]
-    assert suggested[0] and suggested == sorted(suggested, reverse=True)  # suggested ones first
+    unclassified = [u for u in gaps["unmapped_concepts"] if u["classification"] is None]
+    suggested = [bool(u["suggested_codes"]) for u in unclassified]
+    assert suggested == sorted(suggested, reverse=True)  # suggested ones first, among the open ones
+
+
+def test_mapping_gaps_carry_the_triage_verdict_and_list_the_classified_last(
+    aapl_client: TestClient,
+) -> None:
+    gaps = aapl_client.get("/api/v1/companies/AAPL/mapping-gaps").json()["unmapped_concepts"]
+
+    by_name = {u["concept"]: u for u in gaps}
+    ladder = by_name["LongTermDebtMaturitiesRepaymentsOfPrincipalInYearTwo"]
+    assert set(ladder["classification"]) == {"type", "reason", "codes"}
+    assert ladder["classification"]["type"] == "disclosure"
+    assert ladder["classification"]["reason"]
+    assert ladder["suggested_codes"]  # a classified concept keeps its suggestion
+    component = by_name["LongTermDebtMaturitiesRepaymentsOfPrincipalAfterYearFive"]
+    assert isinstance(component["classification"]["codes"], list)
+    classified = [u["classification"] is not None for u in gaps]
+    assert classified == sorted(classified)  # every unclassified concept before the classified
+    assert any(classified)
 
 
 def test_the_openapi_schema_types_decimals_as_strings(app: FastAPI) -> None:

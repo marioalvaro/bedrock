@@ -7,9 +7,13 @@ common_stock_apic:
 # and Q3 10-Qs the first line is "Commercial paper and repurchase agreement(s)", tagged
 # OtherShortTermBorrowings. There is no bare LongTermDebtCurrent fallback: it would show only half
 # of the debt in a quarter whose first line has another tag.
+# Finance leases count as debt (M3 S6, user decision): the lease note puts them in "Other current
+# liabilities" and "Other non-current liabilities", outside these lines, so the current one is the
+# third member here and the non-current one is in the default long_term_debt group. Apple tags them
+# from FY2020, and only in the 10-Ks, so quarters carry the debt alone.
 short_term_debt:
-  - us-gaap:CommercialPaper + us-gaap:LongTermDebtCurrent
-  - us-gaap:OtherShortTermBorrowings + us-gaap:LongTermDebtCurrent
+  - us-gaap:CommercialPaper + us-gaap:LongTermDebtCurrent + us-gaap:FinanceLeaseLiabilityCurrent
+  - us-gaap:OtherShortTermBorrowings + us-gaap:LongTermDebtCurrent + us-gaap:FinanceLeaseLiabilityCurrent
 # Apple's cash flow shows sales and maturities of marketable securities on two lines. The sum is
 # anchored on the sales line, whose tag changed (…SecuritiesDebt from FY2017, with both tags carrying
 # the figure in FY2017-18 and FY2009-10), so a year is never counted twice and never loses its sales.

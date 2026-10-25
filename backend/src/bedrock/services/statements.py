@@ -15,9 +15,22 @@ from bedrock.mapping.candidates import (
     CandidateIndex,
     load_candidate_index,
 )
-from bedrock.mapping.config import CanonicalItemDef, load_canonical_items, parse_formula
+from bedrock.mapping.config import (
+    DEFAULT_ITEMS_PATH,
+    CanonicalItemDef,
+    IdentityDef,
+    load_canonical_items,
+    load_identities,
+    parse_formula,
+)
 from bedrock.mapping.gaps import MissingItem, UnmappedConcept, missing_items, unmapped_concepts
 from bedrock.mapping.mapper import map_facts
+from bedrock.mapping.triage import (
+    DEFAULT_TRIAGE_PATH,
+    ConceptKey,
+    ConceptVerdict,
+    load_concept_triage,
+)
 from bedrock.mapping.vintage import BALANCE_TOTALS, balance_snapshot, select_vintage
 from bedrock.models.company import Company
 from bedrock.repositories import adjustments as adjustments_repo
@@ -30,6 +43,7 @@ from bedrock.services.errors import CellNotFound
 from bedrock.statements.build import CommonSizeBase, Freq, StatementTable, build_statement
 from bedrock.statements.explain import CellExplanation, explain_cell
 from bedrock.statements.periods import annual_periods, fiscal_calendar, quarterly_periods
+from bedrock.statements.rules import Rules, filings_tagging_nci
 from bedrock.statements.splits import split_adjust, split_factor
 from bedrock.statements.view import trim_periods
 
@@ -68,8 +82,18 @@ def canonical_items() -> tuple[CanonicalItemDef, ...]:
 
 
 @cache
+def canonical_identities() -> tuple[IdentityDef, ...]:
+    return tuple(load_identities(DEFAULT_ITEMS_PATH, canonical_items()))
+
+
+@cache
 def candidate_index() -> CandidateIndex:
     return load_candidate_index(DEFAULT_VENDOR_PATH, DEFAULT_CROSSWALK_PATH, canonical_items())
+
+
+@cache
+def concept_triage() -> dict[ConceptKey, ConceptVerdict]:
+    return load_concept_triage(DEFAULT_TRIAGE_PATH, canonical_items())
 
 
 @dataclass(frozen=True)
@@ -84,6 +108,7 @@ class _Loaded:
     mappings: pd.DataFrame
     facts: pd.DataFrame  # every vintage of the mapped concepts
     canonical: pd.DataFrame  # the latest vintage, mapped and split-adjusted
+    rules: Rules  # the identities and NCI filings `build_statement` fills empty cells with
 
 
 def build_statements(
@@ -122,7 +147,9 @@ def statement_tables(
         return {(s, f): StatementTable(s, f, [], [], None, []) for s, f in wanted}
     adjustments = adjustments_repo.list_for(session, company.id) if basis == "normalized" else []
     return {
-        (s, f): build_statement(loaded.canonical, loaded.items, s, f, common_size_base, adjustments)
+        (s, f): build_statement(
+            loaded.canonical, loaded.items, s, f, common_size_base, adjustments, loaded.rules
+        )
         for s, f in wanted
     }
 
@@ -144,6 +171,7 @@ def cell_detail(
             fiscal_year,
             fiscal_period,
             adjustments_repo.list_for(session, company.id),
+            loaded.rules,
         )
     except KeyError as error:
         raise CellNotFound(str(error)) from error
@@ -166,12 +194,15 @@ def mapping_gaps(session: Session, company: Company) -> MappingGaps:
     if loaded.canonical.empty:
         return MappingGaps([], [])
     annual = {
-        s: build_statement(loaded.canonical, loaded.items, s, "annual") for s in ("IS", "BS", "CF")
+        s: build_statement(loaded.canonical, loaded.items, s, "annual", rules=loaded.rules)
+        for s in ("IS", "BS", "CF")
     }
     latest_10k = facts_repo.load_latest_annual_facts(session, company.id)
     return MappingGaps(
         missing_items=missing_items(annual, loaded.items),
-        unmapped_concepts=unmapped_concepts(latest_10k, loaded.mappings, candidate_index()),
+        unmapped_concepts=unmapped_concepts(
+            latest_10k, loaded.mappings, candidate_index(), concept_triage()
+        ),
     )
 
 
@@ -191,10 +222,14 @@ def company_key_stats(session: Session, company: Company) -> KeyStats:
     if loaded.canonical.empty:
         return key_stats(close=close, shares=shares, ttm={}, quarterly_bs=None)
     ttm = {
-        statement: build_statement(loaded.canonical, loaded.items, statement, "ttm")
+        statement: build_statement(
+            loaded.canonical, loaded.items, statement, "ttm", rules=loaded.rules
+        )
         for statement in ("IS", "CF")
     }
-    quarterly_bs = build_statement(loaded.canonical, loaded.items, "BS", "quarterly")
+    quarterly_bs = build_statement(
+        loaded.canonical, loaded.items, "BS", "quarterly", rules=loaded.rules
+    )
     return key_stats(close=close, shares=shares, ttm=ttm, quarterly_bs=quarterly_bs)
 
 
@@ -210,7 +245,12 @@ def _load(session: Session, company: Company, codes: frozenset[str] | None = Non
     canonical = split_adjust(
         map_facts(latest, mappings, items), actions_repo.list_for(session, company.id)
     )
-    return _Loaded(items, mappings, facts, canonical)
+    # Only the NCI rule runs on a subset of the codes: an identity would read a line that was not
+    # loaded as empty and solve it.
+    rules = Rules(
+        canonical_identities() if codes is None else (), filings_tagging_nci(facts, mappings)
+    )
+    return _Loaded(items, mappings, facts, canonical, rules)
 
 
 @cache

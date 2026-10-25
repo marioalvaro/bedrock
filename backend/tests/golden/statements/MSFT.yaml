@@ -39,6 +39,7 @@ annual:
     capex: -15441000000
     sga: 24709000000                # 19,598 + 5,111
     short_term_debt: 3749000000      # current portion of long-term debt only: no short-term debt line
+    long_term_debt: 69074000000      # long-term debt 59,578 + finance lease liabilities 9,496 (10-K FY2020 lease note; one total, in other current and other long-term liabilities; M3 S6)
   FY2026:
     revenue: 331839000000
     gross_profit: 225465000000
@@ -53,6 +54,7 @@ annual:
     capex: -115948000000
     sga: 34666000000                # 26,710 + 7,956
     short_term_debt: 9227000000      # current portion of long-term debt only: no short-term debt line
+    long_term_debt: 97661000000      # long-term debt 31,067 + finance lease liabilities 66,594 (10-K FY2026 lease note)
 
 # Q4 of the latest FY = 10-K FY revenue minus the nine-month revenue of the Q3 10-Q
 # (accession 0001193125-26-191507, nine months ended 2026-03-31: 241,832 million).
@@ -65,7 +67,6 @@ quarterly:
 # `missing_items`; the reasons are for the reader. Early years: XBRL balance sheets start with FY2008-09
 # and the older columns only exist as comparatives.
 expected_missing:
-  net_income_nci: "no noncontrolling interests"
   short_term_investments: "no XBRL fact before FY2009"
   receivables: "no XBRL fact before FY2009"
   inventory: "no XBRL fact before FY2009"
@@ -89,7 +90,6 @@ expected_missing:
   total_liabilities: "no XBRL fact before FY2009"
   common_stock_apic: "no XBRL fact before FY2012"
   retained_earnings: "missing FY2008, FY2011"
-  nci: "no noncontrolling interests"
   total_liabilities_and_equity: "no XBRL fact before FY2009"
   d_and_a: "'depreciation, amortization and other' is a custom tag companyfacts omits; us-gaap Depreciation is a component"
   change_inventory: "no XBRL fact before FY2009"

@@ -20,14 +20,17 @@ from bedrock.mapping.config import (
     DEFAULT_ITEMS_PATH,
     DEFAULT_OVERRIDES_DIR,
     CanonicalItemDef,
+    IdentityDef,
     load_canonical_items,
     load_excludes,
+    load_identities,
     load_overrides,
     split_group,
 )
 from bedrock.mapping.mapper import map_facts
 from bedrock.mapping.vintage import balance_snapshot, select_vintage
 from bedrock.statements.build import StatementTable, build_statement
+from bedrock.statements.rules import Rules, filings_tagging_nci
 from bedrock.statements.splits import split_adjust
 
 FIXTURES = Path(__file__).parent / "fixtures" / "edgar"
@@ -41,6 +44,8 @@ class Pipeline:
     facts: pd.DataFrame  # every vintage of the mapped concepts
     mappings: pd.DataFrame
     canonical: pd.DataFrame
+    identities: list[IdentityDef]
+    rules: Rules
     annual: dict[str, StatementTable]
     quarterly: dict[str, StatementTable]
 
@@ -179,11 +184,17 @@ def run_pipeline(ticker: str) -> Pipeline:
     facts = fact_frame(ticker, mappings)
     latest = select_vintage(facts, snapshot=balance_snapshot(mappings))
     canonical = split_adjust(map_facts(latest, mappings, items), fixture_splits(ticker))
+    identities = load_identities(DEFAULT_ITEMS_PATH, items)
+    rules = Rules(tuple(identities), filings_tagging_nci(facts, mappings))
     return Pipeline(
         items=items,
         facts=facts,
         mappings=mappings,
         canonical=canonical,
-        annual={s: build_statement(canonical, items, s, "annual") for s in STATEMENTS},
-        quarterly={s: build_statement(canonical, items, s, "quarterly") for s in STATEMENTS},
+        identities=identities,
+        rules=rules,
+        annual={s: build_statement(canonical, items, s, "annual", rules=rules) for s in STATEMENTS},
+        quarterly={
+            s: build_statement(canonical, items, s, "quarterly", rules=rules) for s in STATEMENTS
+        },
     )

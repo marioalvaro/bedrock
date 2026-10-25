@@ -10,12 +10,20 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
-from typing import Literal
 
 import pandas as pd
 
 from bedrock.mapping.config import CanonicalItemDef, formula_order, parse_formula
 from bedrock.mapping.vintage import BALANCE_DATE_TOLERANCE
+from bedrock.statements.cell_types import (
+    EMPTY,
+    Cell,
+    CellKey,
+    Derivation,
+    DerivationInput,
+    FactRef,
+    RuleWarning,
+)
 from bedrock.statements.periods import (
     START_TOLERANCE,
     Calendar,
@@ -24,46 +32,13 @@ from bedrock.statements.periods import (
     annual_periods,
     quarterly_periods,
 )
-
-Provenance = Literal["reported", "derived", "normalized"]
-
-
-@dataclass(frozen=True)
-class FactRef:
-    taxonomy: str
-    concept: str
-    unit: str
-    period_start: date | None
-    period_end: date
-    accession_no: str
-    form: str
-    filed_at: date
-
-
-@dataclass(frozen=True)
-class DerivationInput:
-    code: str
-    fiscal_period: str  # FY, Q1..Q4, or "YTD Q2" for a year-to-date figure
-    value: Decimal
-
-
-@dataclass(frozen=True)
-class Derivation:
-    formula: str
-    inputs: tuple[DerivationInput, ...]
-
-
-@dataclass(frozen=True)
-class Cell:
-    value: Decimal | None
-    provenance: Provenance | None
-    source: FactRef | None = None
-    derivation: Derivation | None = None
-
-
-EMPTY = Cell(None, None)
-
-CellKey = tuple[str, str]  # (code, period key)
+from bedrock.statements.rules import (
+    NO_RULES,
+    Rules,
+    WarningLog,
+    infer_nci_zeros,
+    solve_identities,
+)
 
 
 @dataclass(frozen=True)
@@ -131,11 +106,35 @@ class _Index:
         return min(near, key=lambda f: abs((f.start or start) - start), default=None)
 
 
+@dataclass(frozen=True)
+class SolvedCells:
+    cells: dict[CellKey, Cell]
+    warnings: tuple[RuleWarning, ...]  # rules whose result a guard refused (docs/erd/data.md R1)
+
+
 def compute_cells(
-    frame: pd.DataFrame, items: Sequence[CanonicalItemDef], calendar: Calendar
+    frame: pd.DataFrame,
+    items: Sequence[CanonicalItemDef],
+    calendar: Calendar,
+    rules: Rules = NO_RULES,
 ) -> dict[CellKey, Cell]:
+    return solve_cells(frame, items, calendar, rules).cells
+
+
+def solve_cells(
+    frame: pd.DataFrame,
+    items: Sequence[CanonicalItemDef],
+    calendar: Calendar,
+    rules: Rules = NO_RULES,
+) -> SolvedCells:
+    """Every item in every fiscal year and quarter, in the pass order of docs/erd/data.md "Rule
+    engine": mapped cells; then derive formulas, identities and the NCI rule filling empty cells
+    until nothing changes, each sweep followed by Q4 (FY less the quarters, or the year-end
+    balance); then residuals and the formulas that wait for them. A non-empty cell is never
+    replaced."""
     index = _Index(frame)
     years = {y.fiscal_year: y for y in calendar.years}
+    by_code = {i.code: i for i in items}
     cells: dict[CellKey, Cell] = {}
     periods = annual_periods(calendar) + quarterly_periods(calendar)
 
@@ -147,13 +146,95 @@ def compute_cells(
                 item, period, years[period.fiscal_year], index, cells
             )
 
+    log = WarningLog()
+    solved_nonzero: set[CellKey] = set()
+    early = _formulas_before_residuals(items)
+    while True:
+        filled = _fill_formulas(early, periods, cells)
+        for key, cell in solve_identities(
+            rules.identities, by_code, cells, periods, solved_nonzero, log
+        ):
+            filled += _fill(cells, key, cell)
+        if rules.nci_filings is not None:
+            for key, cell in infer_nci_zeros(cells, by_code, periods, rules.nci_filings):
+                filled += _fill(cells, key, cell)
+        filled += _close_q4(items, periods, years, cells, index)
+        if not filled:
+            break
+
     for item in formula_order(items):
         siblings = frozenset(i.code for i in items if item.residual and i.parent == item.parent)
         for period in periods:
             current = cells.get((item.code, period.key), EMPTY)
             if item.residual or current.value is None:
                 cells[(item.code, period.key)] = _formula_cell(item, period, cells, siblings)
-    return cells
+    return SolvedCells(cells, log.all())
+
+
+def _fill(cells: dict[CellKey, Cell], key: CellKey, cell: Cell) -> int:
+    """Store `cell` where the cell is empty (the rules never replace a value); 1 if it was."""
+    if cell.value is None or cells.get(key, EMPTY).value is not None:
+        return 0
+    cells[key] = cell
+    return 1
+
+
+def _formulas_before_residuals(items: Sequence[CanonicalItemDef]) -> list[CanonicalItemDef]:
+    """The non-residual formulas that do not depend on a residual, operands first. The rest keep
+    their place after the residuals, which are computed once the rules filled their siblings."""
+    by_code = {i.code: i for i in items}
+
+    def waits(item: CanonicalItemDef) -> bool:
+        if item.derive is None:
+            return False
+        return any(
+            by_code[code].residual or waits(by_code[code]) for _, code in parse_formula(item.derive)
+        )
+
+    return [i for i in formula_order(items) if not i.residual and not waits(i)]
+
+
+def _fill_formulas(
+    formulas: Sequence[CanonicalItemDef], periods: Sequence[Period], cells: dict[CellKey, Cell]
+) -> int:
+    filled = 0
+    for item in formulas:
+        for period in periods:
+            if cells.get((item.code, period.key), EMPTY).value is None:
+                filled += _fill(cells, (item.code, period.key), _formula_cell(item, period, cells))
+    return filled
+
+
+def _close_q4(
+    items: Sequence[CanonicalItemDef],
+    periods: Sequence[Period],
+    years: dict[int, FiscalYear],
+    cells: dict[CellKey, Cell],
+    index: _Index,
+) -> int:
+    """Q4 of what a rule filled in FY or Q1-Q3: FY less the three quarters for a flow, the year-end
+    balance for an instant. Q4 of a flow whose year and quarters are all inferred zeros is an
+    inferred zero too. Average items have no Q4."""
+    filled = 0
+    for item in items:
+        if item.residual or item.kind == "average":
+            continue
+        for period in periods:
+            key = (item.code, period.key)
+            if period.fiscal_period != "Q4" or cells.get(key, EMPTY).value is not None:
+                continue
+            year = f"FY{period.fiscal_year}"
+            if item.kind == "instant":
+                filled += _fill(cells, key, cells.get((item.code, year), EMPTY))
+                continue
+            q4 = _q4(item.code, years[period.fiscal_year], cells, index)
+            if q4.value == 0 and all(
+                cells.get((item.code, f"{year}{suffix}"), EMPTY).provenance == "zero_inferred"
+                for suffix in ("", "Q1", "Q2", "Q3")
+            ):
+                q4 = Cell(q4.value, "zero_inferred", derivation=q4.derivation)
+            filled += _fill(cells, key, q4)
+    return filled
 
 
 def _mapped_cell(

@@ -37,7 +37,8 @@ annual:
     total_equity: 65339000000
     cfo: 80674000000
     capex: -7309000000
-    short_term_debt: 13769000000      # commercial paper 4,996 + term debt 8,773
+    short_term_debt: 13793000000      # commercial paper 4,996 + term debt 8,773 + current finance lease 24 (lease note, 10-K FY2021; finance leases count as debt, M3 S6)
+    long_term_debt: 99304000000       # term debt 98,667 + non-current finance lease 637
     sales_maturities_of_investments: 120391000000  # maturities 69,918 + sales 50,473
   FY2025:
     revenue: 416161000000
@@ -51,7 +52,8 @@ annual:
     total_equity: 73733000000
     cfo: 111482000000
     capex: -12715000000
-    short_term_debt: 20329000000      # commercial paper 7,979 + term debt 12,350
+    short_term_debt: 20867000000      # commercial paper 7,979 + term debt 12,350 + current finance lease 538 (lease note, 10-K FY2025)
+    long_term_debt: 79020000000       # term debt 78,328 + non-current finance lease 692
     sales_maturities_of_investments: 53797000000   # maturities 40,907 + sales 12,890
 
 # Q4 of the latest FY = 10-K FY revenue minus the nine-month revenue of the Q3 10-Q
@@ -66,7 +68,6 @@ quarterly:
 # and the older columns only exist as comparatives.
 expected_missing:
   interest_expense: "FY2007-10 not tagged; from FY2024 no longer disclosed (inside other income/expense)"
-  net_income_nci: "no noncontrolling interests"
   short_term_investments: "no XBRL fact before FY2008"
   receivables: "no XBRL fact before FY2008"
   inventory: "no XBRL fact before FY2008"
@@ -92,7 +93,6 @@ expected_missing:
   common_stock_apic: "no XBRL fact before FY2008"
   retained_earnings: "no XBRL fact before FY2008"
   aoci: "no XBRL fact before FY2008"
-  nci: "no noncontrolling interests"
   total_liabilities_and_equity: "no XBRL fact before FY2008"
   deferred_taxes: "folded into 'other adjustments' from FY2023"
   acquisitions: "no acquisition line from FY2023"
@@ -112,8 +112,6 @@ expected_missing:
 acknowledged_unmapped:
   us-gaap:DebtInstrumentCarryingAmount: "debt-note amount of the notes (long-term total with its current part), not a balance-sheet line; the short- and long-term debt lines are mapped"
   us-gaap:DebtInstrumentUnamortizedDiscountPremiumAndDebtIssuanceCostsNet: "debt-note deduction for discount and issuance costs, not a balance-sheet line"
-  us-gaap:FinanceLeaseLiabilityCurrent: "finance lease liabilities sit in other liabilities, outside the debt lines (the mapped debt lines match the 10-K face lines without them)"
-  us-gaap:FinanceLeaseLiabilityNoncurrent: "finance lease liabilities sit in other liabilities, outside the debt lines (the mapped debt lines match the 10-K face lines without them)"
   us-gaap:FinanceLeaseLiabilityUndiscountedExcessAmount: "lease maturity-note detail (undiscounted excess), not a balance-sheet line"
   us-gaap:GeneralAndAdministrativeExpense: "component of SG&A: Apple reports SG&A as one line (27,601 = 19,524 + 8,077 in FY2025), so mapping it would double count"
   us-gaap:IncreaseDecreaseInOtherReceivables: "change in vendor non-trade receivables, a separate cash-flow line; change_receivables is accounts receivable"
