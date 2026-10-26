@@ -61,6 +61,8 @@ def test_annual_income_statement_has_the_documented_shape(aapl_client: TestClien
         "common_size",
         "common_size_base",
         "adjustable",
+        "custom",
+        "parent",
     }
     for field in ("values", "provenance", "yoy", "common_size"):
         assert len(revenue[field]) == len(periods)  # type: ignore[arg-type]

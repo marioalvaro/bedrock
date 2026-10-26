@@ -202,6 +202,51 @@
         "title": "Body_import_statements_api_v1_companies__ticker__imports_post",
         "type": "object"
       },
+      "BuiltCellOut": {
+        "description": "A parent cell the sum of a complete custom breakdown fills or changes.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "period_key": {
+            "title": "Period Key",
+            "type": "string"
+          },
+          "statement": {
+            "enum": [
+              "IS",
+              "BS",
+              "CF"
+            ],
+            "title": "Statement",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "statement",
+          "code",
+          "label",
+          "unit",
+          "period_key",
+          "value"
+        ],
+        "title": "BuiltCellOut",
+        "type": "object"
+      },
       "CapitalAllocationOut": {
         "properties": {
           "freq": {
@@ -650,8 +695,16 @@
         "description": "A company with its key stats (erd/workspace.md), each null when it cannot be computed.",
         "properties": {
           "cik": {
-            "title": "Cik",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null for a manual company",
+            "title": "Cik"
           },
           "currency": {
             "title": "Currency",
@@ -766,6 +819,14 @@
             ],
             "title": "Sic"
           },
+          "source": {
+            "enum": [
+              "sec",
+              "manual"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
           "ticker": {
             "title": "Ticker",
             "type": "string"
@@ -778,6 +839,7 @@
           "name",
           "fiscal_year_end_month",
           "currency",
+          "source",
           "sic",
           "last_refreshed_at",
           "price",
@@ -2055,8 +2117,15 @@
         "type": "object"
       },
       "ImportPreviewOut": {
-        "description": "What an import fills and leaves alone. `import_id` is null for a dry run and for a file\nthat fills no cell.",
+        "description": "What an import fills and leaves alone. `import_id` is null for a dry run and for a file\nthat fills no cell and changes no custom line.",
         "properties": {
+          "built": {
+            "items": {
+              "$ref": "#/components/schemas/BuiltCellOut"
+            },
+            "title": "Built",
+            "type": "array"
+          },
           "dry_run": {
             "title": "Dry Run",
             "type": "boolean"
@@ -2094,6 +2163,13 @@
             ],
             "title": "Import Id"
           },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/LineChangeOut"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
           "scale": {
             "enum": [
               "units",
@@ -2124,9 +2200,50 @@
           "fills",
           "ignored",
           "unchanged",
-          "warnings"
+          "warnings",
+          "lines",
+          "built"
         ],
         "title": "ImportPreviewOut",
+        "type": "object"
+      },
+      "LineChangeOut": {
+        "description": "A custom line the import creates, under `parent`.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "parent": {
+            "title": "Parent",
+            "type": "string"
+          },
+          "parent_label": {
+            "title": "Parent Label",
+            "type": "string"
+          },
+          "statement": {
+            "enum": [
+              "IS",
+              "BS",
+              "CF"
+            ],
+            "title": "Statement",
+            "type": "string"
+          }
+        },
+        "required": [
+          "statement",
+          "code",
+          "label",
+          "parent",
+          "parent_label"
+        ],
+        "title": "LineChangeOut",
         "type": "object"
       },
       "LoginRequest": {
@@ -2140,6 +2257,46 @@
           "password"
         ],
         "title": "LoginRequest",
+        "type": "object"
+      },
+      "ManualCompanyCreate": {
+        "properties": {
+          "fiscal_year_end_month": {
+            "maximum": 12.0,
+            "minimum": 1.0,
+            "title": "Fiscal Year End Month",
+            "type": "integer"
+          },
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "sic": {
+            "anyOf": [
+              {
+                "pattern": "^\\d{4}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sic"
+          },
+          "ticker": {
+            "maxLength": 12,
+            "minLength": 1,
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticker",
+          "name",
+          "fiscal_year_end_month"
+        ],
+        "title": "ManualCompanyCreate",
         "type": "object"
       },
       "MappingGapsOut": {
@@ -3791,6 +3948,10 @@
             ],
             "title": "Common Size Base"
           },
+          "custom": {
+            "title": "Custom",
+            "type": "boolean"
+          },
           "depth": {
             "title": "Depth",
             "type": "integer"
@@ -3802,6 +3963,17 @@
           "label": {
             "title": "Label",
             "type": "string"
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent"
           },
           "provenance": {
             "items": {
@@ -3871,7 +4043,9 @@
           "yoy",
           "common_size",
           "common_size_base",
-          "adjustable"
+          "adjustable",
+          "custom",
+          "parent"
         ],
         "title": "RowOut",
         "type": "object"
@@ -4828,6 +5002,47 @@
           }
         },
         "summary": "Add Company",
+        "tags": [
+          "companies"
+        ]
+      }
+    },
+    "/api/v1/companies/manual": {
+      "post": {
+        "operationId": "add_manual_company_api_v1_companies_manual_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualCompanyCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompanyListItem"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Manual Company",
         "tags": [
           "companies"
         ]

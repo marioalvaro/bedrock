@@ -34,6 +34,14 @@ def test_the_workbook_has_the_four_sheets_and_a_scale() -> None:
     assert scale == [["scale", "millions"]]
 
 
+def test_the_instructions_say_how_to_add_a_custom_line_and_mark_a_breakdown_complete() -> None:
+    rows = sheet_rows(build_template(ITEMS, PERIODS, "xlsx", "millions"), "Instructions")
+
+    text = " ".join(str(r[0]) for r in rows if r and r[0])
+    assert "custom:" in text and "parent" in text
+    assert "children_complete" in text and "complete" in text
+
+
 def test_a_statement_sheet_has_four_header_rows_and_the_period_columns() -> None:
     rows = sheet_rows(build_template(ITEMS, PERIODS, "xlsx", "units"), "IS")
 

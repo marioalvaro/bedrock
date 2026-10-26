@@ -64,7 +64,7 @@ def test_the_key_stat_load_runs_the_nci_rule_but_no_identity(
     """An identity reads a line that was not loaded as empty and would solve it."""
     from bedrock.services.statements import _key_stat_codes, _load
 
-    subset = _load(db_session, aapl, codes=_key_stat_codes())
+    subset = _load(db_session, aapl, codes=_key_stat_codes(False))
     full = _load(db_session, aapl)
 
     assert subset.rules.identities == ()
@@ -227,7 +227,7 @@ def test_the_full_load_carries_the_cover_page_counts_and_the_key_stat_load_does_
 ) -> None:
     from bedrock.services.statements import _key_stat_codes, _load
 
-    subset = _load(db_session, aapl, codes=_key_stat_codes())
+    subset = _load(db_session, aapl, codes=_key_stat_codes(False))
     full = _load(db_session, aapl)
 
     assert subset.rules.cover_shares is None

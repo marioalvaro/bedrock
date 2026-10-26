@@ -130,6 +130,38 @@ export type BodyImportStatementsApiV1CompaniesTickerImportsPost = {
 };
 
 /**
+ * BuiltCellOut
+ *
+ * A parent cell the sum of a complete custom breakdown fills or changes.
+ */
+export type BuiltCellOut = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Period Key
+     */
+    period_key: string;
+    /**
+     * Statement
+     */
+    statement: 'IS' | 'BS' | 'CF';
+    /**
+     * Unit
+     */
+    unit: string;
+    /**
+     * Value
+     */
+    value: string;
+};
+
+/**
  * CapitalAllocationOut
  */
 export type CapitalAllocationOut = {
@@ -370,8 +402,10 @@ export type CompanyCreate = {
 export type CompanyListItem = {
     /**
      * Cik
+     *
+     * Null for a manual company
      */
-    cik: string;
+    cik: string | null;
     /**
      * Currency
      */
@@ -424,6 +458,10 @@ export type CompanyListItem = {
      * Sic
      */
     sic: string | null;
+    /**
+     * Source
+     */
+    source: 'sec' | 'manual';
     /**
      * Ticker
      */
@@ -1138,9 +1176,13 @@ export type ImportIssueOut = {
  * ImportPreviewOut
  *
  * What an import fills and leaves alone. `import_id` is null for a dry run and for a file
- * that fills no cell.
+ * that fills no cell and changes no custom line.
  */
 export type ImportPreviewOut = {
+    /**
+     * Built
+     */
+    built: Array<BuiltCellOut>;
     /**
      * Dry Run
      */
@@ -1162,6 +1204,10 @@ export type ImportPreviewOut = {
      */
     import_id: number | null;
     /**
+     * Lines
+     */
+    lines: Array<LineChangeOut>;
+    /**
      * Scale
      */
     scale: 'units' | 'thousands' | 'millions' | 'billions';
@@ -1176,6 +1222,34 @@ export type ImportPreviewOut = {
 };
 
 /**
+ * LineChangeOut
+ *
+ * A custom line the import creates, under `parent`.
+ */
+export type LineChangeOut = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Parent
+     */
+    parent: string;
+    /**
+     * Parent Label
+     */
+    parent_label: string;
+    /**
+     * Statement
+     */
+    statement: 'IS' | 'BS' | 'CF';
+};
+
+/**
  * LoginRequest
  */
 export type LoginRequest = {
@@ -1183,6 +1257,28 @@ export type LoginRequest = {
      * Password
      */
     password: string;
+};
+
+/**
+ * ManualCompanyCreate
+ */
+export type ManualCompanyCreate = {
+    /**
+     * Fiscal Year End Month
+     */
+    fiscal_year_end_month: number;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Sic
+     */
+    sic?: string | null;
+    /**
+     * Ticker
+     */
+    ticker: string;
 };
 
 /**
@@ -2027,6 +2123,10 @@ export type RowOut = {
      */
     common_size_base: string | null;
     /**
+     * Custom
+     */
+    custom: boolean;
+    /**
      * Depth
      */
     depth: number;
@@ -2038,6 +2138,10 @@ export type RowOut = {
      * Label
      */
     label: string;
+    /**
+     * Parent
+     */
+    parent: string | null;
     /**
      * Provenance
      */
@@ -2646,6 +2750,31 @@ export type AddCompanyApiV1CompaniesPostResponses = {
 };
 
 export type AddCompanyApiV1CompaniesPostResponse = AddCompanyApiV1CompaniesPostResponses[keyof AddCompanyApiV1CompaniesPostResponses];
+
+export type AddManualCompanyApiV1CompaniesManualPostData = {
+    body: ManualCompanyCreate;
+    path?: never;
+    query?: never;
+    url: '/api/v1/companies/manual';
+};
+
+export type AddManualCompanyApiV1CompaniesManualPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AddManualCompanyApiV1CompaniesManualPostError = AddManualCompanyApiV1CompaniesManualPostErrors[keyof AddManualCompanyApiV1CompaniesManualPostErrors];
+
+export type AddManualCompanyApiV1CompaniesManualPostResponses = {
+    /**
+     * Successful Response
+     */
+    201: CompanyListItem;
+};
+
+export type AddManualCompanyApiV1CompaniesManualPostResponse = AddManualCompanyApiV1CompaniesManualPostResponses[keyof AddManualCompanyApiV1CompaniesManualPostResponses];
 
 export type RemoveCompanyApiV1CompaniesTickerDeleteData = {
     body?: never;

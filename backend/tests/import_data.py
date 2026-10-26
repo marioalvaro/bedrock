@@ -67,17 +67,49 @@ def csv_file(
     return out.getvalue().encode()
 
 
-def filled(book: Any, sheet: str, code: str, period: str, value: float) -> None:
-    """Type `value` into the cell of `code` under the column of `period` (`FY2008`, `FY2008Q2`)."""
-    ws = book[sheet]
+def _column_of(ws: Any, period: str) -> int:
+    """The column of `period` (`FY2008`, `FY2008Q2`) in a template sheet."""
 
     def key(c: int) -> str:
         year, fiscal_period = ws.cell(row=1, column=c).value, ws.cell(row=2, column=c).value
         return f"FY{year}" + ("" if fiscal_period == "FY" else str(fiscal_period))
 
-    column = next(c for c in range(6, ws.max_column + 1) if key(c) == period)
-    row = next(r for r in range(6, ws.max_row + 1) if ws.cell(row=r, column=1).value == code)
-    ws.cell(row=row, column=column).value = value
+    return next(c for c in range(6, ws.max_column + 1) if key(c) == period)
+
+
+def _row_of(ws: Any, code: str) -> int:
+    return next(r for r in range(6, ws.max_row + 1) if ws.cell(row=r, column=1).value == code)
+
+
+def filled(book: Any, sheet: str, code: str, period: str, value: float) -> None:
+    """Type `value` into the cell of `code` under the column of `period` (`FY2008`, `FY2008Q2`)."""
+    ws = book[sheet]
+    ws.cell(row=_row_of(ws, code), column=_column_of(ws, period)).value = value
+
+
+def add_line(
+    book: Any,
+    sheet: str,
+    parent: str,
+    label: str,
+    values: dict[str, float],
+    *,
+    code: str | None = None,
+    unit: str | None = None,
+) -> None:
+    """Append a custom-line row under `parent`, typing `values` by period (`FY2008`)."""
+    ws = book[sheet]
+    row = ws.max_row + 1
+    for column, cell in enumerate([code, label, parent, unit], start=1):
+        ws.cell(row=row, column=column).value = cell
+    for period, value in values.items():
+        ws.cell(row=row, column=_column_of(ws, period)).value = value
+
+
+def mark_complete(book: Any, sheet: str, code: str, flag: bool = True) -> None:
+    """Set the `children_complete` cell of the row of `code`."""
+    ws = book[sheet]
+    ws.cell(row=_row_of(ws, code), column=5).value = flag
 
 
 def save(book: Any) -> bytes:

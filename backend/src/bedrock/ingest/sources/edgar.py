@@ -52,6 +52,8 @@ class EdgarSource:
 
     def fetch(self, company: CompanyRef, since: date | None) -> EdgarPayload:
         """Companyfacts is always the full history, so `since` is ignored."""
+        if company.cik is None:
+            raise ValueError(f"{company.ticker} has no CIK: EDGAR holds nothing for it")
         body = self._get_client().get(_COMPANYFACTS_URL.format(cik=company.cik))
         fetched_at = self._clock()
         self._cache.write(company.cik, fetched_at.date(), body)

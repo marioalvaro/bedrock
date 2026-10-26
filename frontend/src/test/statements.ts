@@ -41,6 +41,8 @@ export function incomeStatement(overrides: Partial<StatementOut> = {}): Statemen
         yoy: [null, "0.020219"],
         common_size: ["1.000000", "1.000000"],
         adjustable: false,
+        custom: false,
+        parent: null,
         common_size_base: "Revenue",
       },
       {
@@ -54,6 +56,8 @@ export function incomeStatement(overrides: Partial<StatementOut> = {}): Statemen
         yoy: [null, "0.068197"],
         common_size: ["0.441300", "0.462100"],
         adjustable: false,
+        custom: false,
+        parent: null,
         common_size_base: "Revenue",
       },
       {
@@ -67,6 +71,8 @@ export function incomeStatement(overrides: Partial<StatementOut> = {}): Statemen
         yoy: [null, "-0.017674"],
         common_size: ["0.558700", "0.537900"],
         adjustable: false,
+        custom: false,
+        parent: null,
         common_size_base: "Revenue",
       },
       {
@@ -80,6 +86,8 @@ export function incomeStatement(overrides: Partial<StatementOut> = {}): Statemen
         yoy: [null, null],
         common_size: [null, null],
         adjustable: false,
+        custom: false,
+        parent: null,
         common_size_base: "Revenue",
       },
       {
@@ -93,6 +101,8 @@ export function incomeStatement(overrides: Partial<StatementOut> = {}): Statemen
         yoy: [null, "-0.008157"],
         common_size: [null, null],
         adjustable: false,
+        custom: false,
+        parent: null,
         common_size_base: "Revenue",
       },
     ],
@@ -117,6 +127,8 @@ export function balanceStatement(): StatementOut {
         yoy: [null, "0.035"],
         common_size: ["1.000000", "1.000000"],
         adjustable: false,
+        custom: false,
+        parent: null,
         common_size_base: "Total assets",
       },
       {
@@ -130,6 +142,8 @@ export function balanceStatement(): StatementOut {
         yoy: [null, "0.065"],
         common_size: ["0.407200", "0.419200"],
         adjustable: false,
+        custom: false,
+        parent: null,
         common_size_base: "Total assets",
       },
       {
@@ -143,6 +157,8 @@ export function balanceStatement(): StatementOut {
         yoy: [null, "-0.001"],
         common_size: ["0.084900", "0.082000"],
         adjustable: false,
+        custom: false,
+        parent: null,
         common_size_base: "Total assets",
       },
       {
@@ -156,6 +172,8 @@ export function balanceStatement(): StatementOut {
         yoy: [null, "0.014"],
         common_size: ["0.592800", "0.580800"],
         adjustable: false,
+        custom: false,
+        parent: null,
         common_size_base: "Total assets",
       },
       {
@@ -169,6 +187,8 @@ export function balanceStatement(): StatementOut {
         yoy: [null, "0.045"],
         common_size: ["0.124000", "0.125200"],
         adjustable: false,
+        custom: false,
+        parent: null,
         common_size_base: "Total assets",
       },
     ],

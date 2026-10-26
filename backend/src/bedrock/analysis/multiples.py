@@ -57,6 +57,17 @@ def key_stats(
     )
 
 
+def balance_sheet_shares(*tables: StatementTable) -> Decimal | None:
+    """The `shares_outstanding` of the latest period any of the balance sheets has a value for,
+    for a company with no cover-page (`dei`) count."""
+    found: list[tuple[date, Decimal]] = []
+    for table in tables:
+        row = next((r for r in table.rows if r.code == "shares_outstanding"), None)
+        if row is not None:
+            found += [(p.end, v) for p, v in zip(table.periods, row.values, strict=True) if v]
+    return max(found, key=lambda f: f[0])[1] if found else None
+
+
 def _enterprise_value(
     market_cap: Decimal | None, balance_sheet: StatementTable | None, ttm_period: Period | None
 ) -> Decimal | None:

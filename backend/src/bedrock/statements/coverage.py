@@ -50,7 +50,8 @@ def table_coverage(
     rows = [row for row in table.rows if row.code in wanted]
     warned = {(w.code, w.period_key) for w in warnings}
     has_data = [
-        any(row.values[at] is not None for row in table.rows) for at in range(len(table.periods))
+        any(row.values[at] is not None for row in table.rows if not row.custom)
+        for at in range(len(table.periods))
     ]
 
     causes: dict[tuple[str, str], Cause] = {}

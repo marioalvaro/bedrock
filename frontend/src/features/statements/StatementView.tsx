@@ -175,7 +175,7 @@ function columnDefs(
 
 interface StatementViewProps {
   ticker: string;
-  cik: string;
+  cik: string | null;
   type: StatementType;
 }
 

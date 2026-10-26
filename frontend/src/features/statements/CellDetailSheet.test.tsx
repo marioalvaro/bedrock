@@ -58,14 +58,18 @@ function mockCell(overrides: Record<string, unknown> = {}) {
   );
 }
 
-function renderSheet(t: Partial<CellTarget> = {}, scale: Scale = "M") {
+function renderSheet(
+  t: Partial<CellTarget> = {},
+  scale: Scale = "M",
+  cik: string | null = "0000320193",
+) {
   const queryClient = createQueryClient();
   queryClient.setDefaultOptions({ queries: { retry: false } });
   render(
     <QueryClientProvider client={queryClient}>
       <CellDetailSheet
         ticker="AAPL"
-        cik="0000320193"
+        cik={cik}
         target={{ ...target, ...t }}
         scale={scale}
         onClose={() => {}}
@@ -476,5 +480,28 @@ describe("CellDetailSheet notes", () => {
     renderSheet({ fiscalPeriod: "TTM" });
     await screen.findByText("Notes: none");
     expect(screen.queryByRole("button", { name: "Add note" })).not.toBeInTheDocument();
+  });
+});
+
+describe("CellDetailSheet filing", () => {
+  const filing = { accession_no: "0000320193-24-000123", form: "10-K", filed_at: "2024-11-01" };
+
+  it("links the filing to EDGAR for an SEC company", async () => {
+    mockCell({ filing });
+    renderSheet();
+
+    const link = await screen.findByRole("link", { name: filing.accession_no });
+    expect(link).toHaveAttribute(
+      "href",
+      "https://www.sec.gov/Archives/edgar/data/320193/000032019324000123/",
+    );
+  });
+
+  it("shows the filing without a link for a company with no CIK", async () => {
+    mockCell({ filing: { ...filing, accession_no: "import:3", form: "import" } });
+    renderSheet({}, "M", null);
+
+    expect(await screen.findByText(/import:3/)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "import:3" })).not.toBeInTheDocument();
   });
 });

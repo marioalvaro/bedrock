@@ -650,3 +650,88 @@ def test_0007_foreign_keys_cascade_on_delete(
         connection.execute(text("DELETE FROM company WHERE id = :id"), {"id": owner})
         for table in sorted(_IMPORT_TABLES):
             assert connection.execute(text(f"SELECT count(*) FROM {table}")).scalar() == 0, table
+
+
+def test_0008_makes_cik_nullable_and_adds_source_and_downgrade_restores_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    columns = {c["name"]: c for c in inspect(engine).get_columns("company")}
+    assert columns["cik"]["nullable"] is True
+    assert columns["source"]["nullable"] is False
+    with engine.begin() as connection:
+        sec = _company(connection, "AAA")  # an existing-style row: source defaults to 'sec'
+        assert (
+            connection.execute(
+                text("SELECT source FROM company WHERE id = :id"), {"id": sec}
+            ).scalar()
+            == "sec"
+        )
+        # Several manual companies share a NULL cik; a real cik stays unique.
+        for ticker in ("MAN1", "MAN2"):
+            _insert(
+                connection,
+                "company",
+                ticker=ticker,
+                cik=None,
+                name=ticker,
+                fiscal_year_end_month=12,
+                currency="USD",
+                source="manual",
+            )
+    with pytest.raises(IntegrityError), engine.begin() as connection:
+        _insert(
+            connection,
+            "company",
+            ticker="DUP",
+            cik="cik-AAA",
+            name="DUP",
+            fiscal_year_end_month=12,
+            currency="USD",
+        )
+    with pytest.raises(IntegrityError), engine.begin() as connection:
+        _insert(
+            connection,
+            "company",
+            ticker="BAD",
+            cik=None,
+            name="BAD",
+            fiscal_year_end_month=12,
+            currency="USD",
+            source="other",
+        )
+
+    # A downgrade cannot give a manual company a CIK: it refuses while one exists.
+    with pytest.raises(RuntimeError, match="manual"):
+        _run_alembic(tmp_path, monkeypatch, ("downgrade", "0007"))
+    with engine.begin() as connection:
+        connection.execute(text("DELETE FROM company WHERE source = 'manual'"))
+    database_url = _run_alembic(tmp_path, monkeypatch, ("downgrade", "0007"))
+    engine = create_engine(database_url)
+    columns = {c["name"]: c for c in inspect(engine).get_columns("company")}
+    assert columns["cik"]["nullable"] is False
+    assert "source" not in columns
+    with engine.connect() as connection:
+        tickers = connection.execute(text("SELECT ticker FROM company")).scalars().all()
+    assert tickers == ["AAA"]
+
+
+def test_0008_keeps_the_rows_that_reference_company_both_ways(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Rebuilding `company` must not fire the ON DELETE CASCADE of the tables that reference it.
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0007"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        owner = _company(connection, "AAA")
+        _import(connection, owner)
+
+    def children() -> int:
+        with engine.connect() as connection:
+            return int(connection.execute(text("SELECT count(*) FROM statement_import")).scalar())
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    assert children() == 1
+    _run_alembic(tmp_path, monkeypatch, ("downgrade", "0007"))
+    assert children() == 1

@@ -45,9 +45,30 @@ class IgnoredCellOut(BaseModel):
     reason: Literal["sec", "derived"]
 
 
+class LineChangeOut(BaseModel):
+    """A custom line the import creates, under `parent`."""
+
+    statement: Literal["IS", "BS", "CF"]
+    code: str
+    label: str
+    parent: str
+    parent_label: str
+
+
+class BuiltCellOut(BaseModel):
+    """A parent cell the sum of a complete custom breakdown fills or changes."""
+
+    statement: Literal["IS", "BS", "CF"]
+    code: str
+    label: str
+    unit: str
+    period_key: str
+    value: Decimal  # displayed, in units
+
+
 class ImportPreviewOut(BaseModel):
     """What an import fills and leaves alone. `import_id` is null for a dry run and for a file
-    that fills no cell."""
+    that fills no cell and changes no custom line."""
 
     dry_run: bool
     format: Literal["xlsx", "csv"]
@@ -57,6 +78,8 @@ class ImportPreviewOut(BaseModel):
     ignored: list[IgnoredCellOut]
     unchanged: int
     warnings: list[ImportFileIssueOut]
+    lines: list[LineChangeOut]
+    built: list[BuiltCellOut]
 
     @classmethod
     def from_preview(
@@ -71,6 +94,8 @@ class ImportPreviewOut(BaseModel):
             ignored=[IgnoredCellOut(**vars(i)) for i in preview.ignored],
             unchanged=preview.unchanged,
             warnings=[ImportFileIssueOut(**vars(w)) for w in preview.warnings],
+            lines=[LineChangeOut(**vars(ln)) for ln in preview.lines],
+            built=[BuiltCellOut(**vars(b)) for b in preview.built],
         )
 
     @classmethod

@@ -36,6 +36,11 @@ _INSTRUCTIONS = (
     "Sign convention: type values as the statements display them (capex, buybacks, dividends "
     "paid and debt repaid are negative).",
     "Grey rows are computed from other lines; a value typed there is ignored.",
+    "To break a line down, add a row at the bottom of its sheet with a label and the line's code "
+    "in the parent column (a canonical line with no lines of its own, or an earlier custom "
+    "line); leave the code blank or start it with 'custom:'. The unit is the parent's. Set "
+    "children_complete to TRUE on the parent's row when the new lines are its whole breakdown: "
+    "an empty parent then becomes their sum.",
     "An import only fills cells the SEC data leaves empty. A period column needs its fiscal_year, "
     "fiscal_period (FY, Q1..Q4), period_start and period_end (YYYY-MM-DD); add columns to the "
     "right for years or quarters that are missing.",

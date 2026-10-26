@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import set_committed_value
 
+from bedrock.models.custom_line import CustomLine
 from bedrock.models.imported_fact import ImportedFact
 from bedrock.models.statement_import import StatementImport
 from bedrock.repositories.numeric import plain
@@ -24,6 +25,19 @@ class NewFact:
     value: Decimal
 
 
+@dataclass(frozen=True)
+class NewLine:
+    """A custom line an import lists: new, or stored already (then its label and flag change)."""
+
+    code: str
+    label: str
+    statement: str
+    parent_code: str
+    kind: str
+    unit: str
+    children_complete: bool
+
+
 def add_import(
     session: Session,
     company_id: int,
@@ -33,8 +47,9 @@ def add_import(
     imported_at: datetime,
     note: str | None,
     facts: Sequence[NewFact],
+    lines: Sequence[NewLine] = (),
 ) -> StatementImport:
-    """Adds the import and its facts and flushes (no commit)."""
+    """Adds the import, its facts and the custom lines it lists, and flushes (no commit)."""
     row = StatementImport(
         company_id=company_id,
         filename=filename,
@@ -59,8 +74,43 @@ def add_import(
         )
         for f in facts
     )
+    _store_lines(session, company_id, lines)
     session.flush()
     return row
+
+
+def _store_lines(session: Session, company_id: int, lines: Sequence[NewLine]) -> None:
+    """New lines go after the siblings stored; a line stored already keeps its place and parent."""
+    stored = {ln.code: ln for ln in list_lines(session, company_id)}
+    for line in lines:
+        known = stored.get(line.code)
+        if known is not None:
+            known.label = line.label
+            known.children_complete = line.children_complete
+            continue
+        placed = [ln.display_order for ln in stored.values() if ln.parent_code == line.parent_code]
+        stored[line.code] = row = CustomLine(
+            company_id=company_id,
+            code=line.code,
+            label=line.label,
+            statement=line.statement,
+            parent_code=line.parent_code,
+            kind=line.kind,
+            unit=line.unit,
+            children_complete=line.children_complete,
+            display_order=max(placed, default=-1) + 1,
+        )
+        session.add(row)
+
+
+def list_lines(session: Session, company_id: int) -> list[CustomLine]:
+    """The company's custom lines, siblings in display order."""
+    stmt = (
+        select(CustomLine)
+        .where(CustomLine.company_id == company_id)
+        .order_by(CustomLine.display_order, CustomLine.id)
+    )
+    return list(session.execute(stmt).scalars())
 
 
 def list_imports(session: Session, company_id: int) -> list[StatementImport]:
@@ -102,6 +152,25 @@ def list_facts(session: Session, company_id: int) -> list[ImportedFact]:
 
 
 def delete_import(session: Session, row: StatementImport) -> None:
-    """Deletes the import and its facts and flushes (no commit)."""
+    """Deletes the import and its facts, then the custom lines left with no value and no line
+    under them (a line goes with the last import that has values for it), and flushes (no
+    commit)."""
+    company_id = row.company_id
     session.delete(row)
     session.flush()
+    while True:
+        valued = set(
+            session.execute(
+                select(ImportedFact.line_code)
+                .where(ImportedFact.company_id == company_id)
+                .group_by(ImportedFact.line_code)
+            ).scalars()
+        )
+        lines = list_lines(session, company_id)
+        parents = {ln.parent_code for ln in lines}
+        gone = [ln for ln in lines if ln.code not in valued and ln.code not in parents]
+        if not gone:
+            return
+        for line in gone:
+            session.delete(line)
+        session.flush()

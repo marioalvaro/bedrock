@@ -7,6 +7,9 @@ columns `code | label | parent | unit | children_complete | <one column per peri
 has the sheets `Instructions` (a `scale` row), `IS`, `BS` and `CF`; a CSV file is the same sheets
 one after the other, every row led by its statement, after a `scale` row.
 
+A row that is not a canonical line but has a parent is a custom line (docs/erd/data.md "Custom
+lines"); its kind, unit and sign come from its parent.
+
 `parse_import` returns an `ImportPlan` of values in units and in the reported sign convention, or
 raises `ImportParseError` with every error. Whether the periods fit a company's fiscal calendar is
 decided by the caller (`statements/imports.py`), which knows the calendar.
@@ -15,6 +18,8 @@ decided by the caller (`statements/imports.py`), which knows the calendar.
 import csv
 import io
 import math
+import re
+import unicodedata
 import zipfile
 from collections import defaultdict
 from collections.abc import Sequence
@@ -44,6 +49,7 @@ FISCAL_PERIODS = ("FY", "Q1", "Q2", "Q3", "Q4")
 HEADER_ROWS = ("fiscal_year", "fiscal_period", "period_start", "period_end")
 COLUMN_TITLES = ("code", "label", "parent", "unit", "children_complete")
 INSTRUCTIONS = "Instructions"
+CUSTOM_PREFIX = "custom:"
 FIRST_PERIOD = len(COLUMN_TITLES)  # index of the first period column within a statement row
 QUARTER_DAYS = (60, 125)  # COST's 16-week fourth quarter is 112 days
 # The range a SQLite REAL stores exactly (Gotcha G21), checked on the value in units.
@@ -111,12 +117,30 @@ class PlanValue:
 
 
 @dataclass(frozen=True)
+class PlanLine:
+    """A custom line the file lists, new or already stored. `kind` and `unit` come from its parent.
+    `children_complete` is the flag of the parent's row: the parent's breakdown is complete."""
+
+    code: str
+    label: str
+    statement: str
+    parent: str
+    kind: str
+    unit: str
+    children_complete: bool
+    new: bool
+    sheet: str
+    row: int
+
+
+@dataclass(frozen=True)
 class ImportPlan:
     format: ImportFormat
     scale: str
     periods: tuple[PlanPeriod, ...]
     values: tuple[PlanValue, ...]
     warnings: tuple[ImportIssue, ...]
+    lines: tuple[PlanLine, ...] = ()
 
 
 def check_periods(
@@ -204,9 +228,11 @@ def parse_import(
     filename: str,
     items: Sequence[CanonicalItemDef],
     scale: str | None = None,
+    existing: Sequence[CanonicalItemDef] = (),
 ) -> ImportPlan:
-    """Both formats into one plan. `scale` stands in for a file that has none. Raises
-    `ImportParseError` with every error found (none is raised for a warning)."""
+    """Both formats into one plan. `scale` stands in for a file that has none; `existing` are the
+    company's stored custom lines. Raises `ImportParseError` with every error found (none is
+    raised for a warning)."""
     name = filename.lower()
     if name.endswith(".xlsx"):
         fmt: ImportFormat = "xlsx"
@@ -218,7 +244,7 @@ def parse_import(
         raise ImportParseError(
             [ImportIssue(None, None, None, "The file must be an .xlsx or a .csv file")]
         )
-    return _Parser(fmt, book, {i.code: i for i in items}, scale).run()
+    return _Parser(fmt, book, {i.code: i for i in items}, scale, existing).run()
 
 
 @dataclass
@@ -322,10 +348,16 @@ class _Parser:
         book: _Book,
         items: dict[str, CanonicalItemDef],
         scale: str | None,
+        existing: Sequence[CanonicalItemDef] = (),
     ) -> None:
         self.fmt = fmt
         self.book = book
-        self.items = items
+        self.canonical = items
+        self.items = dict(items)  # grows with the custom lines the file lists
+        self.stored = {i.code: i for i in existing}
+        self.lines: list[PlanLine] = []
+        self.flags: dict[str, bool] = {}  # the complete flag of every row, by code
+        self.created: dict[str, tuple[str, int]] = {}  # custom code -> where the file lists it
         self.scale_arg = scale
         self.errors: list[ImportIssue] = list(book.issues)
         self.warnings: list[ImportIssue] = []
@@ -350,6 +382,7 @@ class _Parser:
             tuple(periods),
             tuple(self.values),
             tuple(sorted(self.warnings, key=_order)),
+            tuple(self.lines),
         )
 
     # -- scale ----------------------------------------------------------------------------------
@@ -549,59 +582,70 @@ class _Parser:
         by_index = {c.index: c for c in columns}
         first_seen: dict[str, int] = {}
         code_at = self._letter(0)
+        later = self._declared_later(rows)
+        for code, flag in self._canonical_flags(rows).items():
+            self.flags.setdefault(code, flag)
+        flagged: list[tuple[int, str]] = []  # rows marked complete, for the "no children" check
         for number, cells in rows:
             code = _text(_at(cells, 0))
             parent = _text(_at(cells, 2))
             typed = [i for i in range(FIRST_PERIOD, len(cells)) if not _blank(cells[i])]
             if not code and not parent and not typed:
                 continue
-            item = self.items.get(code)
+            item = self.canonical.get(code)
             if item is None:
-                if parent:  # a custom line: a new row under a parent
+                if parent or code.startswith(CUSTOM_PREFIX):  # a custom line
+                    made = self._custom_line(sheet, number, cells, code, parent, later)
+                    if made is None:
+                        continue
+                    item = made
+                    code = item.code
+                    if self.flags.get(code):
+                        flagged.append((number, code))
+                elif code:
+                    self._err(sheet, number, code_at, f"Unknown code '{code}'")
+                    continue
+                else:
+                    self._err(sheet, number, code_at, "The row has values but no code")
+                    continue
+            else:
+                if item.statement != sheet:
                     self._err(
                         sheet,
                         number,
                         code_at,
-                        f"Custom lines arrive in S10c; this row adds {code or 'a line'} "
-                        f"under {parent}",
+                        f"{code} belongs to the {item.statement} sheet, not {sheet}",
                     )
-                elif code:
-                    self._err(sheet, number, code_at, f"Unknown code '{code}'")
-                else:
-                    self._err(sheet, number, code_at, "The row has values but no code")
-                continue
-            if item.statement != sheet:
-                self._err(
-                    sheet,
-                    number,
-                    code_at,
-                    f"{code} belongs to the {item.statement} sheet, not {sheet}",
-                )
-                continue
-            if code in first_seen:
-                self._err(
-                    sheet, number, code_at, f"{code} already appears on row {first_seen[code]}"
-                )
-                continue
-            first_seen[code] = number
-            if _flag(_at(cells, 4)) is None:
-                self._err(
-                    sheet,
-                    number,
-                    self._letter(4),
-                    "children_complete must be TRUE, FALSE or blank",
-                )
-            if item.residual or (item.derive is not None and not item.concepts):
-                if typed:
-                    self.warnings.append(
-                        ImportIssue(
-                            sheet,
-                            number,
-                            code_at,
-                            f"{code} is read-only (computed): its {len(typed)} values are ignored",
+                    continue
+                if code in first_seen:
+                    self._err(
+                        sheet, number, code_at, f"{code} already appears on row {first_seen[code]}"
+                    )
+                    continue
+                first_seen[code] = number
+                if _flag(_at(cells, 4)) is None:
+                    self._err(
+                        sheet,
+                        number,
+                        self._letter(4),
+                        "children_complete must be TRUE, FALSE or blank",
+                    )
+                elif self.flags.get(code) and not self._complete_allowed(sheet, number, item):
+                    continue
+                elif self.flags.get(code):
+                    flagged.append((number, code))
+                if item.residual or (item.derive is not None and not item.concepts):
+                    if typed:
+                        self.warnings.append(
+                            ImportIssue(
+                                sheet,
+                                number,
+                                code_at,
+                                f"{code} is read-only (computed): its {len(typed)} values are "
+                                "ignored",
+                            )
                         )
-                    )
-                continue
+                    continue
             for i in typed:
                 column = by_index.get(i)
                 if column is None:
@@ -613,6 +657,200 @@ class _Parser:
                     )
                 else:
                     self._value(sheet, number, item, column, cells[i], scale)
+        parents = {ln.parent for ln in self.lines} | {i.parent for i in self.stored.values()}
+        for number, code in flagged:
+            if code not in parents:
+                self.warnings.append(
+                    ImportIssue(
+                        sheet,
+                        number,
+                        self._letter(4),
+                        f"{code} is marked complete but no custom line is listed under it",
+                    )
+                )
+
+    def _canonical_flags(self, rows: list[tuple[int, list[Any]]]) -> dict[str, bool]:
+        """The complete flag of the canonical rows, found before the rows that may sit under
+        them (a custom row may come after all the canonical ones)."""
+        found: dict[str, bool] = {}
+        for _, cells in rows:
+            code = _text(_at(cells, 0))
+            if code in self.canonical and code not in found:
+                found[code] = _flag(_at(cells, 4)) is True
+        return found
+
+    def _declared_later(self, rows: list[tuple[int, list[Any]]]) -> dict[str, int]:
+        """The code of every row that may be a custom line, with its row: tells "listed after its
+        children" from "not a line at all"."""
+        out: dict[str, int] = {}
+        for number, cells in rows:
+            code = _text(_at(cells, 0))
+            if code in self.canonical:
+                continue
+            if not code:
+                slug = _slug(_text(_at(cells, 1)))
+                code = CUSTOM_PREFIX + slug if slug and _text(_at(cells, 2)) else ""
+            if code.startswith(CUSTOM_PREFIX):
+                out.setdefault(code, number)
+        return out
+
+    def _complete_allowed(self, sheet: str, number: int, item: CanonicalItemDef) -> bool:
+        """A line marked complete is built from its custom lines: not a computed line, and not a
+        subtotal (custom lines go under a leaf)."""
+        if item.residual or (item.derive is not None and not item.concepts):
+            message = (
+                f"{item.code} is computed from other lines, so it cannot be built from a breakdown"
+            )
+        elif any(i.parent == item.code for i in self.canonical.values()):
+            message = f"{item.code} has canonical lines under it: mark a leaf complete"
+        else:
+            return True
+        self._err(sheet, number, self._letter(4), message)
+        return False
+
+    def _custom_line(
+        self,
+        sheet: str,
+        number: int,
+        cells: list[Any],
+        code: str,
+        parent: str,
+        later: dict[str, int],
+    ) -> CanonicalItemDef | None:
+        """A row that is not a canonical line: a custom line under `parent`. Returns the line as
+        an item (kind, unit and sign from its parent) once it is valid, else None."""
+        code_at, label_at, parent_at, unit_at = (self._letter(i) for i in range(4))
+        label = _text(_at(cells, 1))
+        known = self.stored.get(code) if code else None
+        if code and not code.startswith(CUSTOM_PREFIX):
+            self._err(
+                sheet,
+                number,
+                code_at,
+                f"A new line's code starts with '{CUSTOM_PREFIX}' (or leave it blank): '{code}'",
+            )
+            return None
+        if not parent:
+            self._err(sheet, number, parent_at, f"{code} needs a parent")
+            return None
+        if not code:
+            if not label:
+                self._err(sheet, number, label_at, "A custom line needs a label")
+                return None
+            found = next(
+                (
+                    s
+                    for s in self.stored.values()
+                    if s.parent == parent and s.label.casefold() == label.casefold()
+                ),
+                None,
+            )
+            slug = _slug(label)
+            if found is None and not slug:
+                self._err(sheet, number, label_at, f"'{label}' has no letters or digits for a code")
+                return None
+            code = found.code if found is not None else CUSTOM_PREFIX + slug
+            known = found
+        label = label or (known.label if known is not None else "")
+        if not label:
+            self._err(sheet, number, label_at, "A custom line needs a label")
+            return None
+        if code in self.created:
+            where = self.created[code]
+            self._err(
+                sheet,
+                number,
+                code_at,
+                f"{code} already appears on row {where[1]}"
+                + ("" if where[0] == sheet else f" of {where[0]}"),
+            )
+            return None
+        if known is not None and known.parent != parent:
+            self._err(
+                sheet,
+                number,
+                parent_at,
+                f"{code} is stored under {known.parent}, not {parent}",
+            )
+            return None
+        owner = self.items.get(parent) or self.stored.get(parent)
+        if owner is None:
+            before = later.get(parent)
+            self._err(
+                sheet,
+                number,
+                parent_at,
+                f"{parent} must come before its children (row {before})"
+                if before is not None and before > number
+                else f"Unknown parent '{parent}': a custom line goes under a canonical line "
+                "or an earlier custom line",
+            )
+            return None
+        if owner.statement != sheet:
+            self._err(
+                sheet,
+                number,
+                parent_at,
+                f"{parent} belongs to the {owner.statement} sheet, not {sheet}",
+            )
+            return None
+        if not owner.custom and any(i.parent == parent for i in self.canonical.values()):
+            self._err(
+                sheet,
+                number,
+                parent_at,
+                f"{parent} has canonical lines under it: a custom line goes under a leaf",
+            )
+            return None
+        unit = _text(_at(cells, 3))
+        if unit and unit != owner.unit:
+            self._err(
+                sheet,
+                number,
+                unit_at,
+                f"The unit of {code} must be {owner.unit}, like its parent {parent}",
+            )
+            return None
+        flag = _flag(_at(cells, 4))
+        if flag is None:
+            self._err(
+                sheet, number, self._letter(4), "children_complete must be TRUE, FALSE or blank"
+            )
+            return None
+        item = CanonicalItemDef(
+            code,
+            sheet,
+            label,
+            owner.kind,
+            owner.unit,
+            owner.sign,
+            parent,
+            (),
+            None,
+            False,
+            (),
+            custom=True,
+        )
+        if flag and not self._complete_allowed(sheet, number, item):
+            return None
+        self.items[code] = item
+        self.created[code] = (sheet, number)
+        self.flags[code] = flag
+        self.lines.append(
+            PlanLine(
+                code,
+                label,
+                sheet,
+                parent,
+                owner.kind,
+                owner.unit,
+                self.flags.get(parent, False),
+                known is None,
+                sheet,
+                number,
+            )
+        )
+        return item
 
     def _value(
         self,
@@ -836,6 +1074,12 @@ def _flag(value: Any) -> bool | None:
     if text in _FALSE:
         return False
     return None
+
+
+def _slug(label: str) -> str:
+    """`Products & Hardware` -> `products_hardware`: ASCII letters and digits, underscore-joined."""
+    folded = unicodedata.normalize("NFKD", label).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]+", "_", folded.lower()).strip("_")
 
 
 def _plain(value: Decimal) -> Decimal:

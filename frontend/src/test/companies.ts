@@ -8,6 +8,7 @@ export function companyItem(overrides: Partial<CompanyListItem> = {}): CompanyLi
     name: "Apple Inc.",
     fiscal_year_end_month: 9,
     currency: "USD",
+    source: "sec",
     sic: "3571",
     last_refreshed_at: new Date(Date.now() - 2 * 3_600_000).toISOString(),
     price: "231.40",

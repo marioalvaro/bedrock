@@ -56,6 +56,8 @@ class RowOut(BaseModel):
     common_size: list[Decimal | None]
     common_size_base: str | None
     adjustable: bool  # a normalization adjustment may target this line
+    custom: bool  # a custom line, or the `Other` row of a custom breakdown
+    parent: str | None  # the line a custom row sits under
 
 
 class BalanceCheckOut(BaseModel):
@@ -105,6 +107,8 @@ class StatementOut(BaseModel):
                     common_size=r.common_size,
                     common_size_base=r.common_size_base,
                     adjustable=r.adjustable,
+                    custom=r.custom,
+                    parent=r.parent,
                 )
                 for r in table.rows
             ],

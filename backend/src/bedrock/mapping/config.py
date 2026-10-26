@@ -47,6 +47,9 @@ class CanonicalItemDef:
     residual: bool
     # M2: where a normalization adjustment of this line propagates, as (code, sign)
     rolls_into: tuple[tuple[str, int], ...] = ()
+    # M3 S10c: a child line the user added in an import (`code` is `custom:<slug>`, `parent` a
+    # canonical leaf or another custom line); it has no concept, formula or adjustment
+    custom: bool = False
 
 
 # Memo lines whose charge sits inside another line: adjust that line instead.
@@ -252,7 +255,8 @@ def is_adjustable(item: CanonicalItemDef) -> bool:
     per-share figures."""
     computed_only = item.derive is not None and not item.concepts and not item.residual
     return (
-        item.unit == "USD"
+        not item.custom
+        and item.unit == "USD"
         and item.kind in ("flow", "instant")
         and not computed_only
         and item.code not in MEMO_CODES

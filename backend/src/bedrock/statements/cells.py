@@ -25,6 +25,7 @@ from bedrock.statements.cell_types import (
     FactRef,
     RuleWarning,
 )
+from bedrock.statements.custom_lines import BUILT_FROM_CHILDREN
 from bedrock.statements.periods import (
     START_TOLERANCE,
     Calendar,
@@ -170,8 +171,11 @@ def solve_cells(
             filled += _close_q4(items, periods, years, cells, index)
             if not filled:
                 break
-        # An imported value of a line with a formula counts only once the rules cannot fill it.
-        if not _fill_imported_formula_lines(items, periods, cells, imported):
+        # An imported value of a line with a formula, and the sum of a complete custom breakdown,
+        # count only once the rules cannot fill the cell.
+        late = _fill_imported_formula_lines(items, periods, cells, imported)
+        late += _fill_built_parents(items, periods, cells, rules.complete_parents)
+        if not late:
             break
 
     for key, cell in q4_average_cells(cells, by_code, periods, log):
@@ -183,6 +187,7 @@ def solve_cells(
             current = cells.get((item.code, period.key), EMPTY)
             if item.residual or current.value is None:
                 cells[(item.code, period.key)] = _formula_cell(item, period, cells, siblings)
+    _check_breakdowns(items, periods, cells, rules.complete_parents, log)
     return SolvedCells(cells, log.all())
 
 
@@ -374,13 +379,7 @@ def _imported_q4(
         return remainder
     if remainder.value is None:
         return _imported(fact)
-    unit = fact.ref.unit
-    tolerance = (
-        Decimal("0.01")
-        if unit == "USD/shares"
-        else max(BALANCE_FLOOR, BALANCE_RELATIVE * abs(remainder.value))
-    )
-    if abs(fact.value - remainder.value) > tolerance:
+    if abs(fact.value - remainder.value) > _tolerance(fact.ref.unit, remainder.value):
         log.add(
             RuleWarning(
                 "import_q4",
@@ -418,6 +417,90 @@ def _fill_imported_formula_lines(
             )
             filled += _fill(cells, (item.code, period.key), _imported(fact))
     return filled
+
+
+def _breakdowns(
+    items: Sequence[CanonicalItemDef], complete: frozenset[str]
+) -> list[tuple[CanonicalItemDef, list[CanonicalItemDef]]]:
+    """The parents marked complete with the custom lines directly under each. A computed or
+    residual line is never built from its children."""
+    out = []
+    for parent in items:
+        if parent.code not in complete or parent.residual:
+            continue
+        if parent.derive is not None and not parent.concepts:
+            continue
+        children = [i for i in items if i.custom and i.parent == parent.code]
+        if children:
+            out.append((parent, children))
+    return out
+
+
+def _fill_built_parents(
+    items: Sequence[CanonicalItemDef],
+    periods: Sequence[Period],
+    cells: dict[CellKey, Cell],
+    complete: frozenset[str],
+) -> int:
+    """An empty parent whose custom breakdown is marked complete is the sum of its children in
+    each period where every child has a value (docs/erd/data.md "Custom lines")."""
+    filled = 0
+    for parent, children in _breakdowns(items, complete):
+        for period in periods:
+            key = (parent.code, period.key)
+            if cells.get(key, EMPTY).value is not None:
+                continue
+            parts = [(c.code, cells.get((c.code, period.key), EMPTY).value) for c in children]
+            if any(value is None for _, value in parts):
+                continue
+            total = sum((v for _, v in parts if v is not None), Decimal(0))
+            inputs = tuple(
+                DerivationInput(code, period.fiscal_period, v) for code, v in parts if v is not None
+            )
+            filled += _fill(
+                cells,
+                key,
+                Cell(total, "derived", derivation=Derivation(BUILT_FROM_CHILDREN, inputs)),
+            )
+    return filled
+
+
+def _check_breakdowns(
+    items: Sequence[CanonicalItemDef],
+    periods: Sequence[Period],
+    cells: dict[CellKey, Cell],
+    complete: frozenset[str],
+    log: WarningLog,
+) -> None:
+    """A complete breakdown whose children add up to something else than the parent's value, beyond
+    the balance tolerance, is a warning; the parent keeps its value."""
+    for parent, children in _breakdowns(items, complete):
+        for period in periods:
+            shown = cells.get((parent.code, period.key), EMPTY)
+            parts = [cells.get((c.code, period.key), EMPTY).value for c in children]
+            if shown.value is None or any(v is None for v in parts):
+                continue
+            total = sum((v for v in parts if v is not None), Decimal(0))
+            if abs(total - shown.value) > _tolerance(parent.unit, shown.value):
+                log.add(
+                    RuleWarning(
+                        "custom_breakdown",
+                        parent.code,
+                        period.key,
+                        total,
+                        f"the complete breakdown adds up to {total:,}, the line shows "
+                        f"{shown.value:,}",
+                    )
+                )
+
+
+def _tolerance(unit: str, base: Decimal) -> Decimal:
+    """How far two values of one line may differ: USD 0.01 per share, else the balance check's."""
+    return (
+        Decimal("0.01")
+        if unit == "USD/shares"
+        else max(BALANCE_FLOOR, BALANCE_RELATIVE * abs(base))
+    )
 
 
 def _reported(fact: _Fact | None, code: str, period: Period) -> Cell:

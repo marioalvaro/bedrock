@@ -52,13 +52,16 @@ class Rules:
     numbers whose filing tags an NCI concept; None switches R1b off (a frame that does not carry
     the filings' concepts cannot say that a filing tags none). `cover_shares` holds the cover-page
     share counts as a canonical-shaped frame (`code` `shares_outstanding`, `period_end` the end of
-    the period the filing reports, split-adjusted); None switches the cover-page rule (R7) off."""
+    the period the filing reports, split-adjusted); None switches the cover-page rule (R7) off.
+    `complete_parents` are the codes whose custom breakdown is marked complete: an empty one is
+    the sum of its custom lines (M3 S10c)."""
 
     identities: tuple[IdentityDef, ...] = ()
     nci_filings: frozenset[str] | None = None
     cover_shares: pd.DataFrame | None = None
     imported: pd.DataFrame | None = None
     imported_vintages: pd.DataFrame | None = None
+    complete_parents: frozenset[str] = frozenset()
 
 
 NO_RULES = Rules()

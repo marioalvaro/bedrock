@@ -2,13 +2,14 @@
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from decimal import Decimal
 from functools import cache
 from typing import Literal
 
 import pandas as pd
 from sqlalchemy.orm import Session
 
-from bedrock.analysis.multiples import KeyStats, key_stats
+from bedrock.analysis.multiples import KeyStats, balance_sheet_shares, key_stats
 from bedrock.mapping.candidates import (
     DEFAULT_CROSSWALK_PATH,
     DEFAULT_VENDOR_PATH,
@@ -44,6 +45,7 @@ from bedrock.services.errors import CellNotFound
 from bedrock.statements.build import CommonSizeBase, Freq, StatementTable, build_statement
 from bedrock.statements.cell_types import RuleWarning
 from bedrock.statements.coverage import Coverage, table_coverage
+from bedrock.statements.custom_lines import complete_parents, custom_items, merge_lines
 from bedrock.statements.explain import CellExplanation, explain_cell
 from bedrock.statements.imports import StoredValue, company_calendar, imported_frames
 from bedrock.statements.periods import annual_periods, quarterly_periods
@@ -127,6 +129,13 @@ class StatementInputs:
     # the identities, NCI filings and imported values `build_statement` fills empty cells with
     rules: Rules
     imports: tuple[StoredValue, ...] = ()  # every imported value of the company, every vintage
+    custom: tuple[CanonicalItemDef, ...] = ()  # the company's custom lines (docs/erd/data.md)
+
+    @property
+    def lines(self) -> list[CanonicalItemDef]:
+        """The canonical items with the custom lines after their parents: what the statements are
+        built from. Coverage, data gaps and the import template list the canonical `items`."""
+        return merge_lines(self.items, self.custom)
 
     @property
     def empty(self) -> bool:
@@ -177,7 +186,7 @@ def statement_tables(
     adjustments = adjustments_repo.list_for(session, company.id) if basis == "normalized" else []
     return {
         (s, f): build_statement(
-            loaded.canonical, loaded.items, s, f, common_size_base, adjustments, loaded.rules
+            loaded.canonical, loaded.lines, s, f, common_size_base, adjustments, loaded.rules
         )
         for s, f in wanted
     }
@@ -195,7 +204,7 @@ def cell_detail(
         return explain_cell(
             loaded.canonical,
             loaded.facts,
-            loaded.items,
+            loaded.lines,
             code,
             fiscal_year,
             fiscal_period,
@@ -224,15 +233,16 @@ def mapping_gaps(session: Session, company: Company) -> MappingGaps:
     loaded = _load(session, company)
     if loaded.empty:
         return MappingGaps([], [], [], [])
+    lines = loaded.lines  # the tables are built as the statements are; coverage counts the items
     tables = {
-        (s, f): build_statement(loaded.canonical, loaded.items, s, f, rules=loaded.rules)
+        (s, f): build_statement(loaded.canonical, lines, s, f, rules=loaded.rules)
         for s in ("IS", "BS", "CF")
         for f in ("annual", "quarterly")
     }
     annual = {s: tables[(s, "annual")] for s in ("IS", "BS", "CF")}
     mapped = set(loaded.mappings["canonical_code"])
     warnings = annual["IS"].rule_warnings  # the same on every table of the company
-    by_code = {i.code: i for i in loaded.items}
+    by_code = {i.code: i for i in lines}
     latest_10k = facts_repo.load_latest_annual_facts(session, company.id)
     return MappingGaps(
         missing_items=missing_items(annual, loaded.items),
@@ -248,19 +258,13 @@ def mapping_gaps(session: Session, company: Company) -> MappingGaps:
 
 def company_key_stats(session: Session, company: Company) -> KeyStats:
     """The company-list stats. Only the concepts they need are loaded."""
-    loaded = _load(session, company, codes=_key_stat_codes())
+    manual = company.source == "manual"
+    loaded = _load(session, company, codes=_key_stat_codes(manual))
     close = prices_repo.latest_close(session, company.id)
-    latest = facts_repo.latest_shares_outstanding(session, company.id)
-    # The dei count is in the shares of its filing's day; bring it to today's.
-    shares = (
-        None
-        if latest is None
-        else plain(
-            latest.value * split_factor(latest.filed_at, actions_repo.list_for(session, company.id))
-        )
-    )
     if loaded.empty:
-        return key_stats(close=close, shares=shares, ttm={}, quarterly_bs=None)
+        return key_stats(
+            close=close, shares=_cover_shares(session, company), ttm={}, quarterly_bs=None
+        )
     ttm = {
         statement: build_statement(
             loaded.canonical, loaded.items, statement, "ttm", rules=loaded.rules
@@ -270,7 +274,27 @@ def company_key_stats(session: Session, company: Company) -> KeyStats:
     quarterly_bs = build_statement(
         loaded.canonical, loaded.items, "BS", "quarterly", rules=loaded.rules
     )
+    # A manual company has no cover-page count; its imported balance sheet has the shares.
+    shares = (
+        balance_sheet_shares(
+            quarterly_bs,
+            build_statement(loaded.canonical, loaded.items, "BS", "annual", rules=loaded.rules),
+        )
+        if manual
+        else _cover_shares(session, company)
+    )
     return key_stats(close=close, shares=shares, ttm=ttm, quarterly_bs=quarterly_bs)
+
+
+def _cover_shares(session: Session, company: Company) -> Decimal | None:
+    """The newest cover-page share count, in the shares of today (it is in those of its filing's
+    day)."""
+    latest = facts_repo.latest_shares_outstanding(session, company.id)
+    if latest is None:
+        return None
+    return plain(
+        latest.value * split_factor(latest.filed_at, actions_repo.list_for(session, company.id))
+    )
 
 
 def _load(
@@ -290,8 +314,12 @@ def _load(
     # loaded as empty and solve it, and the cover-page count would fill a line that was not
     # loaded either.
     stored = _stored_imports(session, company)
+    # Custom lines are not among the key-stat lines either.
+    rows = imports_repo.list_lines(session, company.id) if codes is None else []
+    custom = tuple(custom_items(items, rows))
     imported = imported_frames(
-        stored if codes is None else [v for v in stored if v.line_code in codes], items
+        stored if codes is None else [v for v in stored if v.line_code in codes],
+        merge_lines(items, custom),
     )
     rules = Rules(
         canonical_identities() if codes is None else (),
@@ -301,8 +329,9 @@ def _load(
         else None,
         imported.newest,
         imported.vintages,
+        complete_parents([(r.code, r.parent_code, r.children_complete) for r in rows]),
     )
-    return StatementInputs(items, mappings, facts, canonical, rules, tuple(stored))
+    return StatementInputs(items, mappings, facts, canonical, rules, tuple(stored), custom)
 
 
 def _stored_imports(session: Session, company: Company) -> list[StoredValue]:
@@ -324,9 +353,13 @@ def _stored_imports(session: Session, company: Company) -> list[StoredValue]:
 
 
 @cache
-def _key_stat_codes() -> frozenset[str]:
+def _key_stat_codes(with_shares: bool) -> frozenset[str]:
+    """The lines the stats read; `with_shares` adds the share count, for a company whose count
+    comes from its balance sheet."""
     by_code = {item.code: item for item in canonical_items()}
     wanted = set(KEY_STAT_CODES) | {code for group in BALANCE_TOTALS for code in group}
+    if with_shares:
+        wanted.add("shares_outstanding")
     pending = list(wanted)
     while pending:
         item = by_code[pending.pop()]

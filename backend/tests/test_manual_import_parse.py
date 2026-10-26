@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 
 from bedrock.ingest.manual_import import ImportParseError, ImportPlan, parse_import
-from bedrock.mapping.config import load_canonical_items
+from bedrock.mapping.config import CanonicalItemDef, load_canonical_items
 
 from .import_data import (
     FY2006,
@@ -24,13 +24,23 @@ from .import_data import (
 ITEMS = load_canonical_items()
 
 
-def parse(content: bytes, filename: str = "aapl.xlsx", scale: str | None = None) -> ImportPlan:
-    return parse_import(content, filename, ITEMS, scale=scale)
+def parse(
+    content: bytes,
+    filename: str = "aapl.xlsx",
+    scale: str | None = None,
+    existing: tuple[CanonicalItemDef, ...] = (),
+) -> ImportPlan:
+    return parse_import(content, filename, ITEMS, scale=scale, existing=existing)
 
 
-def errors(content: bytes, filename: str = "aapl.xlsx", scale: str | None = None) -> list[Any]:
+def errors(
+    content: bytes,
+    filename: str = "aapl.xlsx",
+    scale: str | None = None,
+    existing: tuple[CanonicalItemDef, ...] = (),
+) -> list[Any]:
     with pytest.raises(ImportParseError) as raised:
-        parse(content, filename, scale)
+        parse(content, filename, scale, existing)
     return raised.value.errors
 
 
@@ -338,22 +348,6 @@ def test_a_code_on_the_wrong_statement_is_an_error() -> None:
     assert "CF" in issues[0].message
 
 
-@pytest.mark.parametrize("code", [None, "custom:products", "products"])
-def test_a_custom_line_is_refused_until_s10c(code: str | None) -> None:
-    rows = statement_rows(
-        [FY2006],
-        [
-            [code, "Products", "cost_of_revenue", "USD", None, 5],
-            ["revenue", None, None, None, None, 1],
-        ],
-    )
-
-    issues = errors(workbook({"IS": rows}))
-
-    assert located(issues[0]) == ("IS", 6, "A")
-    assert "custom lines" in issues[0].message.lower()
-
-
 def test_a_value_under_a_blank_period_header_is_an_error() -> None:
     rows = statement_rows([FY2006], {"revenue": [1, 2]})
     for header_row in rows[:5]:
@@ -401,3 +395,290 @@ def test_csv_may_use_semicolons_or_tabs(delimiter: str) -> None:
     plan = parse(csv_file(income({"revenue": [19315]}), delimiter=delimiter), "aapl.csv")
 
     assert plan.values[0].value == Decimal(19_315_000_000)
+
+
+# -- custom lines (FR-DATA-16) ------------------------------------------------------------------
+
+
+def line(code: str | None, label: str | None, parent: str, *values: Any, **cols: Any) -> list[Any]:
+    """A custom-line row: `code | label | parent | unit | children_complete | values`."""
+    return [code, label, parent, cols.get("unit"), cols.get("flag"), *values]
+
+
+def parent_row(code: str, *values: Any, flag: Any = None) -> list[Any]:
+    return [code, None, None, None, flag, *values]
+
+
+def income_rows(*rows: list[Any]) -> bytes:
+    return workbook({"IS": statement_rows([FY2006], list(rows))})
+
+
+def stored(
+    code: str, label: str, parent: str, statement: str = "IS", kind: str = "flow", sign: int = 1
+) -> CanonicalItemDef:
+    return CanonicalItemDef(
+        code, statement, label, kind, "USD", sign, parent, (), None, False, (), custom=True
+    )
+
+
+@FORMATS
+def test_a_new_row_under_a_leaf_is_a_custom_line_with_a_slug_from_its_label(fmt: str) -> None:
+    rows = statement_rows(
+        [FY2006],
+        [
+            parent_row("cost_of_revenue", 100, flag=True),
+            line(None, "Products & Hardware", "cost_of_revenue", 60),
+        ],
+    )
+
+    plan = parse(*build(fmt, {"IS": rows}))
+
+    (made,) = plan.lines
+    assert (made.code, made.label, made.statement, made.parent) == (
+        "custom:products_hardware",
+        "Products & Hardware",
+        "IS",
+        "cost_of_revenue",
+    )
+    assert (made.kind, made.unit, made.new, made.children_complete) == ("flow", "USD", True, True)
+    custom = [v for v in plan.values if v.code == made.code]
+    assert [(v.value, v.fiscal_period) for v in custom] == [(Decimal(60_000_000), "FY")]
+
+
+def test_an_explicit_custom_code_is_kept() -> None:
+    plan = parse(
+        workbook(
+            {
+                "IS": statement_rows(
+                    [FY2006],
+                    [
+                        line("custom:prod", "Products", "cost_of_revenue", 60),
+                        parent_row("revenue", 1),
+                    ],
+                )
+            }
+        )
+    )
+
+    assert [ln.code for ln in plan.lines] == ["custom:prod"]
+
+
+def test_a_new_code_without_the_custom_prefix_is_an_error() -> None:
+    issues = errors(income_rows(line("products", "Products", "cost_of_revenue", 60)))
+
+    assert located(issues[0]) == ("IS", 6, "A")
+    assert "custom:" in issues[0].message
+
+
+def test_a_custom_line_can_sit_under_an_earlier_custom_line() -> None:
+    plan = parse(
+        income_rows(
+            line(None, "Products", "cost_of_revenue", 60),
+            line(None, "Phones", "custom:products", 40),
+        )
+    )
+
+    assert [(ln.code, ln.parent) for ln in plan.lines] == [
+        ("custom:products", "cost_of_revenue"),
+        ("custom:phones", "custom:products"),
+    ]
+
+
+def test_a_parent_defined_after_its_child_is_an_error() -> None:
+    issues = errors(
+        income_rows(
+            line(None, "Phones", "custom:products", 40),
+            line(None, "Products", "cost_of_revenue", 60),
+        )
+    )
+
+    assert located(issues[0]) == ("IS", 6, "C")
+    assert "before" in issues[0].message
+
+
+def test_a_parent_that_is_not_a_line_is_an_error() -> None:
+    issues = errors(income_rows(line(None, "Products", "cogs", 60)))
+
+    assert located(issues[0]) == ("IS", 6, "C")
+    assert "cogs" in issues[0].message
+
+
+def test_a_parent_with_canonical_children_is_not_a_leaf() -> None:
+    rows = statement_rows([FY2006], [line(None, "Cash like", "total_current_assets", 5)])
+
+    issues = errors(workbook({"BS": rows}))
+
+    assert located(issues[0]) == ("BS", 6, "C")
+    assert "leaf" in issues[0].message
+
+
+def test_a_parent_on_another_statement_is_an_error() -> None:
+    rows = statement_rows([FY2006], [line(None, "Products", "cost_of_revenue", 60)])
+
+    issues = errors(workbook({"CF": rows}))
+
+    assert located(issues[0]) == ("CF", 6, "C")
+    assert "IS" in issues[0].message
+
+
+def test_a_unit_that_differs_from_the_parents_is_an_error() -> None:
+    issues = errors(income_rows(line(None, "Products", "cost_of_revenue", 60, unit="shares")))
+
+    assert located(issues[0]) == ("IS", 6, "D")
+    assert "USD" in issues[0].message
+
+
+def test_a_blank_unit_takes_the_parents() -> None:
+    rows = statement_rows([FY2006], [line(None, "Ex dividends", "eps_basic", 1)])
+
+    plan = parse(workbook({"IS": rows}))
+
+    assert (plan.lines[0].unit, plan.lines[0].kind) == ("USD/shares", "average")
+    assert plan.values[0].value == Decimal(1)  # a per-share value is never scaled
+
+
+@pytest.mark.parametrize("code", ["other_current_assets", "total_operating_costs"])
+def test_a_complete_flag_on_a_residual_or_computed_row_is_an_error(code: str) -> None:
+    statement = "BS" if code.startswith("other") else "IS"
+    rows = statement_rows([FY2006], [parent_row(code, flag=True), line(None, "Prepaids", code, 5)])
+
+    issues = errors(workbook({statement: rows}))
+
+    assert located(issues[0]) == (statement, 6, "E")
+    assert "computed" in issues[0].message
+
+
+def test_a_complete_flag_on_a_row_with_canonical_children_is_an_error() -> None:
+    rows = statement_rows([FY2006], [parent_row("total_current_assets", 5, flag=True)])
+
+    issues = errors(workbook({"BS": rows}))
+
+    assert located(issues[0]) == ("BS", 6, "E")
+
+
+def test_a_residual_can_have_children_when_not_marked_complete() -> None:
+    rows = statement_rows([FY2006], [line(None, "Prepaids", "other_current_assets", 5, unit="USD")])
+
+    plan = parse(workbook({"BS": rows}))
+
+    assert plan.lines[0].children_complete is False and plan.lines[0].kind == "instant"
+
+
+def test_the_complete_flag_of_the_parent_row_reaches_its_children() -> None:
+    plan = parse(
+        income_rows(
+            parent_row("cost_of_revenue", flag="TRUE"),
+            line(None, "Products", "cost_of_revenue", 60),
+            line(None, "Services", "cost_of_revenue", 40),
+            parent_row("operating_income", flag=False),
+            line(None, "Core", "operating_income", 1),
+        )
+    )
+
+    assert {ln.code: ln.children_complete for ln in plan.lines} == {
+        "custom:products": True,
+        "custom:services": True,
+        "custom:core": False,
+    }
+
+
+def test_a_complete_flag_with_no_custom_children_is_a_warning() -> None:
+    plan = parse(income_rows(parent_row("cost_of_revenue", 1, flag=True)))
+
+    assert plan.lines == ()
+    assert any("cost_of_revenue" in w.message and located(w)[1:] == (6, "E") for w in plan.warnings)
+
+
+def test_a_line_needs_a_label() -> None:
+    issues = errors(income_rows(line(None, None, "cost_of_revenue", 60)))
+
+    assert located(issues[0]) == ("IS", 6, "B")
+
+
+def test_a_label_without_letters_or_digits_gives_no_code() -> None:
+    issues = errors(income_rows(line(None, "---", "cost_of_revenue", 60)))
+
+    assert located(issues[0]) == ("IS", 6, "B")
+
+
+def test_the_same_label_twice_under_one_parent_is_an_error() -> None:
+    issues = errors(
+        income_rows(
+            line(None, "Products", "cost_of_revenue", 60),
+            line(None, "products", "cost_of_revenue", 70),
+        )
+    )
+
+    assert located(issues[0]) == ("IS", 7, "A")
+    assert "row 6" in issues[0].message
+
+
+def test_a_code_already_used_under_another_parent_is_an_error() -> None:
+    issues = errors(
+        income_rows(
+            line(None, "Other", "cost_of_revenue", 60),
+            line(None, "Other", "research_development", 70),
+        )
+    )
+
+    assert located(issues[0]) == ("IS", 7, "A")
+    assert "custom:other" in issues[0].message
+
+
+def test_a_displayed_sign_converts_through_the_parents_sign() -> None:
+    rows = statement_rows([FY2006], [line(None, "Stores", "capex", -3)])
+
+    plan = parse(workbook({"CF": rows}, scale="units"))
+
+    assert plan.values[0].value == Decimal(3)  # capex shows negative, is stored positive
+
+
+def test_a_stored_line_can_be_listed_again_under_its_parent() -> None:
+    known = stored("custom:products", "Products", "cost_of_revenue")
+
+    plan = parse(
+        income_rows(line("custom:products", "Products", "cost_of_revenue", 61)), existing=(known,)
+    )
+
+    (again,) = plan.lines
+    assert (again.code, again.new) == ("custom:products", False)
+
+
+def test_a_blank_code_finds_the_stored_line_with_that_label_and_parent() -> None:
+    known = stored("custom:prod_2", "Products", "cost_of_revenue")
+
+    plan = parse(income_rows(line(None, "Products", "cost_of_revenue", 61)), existing=(known,))
+
+    assert [(ln.code, ln.new) for ln in plan.lines] == [("custom:prod_2", False)]
+
+
+def test_a_stored_line_listed_under_another_parent_is_an_error() -> None:
+    known = stored("custom:products", "Products", "cost_of_revenue")
+
+    issues = errors(
+        income_rows(line("custom:products", "Products", "research_development", 61)),
+        existing=(known,),
+    )
+
+    assert located(issues[0]) == ("IS", 6, "C")
+    assert "cost_of_revenue" in issues[0].message
+
+
+def test_a_new_line_can_sit_under_a_stored_custom_line() -> None:
+    known = stored("custom:products", "Products", "cost_of_revenue")
+
+    plan = parse(income_rows(line(None, "Phones", "custom:products", 4)), existing=(known,))
+
+    assert [(ln.code, ln.parent) for ln in plan.lines] == [("custom:phones", "custom:products")]
+
+
+def test_a_line_with_no_values_is_still_declared() -> None:
+    plan = parse(
+        income_rows(
+            parent_row("revenue", 1),
+            line(None, "Products", "cost_of_revenue"),
+        )
+    )
+
+    assert [ln.code for ln in plan.lines] == ["custom:products"]
+    assert {v.code for v in plan.values} == {"revenue"}

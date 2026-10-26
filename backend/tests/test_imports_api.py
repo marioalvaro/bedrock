@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 from openpyxl import load_workbook
 
-from .import_data import filled, save
+from .import_data import add_line, filled, mark_complete, save
 
 BASE = "/api/v1/companies/AAPL"
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -100,6 +100,8 @@ def test_a_dry_run_reports_the_counts_and_stores_nothing(aapl_client: TestClient
         "ignored",
         "unchanged",
         "warnings",
+        "lines",
+        "built",
     }
     assert (body["dry_run"], body["format"], body["scale"], body["import_id"]) == (
         True,
@@ -225,3 +227,78 @@ def test_an_unsupported_file_is_a_422(aapl_client: TestClient) -> None:
 
 def test_deleting_an_unknown_import_is_a_404(aapl_client: TestClient) -> None:
     assert aapl_client.delete(f"{BASE}/imports/999").status_code == 404
+
+
+def _with_breakdown(client: TestClient) -> bytes:
+    book = load_workbook(io.BytesIO(_template(client, format="xlsx", prefill="true")))
+    add_line(book, "IS", "interest_expense", "Notes", {"FY2008": 3})
+    add_line(book, "IS", "interest_expense", "Loans", {"FY2008": 4})
+    mark_complete(book, "IS", "interest_expense")
+    return save(book)
+
+
+def test_the_dry_run_reports_new_custom_lines_and_the_parents_they_build(
+    aapl_client: TestClient,
+) -> None:
+    response = _upload(aapl_client, _with_breakdown(aapl_client), True)
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["lines"] == [
+        {
+            "statement": "IS",
+            "code": "custom:notes",
+            "label": "Notes",
+            "parent": "interest_expense",
+            "parent_label": "Interest expense",
+        },
+        {
+            "statement": "IS",
+            "code": "custom:loans",
+            "label": "Loans",
+            "parent": "interest_expense",
+            "parent_label": "Interest expense",
+        },
+    ]
+    assert body["built"] == [
+        {
+            "statement": "IS",
+            "code": "interest_expense",
+            "label": "Interest expense",
+            "unit": "USD",
+            "period_key": "FY2008",
+            "value": "7000000",
+        }
+    ]
+    assert [c["code"] for c in body["fills"]] == ["custom:notes", "custom:loans"]
+
+
+def test_a_confirmed_breakdown_shows_in_the_statement_payload(aapl_client: TestClient) -> None:
+    assert _upload(aapl_client, _with_breakdown(aapl_client), False).status_code == 200
+
+    rows = aapl_client.get(f"{BASE}/statements", params={"type": "IS", "freq": "annual"}).json()[
+        "rows"
+    ]
+
+    by_code = {r["code"]: r for r in rows}
+    assert (by_code["custom:notes"]["custom"], by_code["custom:notes"]["parent"]) == (
+        True,
+        "interest_expense",
+    )
+    assert by_code["custom:notes"]["depth"] == by_code["interest_expense"]["depth"] + 1
+    assert by_code["other:interest_expense"]["label"] == "Other Interest expense"
+    assert (by_code["revenue"]["custom"], by_code["revenue"]["parent"]) == (False, None)
+    codes = [r["code"] for r in rows]
+    at = codes.index("interest_expense")
+    assert codes[at + 1 : at + 4] == ["custom:notes", "custom:loans", "other:interest_expense"]
+
+
+def test_a_custom_line_error_is_a_422_with_its_location(aapl_client: TestClient) -> None:
+    book = load_workbook(io.BytesIO(_template(aapl_client, format="xlsx")))
+    add_line(book, "BS", "total_current_assets", "Cash like", {"FY2024": 1})
+
+    response = _upload(aapl_client, save(book), True)
+
+    assert response.status_code == 422
+    (error,) = response.json()["errors"]
+    assert (error["sheet"], error["column"]) == ("BS", "C") and "leaf" in error["message"]

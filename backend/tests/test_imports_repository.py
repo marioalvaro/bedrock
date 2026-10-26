@@ -122,3 +122,204 @@ def test_the_same_cell_in_two_imports_keeps_both_vintages(
         (facts[1].import_id, 2),
     ]
     assert facts[0].import_id < facts[1].import_id
+
+
+# -- custom lines (FR-DATA-16) ------------------------------------------------------------------
+
+
+def _line(
+    code: str, parent: str = "cost_of_revenue", *, complete: bool = False, label: str = ""
+) -> repo.NewLine:
+    return repo.NewLine(
+        code, label or code.removeprefix("custom:").title(), "IS", parent, "flow", "USD", complete
+    )
+
+
+def _add_with(
+    session: Session,
+    company: Company,
+    name: str,
+    at: datetime,
+    facts: list[repo.NewFact],
+    lines: list[repo.NewLine],
+) -> int:
+    row = repo.add_import(session, company.id, name, "xlsx", "millions", at, None, facts, lines)
+    session.commit()
+    return row.id
+
+
+def test_add_import_stores_new_custom_lines_in_the_order_given(
+    db_session: Session, company: Company
+) -> None:
+    _add_with(
+        db_session,
+        company,
+        "a.xlsx",
+        NOW,
+        [_fact("custom:products", "5"), _fact("custom:services", "6"), _fact("custom:rd", "1")],
+        [
+            _line("custom:products", complete=True),
+            _line("custom:services", complete=True),
+            _line("custom:rd", "research_development"),
+        ],
+    )
+
+    lines = repo.list_lines(db_session, company.id)
+    assert {(ln.code, ln.parent_code, ln.display_order) for ln in lines} == {
+        ("custom:products", "cost_of_revenue", 0),
+        ("custom:services", "cost_of_revenue", 1),
+        ("custom:rd", "research_development", 0),
+    }
+    under = [ln.code for ln in lines if ln.parent_code == "cost_of_revenue"]
+    assert under == ["custom:products", "custom:services"]
+    first = lines[0]
+    assert (first.label, first.statement, first.kind, first.unit, first.children_complete) == (
+        "Products",
+        "IS",
+        "flow",
+        "USD",
+        True,
+    )
+
+
+def test_a_later_import_adds_lines_after_the_ones_stored(
+    db_session: Session, company: Company
+) -> None:
+    _add_with(
+        db_session,
+        company,
+        "a.xlsx",
+        NOW,
+        [_fact("custom:products", "5")],
+        [_line("custom:products")],
+    )
+
+    _add_with(
+        db_session,
+        company,
+        "b.xlsx",
+        NOW + timedelta(days=1),
+        [_fact("custom:services", "6")],
+        [_line("custom:services")],
+    )
+
+    assert [(ln.code, ln.display_order) for ln in repo.list_lines(db_session, company.id)] == [
+        ("custom:products", 0),
+        ("custom:services", 1),
+    ]
+
+
+def test_listing_a_line_again_updates_its_label_and_flag_only(
+    db_session: Session, company: Company
+) -> None:
+    _add_with(
+        db_session,
+        company,
+        "a.xlsx",
+        NOW,
+        [_fact("custom:products", "5")],
+        [_line("custom:products")],
+    )
+
+    _add_with(
+        db_session,
+        company,
+        "b.xlsx",
+        NOW + timedelta(days=1),
+        [_fact("custom:products", "6")],
+        [_line("custom:products", complete=True, label="Product lines")],
+    )
+
+    (line,) = repo.list_lines(db_session, company.id)
+    assert (line.label, line.children_complete, line.display_order) == ("Product lines", True, 0)
+
+
+def test_custom_lines_belong_to_their_company(db_session: Session, company: Company) -> None:
+    other = follow(db_session, fake_sources().edgar, "MSFT")
+    _add_with(
+        db_session,
+        company,
+        "a.xlsx",
+        NOW,
+        [_fact("custom:products", "5")],
+        [_line("custom:products")],
+    )
+
+    assert repo.list_lines(db_session, other.id) == []
+
+
+def test_deleting_an_import_removes_the_lines_left_without_values(
+    db_session: Session, company: Company
+) -> None:
+    import_id = _add_with(
+        db_session,
+        company,
+        "a.xlsx",
+        NOW,
+        [_fact("custom:products", "5"), _fact("custom:phones", "2"), _fact("revenue", "9")],
+        [_line("custom:products"), _line("custom:phones", "custom:products")],
+    )
+    row = repo.get(db_session, company.id, import_id)
+    assert row is not None
+
+    repo.delete_import(db_session, row)
+    db_session.commit()
+
+    assert repo.list_lines(db_session, company.id) == []
+
+
+def test_a_line_with_values_in_another_import_stays(db_session: Session, company: Company) -> None:
+    first = _add_with(
+        db_session,
+        company,
+        "a.xlsx",
+        NOW,
+        [_fact("custom:products", "5")],
+        [_line("custom:products")],
+    )
+    _add_with(
+        db_session,
+        company,
+        "b.xlsx",
+        NOW + timedelta(days=1),
+        [_fact("custom:products", "6")],
+        [_line("custom:products")],
+    )
+    row = repo.get(db_session, company.id, first)
+    assert row is not None
+
+    repo.delete_import(db_session, row)
+    db_session.commit()
+
+    assert [ln.code for ln in repo.list_lines(db_session, company.id)] == ["custom:products"]
+
+
+def test_a_line_without_values_stays_while_a_line_under_it_has_some(
+    db_session: Session, company: Company
+) -> None:
+    first = _add_with(
+        db_session,
+        company,
+        "a.xlsx",
+        NOW,
+        [_fact("custom:products", "5")],
+        [_line("custom:products")],
+    )
+    _add_with(
+        db_session,
+        company,
+        "b.xlsx",
+        NOW + timedelta(days=1),
+        [_fact("custom:phones", "2")],
+        [_line("custom:phones", "custom:products")],
+    )
+    row = repo.get(db_session, company.id, first)
+    assert row is not None
+
+    repo.delete_import(db_session, row)
+    db_session.commit()
+
+    assert [ln.code for ln in repo.list_lines(db_session, company.id)] == [
+        "custom:products",
+        "custom:phones",
+    ]

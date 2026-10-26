@@ -6,7 +6,8 @@ value there always wins), the statements as they are (earlier imports), and the 
 this file on top (what would change).
 """
 
-from dataclasses import dataclass, replace
+from collections.abc import Iterable
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from decimal import Decimal
 from typing import Literal
@@ -19,17 +20,26 @@ from bedrock.ingest.manual_import import (
     ImportIssue,
     ImportParseError,
     ImportPlan,
+    PlanLine,
     check_periods,
     parse_import,
 )
 from bedrock.mapping.config import CanonicalItemDef
 from bedrock.models.company import Company
+from bedrock.models.custom_line import CustomLine
 from bedrock.models.statement_import import StatementImport
 from bedrock.repositories import imports as repo
 from bedrock.services.errors import ImportNotFound, InvalidStatementImport
 from bedrock.services.statements import load_inputs
 from bedrock.statements.cell_types import EMPTY, CellKey
 from bedrock.statements.cells import SolvedCells, solve_cells
+from bedrock.statements.custom_lines import (
+    BUILT_FROM_CHILDREN,
+    LineSpec,
+    complete_parents,
+    custom_items,
+    merge_lines,
+)
 from bedrock.statements.imports import (
     StoredValue,
     company_calendar,
@@ -74,6 +84,29 @@ class IgnoredCell:
 
 
 @dataclass(frozen=True)
+class LineChange:
+    """A custom line the import creates."""
+
+    statement: str
+    code: str
+    label: str
+    parent: str
+    parent_label: str
+
+
+@dataclass(frozen=True)
+class BuiltCell:
+    """A parent cell that the sum of a complete custom breakdown fills (or changes)."""
+
+    statement: str
+    code: str
+    label: str
+    unit: str
+    period_key: str
+    value: Decimal  # displayed, in units
+
+
+@dataclass(frozen=True)
 class ImportPreview:
     format: ImportFormat
     scale: str
@@ -81,12 +114,14 @@ class ImportPreview:
     ignored: list[IgnoredCell]
     unchanged: int  # typed values equal to what the cell already shows
     warnings: list[ImportIssue]
+    lines: list[LineChange] = field(default_factory=list)  # custom lines created
+    built: list[BuiltCell] = field(default_factory=list)  # parent cells built from their lines
 
 
 @dataclass(frozen=True)
 class ImportResult:
     preview: ImportPreview
-    import_id: int | None  # None when nothing was stored (the file fills no cell)
+    import_id: int | None  # None when nothing was stored (no cell filled, no line changed)
 
 
 def import_template(
@@ -102,7 +137,7 @@ def import_template(
     )
     values: dict[tuple[str, str], Decimal] = {}
     if prefill and not inputs.empty:
-        solved = solve_cells(inputs.canonical, inputs.items, calendar, inputs.rules)
+        solved = solve_cells(inputs.canonical, inputs.lines, calendar, inputs.rules)
         values = {key: cell.value for key, cell in solved.cells.items() if cell.value is not None}
     return build_template(inputs.items, periods, fmt, scale, values)
 
@@ -123,9 +158,10 @@ def confirm_import(
     scale: str | None,
     now: datetime,
 ) -> ImportResult:
-    """Stores the cells the file fills as one import. A file that fills nothing stores nothing."""
-    preview, plan, fills = _evaluate(session, company, content, filename, scale, now)
-    if not fills:
+    """Stores the cells the file fills, and the custom lines it adds or changes, as one import. A
+    file that does neither stores nothing."""
+    preview, plan, fills, lines = _evaluate(session, company, content, filename, scale, now)
+    if not fills and not lines:
         return ImportResult(preview, None)
     row = repo.add_import(
         session,
@@ -141,6 +177,7 @@ def confirm_import(
             )
             for v in fills
         ],
+        lines,
     )
     session.commit()
     return ImportResult(preview, row.id)
@@ -170,11 +207,10 @@ def _evaluate(
     filename: str,
     scale: str | None,
     now: datetime,
-) -> tuple[ImportPreview, ImportPlan, list[StoredValue]]:
+) -> tuple[ImportPreview, ImportPlan, list[StoredValue], list[repo.NewLine]]:
     inputs = load_inputs(session, company)
-    items = {i.code: i for i in inputs.items}
     try:
-        parsed = parse_import(content, filename, inputs.items, scale)
+        parsed = parse_import(content, filename, inputs.items, scale, inputs.custom)
     except ImportParseError as error:
         raise InvalidStatementImport(error.errors) from error
     sec_calendar = fiscal_calendar(inputs.canonical)
@@ -183,18 +219,32 @@ def _evaluate(
     if issues:
         raise InvalidStatementImport(issues)
 
+    # The company's lines once the file is on top: the stored ones (a listed line takes the file's
+    # label and flag) and the new ones.
+    stored_lines = {r.code: r for r in repo.list_lines(session, company.id)}
+    specs = _specs_after(stored_lines.values(), plan)
+    lines_after = merge_lines(inputs.items, custom_items(inputs.items, specs))
+    items = {i.code: i for i in lines_after}
+
     typed = _stored(plan, items, now)
     sec = solve_cells(
         inputs.canonical,
         inputs.items,
         sec_calendar,
-        replace(inputs.rules, imported=None, imported_vintages=None),
+        replace(inputs.rules, imported=None, imported_vintages=None, complete_parents=frozenset()),
     )
-    current = solve_cells(inputs.canonical, inputs.items, current_calendar, inputs.rules)
-    frames = imported_frames([*inputs.imports, *typed], inputs.items)
-    rules = replace(inputs.rules, imported=frames.newest, imported_vintages=frames.vintages)
+    current = solve_cells(inputs.canonical, inputs.lines, current_calendar, inputs.rules)
+    frames = imported_frames([*inputs.imports, *typed], lines_after)
+    rules = replace(
+        inputs.rules,
+        imported=frames.newest,
+        imported_vintages=frames.vintages,
+        complete_parents=complete_parents(
+            (s.code, s.parent_code, s.children_complete) for s in specs
+        ),
+    )
     after_calendar = company_calendar(inputs.canonical, frames.newest)
-    after = solve_cells(inputs.canonical, inputs.items, after_calendar, rules)
+    after = solve_cells(inputs.canonical, lines_after, after_calendar, rules)
 
     fills: list[StoredValue] = []
     changes: list[CellChange] = []
@@ -225,7 +275,7 @@ def _evaluate(
             )
         elif then.value != shown:
             ignored.append(_ignored(item, key, then.value, shown, "derived"))
-        elif now_cell.provenance == "imported" and now_cell.value == shown:
+        elif now_cell.value == shown:
             unchanged += 1
         else:
             fills.append(value)
@@ -246,8 +296,94 @@ def _evaluate(
             [k for s, _, k in touched if s == "CF"],
         )
     ]
-    preview = ImportPreview(plan.format, plan.scale, changes, ignored, unchanged, warnings)
-    return preview, plan, fills
+    lines = _lines_to_store(plan, stored_lines, {v.line_code for v in fills})
+    preview = ImportPreview(
+        plan.format,
+        plan.scale,
+        changes,
+        ignored,
+        unchanged,
+        warnings,
+        [
+            LineChange(ln.statement, ln.code, ln.label, ln.parent_code, items[ln.parent_code].label)
+            for ln in lines
+            if ln.code not in stored_lines
+        ],
+        _built(after, current, items),
+    )
+    return preview, plan, fills, lines
+
+
+def _specs_after(stored: Iterable[LineSpec], plan: ImportPlan) -> list[repo.NewLine]:
+    """Every custom line once the plan is applied, in display order: the stored ones (a line the
+    file lists again takes its label and flag) and the new ones after them."""
+    listed = {ln.code: ln for ln in plan.lines}
+    out: list[repo.NewLine] = []
+    for line in stored:
+        again = listed.pop(line.code, None)
+        out.append(
+            repo.NewLine(
+                line.code,
+                line.label if again is None else again.label,
+                line.statement,
+                line.parent_code,
+                line.kind,
+                line.unit,
+                line.children_complete if again is None else again.children_complete,
+            )
+        )
+    out += [_new_line(ln) for ln in listed.values()]
+    return out
+
+
+def _new_line(line: PlanLine) -> repo.NewLine:
+    return repo.NewLine(
+        line.code,
+        line.label,
+        line.statement,
+        line.parent,
+        line.kind,
+        line.unit,
+        line.children_complete,
+    )
+
+
+def _lines_to_store(
+    plan: ImportPlan, stored: dict[str, CustomLine], filled: set[str]
+) -> list[repo.NewLine]:
+    """The file's lines the import stores: a new one that has a filled cell or has a new line
+    with one under it, and a stored one whose label or flag the file changes."""
+    by_code = {ln.code: ln for ln in plan.lines}
+    needed: set[str] = set()
+    for code in filled:
+        while code in by_code and code not in needed:
+            needed.add(code)
+            code = by_code[code].parent
+    out = []
+    for line in plan.lines:
+        known = stored.get(line.code)
+        if known is None:
+            if line.code in needed:
+                out.append(_new_line(line))
+        elif (known.label, known.children_complete) != (line.label, line.children_complete):
+            out.append(_new_line(line))
+    return out
+
+
+def _built(
+    after: SolvedCells, current: SolvedCells, items: dict[str, CanonicalItemDef]
+) -> list[BuiltCell]:
+    """The parent cells the sum of a complete breakdown fills or changes."""
+    out = []
+    for (code, period_key), cell in sorted(after.cells.items()):
+        derivation = cell.derivation
+        if derivation is None or derivation.formula != BUILT_FROM_CHILDREN or cell.value is None:
+            continue
+        if current.cells.get((code, period_key), EMPTY).value == cell.value:
+            continue
+        item = items[code]
+        out.append(BuiltCell(item.statement, code, item.label, item.unit, period_key, cell.value))
+    return out
 
 
 def _stored(

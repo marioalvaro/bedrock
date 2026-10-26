@@ -47,7 +47,7 @@ export interface CellTarget {
 
 interface CellDetailSheetProps {
   ticker: string;
-  cik: string;
+  cik: string | null;
   target: CellTarget | null;
   scale: Scale;
   onClose: () => void;
@@ -335,14 +335,18 @@ function Body({
       {data.filing && (
         <Field name="Filing">
           {data.filing.form}{" "}
-          <a
-            className="underline"
-            href={filingUrl(cik, data.filing.accession_no)}
-            target="_blank"
-            rel="noreferrer"
-          >
-            {data.filing.accession_no}
-          </a>
+          {cik === null ? (
+            data.filing.accession_no
+          ) : (
+            <a
+              className="underline"
+              href={filingUrl(cik, data.filing.accession_no)}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {data.filing.accession_no}
+            </a>
+          )}
           , filed {data.filing.filed_at}
         </Field>
       )}

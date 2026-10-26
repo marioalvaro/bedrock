@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from bedrock.api.deps import get_clock, get_session, get_sources
 from bedrock.ingest.sources import Sources
-from bedrock.schemas.company import CompanyCreate, CompanyListItem
+from bedrock.schemas.company import CompanyCreate, CompanyListItem, ManualCompanyCreate
 from bedrock.schemas.refresh import RefreshResultOut
 from bedrock.services import companies as service
 from bedrock.services.refresh import refresh_company
@@ -26,6 +26,17 @@ def add_company(
     now: datetime = Depends(get_clock),
 ) -> CompanyListItem:
     return CompanyListItem.from_view(service.add_company(session, sources, body.ticker, now))
+
+
+@router.post("/companies/manual", status_code=201)
+def add_manual_company(
+    body: ManualCompanyCreate, session: Session = Depends(get_session)
+) -> CompanyListItem:
+    return CompanyListItem.from_view(
+        service.add_manual_company(
+            session, body.ticker, body.name, body.fiscal_year_end_month, body.sic
+        )
+    )
 
 
 @router.get("/companies/{ticker}")
