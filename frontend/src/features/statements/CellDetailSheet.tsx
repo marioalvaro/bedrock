@@ -66,6 +66,19 @@ function Field({ name, children }: { name: string; children: React.ReactNode }) 
   );
 }
 
+// What a rule-produced value is. A reported, derived or normalized cell needs no extra words: its
+// derivation and vintages say it all.
+const RULE_NOTES: Record<string, { name: string; text: string }> = {
+  zero_inferred: {
+    name: "inferred zero",
+    text: "Inferred zero: the filing does not report this line, and a rule concluded it is exactly 0.",
+  },
+  approximated: {
+    name: "approximated",
+    text: "Approximated: rebuilt by a rule (a Q4 average or the cover-page share count), not reported. Backtests never score against it.",
+  },
+};
+
 const CATEGORIES: AdjustmentIn["category"][] = ["one-off", "restatement", "reclass", "other"];
 const PERIODS: readonly string[] = ["FY", "Q1", "Q2", "Q3", "Q4"];
 
@@ -298,7 +311,10 @@ function Body({
     <div className="overflow-y-auto px-4 pb-4">
       <Field name="Value">
         <span className="num">{data.value === null ? "—" : money(data.value)}</span>{" "}
-        <span className="text-muted-foreground">({data.provenance ?? "no value"})</span>
+        <span className="text-muted-foreground">
+          ({(data.provenance && RULE_NOTES[data.provenance]?.name) || data.provenance || "no value"}
+          )
+        </span>
         {data.normalized_value !== null && (
           <>
             {" "}
@@ -329,6 +345,9 @@ function Body({
           </a>
           , filed {data.filing.filed_at}
         </Field>
+      )}
+      {data.provenance && RULE_NOTES[data.provenance] && (
+        <Field name="Rule">{RULE_NOTES[data.provenance]?.text}</Field>
       )}
       {data.derivation && (
         <Field name="Derivation">

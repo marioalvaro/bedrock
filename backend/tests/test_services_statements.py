@@ -23,6 +23,7 @@ from bedrock.services.statements import (
     cell_detail,
     mapping_gaps,
 )
+from bedrock.statements.coverage import table_coverage
 from bedrock.statements.view import trim_periods
 
 from .seed import fake_sources, follow
@@ -233,3 +234,48 @@ def test_the_full_load_carries_the_cover_page_counts_and_the_key_stat_load_does_
     assert full.rules.cover_shares is not None
     assert not full.rules.cover_shares.empty
     assert set(full.rules.cover_shares["code"]) == {"shares_outstanding"}
+
+
+def test_mapping_gaps_carry_the_coverage_of_every_statement_and_frequency(
+    db_session: Session, aapl: Company
+) -> None:
+    pipeline = run_pipeline("AAPL")
+    mapped = set(pipeline.mappings["canonical_code"])
+
+    gaps = mapping_gaps(db_session, aapl)
+
+    assert [(c.statement, c.freq) for c in gaps.coverage] == [
+        (s, f) for s in STATEMENTS for f in ("annual", "quarterly")
+    ]
+    for result in gaps.coverage:
+        tables = pipeline.annual if result.freq == "annual" else pipeline.quarterly
+        table = tables[result.statement]
+        expected = table_coverage(table, pipeline.items, mapped, table.rule_warnings)
+        assert result == expected
+
+
+def test_mapping_gaps_list_the_rule_warnings_with_the_line_label(
+    db_session: Session, aapl: Company
+) -> None:
+    pipeline = run_pipeline("AAPL")
+    expected = pipeline.annual["CF"].rule_warnings
+    assert expected  # S7: Apple's cash roll-forward is refused in three periods
+
+    gaps = mapping_gaps(db_session, aapl)
+
+    assert [w.warning for w in gaps.rule_warnings] == list(expected)
+    labels = {i.code: i.label for i in pipeline.items}
+    assert all(w.label == labels[w.warning.code] for w in gaps.rule_warnings)
+    units = {i.code: i.unit for i in pipeline.items}
+    assert all(w.unit == units[w.warning.code] for w in gaps.rule_warnings)
+
+
+def test_a_company_with_no_facts_has_no_coverage_and_no_warnings(
+    db_session: Session,
+) -> None:
+    sources = fake_sources()
+    empty = follow(db_session, sources.edgar, "MSFT")
+
+    gaps = mapping_gaps(db_session, empty)
+
+    assert (gaps.coverage, gaps.rule_warnings) == ([], [])

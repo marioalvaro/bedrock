@@ -167,7 +167,7 @@ describe("Overview", () => {
     it("has no toggle when nothing is classified", async () => {
       const open = mappingGaps().unmapped_concepts.filter((c) => c.classification === null);
       vi.mocked(getMappingGapsApiV1CompaniesTickerMappingGapsGet).mockResolvedValue(
-        okResult({ missing_items: [], unmapped_concepts: open }) as never,
+        okResult({ ...mappingGaps(), missing_items: [], unmapped_concepts: open }) as never,
       );
       renderOverview();
 
@@ -179,7 +179,7 @@ describe("Overview", () => {
     it("says nothing is left to classify when every concept has a verdict", async () => {
       const done = mappingGaps().unmapped_concepts.filter((c) => c.classification !== null);
       vi.mocked(getMappingGapsApiV1CompaniesTickerMappingGapsGet).mockResolvedValue(
-        okResult({ missing_items: [], unmapped_concepts: done }) as never,
+        okResult({ ...mappingGaps(), missing_items: [], unmapped_concepts: done }) as never,
       );
       renderOverview();
 
@@ -190,12 +190,117 @@ describe("Overview", () => {
 
   it("says so when there are no gaps", async () => {
     vi.mocked(getMappingGapsApiV1CompaniesTickerMappingGapsGet).mockResolvedValue(
-      okResult({ missing_items: [], unmapped_concepts: [] }) as never,
+      okResult({
+        ...mappingGaps(),
+        missing_items: [],
+        unmapped_concepts: [],
+        rule_warnings: [],
+      }) as never,
     );
     renderOverview();
 
     expect(await screen.findByText("No missing items.")).toBeInTheDocument();
     expect(screen.getByText("No unmapped concepts.")).toBeInTheDocument();
+  });
+
+  describe("coverage and rule warnings", () => {
+    async function gapsRegion() {
+      renderOverview();
+      return screen.findByRole("region", { name: "Data gaps" });
+    }
+
+    it("shows the coverage of every statement and frequency", async () => {
+      const gaps = await gapsRegion();
+
+      const table = await within(gaps).findByRole("table", { name: "Coverage" });
+      const income = within(table)
+        .getAllByText("Income statement")[0]!
+        .closest("tr") as HTMLElement;
+      expect(within(income).getByText("Annual")).toBeInTheDocument();
+      expect(within(income).getByText("95.0%")).toBeInTheDocument();
+      expect(within(income).getByText("95 / 100")).toBeInTheDocument();
+      const quarterly = within(table).getByText("88.8%").closest("tr") as HTMLElement;
+      expect(within(quarterly).getByText("Quarterly")).toBeInTheDocument();
+      expect(within(table).getByText("Balance sheet")).toBeInTheDocument();
+      expect(within(table).getByText("75.0%")).toBeInTheDocument();
+    });
+
+    it("breaks the empty cells down by cause and the filled ones by provenance", async () => {
+      const gaps = await gapsRegion();
+
+      const table = await within(gaps).findByRole("table", { name: "Coverage" });
+      const headers = within(table)
+        .getAllByRole("columnheader")
+        .map((h) => h.textContent);
+      expect(headers).toEqual([
+        "Statement",
+        "Frequency",
+        "Coverage",
+        "Filled",
+        "Inferred 0",
+        "Approximated",
+        "No filing data",
+        "Structural",
+        "Rule rejected",
+        "Not reported",
+      ]);
+      const quarterly = within(table).getByText("88.8%").closest("tr") as HTMLElement;
+      const cells = within(quarterly)
+        .getAllByRole("cell")
+        .map((c) => c.textContent);
+      expect(cells.slice(4)).toEqual(["12", "8", "17", "4", "0", "39"]);
+    });
+
+    it("shows a dash where a statement has nothing to cover", async () => {
+      const empty = mappingGaps();
+      empty.coverage = [{ ...empty.coverage[0]!, cells: 0, filled: 0, fraction: null }];
+      vi.mocked(getMappingGapsApiV1CompaniesTickerMappingGapsGet).mockResolvedValue(
+        okResult(empty) as never,
+      );
+      const gaps = await gapsRegion();
+
+      const table = await within(gaps).findByRole("table", { name: "Coverage" });
+      const row = within(table).getByText("Income statement").closest("tr") as HTMLElement;
+      expect(within(row).getByText("—")).toBeInTheDocument();
+      expect(within(row).getByText("0 / 0")).toBeInTheDocument();
+    });
+
+    it("lists the rule warnings with line, period, value and reason", async () => {
+      const gaps = await gapsRegion();
+
+      const warnings = await within(gaps).findByRole("table", { name: "Rule warnings" });
+      const fx = within(warnings).getByText("FX effect on cash").closest("tr") as HTMLElement;
+      expect(within(fx).getByText("cash_rollforward")).toBeInTheDocument();
+      expect(within(fx).getByText("FY2020")).toBeInTheDocument();
+      expect(within(fx).getByText("(1,250)")).toBeInTheDocument();
+      expect(within(fx).getByText("exceeds 5% of the largest other term")).toBeInTheDocument();
+      const eps = within(warnings).getByText("Diluted EPS").closest("tr") as HTMLElement;
+      expect(within(eps).getByText("Q4 FY2023")).toBeInTheDocument();
+      expect(within(eps).getByText("2.51")).toBeInTheDocument();
+      expect(screen.getByText("Rule warnings (3)")).toBeInTheDocument();
+    });
+
+    it("shows a dash for a warning with no value (a guard refused to solve)", async () => {
+      const gaps = await gapsRegion();
+
+      const warnings = await within(gaps).findByRole("table", { name: "Rule warnings" });
+      const row = within(warnings)
+        .getByText("Non-controlling interest")
+        .closest("tr") as HTMLElement;
+      expect(within(row).getByText("—")).toBeInTheDocument();
+      expect(within(row).getByText("operands come from different filings")).toBeInTheDocument();
+    });
+
+    it("says so when there are no warnings or no statement data", async () => {
+      vi.mocked(getMappingGapsApiV1CompaniesTickerMappingGapsGet).mockResolvedValue(
+        okResult({ ...mappingGaps(), coverage: [], rule_warnings: [] }) as never,
+      );
+      const gaps = await gapsRegion();
+
+      expect(await within(gaps).findByText("No rule warnings.")).toBeInTheDocument();
+      expect(within(gaps).getByText("No statement data yet.")).toBeInTheDocument();
+      expect(within(gaps).queryByRole("table", { name: "Coverage" })).not.toBeInTheDocument();
+    });
   });
 
   it("shows an error when the gaps fail to load, and keeps the key stats", async () => {
@@ -206,6 +311,15 @@ describe("Overview", () => {
 
     expect(await screen.findByText("Could not load the data gaps.")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Key stats" })).toBeInTheDocument();
+  });
+
+  it("shows an error for a gaps report without coverage or warnings (an old API)", async () => {
+    vi.mocked(getMappingGapsApiV1CompaniesTickerMappingGapsGet).mockResolvedValue(
+      okResult({ missing_items: [], unmapped_concepts: [] }) as never,
+    );
+    renderOverview();
+
+    expect(await screen.findByText("Could not load the data gaps.")).toBeInTheDocument();
   });
 
   it("shows an error for a 200 that is not a gaps report (G2/G4)", async () => {

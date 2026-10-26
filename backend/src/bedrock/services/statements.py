@@ -41,6 +41,8 @@ from bedrock.repositories import prices as prices_repo
 from bedrock.repositories.numeric import plain
 from bedrock.services.errors import CellNotFound
 from bedrock.statements.build import CommonSizeBase, Freq, StatementTable, build_statement
+from bedrock.statements.cell_types import RuleWarning
+from bedrock.statements.coverage import Coverage, table_coverage
 from bedrock.statements.explain import CellExplanation, explain_cell
 from bedrock.statements.periods import annual_periods, fiscal_calendar, quarterly_periods
 from bedrock.statements.rules import Rules, filings_tagging_nci
@@ -49,6 +51,7 @@ from bedrock.statements.view import trim_periods
 
 __all__ = [
     "CellNotFound",
+    "LabelledWarning",
     "MappingGaps",
     "build_statements",
     "cell_detail",
@@ -97,9 +100,18 @@ def concept_triage() -> dict[ConceptKey, ConceptVerdict]:
 
 
 @dataclass(frozen=True)
+class LabelledWarning:
+    warning: RuleWarning
+    label: str  # of the warning's line item
+    unit: str  # of the line item, for the warning's value
+
+
+@dataclass(frozen=True)
 class MappingGaps:
     missing_items: list[MissingItem]
     unmapped_concepts: list[UnmappedConcept]
+    coverage: list[Coverage]  # statement x (annual, quarterly), IS, BS, CF in that order
+    rule_warnings: list[LabelledWarning]
 
 
 @dataclass(frozen=True)
@@ -190,19 +202,30 @@ def fiscal_periods(session: Session, company: Company) -> set[tuple[int, str]]:
 
 
 def mapping_gaps(session: Session, company: Company) -> MappingGaps:
+    """What the data lacks: items without values, concepts nothing maps, the coverage and causes of
+    the empty cells (R6) and the rules' warnings."""
     loaded = _load(session, company)
     if loaded.canonical.empty:
-        return MappingGaps([], [])
-    annual = {
-        s: build_statement(loaded.canonical, loaded.items, s, "annual", rules=loaded.rules)
+        return MappingGaps([], [], [], [])
+    tables = {
+        (s, f): build_statement(loaded.canonical, loaded.items, s, f, rules=loaded.rules)
         for s in ("IS", "BS", "CF")
+        for f in ("annual", "quarterly")
     }
+    annual = {s: tables[(s, "annual")] for s in ("IS", "BS", "CF")}
+    mapped = set(loaded.mappings["canonical_code"])
+    warnings = annual["IS"].rule_warnings  # the same on every table of the company
+    by_code = {i.code: i for i in loaded.items}
     latest_10k = facts_repo.load_latest_annual_facts(session, company.id)
     return MappingGaps(
         missing_items=missing_items(annual, loaded.items),
         unmapped_concepts=unmapped_concepts(
             latest_10k, loaded.mappings, candidate_index(), concept_triage()
         ),
+        coverage=[table_coverage(t, loaded.items, mapped, warnings) for t in tables.values()],
+        rule_warnings=[
+            LabelledWarning(w, by_code[w.code].label, by_code[w.code].unit) for w in warnings
+        ],
     )
 
 

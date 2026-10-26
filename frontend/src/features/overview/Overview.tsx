@@ -7,7 +7,13 @@ import {
   useDeleteAdjustment,
 } from "@/api/adjustments";
 import { companyErrorMessage } from "@/api/companies";
-import type { AdjustmentOut, CompanyListItem, UnmappedConceptOut } from "@/api/generated/types.gen";
+import type {
+  AdjustmentOut,
+  CompanyListItem,
+  CoverageOut,
+  RuleWarningOut,
+  UnmappedConceptOut,
+} from "@/api/generated/types.gen";
 import { mappingGapsQueryOptions } from "@/api/statements";
 import {
   AlertDialog,
@@ -139,6 +145,114 @@ function ConceptTable({
   );
 }
 
+const STATEMENT_NAMES: Record<CoverageOut["statement"], string> = {
+  IS: "Income statement",
+  BS: "Balance sheet",
+  CF: "Cash flow",
+};
+
+const FREQ_NAMES: Record<CoverageOut["freq"], string> = {
+  annual: "Annual",
+  quarterly: "Quarterly",
+};
+
+const COVERAGE_COLUMNS = [
+  "Statement",
+  "Frequency",
+  "Coverage",
+  "Filled",
+  "Inferred 0",
+  "Approximated",
+  "No filing data",
+  "Structural",
+  "Rule rejected",
+  "Not reported",
+];
+
+function CoverageTable({ coverage }: { coverage: CoverageOut[] }) {
+  return (
+    <div className="overflow-x-auto">
+      <table aria-label="Coverage" className="w-full text-sm">
+        <thead>
+          <tr className="text-muted-foreground text-left text-xs">
+            {COVERAGE_COLUMNS.map((name, at) => (
+              <th key={name} className={`py-1 pr-4 font-normal ${at >= 2 ? "text-right" : ""}`}>
+                {name}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {coverage.map((c) => (
+            <tr key={`${c.statement}-${c.freq}`} className="border-border border-b">
+              <td className="py-1 pr-4">{STATEMENT_NAMES[c.statement]}</td>
+              <td className="text-muted-foreground py-1 pr-4">{FREQ_NAMES[c.freq]}</td>
+              <td className="num py-1 pr-4">{formatPercent(c.fraction)}</td>
+              <td className="num py-1 pr-4">
+                {c.filled} / {c.cells}
+              </td>
+              <td className="num py-1 pr-4">{c.by_provenance.zero_inferred}</td>
+              <td className="num py-1 pr-4">{c.by_provenance.approximated}</td>
+              <td className="num py-1 pr-4">{c.empty_by_cause.no_filing_data}</td>
+              <td className="num py-1 pr-4">{c.empty_by_cause.structural}</td>
+              <td className="num py-1 pr-4">{c.empty_by_cause.rule_rejected}</td>
+              <td className="num py-1 pr-4">{c.empty_by_cause.not_reported}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// "FY2024" or "FY2024Q3", as the API's period keys, read "FY2024" and "Q3 FY2024".
+function warningPeriod(key: string): string {
+  const match = /^FY(\d{4})(Q[1-4])?$/.exec(key);
+  return match ? formatFiscalPeriod(Number(match[1]), match[2] ?? "FY") : key;
+}
+
+function RuleWarnings({ warnings }: { warnings: RuleWarningOut[] }) {
+  const scale = useScale();
+  return (
+    <div>
+      <h3 className="text-muted-foreground mb-1 text-xs">Rule warnings ({warnings.length})</h3>
+      {warnings.length === 0 ? (
+        <p className="text-sm">No rule warnings.</p>
+      ) : (
+        <div className="max-h-96 overflow-auto">
+          <table aria-label="Rule warnings" className="w-full text-sm">
+            <thead>
+              <tr className="text-muted-foreground text-left text-xs">
+                <th className="py-1 pr-4 font-normal">Rule</th>
+                <th className="py-1 pr-4 font-normal">Line</th>
+                <th className="py-1 pr-4 font-normal">Period</th>
+                <th className="py-1 pr-4 text-right font-normal">
+                  Value ({scaleLabel("USD", scale)})
+                </th>
+                <th className="py-1 font-normal">Reason</th>
+              </tr>
+            </thead>
+            <tbody>
+              {warnings.map((w) => (
+                <tr
+                  key={`${w.rule}-${w.code}-${w.period_key}`}
+                  className="border-border border-b align-top"
+                >
+                  <td className="py-1 pr-4 whitespace-nowrap">{w.rule}</td>
+                  <td className="py-1 pr-4">{w.label}</td>
+                  <td className="py-1 pr-4 whitespace-nowrap">{warningPeriod(w.period_key)}</td>
+                  <td className="num py-1 pr-4">{formatValue(w.value, w.unit, scale)}</td>
+                  <td className="py-1">{w.reason}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DataGaps({ ticker }: { ticker: string }) {
   const { data, isPending, isError } = useQuery(mappingGapsQueryOptions(ticker));
 
@@ -149,6 +263,15 @@ function DataGaps({ ticker }: { ticker: string }) {
       {isError && <p className="text-destructive text-sm">Could not load the data gaps.</p>}
       {data && (
         <div className="flex flex-col gap-4">
+          <div>
+            <h3 className="text-muted-foreground mb-1 text-xs">Coverage</h3>
+            {data.coverage.length === 0 ? (
+              <p className="text-sm">No statement data yet.</p>
+            ) : (
+              <CoverageTable coverage={data.coverage} />
+            )}
+          </div>
+          <RuleWarnings warnings={data.rule_warnings} />
           <div>
             <h3 className="text-muted-foreground mb-1 text-xs">
               Missing items ({data.missing_items.length})

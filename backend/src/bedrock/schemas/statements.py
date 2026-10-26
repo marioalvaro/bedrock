@@ -230,9 +230,46 @@ class UnmappedConceptOut(BaseModel):
     classification: ConceptClassificationOut | None  # the triage verdict; null while undecided
 
 
+class ProvenanceCountsOut(BaseModel):
+    reported: int
+    derived: int
+    zero_inferred: int
+    approximated: int
+
+
+class CauseCountsOut(BaseModel):
+    no_filing_data: int  # the statement has no data at all in the period
+    structural: int  # the company maps no concept to the line and it has no formula
+    rule_rejected: int  # a rule produced a value that a guard refused
+    not_reported: int  # everything else
+
+
+class CoverageOut(BaseModel):
+    statement: Literal["IS", "BS", "CF"]
+    freq: Literal["annual", "quarterly"]
+    cells: int
+    filled: int
+    # filled / (cells - no_filing_data) as a fraction; null when there is nothing to cover
+    fraction: Decimal | None
+    by_provenance: ProvenanceCountsOut
+    empty_by_cause: CauseCountsOut
+
+
+class RuleWarningOut(BaseModel):
+    rule: str
+    code: str
+    label: str
+    unit: str  # of the line, for `value`
+    period_key: str
+    value: Decimal | None  # the refused value; null when a guard refused to solve
+    reason: str
+
+
 class MappingGapsOut(BaseModel):
     missing_items: list[MissingItemOut]
     unmapped_concepts: list[UnmappedConceptOut]
+    coverage: list[CoverageOut]
+    rule_warnings: list[RuleWarningOut]
 
     @classmethod
     def from_gaps(cls, gaps: MappingGaps) -> "MappingGapsOut":
@@ -266,5 +303,29 @@ class MappingGapsOut(BaseModel):
                     ),
                 )
                 for u in gaps.unmapped_concepts
+            ],
+            coverage=[
+                CoverageOut(
+                    statement=c.statement,
+                    freq=c.freq,
+                    cells=c.cells,
+                    filled=c.filled,
+                    fraction=c.fraction,
+                    by_provenance=ProvenanceCountsOut(**c.by_provenance),
+                    empty_by_cause=CauseCountsOut(**c.empty_by_cause),
+                )
+                for c in gaps.coverage
+            ],
+            rule_warnings=[
+                RuleWarningOut(
+                    rule=w.warning.rule,
+                    code=w.warning.code,
+                    label=w.label,
+                    unit=w.unit,
+                    period_key=w.warning.period_key,
+                    value=w.warning.value,
+                    reason=w.warning.reason,
+                )
+                for w in gaps.rule_warnings
             ],
         )

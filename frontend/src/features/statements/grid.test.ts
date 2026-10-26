@@ -11,6 +11,8 @@ import {
   expandableCodes,
   lineNoteCount,
   noteIndex,
+  provenanceClasses,
+  provenanceMark,
   rowUnitHint,
   toGridRows,
 } from "./grid";
@@ -150,7 +152,9 @@ describe("toGridRows stability", () => {
 
   it("keeps the other rows' ids when a breakdown opens", () => {
     const closed = ids(toGridRows(incomeStatement(), OFF));
-    const open = ids(toGridRows(incomeStatement(), { ...OFF, expanded: new Set(["gross_profit"]) }));
+    const open = ids(
+      toGridRows(incomeStatement(), { ...OFF, expanded: new Set(["gross_profit"]) }),
+    );
 
     expect(open.filter((id) => closed.includes(id))).toEqual(closed);
     expect(open).toEqual(["revenue", "gross_profit", "cost_of_revenue", "eps_diluted"]);
@@ -580,5 +584,30 @@ describe("note markers", () => {
   it("marks nothing without links", () => {
     expect(cellNoteCount(noteIndex([]), revenue, fy2024)).toBe(0);
     expect(lineNoteCount(noteIndex([]), revenue)).toBe(0);
+  });
+});
+
+describe("provenance display", () => {
+  it("styles derived and approximated cells alike, so what is not a hard fact stands out", () => {
+    expect(provenanceClasses("derived")).toEqual(["prov-derived"]);
+    expect(provenanceClasses("approximated")).toEqual(["prov-derived"]);
+  });
+
+  it("mutes an inferred zero and styles normalized cells apart", () => {
+    expect(provenanceClasses("zero_inferred")).toEqual(["prov-zero"]);
+    expect(provenanceClasses("normalized")).toEqual(["prov-normalized"]);
+  });
+
+  it("leaves reported and empty cells plain", () => {
+    expect(provenanceClasses("reported")).toEqual([]);
+    expect(provenanceClasses(null)).toEqual([]);
+    expect(provenanceClasses(undefined)).toEqual([]);
+  });
+
+  it("marks only an approximated value with a tilde", () => {
+    expect(provenanceMark("approximated")).toBe("~");
+    for (const other of ["reported", "derived", "normalized", "zero_inferred", null] as const) {
+      expect(provenanceMark(other)).toBe("");
+    }
   });
 });

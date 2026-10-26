@@ -100,6 +100,51 @@ async function openAdd() {
   await userEvent.click(await screen.findByRole("button", { name: "Add adjustment" }));
 }
 
+describe("CellDetailSheet rules", () => {
+  it("explains an inferred zero and names the rule from its derivation", async () => {
+    mockCell({
+      value: "0",
+      provenance: "zero_inferred",
+      derivation: {
+        formula: "no NCI-inclusive total or NCI concept tagged in 10-K 0000320193-24-000123",
+        inputs: [],
+      },
+    });
+    renderSheet({ code: "nci", label: "Non-controlling interest" });
+
+    expect(await screen.findByText(/Inferred zero:/)).toBeInTheDocument();
+    expect(screen.getByText(/\(inferred zero\)/)).toBeInTheDocument();
+    expect(screen.getByText(/no NCI-inclusive total or NCI concept tagged in 10-K/)).toBeVisible();
+  });
+
+  it("explains an approximated value and lists the inputs of its rule", async () => {
+    mockCell({
+      provenance: "approximated",
+      derivation: {
+        formula: "(FY × days FY - sum of Q × days Q) / days Q4",
+        inputs: [
+          { code: "shares_diluted", fiscal_period: "FY", value: "15408095000" },
+          { code: "shares_diluted", fiscal_period: "Q1", value: "15648428000" },
+        ],
+      },
+    });
+    renderSheet({ fiscalPeriod: "Q4" });
+
+    expect(await screen.findByText(/Approximated:/)).toBeInTheDocument();
+    expect(screen.getByText(/days Q4/)).toBeInTheDocument();
+    expect(screen.getByText(/shares_diluted FY/)).toBeInTheDocument();
+    expect(screen.getByText(/shares_diluted Q1/)).toBeInTheDocument();
+  });
+
+  it("adds no rule text to a reported cell", async () => {
+    renderSheet();
+    await screen.findByText(/\(reported\)/);
+
+    expect(screen.queryByText(/Inferred zero:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Approximated:/)).not.toBeInTheDocument();
+  });
+});
+
 describe("CellDetailSheet adjustments", () => {
   it("hides the form on a non-adjustable row", async () => {
     renderSheet({ adjustable: false });

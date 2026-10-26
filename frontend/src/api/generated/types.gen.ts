@@ -167,6 +167,28 @@ export type CapitalRowOut = {
 };
 
 /**
+ * CauseCountsOut
+ */
+export type CauseCountsOut = {
+    /**
+     * No Filing Data
+     */
+    no_filing_data: number;
+    /**
+     * Not Reported
+     */
+    not_reported: number;
+    /**
+     * Rule Rejected
+     */
+    rule_rejected: number;
+    /**
+     * Structural
+     */
+    structural: number;
+};
+
+/**
  * CellAdjustmentOut
  *
  * An adjustment behind a statement cell. `via` is the adjusted line when the cell got the
@@ -556,6 +578,34 @@ export type CorporateActionOut = {
      * Type
      */
     type: string;
+};
+
+/**
+ * CoverageOut
+ */
+export type CoverageOut = {
+    by_provenance: ProvenanceCountsOut;
+    /**
+     * Cells
+     */
+    cells: number;
+    empty_by_cause: CauseCountsOut;
+    /**
+     * Filled
+     */
+    filled: number;
+    /**
+     * Fraction
+     */
+    fraction: string | null;
+    /**
+     * Freq
+     */
+    freq: 'annual' | 'quarterly';
+    /**
+     * Statement
+     */
+    statement: 'IS' | 'BS' | 'CF';
 };
 
 /**
@@ -969,9 +1019,17 @@ export type LoginRequest = {
  */
 export type MappingGapsOut = {
     /**
+     * Coverage
+     */
+    coverage: Array<CoverageOut>;
+    /**
      * Missing Items
      */
     missing_items: Array<MissingItemOut>;
+    /**
+     * Rule Warnings
+     */
+    rule_warnings: Array<RuleWarningOut>;
     /**
      * Unmapped Concepts
      */
@@ -1417,6 +1475,28 @@ export type PeriodOut = {
 };
 
 /**
+ * ProvenanceCountsOut
+ */
+export type ProvenanceCountsOut = {
+    /**
+     * Approximated
+     */
+    approximated: number;
+    /**
+     * Derived
+     */
+    derived: number;
+    /**
+     * Reported
+     */
+    reported: number;
+    /**
+     * Zero Inferred
+     */
+    zero_inferred: number;
+};
+
+/**
  * QoeCustomRuleIn
  */
 export type QoeCustomRuleIn = {
@@ -1799,6 +1879,40 @@ export type RowOut = {
      * Yoy
      */
     yoy: Array<string | null>;
+};
+
+/**
+ * RuleWarningOut
+ */
+export type RuleWarningOut = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Period Key
+     */
+    period_key: string;
+    /**
+     * Reason
+     */
+    reason: string;
+    /**
+     * Rule
+     */
+    rule: string;
+    /**
+     * Unit
+     */
+    unit: string;
+    /**
+     * Value
+     */
+    value: string | null;
 };
 
 /**

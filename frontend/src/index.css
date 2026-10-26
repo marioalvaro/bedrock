@@ -191,6 +191,11 @@ details[open] > :not(summary) {
   color: var(--prov-derived);
 }
 
+/* An inferred zero: a rule concluded the line is 0 and the filing says nothing, so it is muted. */
+.prov-zero {
+  color: var(--muted-foreground);
+}
+
 /* Normalized: the figure includes the user's adjustments; amber, not italic. */
 .prov-normalized {
   color: var(--prov-normalized);

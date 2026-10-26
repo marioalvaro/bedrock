@@ -186,6 +186,27 @@ export function csvLabel(row: GridRow): string {
   return row.parentLabel ? `${row.parentLabel} ${row.label}` : row.label;
 }
 
+// The classes a cell's provenance gives its value. Derived and approximated values are not hard
+// facts and share one style, an inferred zero is muted, a normalized value is amber; reported is plain.
+export function provenanceClasses(provenance: Provenance | null | undefined): string[] {
+  switch (provenance) {
+    case "derived":
+    case "approximated":
+      return ["prov-derived"];
+    case "zero_inferred":
+      return ["prov-zero"];
+    case "normalized":
+      return ["prov-normalized"];
+    default:
+      return [];
+  }
+}
+
+// An approximated value carries a tilde in front of its number; the CSV export does not.
+export function provenanceMark(provenance: Provenance | null | undefined): string {
+  return provenance === "approximated" ? "~" : "";
+}
+
 // The statement markers read the shared note-links index (`features/notes/subjects.ts`) as the
 // "line" subject kind.
 export { noteIndex, type NoteIndex } from "@/features/notes/subjects";

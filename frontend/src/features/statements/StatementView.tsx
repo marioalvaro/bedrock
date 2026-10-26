@@ -36,6 +36,8 @@ import {
   expandableCodes,
   lineNoteCount,
   noteIndex,
+  provenanceClasses,
+  provenanceMark,
   rowUnitHint,
   toGridRows,
   type GridRow,
@@ -79,7 +81,8 @@ function formatCell(row: GridRow, key: string, scale: Scale): string {
     return row.ok?.[key] ? "✓" : formatValue(value, row.unit, scale);
   }
   if (row.kind === "yoy" || row.kind === "common_size") return formatPercent(value);
-  return formatValue(value, row.unit, scale);
+  const text = formatValue(value, row.unit, scale);
+  return value === null ? text : provenanceMark(row.provenance[key]) + text;
 }
 
 function csvCell(row: GridRow, key: string, scale: Scale): string {
@@ -157,10 +160,7 @@ function columnDefs(
     cellClass: ({ data }: CellClassParams<GridRow>) => {
       if (!data) return "num";
       const classes = ["num", "ag-right-aligned-cell", ...growthClass(data, period.key)];
-      const provenance = data.provenance[period.key];
-      // approximated values (rebuilt Q4 share counts and EPS) are not hard facts: same style
-      if (provenance === "derived" || provenance === "approximated") classes.push("prov-derived");
-      if (provenance === "normalized") classes.push("prov-normalized");
+      classes.push(...provenanceClasses(data.provenance[period.key]));
       if (canExplain(data, period)) classes.push("cursor-pointer", "hover:underline");
       if (cellNoteCount(notes, data, period) > 0) classes.push("has-note");
       if (data.kind === "balance_check" && data.ok?.[period.key] === false) {

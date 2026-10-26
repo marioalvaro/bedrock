@@ -295,6 +295,34 @@
         "title": "CapitalRowOut",
         "type": "object"
       },
+      "CauseCountsOut": {
+        "properties": {
+          "no_filing_data": {
+            "title": "No Filing Data",
+            "type": "integer"
+          },
+          "not_reported": {
+            "title": "Not Reported",
+            "type": "integer"
+          },
+          "rule_rejected": {
+            "title": "Rule Rejected",
+            "type": "integer"
+          },
+          "structural": {
+            "title": "Structural",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "no_filing_data",
+          "structural",
+          "rule_rejected",
+          "not_reported"
+        ],
+        "title": "CauseCountsOut",
+        "type": "object"
+      },
       "CellAdjustmentOut": {
         "description": "An adjustment behind a statement cell. `via` is the adjusted line when the cell got the\nchange through propagation (SG&A for the operating income it rolls into), else null.",
         "properties": {
@@ -1030,6 +1058,64 @@
         "title": "CorporateActionOut",
         "type": "object"
       },
+      "CoverageOut": {
+        "properties": {
+          "by_provenance": {
+            "$ref": "#/components/schemas/ProvenanceCountsOut"
+          },
+          "cells": {
+            "title": "Cells",
+            "type": "integer"
+          },
+          "empty_by_cause": {
+            "$ref": "#/components/schemas/CauseCountsOut"
+          },
+          "filled": {
+            "title": "Filled",
+            "type": "integer"
+          },
+          "fraction": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fraction"
+          },
+          "freq": {
+            "enum": [
+              "annual",
+              "quarterly"
+            ],
+            "title": "Freq",
+            "type": "string"
+          },
+          "statement": {
+            "enum": [
+              "IS",
+              "BS",
+              "CF"
+            ],
+            "title": "Statement",
+            "type": "string"
+          }
+        },
+        "required": [
+          "statement",
+          "freq",
+          "cells",
+          "filled",
+          "fraction",
+          "by_provenance",
+          "empty_by_cause"
+        ],
+        "title": "CoverageOut",
+        "type": "object"
+      },
       "DerivationInputOut": {
         "properties": {
           "code": {
@@ -1758,11 +1844,25 @@
       },
       "MappingGapsOut": {
         "properties": {
+          "coverage": {
+            "items": {
+              "$ref": "#/components/schemas/CoverageOut"
+            },
+            "title": "Coverage",
+            "type": "array"
+          },
           "missing_items": {
             "items": {
               "$ref": "#/components/schemas/MissingItemOut"
             },
             "title": "Missing Items",
+            "type": "array"
+          },
+          "rule_warnings": {
+            "items": {
+              "$ref": "#/components/schemas/RuleWarningOut"
+            },
+            "title": "Rule Warnings",
             "type": "array"
           },
           "unmapped_concepts": {
@@ -1775,7 +1875,9 @@
         },
         "required": [
           "missing_items",
-          "unmapped_concepts"
+          "unmapped_concepts",
+          "coverage",
+          "rule_warnings"
         ],
         "title": "MappingGapsOut",
         "type": "object"
@@ -2637,6 +2739,34 @@
         "title": "PeriodOut",
         "type": "object"
       },
+      "ProvenanceCountsOut": {
+        "properties": {
+          "approximated": {
+            "title": "Approximated",
+            "type": "integer"
+          },
+          "derived": {
+            "title": "Derived",
+            "type": "integer"
+          },
+          "reported": {
+            "title": "Reported",
+            "type": "integer"
+          },
+          "zero_inferred": {
+            "title": "Zero Inferred",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "reported",
+          "derived",
+          "zero_inferred",
+          "approximated"
+        ],
+        "title": "ProvenanceCountsOut",
+        "type": "object"
+      },
       "QoeCustomRuleIn": {
         "properties": {
           "alert": {
@@ -3438,6 +3568,57 @@
           "adjustable"
         ],
         "title": "RowOut",
+        "type": "object"
+      },
+      "RuleWarningOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "period_key": {
+            "title": "Period Key",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "rule": {
+            "title": "Rule",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "rule",
+          "code",
+          "label",
+          "unit",
+          "period_key",
+          "value",
+          "reason"
+        ],
+        "title": "RuleWarningOut",
         "type": "object"
       },
       "SegmentBlockOut": {

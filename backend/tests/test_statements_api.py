@@ -391,6 +391,39 @@ def test_mapping_gaps_carry_the_triage_verdict_and_list_the_classified_last(
     assert any(classified)
 
 
+def test_mapping_gaps_carry_coverage_and_rule_warnings(aapl_client: TestClient) -> None:
+    gaps = aapl_client.get("/api/v1/companies/AAPL/mapping-gaps").json()
+
+    coverage = gaps["coverage"]
+    assert [(c["statement"], c["freq"]) for c in coverage] == [
+        (s, f) for s in ("IS", "BS", "CF") for f in ("annual", "quarterly")
+    ]
+    income = coverage[0]
+    assert set(income) == {
+        "statement",
+        "freq",
+        "cells",
+        "filled",
+        "fraction",
+        "by_provenance",
+        "empty_by_cause",
+    }
+    assert set(income["by_provenance"]) == {"reported", "derived", "zero_inferred", "approximated"}
+    assert set(income["empty_by_cause"]) == {
+        "no_filing_data",
+        "structural",
+        "rule_rejected",
+        "not_reported",
+    }
+    assert isinstance(income["fraction"], str)
+    assert income["cells"] == income["filled"] + sum(income["empty_by_cause"].values())
+    assert income["filled"] == sum(income["by_provenance"].values())
+    assert gaps["rule_warnings"]
+    warning = gaps["rule_warnings"][0]
+    assert set(warning) == {"rule", "code", "label", "unit", "period_key", "value", "reason"}
+    assert warning["reason"]
+
+
 def test_the_openapi_schema_types_decimals_as_strings(app: FastAPI) -> None:
     schemas = app.openapi()["components"]["schemas"]
 

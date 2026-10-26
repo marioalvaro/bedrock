@@ -370,9 +370,49 @@ describe("StatementView", () => {
     );
     renderView();
 
-    const approximated = (await screen.findByText("383,285")).closest("[col-id]");
+    const approximated = (await screen.findByText("~383,285")).closest("[col-id]");
     expect(approximated).toHaveClass("prov-derived");
     expect(screen.getByText(/rebuilt Q4 share counts and EPS/)).toBeInTheDocument();
+  });
+
+  it("marks an approximated value with a tilde and leaves the other cells unmarked", async () => {
+    const payload = incomeStatement();
+    payload.rows[0]!.provenance = ["approximated", "reported"];
+    vi.mocked(getStatementApiV1CompaniesTickerStatementsGet).mockResolvedValue(
+      okResult(payload) as never,
+    );
+    renderView();
+
+    expect(await screen.findByText("~383,285")).toBeInTheDocument();
+    expect(screen.getByText("391,035")).toBeInTheDocument();
+    expect(screen.queryByText("~391,035")).not.toBeInTheDocument();
+    expect(screen.getByText(/~ Approximated/)).toBeInTheDocument();
+  });
+
+  it("shows an inferred zero as a muted 0", async () => {
+    const payload = incomeStatement();
+    payload.rows[0]!.values = ["0", "391035000000"];
+    payload.rows[0]!.provenance = ["zero_inferred", "reported"];
+    vi.mocked(getStatementApiV1CompaniesTickerStatementsGet).mockResolvedValue(
+      okResult(payload) as never,
+    );
+    renderView();
+    await screen.findByText("391,035");
+
+    expect(cell("revenue", "FY2023")).toHaveTextContent(/^0$/);
+    expect(cell("revenue", "FY2023")).toHaveClass("prov-zero");
+    expect(cell("revenue", "FY2024")).not.toHaveClass("prov-zero");
+    expect(screen.getByText(/Inferred 0/)).toBeInTheDocument();
+  });
+
+  it("keeps a reported cell exactly as it was", async () => {
+    renderView();
+    await screen.findByText("383,285");
+
+    const reported = cell("revenue", "FY2023");
+    expect(reported).toHaveTextContent(/^383,285$/);
+    expect(reported).not.toHaveClass("prov-zero");
+    expect(reported).not.toHaveClass("prov-derived");
   });
 
   describe("basis", () => {
@@ -775,6 +815,24 @@ describe("StatementView", () => {
   });
 
   describe("CSV export", () => {
+    it("keeps plain values for approximated and inferred cells", async () => {
+      const payload = incomeStatement();
+      payload.rows[0]!.values = ["0", "391035000000"];
+      payload.rows[0]!.provenance = ["zero_inferred", "approximated"];
+      vi.mocked(getStatementApiV1CompaniesTickerStatementsGet).mockResolvedValue(
+        okResult(payload) as never,
+      );
+      const download = captureDownload();
+      renderView();
+      await screen.findByText("~391,035");
+
+      await userEvent.click(screen.getByRole("button", { name: "Download CSV" }));
+
+      const lines = (await readText(download.blobs[0]!)).trim().split(/\r?\n/);
+      expect(lines).toContain('"Revenue","0","391035"');
+      expect(lines.join("")).not.toContain("~");
+    });
+
     it("exports the visible rows in the current scale with plain minus signs", async () => {
       const download = captureDownload();
       renderView();

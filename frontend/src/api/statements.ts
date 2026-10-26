@@ -75,7 +75,12 @@ export const mappingGapsQueryOptions = (ticker: string) =>
       const gaps = await unwrap(
         getMappingGapsApiV1CompaniesTickerMappingGapsGet({ path: { ticker } }),
       );
-      if (!Array.isArray(gaps?.missing_items) || !Array.isArray(gaps?.unmapped_concepts)) {
+      if (
+        !Array.isArray(gaps?.missing_items) ||
+        !Array.isArray(gaps?.unmapped_concepts) ||
+        !Array.isArray(gaps?.coverage) ||
+        !Array.isArray(gaps?.rule_warnings)
+      ) {
         throw new ApiError(200, "Unexpected response");
       }
       return gaps;
