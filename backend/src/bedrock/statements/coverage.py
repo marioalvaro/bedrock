@@ -16,7 +16,7 @@ from bedrock.statements.cell_types import RuleWarning
 
 Cause = Literal["no_filing_data", "structural", "rule_rejected", "not_reported"]
 CAUSES: tuple[Cause, ...] = ("no_filing_data", "structural", "rule_rejected", "not_reported")
-PROVENANCES = ("reported", "derived", "zero_inferred", "approximated")
+PROVENANCES = ("reported", "derived", "zero_inferred", "approximated", "imported")
 
 
 @dataclass(frozen=True)

@@ -17,8 +17,10 @@ from bedrock.models import (
     comps_set,
     concept_mapping,
     corporate_action,
+    custom_line,
     filing,
     guidance,
+    imported_fact,
     note,
     off_balance_item,
     price_daily,
@@ -27,6 +29,7 @@ from bedrock.models import (
     raw_fact,
     segment_series,
     segment_value,
+    statement_import,
 )
 from bedrock.models.base import Base
 
@@ -39,8 +42,10 @@ _MODELS = (
     comps_set,
     concept_mapping,
     corporate_action,
+    custom_line,
     filing,
     guidance,
+    imported_fact,
     note,
     off_balance_item,
     price_daily,
@@ -49,6 +54,7 @@ _MODELS = (
     raw_fact,
     segment_series,
     segment_value,
+    statement_import,
 )
 
 
@@ -514,3 +520,133 @@ def test_0006_checks_hold_at_the_database_level(
             fiscal_year=2025,
             fiscal_period="FY",
         )
+
+
+_IMPORT_TABLES = {"statement_import", "imported_fact", "custom_line"}
+
+
+def _import(connection: Connection, company_id: int, **cols: object) -> int:
+    row = {
+        "company_id": company_id,
+        "filename": "aapl.xlsx",
+        "format": "xlsx",
+        "scale": "millions",
+        "imported_at": _NOW,
+        "cells": 1,
+        **cols,
+    }
+    return _insert(connection, "statement_import", **row)
+
+
+def _imported_fact(connection: Connection, import_id: int, company_id: int, **cols: object) -> int:
+    row = {
+        "import_id": import_id,
+        "company_id": company_id,
+        "line_code": "revenue",
+        "fiscal_year": 2006,
+        "fiscal_period": "FY",
+        "period_start": "2005-09-26",
+        "period_end": "2006-09-30",
+        "value": 1,
+        **cols,
+    }
+    return _insert(connection, "imported_fact", **row)
+
+
+def _custom_line(connection: Connection, company_id: int, **cols: object) -> int:
+    row = {
+        "company_id": company_id,
+        "code": "custom:products",
+        "label": "Products",
+        "statement": "IS",
+        "parent_code": "cost_of_revenue",
+        "kind": "flow",
+        "unit": "USD",
+        "children_complete": 0,
+        "display_order": 1,
+        **cols,
+    }
+    return _insert(connection, "custom_line", **row)
+
+
+def test_0007_upgrade_creates_the_import_tables_and_downgrade_removes_only_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    inspector = inspect(create_engine(database_url))
+    assert _IMPORT_TABLES <= set(inspector.get_table_names())
+    uq = {
+        table: {tuple(c["column_names"]) for c in inspector.get_unique_constraints(table)}
+        for table in ("imported_fact", "custom_line")
+    }
+    assert ("import_id", "line_code", "fiscal_year", "fiscal_period") in uq["imported_fact"]
+    assert ("company_id", "code") in uq["custom_line"]
+    indexes = {i["name"]: i["column_names"] for i in inspector.get_indexes("imported_fact")}
+    assert indexes["ix_imported_fact_company_line"] == [
+        "company_id",
+        "line_code",
+        "fiscal_year",
+        "fiscal_period",
+    ]
+    assert inspector.get_indexes("statement_import")[0]["column_names"] == ["company_id"]
+
+    database_url = _run_alembic(tmp_path, monkeypatch, ("downgrade", "0006"))
+    tables = set(inspect(create_engine(database_url)).get_table_names())
+    assert not _IMPORT_TABLES & tables
+    assert {"company", "note", "segment_series"} <= tables
+
+
+def test_0007_uniques_and_checks_hold_at_the_database_level(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        company_id = _company(connection, "AAA")
+        import_id = _import(connection, company_id)
+        _imported_fact(connection, import_id, company_id)
+        _custom_line(connection, company_id)
+    bad_rows = (
+        lambda c: _imported_fact(c, import_id, company_id),  # the same (import, line, period)
+        lambda c: _imported_fact(c, import_id, company_id, line_code="cogs", fiscal_period="H1"),
+        lambda c: _import(c, company_id, format="pdf"),
+        lambda c: _import(c, company_id, scale="trillions"),
+        lambda c: _custom_line(c, company_id),  # the same code
+        lambda c: _custom_line(c, company_id, code="custom:b", statement="XX"),
+        lambda c: _custom_line(c, company_id, code="custom:b", kind="stock"),
+        lambda c: _custom_line(c, company_id, code="custom:b", unit="EUR"),
+    )
+    for bad in bad_rows:
+        with pytest.raises(IntegrityError), engine.begin() as connection:
+            bad(connection)
+    with engine.begin() as connection:
+        second = _import(connection, company_id, filename="again.csv", format="csv", scale="units")
+        _imported_fact(connection, second, company_id)  # a later vintage of the same cell
+        _imported_fact(
+            connection, second, company_id, line_code="cost_of_revenue", period_start=None
+        )
+
+
+def test_0007_foreign_keys_cascade_on_delete(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+        owner = _company(connection, "AAA")
+        other = _company(connection, "BBB")
+        first = _import(connection, owner)
+        _imported_fact(connection, first, owner)
+        _custom_line(connection, owner)
+        kept = _import(connection, other)
+        _imported_fact(connection, kept, other)
+
+        connection.execute(text("DELETE FROM statement_import WHERE id = :id"), {"id": first})
+        assert connection.execute(text("SELECT count(*) FROM imported_fact")).scalar() == 1
+
+        connection.execute(text("DELETE FROM company WHERE id = :id"), {"id": other})
+        assert connection.execute(text("SELECT count(*) FROM imported_fact")).scalar() == 0
+        connection.execute(text("DELETE FROM company WHERE id = :id"), {"id": owner})
+        for table in sorted(_IMPORT_TABLES):
+            assert connection.execute(text(f"SELECT count(*) FROM {table}")).scalar() == 0, table

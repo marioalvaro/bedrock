@@ -10,11 +10,11 @@ import pandas as pd
 from bedrock.mapping.config import CanonicalItemDef, is_adjustable
 from bedrock.statements.cell_types import EMPTY, Cell, CellKey, Provenance, RuleWarning
 from bedrock.statements.cells import solve_cells
+from bedrock.statements.imports import company_calendar
 from bedrock.statements.normalize import AdjustmentLike, apply_adjustments
 from bedrock.statements.periods import (
     Period,
     annual_periods,
-    fiscal_calendar,
     quarterly_periods,
     ttm_windows,
 )
@@ -78,7 +78,7 @@ def build_statement(
     or total assets (BS); `parent` is the row's parent, and a row without one uses the total."""
     if statement == "BS" and freq == "ttm":
         raise ValueError("TTM is only defined for flow statements, not the balance sheet")
-    calendar = fiscal_calendar(frame)
+    calendar = company_calendar(frame, rules.imported)
     solved = solve_cells(frame, items, calendar, rules)
     cells = solved.cells
     if adjustments:

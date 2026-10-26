@@ -27,7 +27,7 @@ function coverageRow(overrides: Partial<CoverageOut> = {}): CoverageOut {
     cells: 100,
     filled: 95,
     fraction: "0.950000",
-    by_provenance: { reported: 80, derived: 10, zero_inferred: 3, approximated: 2 },
+    by_provenance: { reported: 80, derived: 10, zero_inferred: 3, approximated: 2, imported: 0 },
     empty_by_cause: { no_filing_data: 0, structural: 1, rule_rejected: 1, not_reported: 3 },
     ...overrides,
   };
@@ -42,7 +42,7 @@ export function mappingGaps(): MappingGapsOut {
         cells: 400,
         filled: 340,
         fraction: "0.887500",
-        by_provenance: { reported: 200, derived: 120, zero_inferred: 12, approximated: 8 },
+        by_provenance: { reported: 200, derived: 120, zero_inferred: 12, approximated: 8, imported: 0 },
         empty_by_cause: { no_filing_data: 17, structural: 4, rule_rejected: 0, not_reported: 39 },
       }),
       coverageRow({
@@ -50,7 +50,7 @@ export function mappingGaps(): MappingGapsOut {
         cells: 200,
         filled: 150,
         fraction: "0.750000",
-        by_provenance: { reported: 120, derived: 20, zero_inferred: 10, approximated: 0 },
+        by_provenance: { reported: 120, derived: 20, zero_inferred: 10, approximated: 0, imported: 0 },
         empty_by_cause: { no_filing_data: 0, structural: 0, rule_rejected: 0, not_reported: 50 },
       }),
     ],

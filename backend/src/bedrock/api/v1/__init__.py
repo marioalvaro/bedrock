@@ -10,6 +10,7 @@ from bedrock.api.v1 import (
     flags,
     guidance,
     health,
+    imports,
     multiples,
     notes,
     qoe_rules,
@@ -39,6 +40,7 @@ protected.include_router(segments.router)
 protected.include_router(comps.router)
 protected.include_router(guidance.router)
 protected.include_router(notes.router)
+protected.include_router(imports.router)
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(public)

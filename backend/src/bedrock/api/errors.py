@@ -12,6 +12,7 @@ from bedrock.services.errors import (
     CompsSetNotFound,
     CustomRuleNotFound,
     GuidanceNotFound,
+    ImportNotFound,
     InvalidAdjustment,
     InvalidCompsSet,
     InvalidCustomRule,
@@ -21,6 +22,7 @@ from bedrock.services.errors import (
     InvalidNote,
     InvalidOffBalanceItem,
     InvalidSeries,
+    InvalidStatementImport,
     InvalidThreshold,
     NoteNotFound,
     OffBalanceItemNotFound,
@@ -51,6 +53,7 @@ _STATUS: dict[type[Exception], int] = {
     GuidanceNotFound: 404,
     InvalidGuidance: 422,
     NoteNotFound: 404,
+    ImportNotFound: 404,
     InvalidNote: 422,
     CompanyExists: 409,
     SourceNotConfigured: 503,
@@ -76,6 +79,20 @@ def register_error_handlers(app: FastAPI) -> None:
             },
         )
 
+    async def handle_statement_import(_: Request, error: Exception) -> JSONResponse:
+        assert isinstance(error, InvalidStatementImport)
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": user_message(error),
+                "errors": [
+                    {"sheet": i.sheet, "row": i.row, "column": i.column, "message": i.message}
+                    for i in error.issues
+                ],
+            },
+        )
+
     for error_type in _STATUS:
         app.add_exception_handler(error_type, handle)
     app.add_exception_handler(InvalidImport, handle_import)
+    app.add_exception_handler(InvalidStatementImport, handle_statement_import)

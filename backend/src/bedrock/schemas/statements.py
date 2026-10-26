@@ -12,7 +12,9 @@ from bedrock.statements.build import StatementTable
 from bedrock.statements.explain import CellExplanation
 from bedrock.statements.periods import Period
 
-Provenance = Literal["reported", "derived", "normalized", "zero_inferred", "approximated"]
+Provenance = Literal[
+    "reported", "derived", "normalized", "zero_inferred", "approximated", "imported"
+]
 
 
 class PeriodOut(BaseModel):
@@ -235,6 +237,7 @@ class ProvenanceCountsOut(BaseModel):
     derived: int
     zero_inferred: int
     approximated: int
+    imported: int
 
 
 class CauseCountsOut(BaseModel):

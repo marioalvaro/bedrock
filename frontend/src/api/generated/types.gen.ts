@@ -112,6 +112,24 @@ export type BalanceCheckOut = {
 };
 
 /**
+ * Body_import_statements_api_v1_companies__ticker__imports_post
+ */
+export type BodyImportStatementsApiV1CompaniesTickerImportsPost = {
+    /**
+     * Dry Run
+     */
+    dry_run?: boolean;
+    /**
+     * File
+     */
+    file: Blob | File;
+    /**
+     * Scale
+     */
+    scale?: 'units' | 'thousands' | 'millions' | 'billions' | null;
+};
+
+/**
  * CapitalAllocationOut
  */
 export type CapitalAllocationOut = {
@@ -256,6 +274,40 @@ export type CellCaveatOut = {
 };
 
 /**
+ * CellChangeOut
+ */
+export type CellChangeOut = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Period Key
+     */
+    period_key: string;
+    /**
+     * Previous
+     */
+    previous: string | null;
+    /**
+     * Statement
+     */
+    statement: 'IS' | 'BS' | 'CF';
+    /**
+     * Unit
+     */
+    unit: string;
+    /**
+     * Value
+     */
+    value: string;
+};
+
+/**
  * CellDetailOut
  */
 export type CellDetailOut = {
@@ -288,7 +340,7 @@ export type CellDetailOut = {
     /**
      * Provenance
      */
-    provenance: 'reported' | 'derived' | 'normalized' | 'zero_inferred' | 'approximated' | null;
+    provenance: 'reported' | 'derived' | 'normalized' | 'zero_inferred' | 'approximated' | 'imported' | null;
     source: SourceOut | null;
     /**
      * Value
@@ -971,6 +1023,44 @@ export type HttpValidationError = {
 };
 
 /**
+ * IgnoredCellOut
+ */
+export type IgnoredCellOut = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Existing Value
+     */
+    existing_value: string;
+    /**
+     * Imported Value
+     */
+    imported_value: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Period Key
+     */
+    period_key: string;
+    /**
+     * Reason
+     */
+    reason: 'sec' | 'derived';
+    /**
+     * Statement
+     */
+    statement: 'IS' | 'BS' | 'CF';
+    /**
+     * Unit
+     */
+    unit: string;
+};
+
+/**
  * ImportErrorOut
  */
 export type ImportErrorOut = {
@@ -982,6 +1072,46 @@ export type ImportErrorOut = {
      * Errors
      */
     errors: Array<ImportIssueOut>;
+};
+
+/**
+ * ImportFileErrorsOut
+ *
+ * The 422 body of a file with errors.
+ */
+export type ImportFileErrorsOut = {
+    /**
+     * Detail
+     */
+    detail: string;
+    /**
+     * Errors
+     */
+    errors: Array<ImportFileIssueOut>;
+};
+
+/**
+ * ImportFileIssueOut
+ *
+ * A warning or an error of the file; `sheet`, `row` and `column` (a letter) say where.
+ */
+export type ImportFileIssueOut = {
+    /**
+     * Column
+     */
+    column: string | null;
+    /**
+     * Message
+     */
+    message: string;
+    /**
+     * Row
+     */
+    row: number | null;
+    /**
+     * Sheet
+     */
+    sheet: string | null;
 };
 
 /**
@@ -1002,6 +1132,47 @@ export type ImportIssueOut = {
      * Row
      */
     row: number;
+};
+
+/**
+ * ImportPreviewOut
+ *
+ * What an import fills and leaves alone. `import_id` is null for a dry run and for a file
+ * that fills no cell.
+ */
+export type ImportPreviewOut = {
+    /**
+     * Dry Run
+     */
+    dry_run: boolean;
+    /**
+     * Fills
+     */
+    fills: Array<CellChangeOut>;
+    /**
+     * Format
+     */
+    format: 'xlsx' | 'csv';
+    /**
+     * Ignored
+     */
+    ignored: Array<IgnoredCellOut>;
+    /**
+     * Import Id
+     */
+    import_id: number | null;
+    /**
+     * Scale
+     */
+    scale: 'units' | 'thousands' | 'millions' | 'billions';
+    /**
+     * Unchanged
+     */
+    unchanged: number;
+    /**
+     * Warnings
+     */
+    warnings: Array<ImportFileIssueOut>;
 };
 
 /**
@@ -1487,6 +1658,10 @@ export type ProvenanceCountsOut = {
      */
     derived: number;
     /**
+     * Imported
+     */
+    imported: number;
+    /**
      * Reported
      */
     reported: number;
@@ -1866,7 +2041,7 @@ export type RowOut = {
     /**
      * Provenance
      */
-    provenance: Array<'reported' | 'derived' | 'normalized' | 'zero_inferred' | 'approximated' | null>;
+    provenance: Array<'reported' | 'derived' | 'normalized' | 'zero_inferred' | 'approximated' | 'imported' | null>;
     /**
      * Unit
      */
@@ -2173,6 +2348,36 @@ export type SourceOut = {
      * Unit
      */
     unit: string;
+};
+
+/**
+ * StatementImportOut
+ */
+export type StatementImportOut = {
+    /**
+     * Cells
+     */
+    cells: number;
+    /**
+     * Filename
+     */
+    filename: string;
+    /**
+     * Format
+     */
+    format: 'xlsx' | 'csv';
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Imported At
+     */
+    imported_at: string;
+    /**
+     * Scale
+     */
+    scale: 'units' | 'thousands' | 'millions' | 'billions';
 };
 
 /**
@@ -3062,6 +3267,143 @@ export type UpdateEntryApiV1CompaniesTickerGuidanceGuidanceIdPutResponses = {
 };
 
 export type UpdateEntryApiV1CompaniesTickerGuidanceGuidanceIdPutResponse = UpdateEntryApiV1CompaniesTickerGuidanceGuidanceIdPutResponses[keyof UpdateEntryApiV1CompaniesTickerGuidanceGuidanceIdPutResponses];
+
+export type DownloadTemplateApiV1CompaniesTickerImportTemplateGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: {
+        /**
+         * Format
+         */
+        format?: 'xlsx' | 'csv';
+        /**
+         * Prefill
+         */
+        prefill?: boolean;
+        /**
+         * Scale
+         */
+        scale?: 'units' | 'thousands' | 'millions' | 'billions';
+    };
+    url: '/api/v1/companies/{ticker}/import-template';
+};
+
+export type DownloadTemplateApiV1CompaniesTickerImportTemplateGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DownloadTemplateApiV1CompaniesTickerImportTemplateGetError = DownloadTemplateApiV1CompaniesTickerImportTemplateGetErrors[keyof DownloadTemplateApiV1CompaniesTickerImportTemplateGetErrors];
+
+export type DownloadTemplateApiV1CompaniesTickerImportTemplateGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type ListImportsApiV1CompaniesTickerImportsGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/imports';
+};
+
+export type ListImportsApiV1CompaniesTickerImportsGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListImportsApiV1CompaniesTickerImportsGetError = ListImportsApiV1CompaniesTickerImportsGetErrors[keyof ListImportsApiV1CompaniesTickerImportsGetErrors];
+
+export type ListImportsApiV1CompaniesTickerImportsGetResponses = {
+    /**
+     * Response List Imports Api V1 Companies  Ticker  Imports Get
+     *
+     * Successful Response
+     */
+    200: Array<StatementImportOut>;
+};
+
+export type ListImportsApiV1CompaniesTickerImportsGetResponse = ListImportsApiV1CompaniesTickerImportsGetResponses[keyof ListImportsApiV1CompaniesTickerImportsGetResponses];
+
+export type ImportStatementsApiV1CompaniesTickerImportsPostData = {
+    body: BodyImportStatementsApiV1CompaniesTickerImportsPost;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/imports';
+};
+
+export type ImportStatementsApiV1CompaniesTickerImportsPostErrors = {
+    /**
+     * Unprocessable Entity
+     */
+    422: ImportFileErrorsOut;
+};
+
+export type ImportStatementsApiV1CompaniesTickerImportsPostError = ImportStatementsApiV1CompaniesTickerImportsPostErrors[keyof ImportStatementsApiV1CompaniesTickerImportsPostErrors];
+
+export type ImportStatementsApiV1CompaniesTickerImportsPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: ImportPreviewOut;
+};
+
+export type ImportStatementsApiV1CompaniesTickerImportsPostResponse = ImportStatementsApiV1CompaniesTickerImportsPostResponses[keyof ImportStatementsApiV1CompaniesTickerImportsPostResponses];
+
+export type DeleteImportApiV1CompaniesTickerImportsImportIdDeleteData = {
+    body?: never;
+    path: {
+        /**
+         * Import Id
+         */
+        import_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/imports/{import_id}';
+};
+
+export type DeleteImportApiV1CompaniesTickerImportsImportIdDeleteErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeleteImportApiV1CompaniesTickerImportsImportIdDeleteError = DeleteImportApiV1CompaniesTickerImportsImportIdDeleteErrors[keyof DeleteImportApiV1CompaniesTickerImportsImportIdDeleteErrors];
+
+export type DeleteImportApiV1CompaniesTickerImportsImportIdDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeleteImportApiV1CompaniesTickerImportsImportIdDeleteResponse = DeleteImportApiV1CompaniesTickerImportsImportIdDeleteResponses[keyof DeleteImportApiV1CompaniesTickerImportsImportIdDeleteResponses];
 
 export type GetMappingGapsApiV1CompaniesTickerMappingGapsGetData = {
     body?: never;

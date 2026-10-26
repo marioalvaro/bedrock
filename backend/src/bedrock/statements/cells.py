@@ -34,6 +34,8 @@ from bedrock.statements.periods import (
     quarterly_periods,
 )
 from bedrock.statements.rules import (
+    BALANCE_FLOOR,
+    BALANCE_RELATIVE,
     NO_RULES,
     Rules,
     WarningLog,
@@ -136,35 +138,40 @@ def solve_cells(
     balance); then residuals and the formulas that wait for them. A non-empty cell is never
     replaced."""
     index = _Index(frame)
+    imported = None if rules.imported is None or rules.imported.empty else _Index(rules.imported)
     years = {y.fiscal_year: y for y in calendar.years}
     by_code = {i.code: i for i in items}
     cells: dict[CellKey, Cell] = {}
     periods = annual_periods(calendar) + quarterly_periods(calendar)
+    log = WarningLog()
 
     for item in items:
         if item.residual:
             continue
         for period in periods:
             cells[(item.code, period.key)] = _mapped_cell(
-                item, period, years[period.fiscal_year], index, cells
+                item, period, years[period.fiscal_year], index, cells, imported, log
             )
 
-    log = WarningLog()
     solved_nonzero: set[CellKey] = set()
     cover = None if rules.cover_shares is None else _cover_index(rules.cover_shares)
     early = _formulas_before_residuals(items)
     while True:
-        filled = _fill_formulas(early, periods, cells)
-        for key, cell in solve_identities(
-            rules.identities, by_code, cells, periods, solved_nonzero, log
-        ):
-            filled += _fill(cells, key, cell)
-        if rules.nci_filings is not None:
-            for key, cell in infer_nci_zeros(cells, by_code, periods, rules.nci_filings):
+        while True:
+            filled = _fill_formulas(early, periods, cells)
+            for key, cell in solve_identities(
+                rules.identities, by_code, cells, periods, solved_nonzero, log
+            ):
                 filled += _fill(cells, key, cell)
-        filled += _fill_cover_shares(periods, cells, cover)
-        filled += _close_q4(items, periods, years, cells, index)
-        if not filled:
+            if rules.nci_filings is not None:
+                for key, cell in infer_nci_zeros(cells, by_code, periods, rules.nci_filings):
+                    filled += _fill(cells, key, cell)
+            filled += _fill_cover_shares(periods, cells, cover)
+            filled += _close_q4(items, periods, years, cells, index)
+            if not filled:
+                break
+        # An imported value of a line with a formula counts only once the rules cannot fill it.
+        if not _fill_imported_formula_lines(items, periods, cells, imported):
             break
 
     for key, cell in q4_average_cells(cells, by_code, periods, log):
@@ -285,18 +292,132 @@ def _mapped_cell(
     year: FiscalYear,
     index: _Index,
     cells: dict[CellKey, Cell],
+    imported: _Index | None,
+    log: WarningLog,
 ) -> Cell:
+    """The SEC value of the cell, else (R-import, docs/erd/data.md "Precedence") the imported one.
+    A line with a formula takes its imported value later, only if the formula cannot run."""
     code = item.code
+    typed = None if _has_formula(item) else imported
     if item.kind == "instant":
         if period.fiscal_period == "Q4":  # the fiscal year-end balance
             return cells.get((code, f"FY{period.fiscal_year}"), EMPTY)
-        return _reported(index.instant(code, period.end), code, period)
+        cell = _reported(index.instant(code, period.end), code, period)
+        if cell.value is None and typed is not None:
+            cell = _imported(typed.instant(code, period.end))
+        return cell
     if period.fiscal_period == "Q4":
-        return EMPTY if item.kind == "average" else _q4(code, year, cells, index)
-    reported = _reported(index.duration(code, period.start, period.end), code, period)
-    if reported.value is not None or item.kind == "average" or period.fiscal_period == "FY":
-        return reported
-    return _from_year_to_date(code, period, year, index)
+        if item.kind == "average":
+            return (
+                EMPTY
+                if typed is None
+                else _imported(typed.duration(code, period.start, period.end))
+            )
+        return _imported_q4(code, period, year, index, cells, typed, log)
+    cell = _reported(index.duration(code, period.start, period.end), code, period)
+    if cell.value is None and item.kind != "average" and period.fiscal_period != "FY":
+        cell = _from_year_to_date(code, period, year, index)
+    if cell.value is None and typed is not None:
+        cell = _imported(typed.duration(code, period.start, period.end))
+        if cell.value is None and period.fiscal_period == "FY" and item.kind == "flow":
+            cell = _year_from_quarters(code, year, typed)
+    return cell
+
+
+def _has_formula(item: CanonicalItemDef) -> bool:
+    return item.derive is not None and bool(item.concepts) and not item.residual
+
+
+def _imported(fact: _Fact | None) -> Cell:
+    return EMPTY if fact is None else Cell(fact.value, "imported", source=fact.ref)
+
+
+def _quarter_spans(year: FiscalYear) -> list[tuple[date, date]]:
+    """Start and end of Q1..Q4 of a year whose quarters are known."""
+    if year.end is None or len(year.quarter_ends) != 3:
+        return []
+    ends = [*year.quarter_ends, year.end]
+    starts = [year.start, *(end + timedelta(days=1) for end in year.quarter_ends)]
+    return list(zip(starts, ends, strict=True))
+
+
+def _year_from_quarters(code: str, year: FiscalYear, imported: _Index) -> Cell:
+    """FY = Q1 + Q2 + Q3 + Q4 of imported quarters, all four required."""
+    facts = [imported.duration(code, start, end) for start, end in _quarter_spans(year)]
+    if len(facts) != 4 or any(f is None for f in facts):
+        return EMPTY
+    values = [f.value for f in facts if f is not None]
+    return Cell(
+        sum(values, Decimal(0)),
+        "derived",
+        derivation=Derivation(
+            "Q1 + Q2 + Q3 + Q4",
+            tuple(DerivationInput(code, f"Q{n}", v) for n, v in enumerate(values, start=1)),
+        ),
+    )
+
+
+def _imported_q4(
+    code: str,
+    period: Period,
+    year: FiscalYear,
+    index: _Index,
+    cells: dict[CellKey, Cell],
+    imported: _Index | None,
+    log: WarningLog,
+) -> Cell:
+    """Q4 of a flow: FY less the quarters as always; an imported Q4 fills it only when that is
+    empty, and one that disagrees with the remainder is ignored with a warning."""
+    remainder = _q4(code, year, cells, index)
+    fact = None if imported is None else imported.duration(code, period.start, period.end)
+    if fact is None:
+        return remainder
+    if remainder.value is None:
+        return _imported(fact)
+    unit = fact.ref.unit
+    tolerance = (
+        Decimal("0.01")
+        if unit == "USD/shares"
+        else max(BALANCE_FLOOR, BALANCE_RELATIVE * abs(remainder.value))
+    )
+    if abs(fact.value - remainder.value) > tolerance:
+        log.add(
+            RuleWarning(
+                "import_q4",
+                code,
+                period.key,
+                fact.value,
+                f"imported Q4 ({fact.value}) differs from FY - Q1 - Q2 - Q3 "
+                f"({remainder.value}); ignored",
+            )
+        )
+    return remainder
+
+
+def _fill_imported_formula_lines(
+    items: Sequence[CanonicalItemDef],
+    periods: Sequence[Period],
+    cells: dict[CellKey, Cell],
+    imported: _Index | None,
+) -> int:
+    """The imported value of a line with a formula (FY, Q1-Q3 and balance dates; Q4 follows), once
+    the rules have run and left the cell empty."""
+    if imported is None:
+        return 0
+    filled = 0
+    for item in items:
+        if not _has_formula(item):
+            continue
+        for period in periods:
+            if period.fiscal_period == "Q4":
+                continue
+            fact = (
+                imported.instant(item.code, period.end)
+                if item.kind == "instant"
+                else imported.duration(item.code, period.start, period.end)
+            )
+            filled += _fill(cells, (item.code, period.key), _imported(fact))
+    return filled
 
 
 def _reported(fact: _Fact | None, code: str, period: Period) -> Cell:

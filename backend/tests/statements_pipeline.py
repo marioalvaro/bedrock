@@ -7,7 +7,8 @@ No DB and no network: it is the same chain `build_statements` runs in S4, minus 
 import csv
 import gzip
 import json
-from dataclasses import dataclass
+from collections.abc import Sequence
+from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal
 from functools import cache
@@ -30,6 +31,9 @@ from bedrock.mapping.config import (
 from bedrock.mapping.mapper import CANONICAL_COLUMNS, map_facts
 from bedrock.mapping.vintage import balance_snapshot, select_vintage
 from bedrock.statements.build import StatementTable, build_statement
+from bedrock.statements.cells import SolvedCells, solve_cells
+from bedrock.statements.imports import StoredValue, company_calendar, imported_frames
+from bedrock.statements.periods import Calendar
 from bedrock.statements.rules import Rules, filings_tagging_nci
 from bedrock.statements.splits import split_adjust
 
@@ -232,3 +236,22 @@ def run_pipeline(ticker: str) -> Pipeline:
             s: build_statement(canonical, items, s, "quarterly", rules=rules) for s in STATEMENTS
         },
     )
+
+
+def solve_with_imports(
+    ticker: str, stored: Sequence[StoredValue], drop: frozenset[tuple[str, str]] = frozenset()
+) -> tuple[SolvedCells, Calendar]:
+    """The fixture company's cells with `stored` imported values on top. `drop` removes SEC cells
+    first, as (code, period end ISO date) pairs, to open a gap the fixture does not have."""
+    base = run_pipeline(ticker)
+    canonical = base.canonical
+    if drop:
+        keep = [
+            (code, end.isoformat()) not in drop
+            for code, end in zip(canonical["code"], canonical["period_end"], strict=True)
+        ]
+        canonical = canonical[keep]
+    frames = imported_frames(stored, base.items)
+    rules = replace(base.rules, imported=frames.newest, imported_vintages=frames.vintages)
+    calendar = company_calendar(canonical, rules.imported)
+    return solve_cells(canonical, base.items, calendar, rules), calendar

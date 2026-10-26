@@ -408,7 +408,13 @@ def test_mapping_gaps_carry_coverage_and_rule_warnings(aapl_client: TestClient) 
         "by_provenance",
         "empty_by_cause",
     }
-    assert set(income["by_provenance"]) == {"reported", "derived", "zero_inferred", "approximated"}
+    assert set(income["by_provenance"]) == {
+        "reported",
+        "derived",
+        "zero_inferred",
+        "approximated",
+        "imported",
+    }
     assert set(income["empty_by_cause"]) == {
         "no_filing_data",
         "structural",

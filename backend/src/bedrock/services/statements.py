@@ -36,6 +36,7 @@ from bedrock.models.company import Company
 from bedrock.repositories import adjustments as adjustments_repo
 from bedrock.repositories import corporate_actions as actions_repo
 from bedrock.repositories import facts as facts_repo
+from bedrock.repositories import imports as imports_repo
 from bedrock.repositories import mappings as mappings_repo
 from bedrock.repositories import prices as prices_repo
 from bedrock.repositories.numeric import plain
@@ -44,7 +45,8 @@ from bedrock.statements.build import CommonSizeBase, Freq, StatementTable, build
 from bedrock.statements.cell_types import RuleWarning
 from bedrock.statements.coverage import Coverage, table_coverage
 from bedrock.statements.explain import CellExplanation, explain_cell
-from bedrock.statements.periods import annual_periods, fiscal_calendar, quarterly_periods
+from bedrock.statements.imports import StoredValue, company_calendar, imported_frames
+from bedrock.statements.periods import annual_periods, quarterly_periods
 from bedrock.statements.rules import Rules, filings_tagging_nci
 from bedrock.statements.splits import split_adjust, split_factor
 from bedrock.statements.view import trim_periods
@@ -53,10 +55,12 @@ __all__ = [
     "CellNotFound",
     "LabelledWarning",
     "MappingGaps",
+    "StatementInputs",
     "build_statements",
     "cell_detail",
     "company_key_stats",
     "fiscal_periods",
+    "load_inputs",
     "mapping_gaps",
     "statement_tables",
 ]
@@ -115,12 +119,25 @@ class MappingGaps:
 
 
 @dataclass(frozen=True)
-class _Loaded:
+class StatementInputs:
     items: tuple[CanonicalItemDef, ...]
     mappings: pd.DataFrame
     facts: pd.DataFrame  # every vintage of the mapped concepts
     canonical: pd.DataFrame  # the latest vintage, mapped and split-adjusted
-    rules: Rules  # the identities and NCI filings `build_statement` fills empty cells with
+    # the identities, NCI filings and imported values `build_statement` fills empty cells with
+    rules: Rules
+    imports: tuple[StoredValue, ...] = ()  # every imported value of the company, every vintage
+
+    @property
+    def empty(self) -> bool:
+        """No SEC facts and no imported values: there is nothing to show."""
+        no_imports = self.rules.imported is None or self.rules.imported.empty
+        return self.canonical.empty and no_imports
+
+
+def load_inputs(session: Session, company: Company) -> StatementInputs:
+    """Everything the engine needs for a full statement build of the company."""
+    return _load(session, company)
 
 
 def build_statements(
@@ -155,7 +172,7 @@ def statement_tables(
     if ("BS", "ttm") in wanted:
         raise ValueError("TTM is only defined for flow statements, not the balance sheet")
     loaded = _load(session, company)
-    if loaded.canonical.empty:
+    if loaded.empty:
         return {(s, f): StatementTable(s, f, [], [], None, []) for s, f in wanted}
     adjustments = adjustments_repo.list_for(session, company.id) if basis == "normalized" else []
     return {
@@ -172,7 +189,7 @@ def cell_detail(
     """The reported value and where it came from, plus the adjustments that change the cell and
     its normalized value (whichever basis the grid shows)."""
     loaded = _load(session, company)
-    if loaded.canonical.empty:
+    if loaded.empty:
         raise CellNotFound(code)
     try:
         return explain_cell(
@@ -192,9 +209,9 @@ def cell_detail(
 def fiscal_periods(session: Session, company: Company) -> set[tuple[int, str]]:
     """The (fiscal year, FY or Qn) pairs the company's statements have."""
     loaded = _load(session, company)
-    if loaded.canonical.empty:
+    if loaded.empty:
         return set()
-    calendar = fiscal_calendar(loaded.canonical)
+    calendar = company_calendar(loaded.canonical, loaded.rules.imported)
     return {
         (p.fiscal_year, p.fiscal_period)
         for p in annual_periods(calendar) + quarterly_periods(calendar)
@@ -205,7 +222,7 @@ def mapping_gaps(session: Session, company: Company) -> MappingGaps:
     """What the data lacks: items without values, concepts nothing maps, the coverage and causes of
     the empty cells (R6) and the rules' warnings."""
     loaded = _load(session, company)
-    if loaded.canonical.empty:
+    if loaded.empty:
         return MappingGaps([], [], [], [])
     tables = {
         (s, f): build_statement(loaded.canonical, loaded.items, s, f, rules=loaded.rules)
@@ -242,7 +259,7 @@ def company_key_stats(session: Session, company: Company) -> KeyStats:
             latest.value * split_factor(latest.filed_at, actions_repo.list_for(session, company.id))
         )
     )
-    if loaded.canonical.empty:
+    if loaded.empty:
         return key_stats(close=close, shares=shares, ttm={}, quarterly_bs=None)
     ttm = {
         statement: build_statement(
@@ -256,7 +273,9 @@ def company_key_stats(session: Session, company: Company) -> KeyStats:
     return key_stats(close=close, shares=shares, ttm=ttm, quarterly_bs=quarterly_bs)
 
 
-def _load(session: Session, company: Company, codes: frozenset[str] | None = None) -> _Loaded:
+def _load(
+    session: Session, company: Company, codes: frozenset[str] | None = None
+) -> StatementInputs:
     items = canonical_items()
     mappings = mappings_repo.mappings_for(session, company.id)
     if codes is not None:
@@ -270,14 +289,38 @@ def _load(session: Session, company: Company, codes: frozenset[str] | None = Non
     # Only the NCI rule runs on a subset of the codes: an identity would read a line that was not
     # loaded as empty and solve it, and the cover-page count would fill a line that was not
     # loaded either.
+    stored = _stored_imports(session, company)
+    imported = imported_frames(
+        stored if codes is None else [v for v in stored if v.line_code in codes], items
+    )
     rules = Rules(
         canonical_identities() if codes is None else (),
         filings_tagging_nci(facts, mappings),
         split_adjust(facts_repo.load_cover_shares(session, company.id), actions)
         if codes is None
         else None,
+        imported.newest,
+        imported.vintages,
     )
-    return _Loaded(items, mappings, facts, canonical, rules)
+    return StatementInputs(items, mappings, facts, canonical, rules, tuple(stored))
+
+
+def _stored_imports(session: Session, company: Company) -> list[StoredValue]:
+    imports = {i.id: i for i in imports_repo.list_imports(session, company.id)}
+    return [
+        StoredValue(
+            f.import_id,
+            imports[f.import_id].filename,
+            imports[f.import_id].imported_at,
+            f.line_code,
+            f.fiscal_year,
+            f.fiscal_period,
+            f.period_start,
+            f.period_end,
+            f.value,
+        )
+        for f in imports_repo.list_facts(session, company.id)
+    ]
 
 
 @cache

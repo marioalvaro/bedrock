@@ -14,6 +14,7 @@ import pandas as pd
 from bedrock.mapping.config import CanonicalItemDef, IdentityDef, SolveRule
 from bedrock.statements.cell_types import (
     EMPTY,
+    IMPORT_PREFIX,
     Cell,
     CellKey,
     Derivation,
@@ -56,6 +57,8 @@ class Rules:
     identities: tuple[IdentityDef, ...] = ()
     nci_filings: frozenset[str] | None = None
     cover_shares: pd.DataFrame | None = None
+    imported: pd.DataFrame | None = None
+    imported_vintages: pd.DataFrame | None = None
 
 
 NO_RULES = Rules()
@@ -313,7 +316,11 @@ def infer_nci_zeros(
                 ),
                 None,
             )
-            if source is None or source.accession_no in nci_filings:
+            if (
+                source is None
+                or source.accession_no in nci_filings
+                or source.accession_no.startswith(IMPORT_PREFIX)  # no filing tags to inspect
+            ):
                 continue
             out.append(
                 (

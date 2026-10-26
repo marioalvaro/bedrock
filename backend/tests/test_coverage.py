@@ -1,5 +1,6 @@
 """R6: why a cell is empty, and how complete each statement is (erd/data.md, "R6")."""
 
+from dataclasses import replace
 from decimal import Decimal
 
 import pytest
@@ -141,6 +142,19 @@ def test_provenance_counts_separate_reported_from_derived() -> None:
     assert result.by_provenance["reported"] == 3 + 1  # revenue in 3 years, cost_of_revenue in 2023
     assert result.by_provenance["derived"] == 1  # gross_profit FY2023
     assert result.by_provenance["zero_inferred"] == 0
+
+
+def test_imported_cells_are_counted_as_their_own_provenance() -> None:
+    base = table("IS", "annual")
+    revenue = next(r for r in base.rows if r.code == "revenue")
+    imported = replace(revenue, provenance=["imported", "reported", "reported"])
+    swapped = replace(base, rows=[imported if r.code == "revenue" else r for r in base.rows])
+
+    result = table_coverage(swapped, ITEMS, MAPPED, ())
+
+    assert result.by_provenance["imported"] == 1
+    assert result.by_provenance["reported"] == 2 + 1  # revenue in two years, cost_of_revenue
+    assert result.filled == sum(result.by_provenance.values())
 
 
 def test_the_fraction_leaves_out_periods_with_no_filing_data() -> None:

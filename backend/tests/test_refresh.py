@@ -58,7 +58,7 @@ def test_refresh_syncs_the_canonical_items_and_the_mappings_of_the_followed_comp
 
     refresh_company(db_session, _sources(), "AAPL", NOW)
 
-    assert _count(db_session, CanonicalItem) == 82
+    assert _count(db_session, CanonicalItem) == 84
     overrides = db_session.execute(
         select(ConceptMapping.concept).where(ConceptMapping.company_id.is_not(None))
     ).scalars()

@@ -12,8 +12,9 @@ from bedrock.mapping.config import CanonicalItemDef
 from bedrock.mapping.vintage import BALANCE_DATE_TOLERANCE
 from bedrock.statements.cell_types import Derivation, Provenance
 from bedrock.statements.cells import compute_cells
+from bedrock.statements.imports import IMPORT_FORM, company_calendar
 from bedrock.statements.normalize import AdjustmentLike, AppliedAdjustment, apply_adjustments
-from bedrock.statements.periods import annual_periods, fiscal_calendar, quarterly_periods
+from bedrock.statements.periods import annual_periods, quarterly_periods
 from bedrock.statements.rules import NO_RULES, Rules
 
 
@@ -73,7 +74,7 @@ def explain_cell(
     item = next((i for i in items if i.code == code), None)
     if item is None:
         raise KeyError(code)
-    calendar = fiscal_calendar(frame)
+    calendar = company_calendar(frame, rules.imported)
     period = next(
         (
             p
@@ -95,15 +96,18 @@ def explain_cell(
         ref = cell.source
         source = SourceInfo(ref.taxonomy, ref.concept, ref.unit)
         filing = FilingInfo(ref.accession_no, ref.form, ref.filed_at)
-        vintages = _vintages(
-            all_vintages,
-            ref.taxonomy,
-            ref.concept,
-            ref.unit,
-            ref.period_start,
-            ref.period_end,
-            item.sign,
-        )
+        if ref.taxonomy == IMPORT_FORM:
+            vintages = _import_vintages(rules.imported_vintages, code, fiscal_year, fiscal_period)
+        else:
+            vintages = _vintages(
+                all_vintages,
+                ref.taxonomy,
+                ref.concept,
+                ref.unit,
+                ref.period_start,
+                ref.period_end,
+                item.sign,
+            )
     return CellExplanation(
         code=code,
         label=item.label,
@@ -118,6 +122,23 @@ def explain_cell(
         adjustments=behind,
         normalized_value=normalized[(code, period.key)].value if behind else None,
     )
+
+
+def _import_vintages(
+    history: pd.DataFrame | None, code: str, fiscal_year: int, fiscal_period: str
+) -> list[Vintage]:
+    """Every import's value of the cell, oldest import first (already in the displayed sign)."""
+    if history is None:
+        return []
+    rows = history[
+        (history["code"] == code)
+        & (history["fiscal_year"] == fiscal_year)
+        & (history["fiscal_period"] == fiscal_period)
+    ]
+    return [
+        Vintage(r["value"], r["accession_no"], r["form"], r["filed_at"])
+        for r in rows.to_dict("records")
+    ]
 
 
 def _vintages(

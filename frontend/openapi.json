@@ -166,6 +166,42 @@
         "title": "BalanceCheckOut",
         "type": "object"
       },
+      "Body_import_statements_api_v1_companies__ticker__imports_post": {
+        "properties": {
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "scale": {
+            "anyOf": [
+              {
+                "enum": [
+                  "units",
+                  "thousands",
+                  "millions",
+                  "billions"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scale"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_import_statements_api_v1_companies__ticker__imports_post",
+        "type": "object"
+      },
       "CapitalAllocationOut": {
         "properties": {
           "freq": {
@@ -415,6 +451,63 @@
         "title": "CellCaveatOut",
         "type": "object"
       },
+      "CellChangeOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "period_key": {
+            "title": "Period Key",
+            "type": "string"
+          },
+          "previous": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous"
+          },
+          "statement": {
+            "enum": [
+              "IS",
+              "BS",
+              "CF"
+            ],
+            "title": "Statement",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "statement",
+          "code",
+          "label",
+          "unit",
+          "period_key",
+          "value",
+          "previous"
+        ],
+        "title": "CellChangeOut",
+        "type": "object"
+      },
       "CellDetailOut": {
         "properties": {
           "adjustments": {
@@ -480,7 +573,8 @@
                   "derived",
                   "normalized",
                   "zero_inferred",
-                  "approximated"
+                  "approximated",
+                  "imported"
                 ],
                 "type": "string"
               },
@@ -1777,6 +1871,65 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "IgnoredCellOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "existing_value": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Existing Value",
+            "type": "string"
+          },
+          "imported_value": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Imported Value",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "period_key": {
+            "title": "Period Key",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "sec",
+              "derived"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "statement": {
+            "enum": [
+              "IS",
+              "BS",
+              "CF"
+            ],
+            "title": "Statement",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "statement",
+          "code",
+          "label",
+          "unit",
+          "period_key",
+          "existing_value",
+          "imported_value",
+          "reason"
+        ],
+        "title": "IgnoredCellOut",
+        "type": "object"
+      },
       "ImportErrorOut": {
         "properties": {
           "detail": {
@@ -1796,6 +1949,78 @@
           "errors"
         ],
         "title": "ImportErrorOut",
+        "type": "object"
+      },
+      "ImportFileErrorsOut": {
+        "description": "The 422 body of a file with errors.",
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/ImportFileIssueOut"
+            },
+            "title": "Errors",
+            "type": "array"
+          }
+        },
+        "required": [
+          "detail",
+          "errors"
+        ],
+        "title": "ImportFileErrorsOut",
+        "type": "object"
+      },
+      "ImportFileIssueOut": {
+        "description": "A warning or an error of the file; `sheet`, `row` and `column` (a letter) say where.",
+        "properties": {
+          "column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "row": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row"
+          },
+          "sheet": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sheet"
+          }
+        },
+        "required": [
+          "sheet",
+          "row",
+          "column",
+          "message"
+        ],
+        "title": "ImportFileIssueOut",
         "type": "object"
       },
       "ImportIssueOut": {
@@ -1827,6 +2052,81 @@
           "message"
         ],
         "title": "ImportIssueOut",
+        "type": "object"
+      },
+      "ImportPreviewOut": {
+        "description": "What an import fills and leaves alone. `import_id` is null for a dry run and for a file\nthat fills no cell.",
+        "properties": {
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "fills": {
+            "items": {
+              "$ref": "#/components/schemas/CellChangeOut"
+            },
+            "title": "Fills",
+            "type": "array"
+          },
+          "format": {
+            "enum": [
+              "xlsx",
+              "csv"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
+          "ignored": {
+            "items": {
+              "$ref": "#/components/schemas/IgnoredCellOut"
+            },
+            "title": "Ignored",
+            "type": "array"
+          },
+          "import_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Import Id"
+          },
+          "scale": {
+            "enum": [
+              "units",
+              "thousands",
+              "millions",
+              "billions"
+            ],
+            "title": "Scale",
+            "type": "string"
+          },
+          "unchanged": {
+            "title": "Unchanged",
+            "type": "integer"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/ImportFileIssueOut"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "dry_run",
+          "format",
+          "scale",
+          "import_id",
+          "fills",
+          "ignored",
+          "unchanged",
+          "warnings"
+        ],
+        "title": "ImportPreviewOut",
         "type": "object"
       },
       "LoginRequest": {
@@ -2749,6 +3049,10 @@
             "title": "Derived",
             "type": "integer"
           },
+          "imported": {
+            "title": "Imported",
+            "type": "integer"
+          },
           "reported": {
             "title": "Reported",
             "type": "integer"
@@ -2762,7 +3066,8 @@
           "reported",
           "derived",
           "zero_inferred",
-          "approximated"
+          "approximated",
+          "imported"
         ],
         "title": "ProvenanceCountsOut",
         "type": "object"
@@ -3507,7 +3812,8 @@
                     "derived",
                     "normalized",
                     "zero_inferred",
-                    "approximated"
+                    "approximated",
+                    "imported"
                   ],
                   "type": "string"
                 },
@@ -4051,6 +4357,55 @@
           "unit"
         ],
         "title": "SourceOut",
+        "type": "object"
+      },
+      "StatementImportOut": {
+        "properties": {
+          "cells": {
+            "title": "Cells",
+            "type": "integer"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "format": {
+            "enum": [
+              "xlsx",
+              "csv"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "imported_at": {
+            "format": "date-time",
+            "title": "Imported At",
+            "type": "string"
+          },
+          "scale": {
+            "enum": [
+              "units",
+              "thousands",
+              "millions",
+              "billions"
+            ],
+            "title": "Scale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "filename",
+          "format",
+          "scale",
+          "imported_at",
+          "cells"
+        ],
+        "title": "StatementImportOut",
         "type": "object"
       },
       "StatementOut": {
@@ -5410,6 +5765,226 @@
         "summary": "Update Entry",
         "tags": [
           "guidance"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/import-template": {
+      "get": {
+        "operationId": "download_template_api_v1_companies__ticker__import_template_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "xlsx",
+              "enum": [
+                "xlsx",
+                "csv"
+              ],
+              "title": "Format",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "prefill",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Prefill",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scale",
+            "required": false,
+            "schema": {
+              "default": "millions",
+              "enum": [
+                "units",
+                "thousands",
+                "millions",
+                "billions"
+              ],
+              "title": "Scale",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Template",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/imports": {
+      "get": {
+        "operationId": "list_imports_api_v1_companies__ticker__imports_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StatementImportOut"
+                  },
+                  "title": "Response List Imports Api V1 Companies  Ticker  Imports Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Imports",
+        "tags": [
+          "imports"
+        ]
+      },
+      "post": {
+        "operationId": "import_statements_api_v1_companies__ticker__imports_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_statements_api_v1_companies__ticker__imports_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportPreviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportFileErrorsOut"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Import Statements",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/imports/{import_id}": {
+      "delete": {
+        "operationId": "delete_import_api_v1_companies__ticker__imports__import_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "import_id",
+            "required": true,
+            "schema": {
+              "title": "Import Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Import",
+        "tags": [
+          "imports"
         ]
       }
     },

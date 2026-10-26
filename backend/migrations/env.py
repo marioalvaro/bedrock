@@ -12,8 +12,10 @@ from bedrock.models import (  # noqa: F401  ensure models are registered
     comps_set,
     concept_mapping,
     corporate_action,
+    custom_line,
     filing,
     guidance,
+    imported_fact,
     note,
     off_balance_item,
     price_daily,
@@ -22,6 +24,7 @@ from bedrock.models import (  # noqa: F401  ensure models are registered
     raw_fact,
     segment_series,
     segment_value,
+    statement_import,
 )
 from bedrock.models.base import Base
 

@@ -1,3 +1,4 @@
+from bedrock.ingest.manual_import import ImportIssue as FileIssue
 from bedrock.ingest.protocol import SourceNotConfigured, SourceUnavailable, UnknownTicker
 from bedrock.statements.segments import ImportIssue
 
@@ -99,6 +100,20 @@ class InvalidImport(Exception):
         self.issues = issues
 
 
+class InvalidStatementImport(Exception):
+    """A statement import file has errors; nothing was written. `issues` lists every one, each
+    with its sheet, row and column where it has them."""
+
+    def __init__(self, issues: list[FileIssue]) -> None:
+        super().__init__(f"The file has {len(issues)} error(s)")
+        self.issues = issues
+
+
+class ImportNotFound(Exception):
+    """No statement import with this id on the company (another company's id counts as
+    unknown)."""
+
+
 # What a use-case can raise on purpose; the API maps these to statuses, the CLI prints them.
 DOMAIN_ERRORS = (
     CompanyNotFound,
@@ -122,6 +137,8 @@ DOMAIN_ERRORS = (
     InvalidGuidance,
     InvalidNote,
     InvalidImport,
+    InvalidStatementImport,
+    ImportNotFound,
     NoteNotFound,
     UnknownTicker,
     SourceNotConfigured,
@@ -156,6 +173,8 @@ def user_message(error: Exception) -> str:
             return f"No such guidance entry: {error}"
         case NoteNotFound():
             return f"No such note: {error}"
+        case ImportNotFound():
+            return f"No such import: {error}"
         case CompanyExists():
             return f"{error} is already followed"
         case SourceNotConfigured():

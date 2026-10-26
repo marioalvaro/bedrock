@@ -16,6 +16,8 @@ dependencies = [
     "httpx>=0.28.1",
     "pyyaml>=6.0.3",
     "yfinance>=1.7.0",
+    "openpyxl>=3.1.5",
+    "python-multipart>=0.0.32",
 ]
 
 [project.scripts]
@@ -35,6 +37,7 @@ dev = [
     "mypy",
     "pandas-stubs>=3.0.5.260914",
     "types-pyyaml>=6.0.12.20260906",
+    "types-openpyxl>=3.1.5.20261017",
 ]
 
 [tool.ruff]
