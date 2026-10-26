@@ -26,6 +26,8 @@ TICKERS = ["AAPL", "MSFT", "COST", "DE"]
 RESIDUALS_ALLOWED_TO_CHANGE: dict[tuple[str, str, str, str], str] = {}
 
 NEW_CELL_PROVENANCE = frozenset({"derived", "zero_inferred", "approximated"})
+# Canonical items added after the baseline was recorded (S8a): their reported cells are new too
+NEW_ITEMS = frozenset({"shares_issued", "treasury_shares"})
 
 
 def current_cells(
@@ -110,7 +112,9 @@ def test_a_cell_that_was_empty_is_filled_by_a_rule_not_a_report(ticker: str) -> 
                 wrong += [
                     f"{ticker} {freq} {code} {period}: new cell with provenance {provenance}"
                     for period, (_, provenance) in periods.items()
-                    if period not in recorded and provenance not in NEW_CELL_PROVENANCE
+                    if period not in recorded
+                    and code not in NEW_ITEMS
+                    and provenance not in NEW_CELL_PROVENANCE
                 ]
 
     assert wrong == [], "\n".join(wrong[:20])

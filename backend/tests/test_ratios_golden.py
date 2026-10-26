@@ -25,6 +25,7 @@ TOLERANCE: dict[Unit, Decimal] = {
     "x": Decimal("0.05"),
     "days": Decimal("0.05"),
     "USD/shares": Decimal("0.01"),
+    "USD": Decimal(1_000_000),  # the 10-Ks state amounts in millions
 }
 UNITS: dict[str, Unit] = {ratio.code: ratio.unit for ratio in RATIOS}
 

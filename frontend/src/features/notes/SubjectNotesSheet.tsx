@@ -35,31 +35,40 @@ export function SubjectNotesSheet({ ticker, target, onClose }: SubjectNotesSheet
         </SheetHeader>
         {target && (
           <div className="px-4 pb-4 text-sm">
-            <NotesPanel
-              ticker={ticker}
-              filter={{
-                ...(target.kind === "line"
-                  ? { code: target.code }
-                  : { metricKind: target.kind, metricCode: target.code }),
-                ...(period && {
-                  fiscalYear: period.fiscalYear,
-                  fiscalPeriod: period.fiscalPeriod,
-                }),
-              }}
-              addLink={{
-                canonical_code: target.kind === "line" ? target.code : null,
-                ...(target.kind !== "line" && {
-                  metric_kind: target.kind,
-                  metric_code: target.code,
-                }),
-                fiscal_year: period?.fiscalYear ?? null,
-                fiscal_period: period?.fiscalPeriod ?? null,
-                description: periodText ? `${target.label} · ${periodText}` : target.label,
-              }}
-            />
+            <SubjectNotes ticker={ticker} target={target} />
           </div>
         )}
       </SheetContent>
     </Sheet>
+  );
+}
+
+/** The notes of a subject (or one of its cells) with "Add note" linked to exactly that. */
+export function SubjectNotes({ ticker, target }: { ticker: string; target: SubjectTarget }) {
+  const period = target.period;
+  const periodText = period && formatFiscalPeriod(period.fiscalYear, period.fiscalPeriod);
+  return (
+    <NotesPanel
+      ticker={ticker}
+      filter={{
+        ...(target.kind === "line"
+          ? { code: target.code }
+          : { metricKind: target.kind, metricCode: target.code }),
+        ...(period && {
+          fiscalYear: period.fiscalYear,
+          fiscalPeriod: period.fiscalPeriod,
+        }),
+      }}
+      addLink={{
+        canonical_code: target.kind === "line" ? target.code : null,
+        ...(target.kind !== "line" && {
+          metric_kind: target.kind,
+          metric_code: target.code,
+        }),
+        fiscal_year: period?.fiscalYear ?? null,
+        fiscal_period: period?.fiscalPeriod ?? null,
+        description: periodText ? `${target.label} · ${periodText}` : target.label,
+      }}
+    />
   );
 }

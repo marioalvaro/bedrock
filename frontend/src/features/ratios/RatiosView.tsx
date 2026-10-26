@@ -19,13 +19,13 @@ import { NoteMarker } from "@/features/notes/NoteMarker";
 import { SubjectNotesSheet } from "@/features/notes/SubjectNotesSheet";
 import {
   cellNotes,
-  cellTarget,
   subjectNotes,
   type NoteIndex,
   type SubjectTarget,
 } from "@/features/notes/subjects";
 import { useNoteIndex } from "@/features/notes/useNoteIndex";
 import { MultiplesTable } from "@/features/ratios/MultiplesTable";
+import { RatioCellSheet, type RatioCellTarget } from "@/features/ratios/RatioCellSheet";
 import { formatCsvRatio, formatRatio, type RatioUnit } from "@/lib/format";
 
 const FREQS: { value: AnalysisFreq; label: string }[] = [
@@ -87,7 +87,8 @@ function caveatNotes(payload: RatiosOut): { text: string; labels: string[] }[] {
   return [...notes].map(([text, labels]) => ({ text, labels }));
 }
 
-// Notes sit on a ratio's FY or quarter cell: not on a category heading, not on TTM.
+// Notes sit on a ratio's FY or quarter cell: not on a category heading, not on TTM. Every other
+// value cell opens its details.
 function notable(row: GridRow, period: PeriodOut): boolean {
   return !row.heading && !period.key.startsWith("TTM");
 }
@@ -133,9 +134,12 @@ function columnDefs(
     },
     cellClass: ({ data }: CellClassParams<GridRow>) => {
       const classes = ["num", "ag-right-aligned-cell"];
-      if (!data || !notable(data, period)) return classes;
+      if (!data || data.heading) return classes;
       classes.push("cursor-pointer", "hover:underline");
-      if (cellNotes(markers, "ratio", data.id, period.fiscal_year, period.fiscal_period) > 0) {
+      if (
+        notable(data, period) &&
+        cellNotes(markers, "ratio", data.id, period.fiscal_year, period.fiscal_period) > 0
+      ) {
         classes.push("has-note");
       }
       return classes;
@@ -159,6 +163,7 @@ export function RatiosView({ ticker }: RatiosViewProps) {
   const grid = useRef<DataGridHandle>(null);
   const markers = useNoteIndex(ticker);
   const [target, setTarget] = useState<SubjectTarget | null>(null);
+  const [cellTarget, setCellTarget] = useState<RatioCellTarget | null>(null);
 
   const { data, isPending, isError } = useQuery(ratiosQueryOptions(ticker, freq, basis));
 
@@ -177,8 +182,15 @@ export function RatiosView({ ticker }: RatiosViewProps) {
 
   function openCell({ data: row, column }: CellClickedEvent<GridRow>) {
     const period = data?.periods.find((p) => p.key === column.getColId());
-    if (!row || !period || !notable(row, period)) return;
-    setTarget(cellTarget("ratio", row.id, row.label, period));
+    if (!row || row.heading || !period) return;
+    setCellTarget({
+      code: row.id,
+      label: row.label,
+      periodLabel: period.label,
+      fiscalYear: period.fiscal_year,
+      fiscalPeriod: period.fiscal_period,
+      ttm: period.key.startsWith("TTM"),
+    });
   }
 
   function exportCsv() {
@@ -265,6 +277,13 @@ export function RatiosView({ ticker }: RatiosViewProps) {
         </>
       )}
       <SubjectNotesSheet ticker={ticker} target={target} onClose={() => setTarget(null)} />
+      <RatioCellSheet
+        ticker={ticker}
+        freq={freq}
+        basis={basis}
+        target={cellTarget}
+        onClose={() => setCellTarget(null)}
+      />
     </div>
   );
 }

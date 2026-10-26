@@ -27,7 +27,7 @@ from bedrock.mapping.config import (
     load_overrides,
     split_group,
 )
-from bedrock.mapping.mapper import map_facts
+from bedrock.mapping.mapper import CANONICAL_COLUMNS, map_facts
 from bedrock.mapping.vintage import balance_snapshot, select_vintage
 from bedrock.statements.build import StatementTable, build_statement
 from bedrock.statements.rules import Rules, filings_tagging_nci
@@ -117,6 +117,35 @@ def fact_frame(ticker: str, mappings: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+def cover_shares(ticker: str) -> pd.DataFrame:
+    """The cover-page counts of the fixture, dated on the period each filing reports, like
+    `load_cover_shares`."""
+    with gzip.open(FIXTURES / f"{ticker}.json.gz", "rt") as handle:
+        parsed = parse_companyfacts(json.load(handle))
+    filings = {f.accession_no: f for f in parsed.filings}
+    rows = [
+        (
+            "shares_outstanding",
+            None,
+            filings[f.accession_no].period_end,
+            f.value,
+            f.taxonomy,
+            f.concept,
+            f.unit,
+            f.accession_no,
+            filings[f.accession_no].form,
+            filings[f.accession_no].filed_at,
+            "instant",
+        )
+        for f in parsed.facts
+        if (f.taxonomy, f.concept, f.unit)
+        == ("dei", "EntityCommonStockSharesOutstanding", "shares")
+    ]
+    return pd.DataFrame(rows, columns=CANONICAL_COLUMNS).astype(
+        {"period_start": "object", "period_end": "object", "value": "object", "filed_at": "object"}
+    )
+
+
 FACT_COLUMNS = [
     "taxonomy",
     "concept",
@@ -185,7 +214,12 @@ def run_pipeline(ticker: str) -> Pipeline:
     latest = select_vintage(facts, snapshot=balance_snapshot(mappings))
     canonical = split_adjust(map_facts(latest, mappings, items), fixture_splits(ticker))
     identities = load_identities(DEFAULT_ITEMS_PATH, items)
-    rules = Rules(tuple(identities), filings_tagging_nci(facts, mappings))
+    splits = fixture_splits(ticker)
+    rules = Rules(
+        tuple(identities),
+        filings_tagging_nci(facts, mappings),
+        split_adjust(cover_shares(ticker), splits),
+    )
     return Pipeline(
         items=items,
         facts=facts,

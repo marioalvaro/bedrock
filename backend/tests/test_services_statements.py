@@ -219,3 +219,17 @@ def test_unmapped_concepts_carry_the_shipped_triage_and_the_classified_come_last
     classified = [c.classification is not None for c in gaps.unmapped_concepts]
     assert any(classified)
     assert classified == sorted(classified)
+
+
+def test_the_full_load_carries_the_cover_page_counts_and_the_key_stat_load_does_not(
+    db_session: Session, aapl: Company
+) -> None:
+    from bedrock.services.statements import _key_stat_codes, _load
+
+    subset = _load(db_session, aapl, codes=_key_stat_codes())
+    full = _load(db_session, aapl)
+
+    assert subset.rules.cover_shares is None
+    assert full.rules.cover_shares is not None
+    assert not full.rules.cover_shares.empty
+    assert set(full.rules.cover_shares["code"]) == {"shares_outstanding"}

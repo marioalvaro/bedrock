@@ -141,32 +141,46 @@ function shiftDecimal({ negative, whole, fraction }: DecimalParts, places: numbe
   return negative ? `-${text}` : text;
 }
 
-export type RatioUnit = "pct" | "x" | "days" | "USD/shares";
+export type RatioUnit = "pct" | "x" | "days" | "USD/shares" | "USD";
 export type ThresholdUnit = "pct" | "x";
 
 /**
  * A ratio by its unit: `pct` (a fraction) as a percent with 1 decimal ("12.3%"), `x` like
  * `formatMultiple` ("12.3x"), `days` with 0 decimals ("45"), `USD/shares` with 2 decimals
- * ("6.11"). Negatives in parentheses, null "—".
+ * ("6.11"), `USD` compact ("118.9B"). Negatives in parentheses, null "—".
  */
 export function formatRatio(value: string | null, unit: RatioUnit): string {
   if (value === null) return DASH;
   const number = Number(value);
   if (unit === "pct") return formatNumber(number * 100, 1, "%");
   if (unit === "x") return formatNumber(number, 1, "x");
+  if (unit === "USD") return formatCompact(value);
   return formatNumber(number, unit === "days" ? 0 : 2);
 }
 
 /**
+ * An input of a ratio in its cell details: amounts and share counts compact ("600.0M"), the
+ * rest by their unit as `formatRatio`, and `points` (earnings growth) with one decimal ("100.0
+ * pts"). Null "—".
+ */
+export function formatInput(value: string | null, unit: string): string {
+  if (value === null) return DASH;
+  if (unit === "USD" || unit === "shares") return formatCompact(value);
+  if (unit === "points") return formatNumber(Number(value), 1, " pts");
+  return formatRatio(value, unit as RatioUnit);
+}
+
+/**
  * A ratio as a CSV cell: like `formatRatio` but with a plain minus sign, no thousands separators
- * and no "x" suffix (`pct` "-2.8%", `x` "12.3", `days` "45", `USD/shares` "6.11"); null "".
+ * and no "x" suffix (`pct` "-2.8%", `x` "12.3", `days` "45", `USD/shares` "6.11", `USD` whole
+ * dollars "118923000000"); null "".
  */
 export function formatCsvRatio(value: string | null, unit: RatioUnit): string {
   if (value === null) return "";
   const number = Number(value);
   if (unit === "pct") return csvNumber(number * 100, 1, "%");
   if (unit === "x") return csvNumber(number, 1);
-  return csvNumber(number, unit === "days" ? 0 : 2);
+  return csvNumber(number, unit === "days" || unit === "USD" ? 0 : 2);
 }
 
 /**

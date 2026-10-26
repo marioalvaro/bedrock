@@ -44,6 +44,8 @@ annual:
     #   lease liability before FY2020, so this operand is the debt alone) + equity 90,488 - cash 48,844 - 51,713 = 97,978 [10-K FY2020]
     # 56,723.858 / avg(87,493, 97,978) = 92,735.5
     roic: 0.611674
+    # invested capital in USD (the row of the same name): FY2020 87,493 million, derived above [10-K FY2021]
+    invested_capital_usd: 87493000000
     # total debt 113,097 (4,996 + 8,773 + 98,667 + finance leases 24 + 637, M3 S6) / total equity 65,339 [10-K FY2021]
     debt_to_equity: 1.730926
     # total current assets 143,713 / total current liabilities 105,392 [10-K FY2021]
@@ -86,6 +88,8 @@ annual:
     #   - cash 29,943 - 35,228 = 99,304
     # 112,280.892 / avg(118,923, 99,304) = 109,113.5 [all 10-K FY2025]
     roic: 1.029028
+    # invested capital in USD: FY2025 118,923 million, derived above [10-K FY2025]
+    invested_capital_usd: 118923000000
     # total debt 99,887 (7,979 + 12,350 + 78,328 + finance leases 538 + 692, M3 S6) / total equity 73,733 [10-K FY2025]
     debt_to_equity: 1.354712
     # total current assets 147,957 / total current liabilities 165,631 [10-K FY2025]

@@ -266,7 +266,7 @@ export type CellDetailOut = {
     /**
      * Provenance
      */
-    provenance: 'reported' | 'derived' | 'normalized' | 'zero_inferred' | null;
+    provenance: 'reported' | 'derived' | 'normalized' | 'zero_inferred' | 'approximated' | null;
     source: SourceOut | null;
     /**
      * Value
@@ -481,7 +481,7 @@ export type CompsRowOut = {
     /**
      * Unit
      */
-    unit: 'pct' | 'x' | 'days' | 'USD/shares';
+    unit: 'pct' | 'x' | 'days' | 'USD/shares' | 'USD';
 };
 
 /**
@@ -1110,7 +1110,7 @@ export type MultipleOut = {
     /**
      * Unit
      */
-    unit: 'pct' | 'x' | 'days' | 'USD/shares';
+    unit: 'pct' | 'x' | 'days' | 'USD/shares' | 'USD';
 };
 
 /**
@@ -1324,6 +1324,32 @@ export type OffBalanceItemOut = {
      * Updated At
      */
     updated_at: string;
+};
+
+/**
+ * OperandOut
+ */
+export type OperandOut = {
+    /**
+     * Average
+     */
+    average: boolean;
+    /**
+     * Prior Terms
+     */
+    prior_terms: Array<TermOut>;
+    /**
+     * Terms
+     */
+    terms: Array<TermOut>;
+    /**
+     * Text
+     */
+    text: string;
+    /**
+     * Value
+     */
+    value: string | null;
 };
 
 /**
@@ -1572,6 +1598,60 @@ export type QoeThresholdsIn = {
 };
 
 /**
+ * RatioCellOut
+ *
+ * How one ratio value was computed: `value` = numerator ÷ denominator × `scale`.
+ */
+export type RatioCellOut = {
+    /**
+     * Category
+     */
+    category: 'Profitability' | 'DuPont' | 'Liquidity' | 'Solvency' | 'Efficiency' | 'Per share' | 'Valuation';
+    /**
+     * Caveat
+     */
+    caveat: string | null;
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Definition
+     */
+    definition: string;
+    denominator: OperandOut | null;
+    /**
+     * Fiscal Period
+     */
+    fiscal_period: string;
+    /**
+     * Fiscal Year
+     */
+    fiscal_year: number;
+    /**
+     * Label
+     */
+    label: string;
+    numerator: OperandOut;
+    /**
+     * Reason
+     */
+    reason: string | null;
+    /**
+     * Scale
+     */
+    scale: string;
+    /**
+     * Unit
+     */
+    unit: 'pct' | 'x' | 'days' | 'USD/shares' | 'USD';
+    /**
+     * Value
+     */
+    value: string | null;
+};
+
+/**
  * RatioRowOut
  *
  * One ratio. `values` is aligned with `periods`; `pct` values are fractions (0.05 = 5 %).
@@ -1600,7 +1680,7 @@ export type RatioRowOut = {
     /**
      * Unit
      */
-    unit: 'pct' | 'x' | 'days' | 'USD/shares';
+    unit: 'pct' | 'x' | 'days' | 'USD/shares' | 'USD';
     /**
      * Values
      */
@@ -1706,7 +1786,7 @@ export type RowOut = {
     /**
      * Provenance
      */
-    provenance: Array<'reported' | 'derived' | 'normalized' | 'zero_inferred' | null>;
+    provenance: Array<'reported' | 'derived' | 'normalized' | 'zero_inferred' | 'approximated' | null>;
     /**
      * Unit
      */
@@ -2017,6 +2097,50 @@ export type StatementOut = {
      * Ticker
      */
     ticker: string;
+};
+
+/**
+ * TermOut
+ *
+ * One input of a ratio operand; a metric lists its own inputs as `children`.
+ */
+export type TermOut = {
+    /**
+     * Children
+     */
+    children: Array<TermOut>;
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Definition
+     */
+    definition: string;
+    /**
+     * Kind
+     */
+    kind: 'line' | 'metric' | 'ratio';
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Note
+     */
+    note: string | null;
+    /**
+     * Sign
+     */
+    sign: number;
+    /**
+     * Unit
+     */
+    unit: string;
+    /**
+     * Value
+     */
+    value: string | null;
 };
 
 /**
@@ -3278,6 +3402,57 @@ export type GetRatiosApiV1CompaniesTickerRatiosGetResponses = {
 };
 
 export type GetRatiosApiV1CompaniesTickerRatiosGetResponse = GetRatiosApiV1CompaniesTickerRatiosGetResponses[keyof GetRatiosApiV1CompaniesTickerRatiosGetResponses];
+
+export type GetRatioCellApiV1CompaniesTickerRatiosCellGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query: {
+        /**
+         * Freq
+         */
+        freq: 'annual' | 'ttm';
+        /**
+         * Code
+         */
+        code: string;
+        /**
+         * Fiscal Year
+         */
+        fiscal_year: number;
+        /**
+         * Fiscal Period
+         */
+        fiscal_period: string;
+        /**
+         * Basis
+         */
+        basis?: 'reported' | 'normalized';
+    };
+    url: '/api/v1/companies/{ticker}/ratios/cell';
+};
+
+export type GetRatioCellApiV1CompaniesTickerRatiosCellGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetRatioCellApiV1CompaniesTickerRatiosCellGetError = GetRatioCellApiV1CompaniesTickerRatiosCellGetErrors[keyof GetRatioCellApiV1CompaniesTickerRatiosCellGetErrors];
+
+export type GetRatioCellApiV1CompaniesTickerRatiosCellGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: RatioCellOut;
+};
+
+export type GetRatioCellApiV1CompaniesTickerRatiosCellGetResponse = GetRatioCellApiV1CompaniesTickerRatiosCellGetResponses[keyof GetRatioCellApiV1CompaniesTickerRatiosCellGetResponses];
 
 export type RefreshApiV1CompaniesTickerRefreshPostData = {
     body?: never;

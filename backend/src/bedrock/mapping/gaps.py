@@ -8,7 +8,7 @@ from decimal import Decimal
 import pandas as pd
 
 from bedrock.mapping.candidates import CandidateIndex, candidate_codes
-from bedrock.mapping.config import CanonicalItemDef
+from bedrock.mapping.config import SUPPORT_CODES, CanonicalItemDef
 from bedrock.mapping.triage import ConceptKey, ConceptVerdict
 from bedrock.statements.build import StatementTable
 
@@ -38,12 +38,13 @@ class UnmappedConcept:
 def missing_items(
     tables: Mapping[str, StatementTable], items: Sequence[CanonicalItemDef]
 ) -> list[MissingItem]:
-    """Non-residual items with no value in some fiscal year. Residuals absorb gaps by design,
-    so they are never reported. Pass the annual table of each statement."""
+    """Non-residual items with no value in some fiscal year. Residuals absorb gaps by design, and
+    the support lines of an identity (`SUPPORT_CODES`) are optional, so neither is reported.
+    Pass the annual table of each statement."""
     missing: list[MissingItem] = []
     for item in items:
         table = tables.get(item.statement)
-        if item.residual or table is None:
+        if item.residual or item.code in SUPPORT_CODES or table is None:
             continue
         row = next((r for r in table.rows if r.code == item.code), None)
         if row is None:

@@ -362,6 +362,19 @@ describe("StatementView", () => {
     expect(screen.getByText(/Derived/)).toBeInTheDocument();
   });
 
+  it("marks approximated cells like derived ones, since they are not hard facts", async () => {
+    const payload = incomeStatement();
+    payload.rows[0]!.provenance = ["approximated", "reported"];
+    vi.mocked(getStatementApiV1CompaniesTickerStatementsGet).mockResolvedValue(
+      okResult(payload) as never,
+    );
+    renderView();
+
+    const approximated = (await screen.findByText("383,285")).closest("[col-id]");
+    expect(approximated).toHaveClass("prov-derived");
+    expect(screen.getByText(/rebuilt Q4 share counts and EPS/)).toBeInTheDocument();
+  });
+
   describe("basis", () => {
     const lastQuery = () =>
       vi.mocked(getStatementApiV1CompaniesTickerStatementsGet).mock.calls.at(-1)![0]!.query;

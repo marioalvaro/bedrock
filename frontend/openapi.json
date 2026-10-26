@@ -451,7 +451,8 @@
                   "reported",
                   "derived",
                   "normalized",
-                  "zero_inferred"
+                  "zero_inferred",
+                  "approximated"
                 ],
                 "type": "string"
               },
@@ -900,7 +901,8 @@
               "pct",
               "x",
               "days",
-              "USD/shares"
+              "USD/shares",
+              "USD"
             ],
             "title": "Unit",
             "type": "string"
@@ -1998,7 +2000,8 @@
               "pct",
               "x",
               "days",
-              "USD/shares"
+              "USD/shares",
+              "USD"
             ],
             "title": "Unit",
             "type": "string"
@@ -2491,6 +2494,53 @@
         "title": "OffBalanceItemOut",
         "type": "object"
       },
+      "OperandOut": {
+        "properties": {
+          "average": {
+            "title": "Average",
+            "type": "boolean"
+          },
+          "prior_terms": {
+            "items": {
+              "$ref": "#/components/schemas/TermOut"
+            },
+            "title": "Prior Terms",
+            "type": "array"
+          },
+          "terms": {
+            "items": {
+              "$ref": "#/components/schemas/TermOut"
+            },
+            "title": "Terms",
+            "type": "array"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "text",
+          "average",
+          "value",
+          "terms",
+          "prior_terms"
+        ],
+        "title": "OperandOut",
+        "type": "object"
+      },
       "PeerSuggestionOut": {
         "properties": {
           "in_set": {
@@ -2979,6 +3029,124 @@
         "title": "QoeThresholdsIn",
         "type": "object"
       },
+      "RatioCellOut": {
+        "description": "How one ratio value was computed: `value` = numerator \u00f7 denominator \u00d7 `scale`.",
+        "properties": {
+          "category": {
+            "enum": [
+              "Profitability",
+              "DuPont",
+              "Liquidity",
+              "Solvency",
+              "Efficiency",
+              "Per share",
+              "Valuation"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "caveat": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caveat"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "definition": {
+            "title": "Definition",
+            "type": "string"
+          },
+          "denominator": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OperandOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fiscal_period": {
+            "title": "Fiscal Period",
+            "type": "string"
+          },
+          "fiscal_year": {
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "numerator": {
+            "$ref": "#/components/schemas/OperandOut"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "scale": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Scale",
+            "type": "string"
+          },
+          "unit": {
+            "enum": [
+              "pct",
+              "x",
+              "days",
+              "USD/shares",
+              "USD"
+            ],
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "code",
+          "label",
+          "category",
+          "unit",
+          "definition",
+          "caveat",
+          "fiscal_year",
+          "fiscal_period",
+          "value",
+          "scale",
+          "numerator",
+          "denominator",
+          "reason"
+        ],
+        "title": "RatioCellOut",
+        "type": "object"
+      },
       "RatioRowOut": {
         "description": "One ratio. `values` is aligned with `periods`; `pct` values are fractions (0.05 = 5 %).",
         "properties": {
@@ -3023,7 +3191,8 @@
               "pct",
               "x",
               "days",
-              "USD/shares"
+              "USD/shares",
+              "USD"
             ],
             "title": "Unit",
             "type": "string"
@@ -3207,7 +3376,8 @@
                     "reported",
                     "derived",
                     "normalized",
-                    "zero_inferred"
+                    "zero_inferred",
+                    "approximated"
                   ],
                   "type": "string"
                 },
@@ -3778,6 +3948,83 @@
           "balance_check"
         ],
         "title": "StatementOut",
+        "type": "object"
+      },
+      "TermOut": {
+        "description": "One input of a ratio operand; a metric lists its own inputs as `children`.",
+        "properties": {
+          "children": {
+            "items": {
+              "$ref": "#/components/schemas/TermOut"
+            },
+            "title": "Children",
+            "type": "array"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "definition": {
+            "title": "Definition",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "line",
+              "metric",
+              "ratio"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "sign": {
+            "title": "Sign",
+            "type": "integer"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "code",
+          "label",
+          "kind",
+          "unit",
+          "sign",
+          "value",
+          "definition",
+          "note",
+          "children"
+        ],
+        "title": "TermOut",
         "type": "object"
       },
       "UnmappedConceptOut": {
@@ -5745,6 +5992,102 @@
           }
         },
         "summary": "Get Ratios",
+        "tags": [
+          "ratios"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/ratios/cell": {
+      "get": {
+        "operationId": "get_ratio_cell_api_v1_companies__ticker__ratios_cell_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "freq",
+            "required": true,
+            "schema": {
+              "enum": [
+                "annual",
+                "ttm"
+              ],
+              "title": "Freq",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fiscal_year",
+            "required": true,
+            "schema": {
+              "title": "Fiscal Year",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fiscal_period",
+            "required": true,
+            "schema": {
+              "title": "Fiscal Period",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "basis",
+            "required": false,
+            "schema": {
+              "default": "reported",
+              "enum": [
+                "reported",
+                "normalized"
+              ],
+              "title": "Basis",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RatioCellOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Ratio Cell",
         "tags": [
           "ratios"
         ]

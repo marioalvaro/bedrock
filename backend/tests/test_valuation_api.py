@@ -49,7 +49,10 @@ def ratios(client: TestClient, freq: str = "annual") -> dict[str, Any]:
 def test_valuation_rows_are_listed_in_the_valuation_category(priced_client: TestClient) -> None:
     body = ratios(priced_client)
     codes = [r["code"] for r in body["rows"] if r["category"] == "Valuation"]
-    assert codes[:2] == ["pe", "earnings_yield"] and len(codes) == 13
+    assert codes[:2] == ["pe", "earnings_yield"] and len(codes) == 14
+    ev = next(r for r in body["rows"] if r["code"] == "enterprise_value_usd")
+    assert (ev["label"], ev["unit"]) == ("Enterprise value", "USD")
+    assert any(v is not None for v in ev["values"])
 
 
 def test_annual_pb_equals_the_close_over_book_value_per_share(priced_client: TestClient) -> None:

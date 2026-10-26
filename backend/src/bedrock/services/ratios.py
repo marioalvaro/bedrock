@@ -11,7 +11,9 @@ from bedrock.analysis.multiples import MultipleSummary, valuation_summary
 from bedrock.models.company import Company
 from bedrock.ratios.calculator import RatioFreq, RatioInputs, RatioTable, compute_ratios
 from bedrock.ratios.caveats import Caveat, load_caveats
+from bedrock.ratios.explain import RatioExplanation, explain_ratio
 from bedrock.repositories import prices as price_repo
+from bedrock.services.errors import RatioCellNotFound
 from bedrock.services.statements import Basis, statement_tables
 from bedrock.statements.build import StatementTable
 
@@ -21,6 +23,25 @@ def ratios(session: Session, company: Company, freq: RatioFreq, basis: Basis) ->
     statements gives a table with no periods and every ratio row."""
     inputs = ratio_inputs(session, company, freq, basis)
     return compute_ratios(inputs, freq, _caveats().get(company.ticker.upper(), ()))
+
+
+def ratio_cell(
+    session: Session,
+    company: Company,
+    freq: RatioFreq,
+    basis: Basis,
+    code: str,
+    fiscal_year: int,
+    fiscal_period: str,
+) -> RatioExplanation:
+    """How one value of the ratio table was computed: its formula and inputs (FR-ANL-11). Raises
+    `RatioCellNotFound` for an unknown ratio or a period that is not a column of the table."""
+    inputs = ratio_inputs(session, company, freq, basis)
+    caveats = _caveats().get(company.ticker.upper(), ())
+    try:
+        return explain_ratio(inputs, freq, code, (fiscal_year, fiscal_period), caveats)
+    except KeyError as error:
+        raise RatioCellNotFound(f"{code} {fiscal_year} {fiscal_period}") from error
 
 
 def ratio_inputs(session: Session, company: Company, freq: RatioFreq, basis: Basis) -> RatioInputs:

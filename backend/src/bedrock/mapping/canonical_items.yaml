@@ -620,6 +620,27 @@ items:
   concepts:
     - us-gaap:CommonStockSharesOutstanding
   residual: false
+- code: shares_issued
+  statement: BS
+  label: Shares issued
+  kind: instant
+  unit: shares
+  sign: 1
+  parent: null
+  concepts:
+    - us-gaap:CommonStockSharesIssued
+  residual: false
+- code: treasury_shares
+  statement: BS
+  label: Treasury shares
+  kind: instant
+  unit: shares
+  sign: 1
+  parent: null
+  concepts:
+    - us-gaap:TreasuryStockCommonShares
+    - us-gaap:TreasuryStockShares
+  residual: false
 - code: cfo
   statement: CF
   label: Cash from operations
@@ -910,3 +931,6 @@ identities:
   - id: total_assets_equals_le
     equation: total_assets = total_liabilities_and_equity
     solve: {total_assets: {mode: exact}, total_liabilities_and_equity: {mode: exact}}
+  - id: shares_outstanding_count
+    equation: shares_outstanding = shares_issued - treasury_shares
+    solve: {shares_outstanding: {mode: exact}}

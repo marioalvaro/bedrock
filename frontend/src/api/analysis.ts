@@ -11,6 +11,7 @@ import {
   getCapitalAllocationApiV1CompaniesTickerCapitalAllocationGet,
   getFlagsApiV1CompaniesTickerFlagsGet,
   getMultiplesApiV1CompaniesTickerMultiplesGet,
+  getRatioCellApiV1CompaniesTickerRatiosCellGet,
   getRatiosApiV1CompaniesTickerRatiosGet,
   listCustomRulesApiV1QoeCustomRulesGet,
   listOffBalanceItemsApiV1CompaniesTickerOffBalanceItemsGet,
@@ -69,6 +70,36 @@ export const ratiosQueryOptions = (ticker: string, freq: AnalysisFreq, basis: Ba
       if (!hasArrays(body, ["periods", "rows"])) throw new ApiError(200, "Unexpected response");
       return body;
     },
+  });
+
+/**
+ * GET …/ratios/cell: how one ratio value was computed (its formula and inputs). Key
+ * `[...ratiosKey(ticker), "cell", freq, basis, code, fiscalYear, fiscalPeriod]`, so an adjustment
+ * change (`invalidateAdjustmentViews`) reaches it.
+ */
+export const ratioCellQueryOptions = (
+  ticker: string,
+  freq: AnalysisFreq,
+  basis: Basis,
+  code: string,
+  fiscalYear: number,
+  fiscalPeriod: string,
+) =>
+  queryOptions({
+    queryKey: [...ratiosKey(ticker), "cell", freq, basis, code, fiscalYear, fiscalPeriod],
+    queryFn: () =>
+      unwrap(
+        getRatioCellApiV1CompaniesTickerRatiosCellGet({
+          path: { ticker },
+          query: {
+            freq,
+            basis,
+            code,
+            fiscal_year: fiscalYear,
+            fiscal_period: fiscalPeriod,
+          },
+        }),
+      ),
   });
 
 /**

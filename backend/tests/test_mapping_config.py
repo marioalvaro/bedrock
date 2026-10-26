@@ -347,10 +347,10 @@ def test_load_overrides_rejects_unknown_codes_and_duplicates(tmp_path: Path) -> 
         load_overrides(tmp_path, "Y", items)
 
 
-def test_shipped_canonical_items_load_with_82_codes() -> None:
+def test_shipped_canonical_items_load_with_84_codes() -> None:
     items = load_canonical_items(DEFAULT_ITEMS_PATH)
 
-    assert len(items) == 82
+    assert len(items) == 84
     assert {i.statement for i in items} == {"IS", "BS", "CF"}
     by_code = {i.code: i for i in items}
     assert by_code["eps_diluted"].kind == "average"
@@ -358,6 +358,20 @@ def test_shipped_canonical_items_load_with_82_codes() -> None:
     assert by_code["capex"].sign == -1
     assert by_code["other_current_assets"].residual is True
     assert by_code["cash"].parent == "total_current_assets"
+    for code, concepts in (
+        ("shares_issued", ["us-gaap:CommonStockSharesIssued"]),
+        (
+            "treasury_shares",
+            ["us-gaap:TreasuryStockCommonShares", "us-gaap:TreasuryStockShares"],
+        ),
+    ):
+        assert (by_code[code].statement, by_code[code].kind, by_code[code].unit) == (
+            "BS",
+            "instant",
+            "shares",
+        )
+        assert list(by_code[code].concepts) == concepts
+        assert by_code[code].parent is None
     assert by_code["total_current_assets"].parent == "total_assets"
     assert by_code["rnd"].parent == "total_operating_costs"
     assert by_code["capex"].parent == "cfi"

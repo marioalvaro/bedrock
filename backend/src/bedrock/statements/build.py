@@ -59,6 +59,7 @@ class StatementTable:
 
 
 RATIO_PLACES = Decimal("0.000001")
+TTM_EPS_CODES = frozenset({"eps_basic", "eps_diluted"})
 
 
 def build_statement(
@@ -109,20 +110,23 @@ def build_statement(
 
 
 def _ttm_cell(item: CanonicalItemDef, quarter_keys: list[str], cells: dict[CellKey, Cell]) -> Cell:
-    if item.kind != "flow":
+    """The sum of the last four discrete quarters: flows, and the two EPS lines (market convention:
+    the sum of the quarterly EPS). Other average items have no TTM."""
+    if item.kind != "flow" and item.code not in TTM_EPS_CODES:
         return EMPTY
-    values = [cells.get((item.code, key), EMPTY).value for key in quarter_keys]
-    if any(v is None for v in values):
+    quarters = [cells.get((item.code, key), EMPTY) for key in quarter_keys]
+    if any(q.value is None for q in quarters):
         return EMPTY
-    normalized = any(
-        cells.get((item.code, key), EMPTY).provenance == "normalized" for key in quarter_keys
-    )
-    inferred = all(
-        cells.get((item.code, key), EMPTY).provenance == "zero_inferred" for key in quarter_keys
-    )
+    provenance = {q.provenance for q in quarters}
     return Cell(
-        sum((v for v in values if v is not None), Decimal(0)),
-        "zero_inferred" if inferred else "normalized" if normalized else "derived",
+        sum((q.value for q in quarters if q.value is not None), Decimal(0)),
+        "zero_inferred"
+        if provenance == {"zero_inferred"}
+        else "normalized"
+        if "normalized" in provenance
+        else "approximated"
+        if "approximated" in provenance
+        else "derived",
     )
 
 

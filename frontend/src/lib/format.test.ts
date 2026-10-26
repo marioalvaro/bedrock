@@ -17,6 +17,7 @@ import {
   formatMultiple,
   formatPercent,
   formatPrice,
+  formatInput,
   formatRatio,
   formatThreshold,
   formatRelative,
@@ -279,12 +280,16 @@ describe("formatRatio", () => {
     ["6.1111", "USD/shares", "6.11"],
     ["-6.1111", "USD/shares", "(6.11)"],
     ["1234.5", "USD/shares", "1,234.50"],
+    ["118923000000", "USD", "118.9B"],
+    ["812400000", "USD", "812.4M"],
+    ["1500000000000", "USD", "1.5T"],
+    ["-1234000000", "USD", "(1.2B)"],
   ] as const)("formats %s as %s -> %s", (value, unit, text) => {
     expect(formatRatio(value, unit)).toBe(text);
   });
 
   it("shows an em dash for null in every unit", () => {
-    for (const unit of ["pct", "x", "days", "USD/shares"] as const) {
+    for (const unit of ["pct", "x", "days", "USD/shares", "USD"] as const) {
       expect(formatRatio(null, unit)).toBe("—");
     }
   });
@@ -307,12 +312,14 @@ describe("formatCsvRatio", () => {
     ["45", "days", "45"],
     ["6.1111", "USD/shares", "6.11"],
     ["-1234.567", "USD/shares", "-1234.57"],
+    ["118923000000", "USD", "118923000000"],
+    ["-1234000000", "USD", "-1234000000"],
   ] as const)("writes %s as %s -> %s", (value, unit, text) => {
     expect(formatCsvRatio(value, unit)).toBe(text);
   });
 
   it("writes null as an empty cell", () => {
-    for (const unit of ["pct", "x", "days", "USD/shares"] as const) {
+    for (const unit of ["pct", "x", "days", "USD/shares", "USD"] as const) {
       expect(formatCsvRatio(null, unit)).toBe("");
     }
   });
@@ -595,5 +602,25 @@ describe("formatHitRate", () => {
     [null, "—"],
   ] as const)("formats %j as %j", (value, text) => {
     expect(formatHitRate(value)).toBe(text);
+  });
+});
+
+describe("formatInput", () => {
+  it.each([
+    ["600000000", "USD", "600.0M"],
+    ["-1234000000", "USD", "(1.2B)"],
+    ["14773260000", "shares", "14.8B"],
+    ["60", "USD/shares", "60.00"],
+    ["0.156100", "pct", "15.6%"],
+    ["100", "points", "100.0 pts"],
+    ["-3.45", "points", "(3.5 pts)"],
+    ["30", "x", "30.0x"],
+    ["12", "days", "12"],
+  ] as const)("formats %s (%s) as %s", (value, unit, text) => {
+    expect(formatInput(value, unit)).toBe(text);
+  });
+
+  it("shows an em dash for a missing input", () => {
+    expect(formatInput(null, "USD")).toBe("—");
   });
 });

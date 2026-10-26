@@ -6,7 +6,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Literal
 
-Provenance = Literal["reported", "derived", "normalized", "zero_inferred"]
+Provenance = Literal["reported", "derived", "normalized", "zero_inferred", "approximated"]
 
 
 @dataclass(frozen=True)

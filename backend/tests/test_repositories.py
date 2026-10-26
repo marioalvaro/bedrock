@@ -23,6 +23,7 @@ from bedrock.mapping.config import (
     load_canonical_items,
     load_overrides,
 )
+from bedrock.mapping.mapper import CANONICAL_COLUMNS
 from bedrock.models.canonical_item import CanonicalItem
 from bedrock.models.company import Company
 from bedrock.models.concept_mapping import ConceptMapping
@@ -245,6 +246,36 @@ def test_latest_shares_outstanding_is_none_without_data(db_session: Session) -> 
     assert facts_repo.latest_shares_outstanding(db_session, _company(db_session).id) is None
 
 
+def test_cover_shares_are_dated_on_the_period_each_filing_reports(db_session: Session) -> None:
+    company = _company(db_session)
+    facts_repo.insert_parsed(db_session, company, _parsed())
+    db_session.commit()
+
+    frame = facts_repo.load_cover_shares(db_session, company.id)
+
+    filings = {f.accession_no: f for f in db_session.scalars(select(Filing))}
+    assert len(frame) > 20
+    assert set(frame["code"]) == {"shares_outstanding"}
+    assert set(frame["kind"]) == {"instant"}
+    assert set(zip(frame["taxonomy"], frame["concept"], frame["unit"], strict=True)) == {
+        ("dei", "EntityCommonStockSharesOutstanding", "shares")
+    }
+    assert frame["period_start"].isna().all()
+    for accession, period_end, filed_at, form in zip(
+        frame["accession_no"], frame["period_end"], frame["filed_at"], frame["form"], strict=True
+    ):
+        assert period_end == filings[accession].period_end  # not the cover date, weeks later
+        assert (filed_at, form) == (filings[accession].filed_at, filings[accession].form)
+    assert all(isinstance(v, Decimal) for v in frame["value"])
+
+
+def test_cover_shares_of_a_company_without_data_are_empty(db_session: Session) -> None:
+    frame = facts_repo.load_cover_shares(db_session, _company(db_session).id)
+
+    assert frame.empty
+    assert list(frame.columns) == list(CANONICAL_COLUMNS)
+
+
 # --- mappings --------------------------------------------------------------------------------
 
 
@@ -258,7 +289,7 @@ def test_replace_mappings_stores_items_defaults_and_followed_overrides(db_sessio
     )
     db_session.commit()
 
-    assert _count_rows(db_session, CanonicalItem) == len(items) == 82
+    assert _count_rows(db_session, CanonicalItem) == len(items) == 84
     frame = mappings_repo.mappings_for(db_session, aapl.id)
     assert list(frame.columns) == [
         "canonical_code",

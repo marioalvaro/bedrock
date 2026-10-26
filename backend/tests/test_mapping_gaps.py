@@ -27,9 +27,21 @@ MAPS = mappings(
 REVENUE = {2021: (1, 1, 1, 1), 2022: (1, 1, 1, 1), 2023: (1, 1, 1, 1)}
 
 
-def tables(raw: list[dict[str, object]], freq: str = "annual"):  # type: ignore[no-untyped-def]
-    canonical = map_facts(select_vintage(facts(raw)), MAPS, ITEMS)
-    return {s: build_statement(canonical, ITEMS, s, freq) for s in ("IS", "BS")}  # type: ignore[arg-type]
+def tables(raw: list[dict[str, object]], freq: str = "annual", items=ITEMS):  # type: ignore[no-untyped-def]
+    canonical = map_facts(select_vintage(facts(raw)), MAPS, items)
+    return {s: build_statement(canonical, items, s, freq) for s in ("IS", "BS")}  # type: ignore[arg-type]
+
+
+def test_the_share_count_helper_lines_are_never_a_gap() -> None:
+    """`shares_issued` and `treasury_shares` only feed the shares-outstanding identity: a company
+    without a treasury count (Apple) has not left anything out."""
+    items = [*ITEMS, item("shares_issued", "BS", kind="instant", unit="shares")]
+    raw = flow_facts("Revenues", REVENUE)
+
+    codes = {g.code for g in missing_items(tables(raw, items=items), items)}
+
+    assert "shares_issued" not in codes
+    assert "cash" in codes  # other balance sheet lines are still reported
 
 
 def test_missing_items_lists_the_fiscal_years_with_no_value() -> None:

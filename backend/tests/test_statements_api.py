@@ -229,6 +229,41 @@ def test_an_inferred_zero_has_its_own_provenance_and_derivation(aapl_client: Tes
     assert cell["derivation"]["inputs"] == []
 
 
+def test_a_rebuilt_q4_eps_is_approximated_and_explains_its_inputs(aapl_client: TestClient) -> None:
+    body = _statement(aapl_client, "IS", "quarterly")
+    row = _row(body, "eps_diluted")
+    q4_at = next(
+        i
+        for i in reversed(range(len(body["periods"])))  # type: ignore[arg-type]
+        if body["periods"][i]["fiscal_period"] == "Q4"  # type: ignore[index]
+    )
+    assert row["provenance"][q4_at] == "approximated"  # type: ignore[index]
+
+    cell = aapl_client.get(
+        f"{STATEMENTS}/cell",
+        params={
+            "code": "eps_diluted",
+            "fiscal_year": body["periods"][q4_at]["fiscal_year"],  # type: ignore[index]
+            "fiscal_period": "Q4",
+        },
+    ).json()
+
+    assert cell["provenance"] == "approximated"
+    assert cell["source"] is None and cell["filing"] is None
+    assert cell["derivation"]["formula"] == "net_income_common / shares_diluted"
+    assert [i["code"] for i in cell["derivation"]["inputs"]] == [
+        "net_income_common",
+        "shares_diluted",
+    ]
+
+
+def test_ttm_eps_is_returned_and_approximated(aapl_client: TestClient) -> None:
+    row = _row(_statement(aapl_client, "IS", "ttm"), "eps_diluted")
+
+    assert row["values"][-1] is not None  # type: ignore[index]
+    assert row["provenance"][-1] == "approximated"  # type: ignore[index]
+
+
 def test_an_identity_solved_cell_explains_the_identity(aapl_client: TestClient) -> None:
     body = _statement(aapl_client, "BS", "annual")
     row = _row(body, "temporary_equity")

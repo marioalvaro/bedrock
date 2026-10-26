@@ -399,7 +399,8 @@ def test_eps_is_untouched_when_net_income_does_not_change() -> None:
 def test_the_share_counts_are_never_adjusted() -> None:
     quarterly = table("IS", "quarterly", [adj(1, "sga", 2023, "Q2", -5)])
 
-    assert q(quarterly, "shares_diluted") == [10, 10, 10, None]
+    assert q(quarterly, "shares_diluted") == [10, 10, 10, 10]  # Q4 is rebuilt (R2), not adjusted
+    assert provenance(quarterly, "shares_diluted")["FY2023Q4"] == "approximated"
 
 
 # --- the applied map --------------------------------------------------------------------------

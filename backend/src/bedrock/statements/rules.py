@@ -49,10 +49,13 @@ NCI_LINES = (
 class Rules:
     """What `solve_cells` applies beyond the mapped facts. `nci_filings` is the set of accession
     numbers whose filing tags an NCI concept; None switches R1b off (a frame that does not carry
-    the filings' concepts cannot say that a filing tags none)."""
+    the filings' concepts cannot say that a filing tags none). `cover_shares` holds the cover-page
+    share counts as a canonical-shaped frame (`code` `shares_outstanding`, `period_end` the end of
+    the period the filing reports, split-adjusted); None switches the cover-page rule (R7) off."""
 
     identities: tuple[IdentityDef, ...] = ()
     nci_filings: frozenset[str] | None = None
+    cover_shares: pd.DataFrame | None = None
 
 
 NO_RULES = Rules()

@@ -1,4 +1,4 @@
-"""Valuation ratios (FR-ANL-07): the price input, market cap / EV metrics, the 13 ratios, nulls."""
+"""Valuation ratios (FR-ANL-07): the price input, market cap / EV metrics, the 14 rows, nulls."""
 
 from dataclasses import replace
 from datetime import date
@@ -16,6 +16,7 @@ VALUATION = [
     "ps",
     "p_fcf",
     "fcf_yield",
+    "enterprise_value_usd",
     "ev_sales",
     "ev_ebitda",
     "ev_ebit",
@@ -102,6 +103,34 @@ def test_enterprise_value_multiples() -> None:
     assert values(t, "ev_ebitda") == [D("430") / 25, D("12.84")]
     assert values(t, "ev_ebit") == [D("21.5"), D("16.05")]
     assert values(t, "ev_fcf") == [D("21.5"), D("26.75")]
+
+
+def test_the_enterprise_value_row_is_the_metric_in_usd() -> None:
+    t = annual()
+    # the same EVs as above: 430 and 642
+    assert values(t, "enterprise_value_usd") == [D(430), D(642)]
+    assert values(annual(cash=[None, 10]), "enterprise_value_usd") == [None, D(642)]
+    assert values(annual(total_debt=[30, None]), "enterprise_value_usd") == [D(430), None]
+
+
+def test_the_enterprise_value_row_needs_a_price_and_the_multiples_follow_it() -> None:
+    no_prices = compute_ratios(RatioInputs(**{**inputs().__dict__, "prices": []}), "annual")
+    t = annual()
+
+    assert values(no_prices, "enterprise_value_usd") == [None, None]
+    revenue = [D(100), D(200)]
+    ev = values(t, "enterprise_value_usd")
+    assert [e / r for e, r in zip(ev, revenue, strict=True) if e is not None] == values(
+        t, "ev_sales"
+    )
+
+
+def test_the_invested_capital_row_is_debt_plus_equity_less_cash_and_investments() -> None:
+    t = annual(short_term_investments=[5, 3])
+
+    # FY2023 = 30 + 50 - 5 - 5; FY2024 = 40 + 70 - 10 - 3
+    assert values(t, "invested_capital_usd") == [D(70), D(97)]
+    assert values(annual(), "invested_capital_usd") == [D(70), None]  # a missing investments line
 
 
 def test_yields_payout_and_peg() -> None:

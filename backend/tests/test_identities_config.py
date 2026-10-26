@@ -241,7 +241,7 @@ def test_a_bad_identity_is_a_load_error(tmp_path: Path, identities: str, message
         load_identities(path, items)
 
 
-def test_the_shipped_file_loads_the_six_identities_of_the_erd() -> None:
+def test_the_shipped_file_loads_the_seven_identities_of_the_erd() -> None:
     items = load_canonical_items(DEFAULT_ITEMS_PATH)
 
     identities = load_identities(DEFAULT_ITEMS_PATH, items)
@@ -253,6 +253,7 @@ def test_the_shipped_file_loads_the_six_identities_of_the_erd() -> None:
         "net_income_split",
         "balance_sheet",
         "total_assets_equals_le",
+        "shares_outstanding_count",
     ]
     by_id = {i.id: i for i in identities}
     assert by_id["cash_rollforward"].solve == {"fx_effect": SolveRule("bounded", Decimal("0.05"))}
@@ -261,3 +262,11 @@ def test_the_shipped_file_loads_the_six_identities_of_the_erd() -> None:
         "equity_parent": SolveRule("exact", None),
     }
     assert by_id["balance_sheet"].solve == {"temporary_equity": SolveRule("zero_only", None)}
+    assert by_id["shares_outstanding_count"].terms == (
+        (1, "shares_outstanding"),
+        (-1, "shares_issued"),
+        (1, "treasury_shares"),
+    )
+    assert by_id["shares_outstanding_count"].solve == {
+        "shares_outstanding": SolveRule("exact", None)
+    }

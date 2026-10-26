@@ -21,7 +21,7 @@ export const FORMULA_GROUPS: FormulaGroup[] = [
   {
     title: "Balance sheet lines",
     names: codes(
-      "total_assets total_current_assets cash short_term_investments receivables inventory other_current_assets total_noncurrent_assets ppe_net operating_lease_rou goodwill intangibles long_term_investments other_noncurrent_assets total_liabilities total_current_liabilities accounts_payable short_term_debt deferred_revenue_current accrued_liabilities other_current_liabilities total_noncurrent_liabilities long_term_debt operating_lease_liabilities_noncurrent other_noncurrent_liabilities temporary_equity total_equity equity_parent common_stock_apic retained_earnings aoci other_equity nci total_liabilities_and_equity total_debt net_debt shares_outstanding",
+      "total_assets total_current_assets cash short_term_investments receivables inventory other_current_assets total_noncurrent_assets ppe_net operating_lease_rou goodwill intangibles long_term_investments other_noncurrent_assets total_liabilities total_current_liabilities accounts_payable short_term_debt deferred_revenue_current accrued_liabilities other_current_liabilities total_noncurrent_liabilities long_term_debt operating_lease_liabilities_noncurrent other_noncurrent_liabilities temporary_equity total_equity equity_parent common_stock_apic retained_earnings aoci other_equity nci total_liabilities_and_equity total_debt net_debt shares_outstanding shares_issued treasury_shares",
     ),
   },
   {
@@ -62,6 +62,7 @@ export const FORMULA_GROUPS: FormulaGroup[] = [
           code,
           unit: "pct",
         })),
+        ["invested_capital_usd", "enterprise_value_usd"].map((code) => ({ code, unit: "USD" })),
         ["dso", "dio", "dpo", "ccc"].map((code) => ({ code, unit: "days" })),
         ["eps_diluted", "fcf_per_share", "bvps", "dps"].map((code) => ({
           code,

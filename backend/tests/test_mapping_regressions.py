@@ -973,7 +973,8 @@ DEERE: list[tuple[str, str, Decimal | None]] = [
     ("total_liabilities", "FY2025", usd(79_989)),
     ("shares_outstanding", "FY2023", Decimal(281_600_000)),
     ("shares_outstanding", "FY2025", Decimal(270_400_000)),
-    ("shares_outstanding", "FY2020", None),  # tagged from FY2023 only
+    # tagged from FY2023 only; FY2020 is issued 536,431,204 less treasury 222,775,254 (R7)
+    ("shares_outstanding", "FY2020", Decimal(313_655_950)),
     ("dividends_per_share", "FY2015", Decimal("2.40")),
     ("dividends_per_share", "FY2020", Decimal("3.04")),
     ("dividends_per_share", "FY2025", Decimal("6.48")),  # declared; paid was 6.33

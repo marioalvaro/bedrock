@@ -15,6 +15,7 @@ import pandas as pd
 
 from bedrock.mapping.config import CanonicalItemDef, formula_order, parse_formula
 from bedrock.mapping.vintage import BALANCE_DATE_TOLERANCE
+from bedrock.statements.averages import q4_average_cells
 from bedrock.statements.cell_types import (
     EMPTY,
     Cell,
@@ -39,6 +40,8 @@ from bedrock.statements.rules import (
     infer_nci_zeros,
     solve_identities,
 )
+
+COVER_SHARES = "shares_outstanding"  # the line the cover-page count fills (R7)
 
 
 @dataclass(frozen=True)
@@ -148,6 +151,7 @@ def solve_cells(
 
     log = WarningLog()
     solved_nonzero: set[CellKey] = set()
+    cover = None if rules.cover_shares is None else _cover_index(rules.cover_shares)
     early = _formulas_before_residuals(items)
     while True:
         filled = _fill_formulas(early, periods, cells)
@@ -158,9 +162,13 @@ def solve_cells(
         if rules.nci_filings is not None:
             for key, cell in infer_nci_zeros(cells, by_code, periods, rules.nci_filings):
                 filled += _fill(cells, key, cell)
+        filled += _fill_cover_shares(periods, cells, cover)
         filled += _close_q4(items, periods, years, cells, index)
         if not filled:
             break
+
+    for key, cell in q4_average_cells(cells, by_code, periods, log):
+        _fill(cells, key, cell)
 
     for item in formula_order(items):
         siblings = frozenset(i.code for i in items if item.residual and i.parent == item.parent)
@@ -177,6 +185,40 @@ def _fill(cells: dict[CellKey, Cell], key: CellKey, cell: Cell) -> int:
         return 0
     cells[key] = cell
     return 1
+
+
+def _cover_index(frame: pd.DataFrame) -> _Index:
+    """The cover-page counts, the latest filed first so that it wins where a period has several."""
+    ordered = frame.sort_values(["filed_at", "accession_no"], ascending=False, kind="stable")
+    return _Index(ordered)
+
+
+def _fill_cover_shares(
+    periods: Sequence[Period], cells: dict[CellKey, Cell], cover: _Index | None
+) -> int:
+    """R7: an empty shares-outstanding instant (FY and Q1-Q3; Q4 follows FY) takes the cover-page
+    count of the filing that reports the period. Run after the identities, which are exact."""
+    if cover is None:
+        return 0
+    filled = 0
+    for period in periods:
+        key = (COVER_SHARES, period.key)
+        if period.fiscal_period == "Q4" or key not in cells:
+            continue
+        fact = cover.instant(COVER_SHARES, period.end)
+        if fact is not None:
+            filled += _fill(cells, key, _cover_cell(fact, period))
+    return filled
+
+
+def _cover_cell(fact: _Fact, period: Period) -> Cell:
+    formula = f"cover-page shares outstanding of {fact.ref.form} {fact.ref.accession_no}"
+    inputs: tuple[DerivationInput, ...] = ()
+    if fact.split_factor != 1:
+        reported = fact.value if fact.reported_value is None else fact.reported_value
+        formula += f"; {_split_formula(fact)}"
+        inputs = (DerivationInput(COVER_SHARES, period.fiscal_period, reported),)
+    return Cell(fact.value, "approximated", source=fact.ref, derivation=Derivation(formula, inputs))
 
 
 def _formulas_before_residuals(items: Sequence[CanonicalItemDef]) -> list[CanonicalItemDef]:

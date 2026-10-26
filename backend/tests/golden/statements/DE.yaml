@@ -96,7 +96,7 @@ expected_missing:
   ppe_net: "us-gaap tag until FY2020; from FY2021 a `de:` fact; no fact in FY2007 and FY2010"
   receivables: "no XBRL balance sheet before FY2008"
   retained_earnings: "no XBRL balance sheet before FY2008"
-  shares_outstanding: "period-end shares are tagged from FY2023 only (earlier 10-Ks show issued and treasury shares)"
+  shares_outstanding: "no XBRL balance sheet before FY2008"
   short_term_debt: "'Short-term borrowings' is a `de:` fact before FY2020"
   short_term_investments: "no XBRL balance sheet before FY2008"
   temporary_equity: "redeemable noncontrolling interest only FY2016-19 and FY2022+ (none in FY2020-21)"

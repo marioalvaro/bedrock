@@ -6,13 +6,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createNoteApiV1CompaniesTickerNotesPost,
   getMultiplesApiV1CompaniesTickerMultiplesGet,
+  getRatioCellApiV1CompaniesTickerRatiosCellGet,
   getRatiosApiV1CompaniesTickerRatiosGet,
   listLinksApiV1CompaniesTickerNotesLinksGet,
   listNotesApiV1CompaniesTickerNotesGet,
 } from "@/api/generated/sdk.gen";
 import { downloadText } from "@/lib/download";
 import { createQueryClient } from "@/lib/query-client";
-import { multiples, ratios } from "@/test/analysis";
+import { multiples, ratioCell, ratios } from "@/test/analysis";
 import { note, noteLink } from "@/test/context";
 import { errorResult, okResult } from "@/test/responses";
 
@@ -21,6 +22,7 @@ import { RatiosView } from "./RatiosView";
 vi.mock("@/api/generated/sdk.gen", () => ({
   getRatiosApiV1CompaniesTickerRatiosGet: vi.fn(),
   getMultiplesApiV1CompaniesTickerMultiplesGet: vi.fn(),
+  getRatioCellApiV1CompaniesTickerRatiosCellGet: vi.fn(),
   listLinksApiV1CompaniesTickerNotesLinksGet: vi.fn(),
   listNotesApiV1CompaniesTickerNotesGet: vi.fn(),
   createNoteApiV1CompaniesTickerNotesPost: vi.fn(),
@@ -55,6 +57,9 @@ beforeEach(() => {
     ) as never,
   );
   vi.mocked(getRatiosApiV1CompaniesTickerRatiosGet).mockResolvedValue(okResult(ratios()) as never);
+  vi.mocked(getRatioCellApiV1CompaniesTickerRatiosCellGet).mockResolvedValue(
+    okResult(ratioCell({ code: "roe", label: "Return on equity" })) as never,
+  );
   links.mockResolvedValue(okResult([]) as never);
   listNotes.mockResolvedValue(okResult([]) as never);
   createNote.mockResolvedValue(okResult(note({ id: 9 }), 201) as never);
@@ -302,6 +307,26 @@ describe("RatiosView notes", () => {
     });
   });
 
+  it("opens the details of a cell on a click: its formula and inputs", async () => {
+    renderView();
+    await screen.findByText("Return on equity");
+    await userEvent.click(cell("roe", "FY2024"));
+
+    const sheet = await screen.findByRole("dialog");
+    expect(await within(sheet).findByRole("region", { name: "Numerator" })).toBeVisible();
+    expect(within(sheet).getByRole("region", { name: "Denominator" })).toBeVisible();
+    expect(vi.mocked(getRatioCellApiV1CompaniesTickerRatiosCellGet)).toHaveBeenCalledWith({
+      path: { ticker: "DE" },
+      query: {
+        freq: "annual",
+        basis: "reported",
+        code: "roe",
+        fiscal_year: 2024,
+        fiscal_period: "FY",
+      },
+    });
+  });
+
   it("opens a cell's notes on a click and adds a note linked to the ratio and period", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date(2026, 9, 23, 22, 30));
@@ -332,20 +357,38 @@ describe("RatiosView notes", () => {
     });
   });
 
-  it("opens no sheet from a category heading, a TTM column or the label cell", async () => {
+  it("opens no sheet from a category heading or the label cell", async () => {
     renderView();
     await screen.findByText("Return on equity");
     await userEvent.click(cell("category:Profitability", "FY2024"));
     await userEvent.click(labelCell("roe"));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
 
+  it("opens the details of a TTM cell, without notes", async () => {
+    renderView();
+    await screen.findByText("Return on equity");
     const periods = ratios().periods.map((p) => ({ ...p, key: `TTM-${p.key}` }));
     vi.mocked(getRatiosApiV1CompaniesTickerRatiosGet).mockResolvedValue(
       okResult(ratios({ freq: "ttm", periods })) as never,
     );
     await userEvent.click(screen.getByRole("radio", { name: "TTM" }));
-    await userEvent.click(await waitFor(() => cell("roe", "TTM-FY2024")));
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await waitFor(() => expect(cell("roe", "TTM-FY2024")).not.toBeNull());
+    await userEvent.click(cell("roe", "TTM-FY2024"));
+
+    const sheet = await screen.findByRole("dialog");
+    expect(await within(sheet).findByRole("region", { name: "Numerator" })).toBeVisible();
+    expect(within(sheet).queryByRole("button", { name: "Add note" })).not.toBeInTheDocument();
+    expect(vi.mocked(getRatioCellApiV1CompaniesTickerRatiosCellGet)).toHaveBeenLastCalledWith({
+      path: { ticker: "DE" },
+      query: {
+        freq: "ttm",
+        basis: "reported",
+        code: "roe",
+        fiscal_year: 2024,
+        fiscal_period: "FY",
+      },
+    });
   });
 
   it("keeps the grid without markers when the links cannot load", async () => {

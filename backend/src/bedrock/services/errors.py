@@ -14,6 +14,10 @@ class CellNotFound(Exception):
     """No such statement cell: an unknown item code or a period the company does not have."""
 
 
+class RatioCellNotFound(Exception):
+    """No such ratio cell: an unknown ratio code or a period that is not a column of the table."""
+
+
 class AdjustmentNotFound(Exception):
     """No adjustment with this id on the company (an id of another company counts as unknown)."""
 
@@ -100,6 +104,7 @@ DOMAIN_ERRORS = (
     CompanyNotFound,
     CompanyExists,
     CellNotFound,
+    RatioCellNotFound,
     AdjustmentNotFound,
     InvalidAdjustment,
     RuleNotFound,
@@ -133,6 +138,8 @@ def user_message(error: Exception) -> str:
             return f"Unknown ticker {error}: no SEC filer has it"
         case CellNotFound():
             return f"No such statement cell: {error}"
+        case RatioCellNotFound():
+            return f"No such ratio cell: {error}"
         case AdjustmentNotFound():
             return f"No such adjustment: {error}"
         case RuleNotFound():

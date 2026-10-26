@@ -300,7 +300,9 @@ def _follow_eps(
     changed: dict[CellKey, Decimal],
 ) -> None:
     """Normalized EPS = reported + change in net income common / shares of the same period; null
-    when net income changes and the shares are missing. Q4 and TTM stay null (EPS is an average)."""
+    when net income changes and the shares are missing. A Q4 EPS (rebuilt from Q4 net income and
+    shares) follows the same way; a period whose EPS is empty stays empty. TTM EPS is summed from
+    the normalized quarters by `build.py`."""
     for (code, key), delta in changed.items():
         if code != NET_INCOME_COMMON or delta == 0:
             continue

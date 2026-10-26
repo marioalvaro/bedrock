@@ -52,6 +52,10 @@ class CanonicalItemDef:
 # Memo lines whose charge sits inside another line: adjust that line instead.
 MEMO_CODES = frozenset({"goodwill_impairment"})
 
+# Lines that only feed an identity (R7): a company that does not report them has left nothing out,
+# so Data gaps does not list them.
+SUPPORT_CODES = frozenset({"shares_issued", "treasury_shares"})
+
 SOLVE_MODES = ("zero_only", "exact", "bounded")
 
 

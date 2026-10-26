@@ -242,13 +242,17 @@ def _load(session: Session, company: Company, codes: frozenset[str] | None = Non
     facts = facts_repo.load_facts(session, company.id, wanted)
     # Always the balance-date snapshot: a later filing can restate one total and not the others.
     latest = select_vintage(facts, snapshot=balance_snapshot(mappings))
-    canonical = split_adjust(
-        map_facts(latest, mappings, items), actions_repo.list_for(session, company.id)
-    )
+    actions = actions_repo.list_for(session, company.id)
+    canonical = split_adjust(map_facts(latest, mappings, items), actions)
     # Only the NCI rule runs on a subset of the codes: an identity would read a line that was not
-    # loaded as empty and solve it.
+    # loaded as empty and solve it, and the cover-page count would fill a line that was not
+    # loaded either.
     rules = Rules(
-        canonical_identities() if codes is None else (), filings_tagging_nci(facts, mappings)
+        canonical_identities() if codes is None else (),
+        filings_tagging_nci(facts, mappings),
+        split_adjust(facts_repo.load_cover_shares(session, company.id), actions)
+        if codes is None
+        else None,
     )
     return _Loaded(items, mappings, facts, canonical, rules)
 
