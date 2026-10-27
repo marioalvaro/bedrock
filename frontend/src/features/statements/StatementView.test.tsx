@@ -7,6 +7,7 @@ import {
   createNoteApiV1CompaniesTickerNotesPost,
   getCellApiV1CompaniesTickerStatementsCellGet,
   getStatementApiV1CompaniesTickerStatementsGet,
+  listImportsApiV1CompaniesTickerImportsGet,
   listLinksApiV1CompaniesTickerNotesLinksGet,
   listNotesApiV1CompaniesTickerNotesGet,
 } from "@/api/generated/sdk.gen";
@@ -14,7 +15,7 @@ import { createQueryClient } from "@/lib/query-client";
 import { setScale } from "@/lib/scale";
 import { note, noteLink, noteLinks } from "@/test/context";
 import { errorResult, okResult } from "@/test/responses";
-import { balanceStatement, incomeStatement } from "@/test/statements";
+import { balanceStatement, customIncomeStatement, incomeStatement } from "@/test/statements";
 
 import { StatementView } from "./StatementView";
 
@@ -27,6 +28,9 @@ vi.mock("@/api/generated/sdk.gen", () => ({
   listLinksApiV1CompaniesTickerNotesLinksGet: vi.fn(),
   listNotesApiV1CompaniesTickerNotesGet: vi.fn(),
   createNoteApiV1CompaniesTickerNotesPost: vi.fn(),
+  listImportsApiV1CompaniesTickerImportsGet: vi.fn(),
+  importStatementsApiV1CompaniesTickerImportsPost: vi.fn(),
+  deleteImportApiV1CompaniesTickerImportsImportIdDelete: vi.fn(),
 }));
 
 function renderView(type: "IS" | "BS" | "CF" = "IS") {
@@ -117,6 +121,7 @@ beforeEach(() => {
   );
   vi.mocked(listLinksApiV1CompaniesTickerNotesLinksGet).mockResolvedValue(okResult([]) as never);
   vi.mocked(listNotesApiV1CompaniesTickerNotesGet).mockResolvedValue(okResult([]) as never);
+  vi.mocked(listImportsApiV1CompaniesTickerImportsGet).mockResolvedValue(okResult([]) as never);
   vi.mocked(createNoteApiV1CompaniesTickerNotesPost).mockResolvedValue(
     okResult(note({ id: 9 }), 201) as never,
   );
@@ -1009,5 +1014,84 @@ describe("StatementView note markers", () => {
     renderView();
     expect(await screen.findByText("391,035")).toBeVisible();
     expect(document.querySelector(".has-note")).toBeNull();
+  });
+});
+
+describe("StatementView import", () => {
+  it("opens the import sheet from the toolbar", async () => {
+    renderView();
+    await screen.findByText("391,035");
+    await userEvent.click(screen.getByRole("button", { name: "Import" }));
+    expect(await screen.findByText("Import statements")).toBeVisible();
+  });
+});
+
+describe("StatementView import and custom lines", () => {
+  const getStatement = vi.mocked(getStatementApiV1CompaniesTickerStatementsGet);
+  const getCell = vi.mocked(getCellApiV1CompaniesTickerStatementsCellGet);
+
+  async function renderCustom() {
+    getStatement.mockResolvedValue(okResult(customIncomeStatement()) as never);
+    renderView();
+    await screen.findByText("391,035");
+    await userEvent.click(screen.getByRole("button", { name: "Expand all" }));
+    await screen.findByText("Products");
+  }
+
+  it("styles an imported value apart and explains it in the legend", async () => {
+    await renderCustom();
+    expect(cell("custom:products", "FY2024")).toHaveClass("prov-imported");
+    expect(cell("revenue", "FY2024")).not.toHaveClass("prov-imported");
+    expect(screen.getByText(/Imported: from your file/)).toBeInTheDocument();
+  });
+
+  it("nests custom lines under their parent with a custom marker", async () => {
+    await renderCustom();
+    const label = (code: string) =>
+      document.querySelector(`[row-id="${code}"] [col-id="label"] span[style]`) as HTMLElement;
+    const parentPad = parseInt(label("cost_of_revenue").style.paddingLeft);
+    expect(parseInt(label("custom:products").style.paddingLeft)).toBeGreaterThan(parentPad);
+    expect(within(label("custom:products")).getByText("custom")).toBeInTheDocument();
+    expect(within(label("custom:services")).getByText("custom")).toBeInTheDocument();
+    expect(within(label("cost_of_revenue")).queryByText("custom")).not.toBeInTheDocument();
+    expect(within(label("other:cost_of_revenue")).queryByText("custom")).not.toBeInTheDocument();
+  });
+
+  it("collapses the breakdown with its parent", async () => {
+    await renderCustom();
+    await userEvent.click(screen.getByRole("button", { name: "Collapse Cost of revenue" }));
+    await waitFor(() => expect(screen.queryByText("Products")).not.toBeInTheDocument());
+    expect(screen.queryByText("Other Cost of revenue")).not.toBeInTheDocument();
+  });
+
+  it("opens the cell details of a custom line", async () => {
+    getCell.mockResolvedValue(
+      okResult({ ...cellDetail, code: "custom:products", label: "Products" }) as never,
+    );
+    await renderCustom();
+    await userEvent.click(cell("custom:products", "FY2024"));
+    await waitFor(() =>
+      expect(getCell).toHaveBeenCalledWith({
+        path: { ticker: "AAPL" },
+        query: { code: "custom:products", fiscal_year: 2024, fiscal_period: "FY" },
+      }),
+    );
+  });
+
+  it("leaves the Other row inert: it has no cell of its own", async () => {
+    await renderCustom();
+    expect(cell("other:cost_of_revenue", "FY2024")).not.toHaveClass("cursor-pointer");
+    await userEvent.click(cell("other:cost_of_revenue", "FY2024"));
+    expect(getCell).not.toHaveBeenCalled();
+  });
+
+  it("exports the custom lines and the Other row in the CSV", async () => {
+    const download = captureDownload();
+    await renderCustom();
+    await userEvent.click(screen.getByRole("button", { name: "Download CSV" }));
+    const lines = (await readText(download.blobs[0]!)).trim().split(/\r?\n/);
+    expect(lines).toContain('"Products","","150000"');
+    expect(lines).toContain('"Services","","50000"');
+    expect(lines).toContain('"Other Cost of revenue","","10352"');
   });
 });

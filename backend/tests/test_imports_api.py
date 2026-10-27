@@ -70,9 +70,22 @@ def test_the_csv_template_and_its_prefill(aapl_client: TestClient) -> None:
     )
 
     assert blank.headers["content-type"].startswith("text/csv")
-    assert blank.text.splitlines()[0] == "scale,units"
+    assert blank.text.splitlines()[:2] == ["scale,units", "fiscal_year_end,2025-09-27"]
     assert "391035000000" not in blank.text
     assert "391035000000" in prefilled.text  # AAPL FY2024 revenue, in units
+
+
+def test_the_downloaded_template_has_the_fiscal_year_end_and_no_dates(
+    aapl_client: TestClient,
+) -> None:
+    content = _template(aapl_client, format="xlsx")
+
+    book = load_workbook(io.BytesIO(content), data_only=True)
+    guide = {r[0]: r[1] for r in book["Instructions"].iter_rows(values_only=True) if r[0]}
+    assert guide["fiscal_year_end"] == "2025-09-27"  # AAPL's latest completed fiscal year
+    names = [r[0] for r in book["IS"].iter_rows(values_only=True)]
+    assert names[:3] == ["fiscal_year", "fiscal_period", "code"]
+    assert "period_start" not in names and "period_end" not in names
 
 
 @pytest.mark.parametrize("params", [{"format": "pdf"}, {"scale": "tons"}, {"prefill": "maybe"}])

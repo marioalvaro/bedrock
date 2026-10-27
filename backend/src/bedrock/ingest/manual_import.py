@@ -1,11 +1,14 @@
 """Manual statement import: an xlsx or CSV file into one plan, every error located. Pure.
 
 The layout is the template's (docs/erd/data.md "Manual statement import"). A statement sheet has
-four header rows (`fiscal_year`, `fiscal_period`, `period_start`, `period_end`; their name in the
-first column, the values from the sixth), a column-title row, then one row per line with the
-columns `code | label | parent | unit | children_complete | <one column per period>`. An xlsx file
-has the sheets `Instructions` (a `scale` row), `IS`, `BS` and `CF`; a CSV file is the same sheets
-one after the other, every row led by its statement, after a `scale` row.
+header rows (`fiscal_year` and `fiscal_period`, then optionally `period_start` and `period_end`;
+their name in the first column, the values from the sixth), a column-title row, then one row per
+line with the columns `code | label | parent | unit | children_complete | <one column per
+period>`. An xlsx file
+has the sheets `Instructions` (a `scale` row and a `fiscal_year_end` row), `IS`, `BS` and `CF`; a
+CSV file is the same sheets one after the other, every row led by its statement, after the `scale`
+and `fiscal_year_end` rows. A period column with no dates takes them from `fiscal_year_end`
+(`statements/fiscal_grid.py`); dates typed in a column win.
 
 A row that is not a canonical line but has a parent is a custom line (docs/erd/data.md "Custom
 lines"); its kind, unit and sign come from its parent.
@@ -34,6 +37,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.utils.exceptions import InvalidFileException
 
 from bedrock.mapping.config import STATEMENTS, CanonicalItemDef
+from bedrock.statements.fiscal_grid import period_dates
 from bedrock.statements.periods import (
     FY_DAYS,
     START_TOLERANCE,
@@ -92,6 +96,8 @@ class PlanPeriod:
     end: date
     sheet: str
     column: str
+    row: int = 4  # where the dates are (or would be) in `sheet`, for errors about them
+    inferred: bool = False  # the dates come from the fiscal year end, not from the file
 
     @property
     def key(self) -> str:
@@ -160,8 +166,9 @@ def check_periods(
     for period in plan.periods:
         match = known.get((period.fiscal_year, period.fiscal_period))
         if match is not None:
-            near = abs(match.end - period.end) <= START_TOLERANCE and (
-                period.start is None or abs(match.start - period.start) <= START_TOLERANCE
+            near = period.inferred or (
+                abs(match.end - period.end) <= START_TOLERANCE
+                and (period.start is None or abs(match.start - period.start) <= START_TOLERANCE)
             )
             if near:
                 snapped.append(
@@ -173,7 +180,7 @@ def check_periods(
                 issues.append(
                     ImportIssue(
                         period.sheet,
-                        4,
+                        period.row,
                         period.column,
                         f"{_label(period)} is {period.start or '?'} to {period.end} in the file "
                         f"but {match.start} to {match.end} in the company's calendar",
@@ -193,7 +200,7 @@ def check_periods(
             issues.append(
                 ImportIssue(
                     period.sheet,
-                    4,
+                    period.row,
                     period.column,
                     f"{_label(period)} ends {period.end}, the date of {clash.label} "
                     f"in the company's calendar ({clash.key})",
@@ -203,7 +210,7 @@ def check_periods(
             issues.append(
                 ImportIssue(
                     period.sheet,
-                    4,
+                    period.row,
                     period.column,
                     f"{_label(period)} is not a period of the company's calendar; an import "
                     "fills the periods SEC has, or years before the first SEC year",
@@ -229,10 +236,11 @@ def parse_import(
     items: Sequence[CanonicalItemDef],
     scale: str | None = None,
     existing: Sequence[CanonicalItemDef] = (),
+    fiscal_year_end: date | None = None,
 ) -> ImportPlan:
-    """Both formats into one plan. `scale` stands in for a file that has none; `existing` are the
-    company's stored custom lines. Raises `ImportParseError` with every error found (none is
-    raised for a warning)."""
+    """Both formats into one plan. `scale` and `fiscal_year_end` stand in for a file that has
+    none; `existing` are the company's stored custom lines. Raises `ImportParseError` with every
+    error found (none is raised for a warning)."""
     name = filename.lower()
     if name.endswith(".xlsx"):
         fmt: ImportFormat = "xlsx"
@@ -244,7 +252,7 @@ def parse_import(
         raise ImportParseError(
             [ImportIssue(None, None, None, "The file must be an .xlsx or a .csv file")]
         )
-    return _Parser(fmt, book, {i.code: i for i in items}, scale, existing).run()
+    return _Parser(fmt, book, {i.code: i for i in items}, scale, existing, fiscal_year_end).run()
 
 
 @dataclass
@@ -256,6 +264,7 @@ class _Book:
     sheets: dict[str, list[tuple[int, list[Any]]]]
     offset: int
     issues: list[ImportIssue]
+    fiscal_year_end: Any = None  # the cell as typed (text, a date or None)
 
 
 def _read_xlsx(content: bytes) -> _Book:
@@ -270,7 +279,9 @@ def _read_xlsx(content: bytes) -> _Book:
         for sheet in workbook.worksheets:
             rows = [list(r) for r in sheet.iter_rows(values_only=True, max_row=MAX_ROWS + 1)]
             if sheet.title == INSTRUCTIONS:
-                book.scale = _scale_row([(i, r) for i, r in enumerate(rows, start=1)])
+                numbered = [(i, r) for i, r in enumerate(rows, start=1)]
+                book.scale = _scale_row(numbered)
+                book.fiscal_year_end = _setting(numbered, "fiscal_year_end")
             elif sheet.title in STATEMENTS:
                 book.sheets[sheet.title] = list(enumerate(rows, start=1))
             else:
@@ -300,6 +311,8 @@ def _read_csv(content: bytes) -> _Book:
         head = row[0].strip()
         if head.lower() == "scale":
             book.scale = row[1].strip() if len(row) > 1 else ""
+        elif head.lower() == "fiscal_year_end":
+            book.fiscal_year_end = row[1].strip() if len(row) > 1 else None
         elif head.upper() in STATEMENTS:
             book.sheets.setdefault(head.upper(), []).append((reader.line_num, row[1:]))
         elif head not in unknown:
@@ -320,6 +333,14 @@ def _scale_row(rows: Sequence[tuple[int, list[Any]]]) -> str | None:
     return None
 
 
+def _setting(rows: Sequence[tuple[int, list[Any]]], name: str) -> Any:
+    """The value beside `name` in the first column of the Instructions sheet, as typed."""
+    for _, row in rows:
+        if row and isinstance(row[0], str) and row[0].strip().lower() == name:
+            return row[1] if len(row) > 1 else None
+    return None
+
+
 @dataclass(frozen=True)
 class _Column:
     """A period column of one statement sheet."""
@@ -330,6 +351,7 @@ class _Column:
     fiscal_period: str
     start: date | None
     end: date
+    inferred: bool = False
 
     @property
     def key(self) -> str:
@@ -349,8 +371,13 @@ class _Parser:
         items: dict[str, CanonicalItemDef],
         scale: str | None,
         existing: Sequence[CanonicalItemDef] = (),
+        fiscal_year_end: date | None = None,
     ) -> None:
         self.fmt = fmt
+        self.fye_arg = fiscal_year_end
+        self.fye: date | None = None
+        self.header_rows: dict[str, dict[str, int]] = {}
+        self.undated: dict[str, set[int]] = {}  # columns left out for want of a fiscal_year_end
         self.book = book
         self.canonical = items
         self.items = dict(items)  # grows with the custom lines the file lists
@@ -366,6 +393,7 @@ class _Parser:
 
     def run(self) -> ImportPlan:
         scale = self._scale()
+        self.fye = self._fiscal_year_end()
         for statement in STATEMENTS:
             if statement in self.book.sheets:
                 self._statement(statement, self.book.sheets[statement], scale)
@@ -415,12 +443,29 @@ class _Parser:
             return None
         return found
 
+    def _fiscal_year_end(self) -> date | None:
+        raw = self.book.fiscal_year_end
+        if _blank(raw):
+            return self.fye_arg
+        found = _date(raw)
+        if found is None:
+            self.errors.append(
+                ImportIssue(
+                    INSTRUCTIONS if self.fmt == "xlsx" else None,
+                    None,
+                    None,
+                    f"fiscal_year_end must be a date (YYYY-MM-DD), not '{_text(raw)}'",
+                )
+            )
+        return found
+
     # -- one statement --------------------------------------------------------------------------
 
     def _statement(self, sheet: str, rows: list[tuple[int, list[Any]]], scale: str | None) -> None:
         headers, start = self._find_headers(sheet, rows)
         if headers is None:
             return
+        self.header_rows[sheet] = {name: number for name, (number, _) in headers.items()}
         columns = self._columns(sheet, headers)
         self.columns[sheet] = columns
         self._contiguity(sheet, columns)
@@ -429,8 +474,8 @@ class _Parser:
     def _find_headers(
         self, sheet: str, rows: list[tuple[int, list[Any]]]
     ) -> tuple[dict[str, tuple[int, list[Any]]] | None, int]:
-        """The four header rows by name, and the position of the first line after them and the
-        title row."""
+        """The header rows by name (`fiscal_year` and `fiscal_period` are required, the date rows
+        are optional), and the position of the first line after them and the title row."""
         found: dict[str, tuple[int, list[Any]]] = {}
         after = len(rows)
         for position, (number, cells) in enumerate(rows):
@@ -440,7 +485,7 @@ class _Parser:
             elif name != COLUMN_TITLES[0] and not _blank_row(cells):
                 after = position
                 break
-        missing = [n for n in HEADER_ROWS if n not in found]
+        missing = [n for n in HEADER_ROWS[:2] if n not in found]
         for name in missing:
             self._err(sheet, None, None, f"The sheet has no {name} row")
         return (None, 0) if missing else (found, after)
@@ -451,11 +496,14 @@ class _Parser:
         columns: list[_Column] = []
         seen: dict[str, str] = {}
         for index in range(FIRST_PERIOD, width):
-            cells = {name: _at(headers[name][1], index) for name in HEADER_ROWS}
+            cells = {
+                name: _at(headers[name][1], index) if name in headers else None
+                for name in HEADER_ROWS
+            }
             if all(_blank(c) for c in cells.values()):
                 continue
             letter = self._letter(index)
-            rows = {name: headers[name][0] for name in HEADER_ROWS}
+            rows = {name: self._row(sheet, name) for name in HEADER_ROWS}
             column = self._column(sheet, flows, index, letter, cells, rows)
             if column is None:
                 continue
@@ -495,12 +543,36 @@ class _Parser:
         period = _text(cells["fiscal_period"]).upper()
         if period not in FISCAL_PERIODS:
             fail("fiscal_period", "fiscal_period must be FY, Q1, Q2, Q3 or Q4")
-        start = _date(cells["period_start"])
-        if flows and start is None:
-            fail("period_start", "period_start must be a date (YYYY-MM-DD)")
-        end = _date(cells["period_end"])
-        if end is None:
-            fail("period_end", "period_end must be a date (YYYY-MM-DD)")
+        given = {name: not _blank(cells[name]) for name in ("period_start", "period_end")}
+        start = _date(cells["period_start"]) if given["period_start"] else None
+        end = _date(cells["period_end"]) if given["period_end"] else None
+        for name, found in (("period_start", start), ("period_end", end)):
+            if given[name] and found is None:
+                fail(name, f"{name} must be a date (YYYY-MM-DD)")
+        if ok and flows and given["period_start"] != given["period_end"]:
+            blank = "period_end" if given["period_start"] else "period_start"
+            fail(
+                blank,
+                f"{blank} is blank: period_start and period_end go together, fill both or "
+                "leave both blank",
+            )
+        inferred = False
+        if ok and not given["period_end"] and year is not None and period in FISCAL_PERIODS:
+            if self.fye is None:
+                # One error per sheet; the other columns and their values are left out quietly.
+                self.undated.setdefault(sheet, set()).add(index)
+                if len(self.undated[sheet]) == 1:
+                    fail(
+                        "fiscal_year",
+                        "period_start and period_end are blank and the file has no "
+                        "fiscal_year_end: add a fiscal_year_end row to the Instructions or type "
+                        "the dates",
+                    )
+                else:
+                    ok = False
+            else:
+                start, end = period_dates(self.fye, year, period)
+                inferred = True
         if not ok or year is None or end is None:
             return None
         if not flows:
@@ -508,7 +580,7 @@ class _Parser:
         elif start is not None and end < start:
             fail("period_end", "period_end is before period_start")
             return None
-        column = _Column(index, letter, year, period, start, end)
+        column = _Column(index, letter, year, period, start, end, inferred)
         if flows and start is not None:
             days = (end - start).days
             if period == "FY" and not FY_DAYS[0] <= days <= FY_DAYS[1]:
@@ -525,6 +597,12 @@ class _Parser:
                 )
         return column if ok else None
 
+    def _row(self, sheet: str, name: str) -> int:
+        """The row of a header, or the fiscal_period row when the sheet has no such row (a
+        template has no date rows): where an error about it is shown."""
+        rows = self.header_rows[sheet]
+        return rows.get(name, rows["fiscal_period"])
+
     def _letter(self, index: int) -> str:
         return get_column_letter(self.book.offset + index + 1)
 
@@ -532,7 +610,7 @@ class _Parser:
         """Quarters follow each other the day after, and the first and last meet the year."""
         if sheet == "BS":
             return
-        rows = {name: n for n, name in enumerate(HEADER_ROWS, start=1)}
+        rows = {name: self._row(sheet, name) for name in HEADER_ROWS}
         by_year: dict[int, dict[str, _Column]] = defaultdict(dict)
         for column in columns:
             by_year[column.fiscal_year][column.fiscal_period] = column
@@ -648,6 +726,8 @@ class _Parser:
                     continue
             for i in typed:
                 column = by_index.get(i)
+                if column is None and i in self.undated.get(sheet, ()):
+                    continue
                 if column is None:
                     self._err(
                         sheet,
@@ -913,7 +993,7 @@ class _Parser:
                     self.errors.append(
                         ImportIssue(
                             sheet,
-                            4,
+                            self._row(sheet, "period_end"),
                             column.letter,
                             f"{column.label} ends {column.end} here but {other.end} "
                             f"on {other_sheet}",
@@ -923,7 +1003,7 @@ class _Parser:
                     self.errors.append(
                         ImportIssue(
                             sheet,
-                            3,
+                            self._row(sheet, "period_start"),
                             column.letter,
                             f"{column.label} starts {column.start} here but {other.start} "
                             f"on {other_sheet}",
@@ -965,15 +1045,12 @@ class _Parser:
                         column.end,
                         sheet,
                         column.letter,
+                        self._row(sheet, "period_end"),
+                        column.inferred,
                     )
                 elif known.start is None and column.start is not None:
-                    merged[column.key] = PlanPeriod(
-                        known.fiscal_year,
-                        known.fiscal_period,
-                        column.start,
-                        known.end,
-                        known.sheet,
-                        known.column,
+                    merged[column.key] = replace(
+                        known, start=column.start, inferred=known.inferred and column.inferred
                     )
         return sorted(
             merged.values(), key=lambda p: (p.fiscal_year, FISCAL_PERIODS.index(p.fiscal_period))

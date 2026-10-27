@@ -37,6 +37,7 @@ import {
   scaleLabel,
 } from "@/lib/format";
 import { useScale } from "@/lib/scale";
+import { ImportButton } from "@/features/imports/ImportButton";
 
 function Stat({ name, value }: { name: string; value: string }) {
   return (
@@ -258,7 +259,10 @@ function DataGaps({ ticker }: { ticker: string }) {
 
   return (
     <section aria-label="Data gaps" className="px-4 py-3">
-      <h2 className="mb-2 text-sm font-medium">Data gaps</h2>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h2 className="text-sm font-medium">Data gaps</h2>
+        <ImportButton ticker={ticker} />
+      </div>
       {isPending && <p className="text-muted-foreground text-sm">Loading…</p>}
       {isError && <p className="text-destructive text-sm">Could not load the data gaps.</p>}
       {data && (

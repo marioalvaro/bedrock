@@ -7,6 +7,7 @@ import {
   createAdjustmentApiV1CompaniesTickerAdjustmentsPost,
   deleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDelete,
   getCellApiV1CompaniesTickerStatementsCellGet,
+  listImportsApiV1CompaniesTickerImportsGet,
   createNoteApiV1CompaniesTickerNotesPost,
   listNotesApiV1CompaniesTickerNotesGet,
   updateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPut,
@@ -15,6 +16,7 @@ import { createQueryClient } from "@/lib/query-client";
 import { setScale, type Scale } from "@/lib/scale";
 import { adjustment, cellAdjustment } from "@/test/adjustments";
 import { note } from "@/test/context";
+import { statementImport } from "@/test/imports";
 import { errorResult, okResult } from "@/test/responses";
 
 import { CellDetailSheet, type CellTarget } from "./CellDetailSheet";
@@ -25,6 +27,7 @@ vi.mock("@/api/generated/sdk.gen", () => ({
   updateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPut: vi.fn(),
   deleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDelete: vi.fn(),
   listNotesApiV1CompaniesTickerNotesGet: vi.fn(),
+  listImportsApiV1CompaniesTickerImportsGet: vi.fn(),
   createNoteApiV1CompaniesTickerNotesPost: vi.fn(),
 }));
 
@@ -91,6 +94,9 @@ beforeEach(() => {
   update.mockResolvedValue(okResult(adjustment()) as never);
   remove.mockResolvedValue(okResult(null, 204) as never);
   listNotes.mockResolvedValue(okResult([]) as never);
+  vi.mocked(listImportsApiV1CompaniesTickerImportsGet).mockResolvedValue(
+    okResult([statementImport({ id: 3, filename: "aapl-fill.xlsx" })]) as never,
+  );
   createNote.mockResolvedValue(okResult(note({ id: 9 }), 201) as never);
 });
 
@@ -501,7 +507,75 @@ describe("CellDetailSheet filing", () => {
     mockCell({ filing: { ...filing, accession_no: "import:3", form: "import" } });
     renderSheet({}, "M", null);
 
-    expect(await screen.findByText(/import:3/)).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "import:3" })).not.toBeInTheDocument();
+    expect(await screen.findByText(/Import aapl-fill.xlsx/)).toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+});
+
+describe("CellDetailSheet imported cells", () => {
+  const imported = {
+    provenance: "imported",
+    value: "1500000000",
+    source: { taxonomy: "import", concept: "interest_expense", unit: "USD" },
+    filing: { accession_no: "import:3", form: "import", filed_at: "2026-10-26" },
+    vintages: [
+      { value: "1500000000", accession_no: "import:3", form: "import", filed_at: "2026-10-26" },
+      { value: "1400000000", accession_no: "import:2", form: "import", filed_at: "2026-10-20" },
+    ],
+  };
+
+  it("names the import and links no SEC filing, even for an SEC company", async () => {
+    mockCell(imported);
+    renderSheet({ code: "interest_expense", label: "Interest expense" });
+
+    expect(await screen.findByText(/Imported:/)).toBeInTheDocument();
+    const filing = screen.getByText("Filing").parentElement as HTMLElement;
+    await waitFor(() => expect(filing).toHaveTextContent("Import aapl-fill.xlsx"));
+    expect(filing).toHaveTextContent("2026-10-26");
+    expect(within(filing).queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("hides the pseudo source tag of an import", async () => {
+    mockCell(imported);
+    renderSheet();
+    await screen.findByText(/Imported:/);
+    expect(screen.queryByText("Source tag")).not.toBeInTheDocument();
+  });
+
+  it("names every import vintage, falling back to its number for a deleted one", async () => {
+    mockCell(imported);
+    renderSheet();
+    const vintages = (await screen.findByText("Vintages")).parentElement as HTMLElement;
+    await waitFor(() => expect(vintages).toHaveTextContent("aapl-fill.xlsx"));
+    expect(vintages).toHaveTextContent("Import #2");
+    expect(vintages).not.toHaveTextContent("import:3");
+  });
+
+  it("falls back to the import number while the history is unknown", async () => {
+    vi.mocked(listImportsApiV1CompaniesTickerImportsGet).mockResolvedValue(
+      errorResult(500) as never,
+    );
+    mockCell(imported);
+    renderSheet();
+    const filing = (await screen.findByText("Filing")).parentElement as HTMLElement;
+    expect(filing).toHaveTextContent("Import #3");
+  });
+
+  it("keeps the SEC link for a filed vintage of a cell an import does not fill", async () => {
+    mockCell({
+      provenance: "reported",
+      filing: { accession_no: "0000320193-24-000123", form: "10-K", filed_at: "2024-11-01" },
+    });
+    renderSheet();
+    expect(await screen.findByRole("link", { name: "0000320193-24-000123" })).toBeVisible();
+    expect(listImportsApiV1CompaniesTickerImportsGet).not.toHaveBeenCalled();
+  });
+
+  it("offers no notes on a custom line", async () => {
+    mockCell({ code: "custom:products", label: "Products", provenance: "imported" });
+    renderSheet({ code: "custom:products", label: "Products", adjustable: false, custom: true });
+    expect(await screen.findByText("Notes: not available for custom lines")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Add note" })).not.toBeInTheDocument();
+    expect(listNotes).not.toHaveBeenCalled();
   });
 });

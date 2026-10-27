@@ -8,6 +8,7 @@ import {
   getMappingGapsApiV1CompaniesTickerMappingGapsGet,
   listAdjustmentsApiV1CompaniesTickerAdjustmentsGet,
   listCorporateActionsApiV1CompaniesTickerCorporateActionsGet,
+  listImportsApiV1CompaniesTickerImportsGet,
 } from "@/api/generated/sdk.gen";
 import { createQueryClient } from "@/lib/query-client";
 import { setScale } from "@/lib/scale";
@@ -22,6 +23,9 @@ vi.mock("@/api/generated/sdk.gen", () => ({
   listAdjustmentsApiV1CompaniesTickerAdjustmentsGet: vi.fn(),
   listCorporateActionsApiV1CompaniesTickerCorporateActionsGet: vi.fn(),
   deleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDelete: vi.fn(),
+  listImportsApiV1CompaniesTickerImportsGet: vi.fn(),
+  importStatementsApiV1CompaniesTickerImportsPost: vi.fn(),
+  deleteImportApiV1CompaniesTickerImportsImportIdDelete: vi.fn(),
 }));
 
 const listAdjustments = vi.mocked(listAdjustmentsApiV1CompaniesTickerAdjustmentsGet);
@@ -34,6 +38,7 @@ beforeEach(() => {
   );
   listAdjustments.mockResolvedValue(okResult([]) as never);
   listActions.mockResolvedValue(okResult([]) as never);
+  vi.mocked(listImportsApiV1CompaniesTickerImportsGet).mockResolvedValue(okResult([]) as never);
   remove.mockResolvedValue(okResult(null, 204) as never);
 });
 
@@ -483,5 +488,14 @@ describe("Overview", () => {
       renderOverview();
       expect(await screen.findByText("Could not load the corporate actions.")).toBeInTheDocument();
     });
+  });
+});
+
+describe("Overview import", () => {
+  it("opens the import sheet from the Data gaps section", async () => {
+    renderOverview();
+    const gaps = await screen.findByRole("region", { name: "Data gaps" });
+    await userEvent.click(within(gaps).getByRole("button", { name: "Import" }));
+    expect(await screen.findByText("Import statements")).toBeVisible();
   });
 });

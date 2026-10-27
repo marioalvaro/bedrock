@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { PeriodOut, StatementOut } from "@/api/generated/types.gen";
 import { noteLink, noteLinks } from "@/test/context";
-import { balanceStatement, incomeStatement } from "@/test/statements";
+import { balanceStatement, customIncomeStatement, incomeStatement } from "@/test/statements";
 
 import {
   canExplain,
@@ -593,6 +593,10 @@ describe("provenance display", () => {
     expect(provenanceClasses("approximated")).toEqual(["prov-derived"]);
   });
 
+  it("styles an imported value apart from the SEC ones", () => {
+    expect(provenanceClasses("imported")).toEqual(["prov-imported"]);
+  });
+
   it("mutes an inferred zero and styles normalized cells apart", () => {
     expect(provenanceClasses("zero_inferred")).toEqual(["prov-zero"]);
     expect(provenanceClasses("normalized")).toEqual(["prov-normalized"]);
@@ -606,8 +610,55 @@ describe("provenance display", () => {
 
   it("marks only an approximated value with a tilde", () => {
     expect(provenanceMark("approximated")).toBe("~");
-    for (const other of ["reported", "derived", "normalized", "zero_inferred", null] as const) {
+    for (const other of [
+      "reported",
+      "derived",
+      "normalized",
+      "zero_inferred",
+      "imported",
+      null,
+    ] as const) {
       expect(provenanceMark(other)).toBe("");
     }
+  });
+});
+
+describe("custom lines", () => {
+  const payload = customIncomeStatement();
+  const open = { ...OFF, expanded: new Set(["gross_profit", "cost_of_revenue"]) };
+  const period = payload.periods[1]!;
+
+  it("hides the breakdown under a collapsed parent and opens it with the parent", () => {
+    expect(toGridRows(payload, OFF).map((row) => row.id)).not.toContain("custom:products");
+    expect(expandableCodes(payload)).toContain("cost_of_revenue");
+    const rows = toGridRows(payload, open);
+    expect(rows.map((row) => row.id)).toEqual([
+      "revenue",
+      "gross_profit",
+      "cost_of_revenue",
+      "custom:products",
+      "custom:services",
+      "other:cost_of_revenue",
+      "eps_diluted",
+    ]);
+  });
+
+  it("flags custom lines, indents them under the parent and keeps their imported provenance", () => {
+    const rows = toGridRows(payload, open);
+    const parent = rows.find((row) => row.id === "cost_of_revenue")!;
+    const products = rows.find((row) => row.id === "custom:products")!;
+    expect(products.custom).toBe(true);
+    expect(products.depth).toBe(parent.depth + 1);
+    expect(products.provenance.FY2024).toBe("imported");
+    expect(parent.custom).toBe(false);
+    expect(rows.find((row) => row.id === "other:cost_of_revenue")!.custom).toBe(false);
+  });
+
+  it("explains a custom line but not the Other row", () => {
+    const rows = toGridRows(payload, open);
+    const products = rows.find((row) => row.id === "custom:products")!;
+    const other = rows.find((row) => row.id === "other:cost_of_revenue")!;
+    expect(canExplain(products, period)).toBe(true);
+    expect(canExplain(other, period)).toBe(false);
   });
 });

@@ -1,11 +1,12 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   addCompanyApiV1CompaniesPost,
+  addManualCompanyApiV1CompaniesManualPost,
   getCompaniesApiV1CompaniesGet,
   removeCompanyApiV1CompaniesTickerDelete,
 } from "@/api/generated/sdk.gen";
@@ -18,6 +19,7 @@ import { Companies } from "./Companies";
 vi.mock("@/api/generated/sdk.gen", () => ({
   getCompaniesApiV1CompaniesGet: vi.fn(),
   addCompanyApiV1CompaniesPost: vi.fn(),
+  addManualCompanyApiV1CompaniesManualPost: vi.fn(),
   removeCompanyApiV1CompaniesTickerDelete: vi.fn(),
 }));
 
@@ -170,5 +172,105 @@ describe("removing a company", () => {
 
     expect(removeCompanyApiV1CompaniesTickerDelete).not.toHaveBeenCalled();
     expect(screen.getByRole("link", { name: "AAPL" })).toBeInTheDocument();
+  });
+});
+
+describe("adding a manual company", () => {
+  const addManual = vi.mocked(addManualCompanyApiV1CompaniesManualPost);
+
+  async function openForm() {
+    renderCompanies();
+    await screen.findByRole("link", { name: "AAPL" });
+    await userEvent.click(screen.getByRole("button", { name: "Add manual company" }));
+    return screen.getByRole("form", { name: "Add manual company" });
+  }
+
+  async function fill(form: HTMLElement, ticker: string, name: string, sic = "") {
+    await userEvent.type(within(form).getByLabelText("Ticker"), ticker);
+    await userEvent.type(within(form).getByLabelText("Name"), name);
+    if (sic) await userEvent.type(within(form).getByLabelText("SIC (optional)"), sic);
+  }
+
+  it("keeps the form closed until asked", async () => {
+    renderCompanies();
+    await screen.findByRole("link", { name: "AAPL" });
+    expect(screen.queryByRole("form", { name: "Add manual company" })).not.toBeInTheDocument();
+  });
+
+  it("sends the company with its fiscal year end month and closes the form", async () => {
+    addManual.mockResolvedValue(
+      okResult(
+        companyItem({ ticker: "ACME", name: "Acme Corp", source: "manual", cik: null }),
+        201,
+      ) as never,
+    );
+    const form = await openForm();
+    await fill(form, " acme ", " Acme Corp ", "3571");
+    await userEvent.selectOptions(within(form).getByLabelText("Fiscal year ends"), "6");
+    await userEvent.click(within(form).getByRole("button", { name: "Create" }));
+
+    expect(addManual).toHaveBeenCalledWith({
+      body: { ticker: "ACME", name: "Acme Corp", fiscal_year_end_month: 6, sic: "3571" },
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("form", { name: "Add manual company" })).not.toBeInTheDocument(),
+    );
+  });
+
+  it("defaults to December and leaves the SIC out when blank", async () => {
+    addManual.mockResolvedValue(okResult(companyItem({ ticker: "ACME" }), 201) as never);
+    const form = await openForm();
+    await fill(form, "ACME", "Acme Corp");
+    await userEvent.click(within(form).getByRole("button", { name: "Create" }));
+    expect(addManual).toHaveBeenCalledWith({
+      body: { ticker: "ACME", name: "Acme Corp", fiscal_year_end_month: 12 },
+    });
+  });
+
+  it.each([
+    ["", "Acme Corp", "", "Enter a ticker"],
+    ["ACME", "  ", "", "Enter a name"],
+    ["ACME", "Acme Corp", "35", "SIC must be 4 digits"],
+  ])("refuses %j / %j / %j with %j and sends nothing", async (ticker, name, sic, message) => {
+    const form = await openForm();
+    if (ticker) await userEvent.type(within(form).getByLabelText("Ticker"), ticker);
+    await userEvent.type(within(form).getByLabelText("Name"), name || " ");
+    if (sic) await userEvent.type(within(form).getByLabelText("SIC (optional)"), sic);
+    await userEvent.click(within(form).getByRole("button", { name: "Create" }));
+    expect(within(form).getByRole("alert")).toHaveTextContent(message);
+    expect(addManual).not.toHaveBeenCalled();
+  });
+
+  it("shows the API's reason when the ticker is already followed", async () => {
+    addManual.mockResolvedValue(errorResult(409, { detail: "AAPL is already followed." }) as never);
+    const form = await openForm();
+    await fill(form, "AAPL", "Apple");
+    await userEvent.click(within(form).getByRole("button", { name: "Create" }));
+    expect(await within(form).findByRole("alert")).toHaveTextContent("AAPL is already followed.");
+    expect(screen.getByRole("form", { name: "Add manual company" })).toBeInTheDocument();
+  });
+
+  it("refetches the list and marks the manual company", async () => {
+    addManual.mockResolvedValue(okResult(companyItem({ ticker: "ACME" }), 201) as never);
+    const form = await openForm();
+    vi.mocked(getCompaniesApiV1CompaniesGet).mockResolvedValue(
+      okResult([
+        companyItem(),
+        companyItem({ id: 2, ticker: "ACME", name: "Acme Corp", source: "manual", cik: null }),
+      ]) as never,
+    );
+    await fill(form, "ACME", "Acme Corp");
+    await userEvent.click(within(form).getByRole("button", { name: "Create" }));
+    const row = (await screen.findByRole("link", { name: "ACME" })).closest("tr") as HTMLElement;
+    expect(within(row).getByText("manual")).toBeInTheDocument();
+    const sec = screen.getByRole("link", { name: "AAPL" }).closest("tr") as HTMLElement;
+    expect(within(sec).queryByText("manual")).not.toBeInTheDocument();
+  });
+
+  it("cancels without sending", async () => {
+    const form = await openForm();
+    await userEvent.click(within(form).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("form", { name: "Add manual company" })).not.toBeInTheDocument();
+    expect(addManual).not.toHaveBeenCalled();
   });
 });

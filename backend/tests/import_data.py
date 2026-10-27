@@ -22,12 +22,17 @@ TITLES = ["code", "label", "parent", "unit", "children_complete"]
 
 
 def statement_rows(
-    periods: Sequence[Period], lines: Mapping[str, Sequence[Any]] | Sequence[Sequence[Any]]
+    periods: Sequence[Period],
+    lines: Mapping[str, Sequence[Any]] | Sequence[Sequence[Any]],
+    header: Sequence[str] = HEADER_ROWS,
 ) -> list[list[Any]]:
-    """The four header rows, the column titles and one row per line. `lines` maps a code to its
-    values (one per period), or lists complete rows `[code, label, parent, unit, flag, *values]`."""
+    """The header rows (all four by default; `header` names the ones to write, the template's
+    being `fiscal_year` and `fiscal_period`), the column titles and one row per line. `lines` maps
+    a code to its values (one per period), or lists complete rows
+    `[code, label, parent, unit, flag, *values]`."""
     rows: list[list[Any]] = []
-    for at, name in enumerate(HEADER_ROWS):
+    for name in header:
+        at = HEADER_ROWS.index(name)
         rows.append([name, None, None, None, None, *(p[at] for p in periods)])
     rows.append([*TITLES, *(f"{p[1]} {p[0]}" for p in periods)])
     if isinstance(lines, Mapping):
@@ -37,7 +42,11 @@ def statement_rows(
     return rows
 
 
-def workbook(statements: Mapping[str, list[list[Any]]], scale: str | None = "millions") -> bytes:
+def workbook(
+    statements: Mapping[str, list[list[Any]]],
+    scale: str | None = "millions",
+    fiscal_year_end: str | date | None = None,
+) -> bytes:
     book = Workbook()
     instructions = book.active
     assert instructions is not None
@@ -45,6 +54,8 @@ def workbook(statements: Mapping[str, list[list[Any]]], scale: str | None = "mil
     instructions.append(["How to fill this workbook"])
     if scale is not None:
         instructions.append(["scale", scale])
+    if fiscal_year_end is not None:
+        instructions.append(["fiscal_year_end", fiscal_year_end])
     for name, rows in statements.items():
         sheet = book.create_sheet(name)
         for row in rows:
@@ -55,12 +66,17 @@ def workbook(statements: Mapping[str, list[list[Any]]], scale: str | None = "mil
 
 
 def csv_file(
-    statements: Mapping[str, list[list[Any]]], scale: str | None = "millions", delimiter: str = ","
+    statements: Mapping[str, list[list[Any]]],
+    scale: str | None = "millions",
+    delimiter: str = ",",
+    fiscal_year_end: str | date | None = None,
 ) -> bytes:
     out = io.StringIO()
     writer = csv.writer(out, delimiter=delimiter, lineterminator="\n")
     if scale is not None:
         writer.writerow(["scale", scale])
+    if fiscal_year_end is not None:
+        writer.writerow(["fiscal_year_end", fiscal_year_end])
     for name, rows in statements.items():
         for row in rows:
             writer.writerow([name, *("" if v is None else v for v in row)])
@@ -78,7 +94,7 @@ def _column_of(ws: Any, period: str) -> int:
 
 
 def _row_of(ws: Any, code: str) -> int:
-    return next(r for r in range(6, ws.max_row + 1) if ws.cell(row=r, column=1).value == code)
+    return next(r for r in range(1, ws.max_row + 1) if ws.cell(row=r, column=1).value == code)
 
 
 def filled(book: Any, sheet: str, code: str, period: str, value: float) -> None:

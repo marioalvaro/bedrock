@@ -198,3 +198,47 @@ export function balanceStatement(): StatementOut {
     ],
   };
 }
+
+// The income statement with a manual breakdown under Cost of revenue: two custom lines and the
+// "Other" row that makes them add up to the parent (S10c).
+export function customIncomeStatement(): StatementOut {
+  const base = incomeStatement();
+  const line = (
+    code: string,
+    label: string,
+    values: (string | null)[],
+    provenance: StatementOut["rows"][number]["provenance"],
+    overrides: Partial<StatementOut["rows"][number]> = {},
+  ): StatementOut["rows"][number] => ({
+    code,
+    label,
+    unit: "USD",
+    kind: "flow",
+    depth: 2,
+    values,
+    provenance,
+    yoy: [null, null],
+    common_size: [null, null],
+    adjustable: false,
+    custom: true,
+    parent: "cost_of_revenue",
+    common_size_base: "Revenue",
+    ...overrides,
+  });
+  const rows = [...base.rows];
+  const at = rows.findIndex((row) => row.code === "cost_of_revenue") + 1;
+  rows.splice(
+    at,
+    0,
+    line("custom:products", "Products", [null, "150000000000"], [null, "imported"]),
+    line("custom:services", "Services", [null, "50000000000"], [null, "imported"]),
+    line(
+      "other:cost_of_revenue",
+      "Other Cost of revenue",
+      [null, "10352000000"],
+      [null, "derived"],
+      { custom: false, parent: null },
+    ),
+  );
+  return { ...base, rows };
+}

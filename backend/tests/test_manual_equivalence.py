@@ -4,7 +4,7 @@
 in units (scale `units`), so the round trip loses nothing."""
 
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -48,18 +48,22 @@ def _cells(session: Session, company: Company) -> dict[tuple[str, str, str], tup
     return out
 
 
-def test_the_manual_company_has_the_calendar_of_aapl(
+def test_the_manual_company_has_the_calendar_of_aapl_to_within_a_week(
     db_session: Session, pair: tuple[Company, Company]
 ) -> None:
+    """The template has no dates: AAPLM's follow from AAPL's last fiscal year end, so a 52/53-week
+    company's real dates are matched to a few days (the periods themselves are the same)."""
     aapl, aaplm = pair
 
     assert fiscal_periods(db_session, aaplm) == fiscal_periods(db_session, aapl)
     for statement, freq in (("IS", "annual"), ("IS", "quarterly"), ("BS", "quarterly")):
         mine = build_statements(db_session, aaplm, statement, freq)  # type: ignore[arg-type]
         theirs = build_statements(db_session, aapl, statement, freq)  # type: ignore[arg-type]
-        assert [(p.key, p.start, p.end) for p in mine.periods] == [
-            (p.key, p.start, p.end) for p in theirs.periods
-        ]
+        assert [p.key for p in mine.periods] == [p.key for p in theirs.periods]
+        for a, b in zip(mine.periods, theirs.periods, strict=True):
+            assert abs(a.end - b.end) <= timedelta(days=7), a.key
+            if statement != "BS":
+                assert abs(a.start - b.start) <= timedelta(days=7), a.key
 
 
 def test_every_cell_aapl_has_equals_aapls(

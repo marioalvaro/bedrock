@@ -27,6 +27,7 @@ import {
 } from "@/lib/format";
 import { downloadText } from "@/lib/download";
 import { useScale, type Scale } from "@/lib/scale";
+import { ImportButton } from "@/features/imports/ImportButton";
 
 import { CellDetailSheet, type CellTarget } from "./CellDetailSheet";
 import {
@@ -132,6 +133,11 @@ function columnDefs(
             <span className={CHEVRON} aria-hidden />
           )}
           <span className="truncate">{data.label}</span>
+          {data.custom && (
+            <span className="text-muted-foreground border-border shrink-0 rounded border px-1 text-[10px] leading-4">
+              custom
+            </span>
+          )}
           {lineNoteCount(notes, data) > 0 && (
             <button
               type="button"
@@ -307,16 +313,18 @@ export function StatementView({ ticker, cik, type }: StatementViewProps) {
           {allOpen ? "Collapse all" : "Expand all"}
         </Button>
         <UnitToggle />
-        <Button
-          variant="outline"
-          size="sm"
-          className="ml-auto"
-          aria-label="Download CSV"
-          disabled={!data || isPlaceholderData}
-          onClick={exportCsv}
-        >
-          <Download /> CSV
-        </Button>
+        <span className="ml-auto flex items-center gap-2">
+          <ImportButton ticker={ticker} />
+          <Button
+            variant="outline"
+            size="sm"
+            aria-label="Download CSV"
+            disabled={!data || isPlaceholderData}
+            onClick={exportCsv}
+          >
+            <Download /> CSV
+          </Button>
+        </span>
       </div>
       <div className="px-4 py-1">
         <ProvenanceLegend />
@@ -337,6 +345,7 @@ export function StatementView({ ticker, cik, type }: StatementViewProps) {
               label: row.label,
               unit: row.unit,
               adjustable: row.adjustable,
+              custom: row.custom,
               fiscalYear: period.fiscal_year,
               fiscalPeriod: period.fiscal_period,
             });

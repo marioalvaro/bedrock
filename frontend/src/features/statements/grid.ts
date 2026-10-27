@@ -4,12 +4,7 @@ import { scaleLabel } from "@/lib/format";
 import type { Scale } from "@/lib/scale";
 
 export type Provenance =
-  | "reported"
-  | "derived"
-  | "normalized"
-  | "zero_inferred"
-  | "approximated"
-  | "imported";
+  "reported" | "derived" | "normalized" | "zero_inferred" | "approximated" | "imported";
 export type GridRowKind = "line" | "yoy" | "common_size" | "balance_check";
 
 // One AG Grid row. Values stay the API's decimal strings: the grid formats them at
@@ -28,6 +23,7 @@ export interface GridRow {
   parentLabel?: string;
   hasChildren: boolean; // a line item with a breakdown under it
   expanded: boolean; // whether that breakdown is shown
+  custom: boolean; // a line the user added in an import (S10c)
 }
 
 export interface GridOptions {
@@ -105,6 +101,7 @@ function subRow(
     adjustable: false,
     hasChildren: false,
     expanded: false,
+    custom: false,
   };
 }
 
@@ -139,6 +136,7 @@ export function toGridRows(payload: StatementOut, options: GridOptions): GridRow
       adjustable: line.adjustable,
       hasChildren,
       expanded,
+      custom: line.custom,
     });
     if (options.yoy) {
       const yoy = subRow(line, keys, "yoy", "YoY", line.yoy);
@@ -169,16 +167,22 @@ export function toGridRows(payload: StatementOut, options: GridOptions): GridRow
       adjustable: false,
       hasChildren: false,
       expanded: false,
+      custom: false,
     });
   }
 
   return rows;
 }
 
+// The "Other <line>" row of a custom breakdown: parent less its lines, computed by the table.
+const OTHER_PREFIX = "other:";
+
 // A line item's value has details, and an empty cell of an adjustable line opens them too so an
-// adjustment can be added there; the cell endpoint covers FY and Q1..Q4, not TTM.
+// adjustment can be added there; the cell endpoint covers FY and Q1..Q4, not TTM, and not the
+// "Other" row of a custom breakdown (it has no cell of its own).
 export function canExplain(row: GridRow, period: PeriodOut): boolean {
   if (row.kind !== "line" || period.key.startsWith("TTM")) return false;
+  if (row.code.startsWith(OTHER_PREFIX)) return false;
   return row.values[period.key] !== null || row.adjustable;
 }
 
@@ -193,7 +197,8 @@ export function csvLabel(row: GridRow): string {
 }
 
 // The classes a cell's provenance gives its value. Derived and approximated values are not hard
-// facts and share one style, an inferred zero is muted, a normalized value is amber; reported is plain.
+// facts and share one style, an inferred zero is muted, a normalized value is amber, an imported
+// one (your file, not SEC) is teal; reported is plain.
 export function provenanceClasses(provenance: Provenance | null | undefined): string[] {
   switch (provenance) {
     case "derived":
@@ -203,6 +208,8 @@ export function provenanceClasses(provenance: Provenance | null | undefined): st
       return ["prov-zero"];
     case "normalized":
       return ["prov-normalized"];
+    case "imported":
+      return ["prov-imported"];
     default:
       return [];
   }

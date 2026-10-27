@@ -6,9 +6,10 @@ value there always wins), the statements as they are (earlier imports), and the 
 this file on top (what would change).
 """
 
+import calendar as month_calendar
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -40,15 +41,22 @@ from bedrock.statements.custom_lines import (
     custom_items,
     merge_lines,
 )
+from bedrock.statements.fiscal_grid import annual_then_quarterly, period_grid
 from bedrock.statements.imports import (
     StoredValue,
     company_calendar,
     imported_frames,
     integrity_warnings,
 )
-from bedrock.statements.periods import annual_periods, fiscal_calendar, quarterly_periods
+from bedrock.statements.periods import (
+    Calendar,
+    Period,
+    annual_periods,
+    fiscal_calendar,
+    fiscal_year_of,
+    quarterly_periods,
+)
 
-PERIOD_ORDER = ("FY", "Q1", "Q2", "Q3", "Q4")
 NEW_IMPORT_ID = 10**9  # the id the dry run gives the file, so its cells can be told apart
 
 IgnoredReason = Literal["sec", "derived"]
@@ -125,21 +133,58 @@ class ImportResult:
 
 
 def import_template(
-    session: Session, company: Company, fmt: ImportFormat, scale: str, prefill: bool
+    session: Session,
+    company: Company,
+    fmt: ImportFormat,
+    scale: str,
+    prefill: bool,
+    today: date | None = None,
 ) -> bytes:
-    """The template of the company's periods; `prefill` writes the values the statements show
-    (reported basis). Raises ValueError for an unknown scale."""
+    """The template: 20 fiscal years of columns (FY, Q1..Q4 each), the company's own periods
+    included, and the fiscal year end its dates follow from. `prefill` writes the values the
+    statements show (reported basis). `today` places a company with no data. Raises ValueError for
+    an unknown scale."""
     inputs = load_inputs(session, company)
     calendar = company_calendar(inputs.canonical, inputs.rules.imported)
-    periods = sorted(
-        annual_periods(calendar) + quarterly_periods(calendar),
-        key=lambda p: (p.fiscal_year, PERIOD_ORDER.index(p.fiscal_period)),
-    )
+    fiscal_year_end, last_year = _template_frame(company, calendar, today or date.today())
+    own = annual_periods(calendar) + quarterly_periods(calendar)
+    by_key: dict[str, Period] = {p.key: p for p in period_grid(fiscal_year_end, last_year)}
+    by_key.update({p.key: p for p in own})
+    periods = annual_then_quarterly(by_key.values())
     values: dict[tuple[str, str], Decimal] = {}
     if prefill and not inputs.empty:
         solved = solve_cells(inputs.canonical, inputs.lines, calendar, inputs.rules)
         values = {key: cell.value for key, cell in solved.cells.items() if cell.value is not None}
-    return build_template(inputs.items, periods, fmt, scale, values)
+    return build_template(inputs.items, periods, fmt, scale, values, fiscal_year_end)
+
+
+def _template_frame(company: Company, calendar: Calendar, today: date) -> tuple[date, int]:
+    """The fiscal year end to write and the last fiscal year of the grid. A company with a
+    calendar ends at its latest year (the open one included) and takes the end of its latest
+    completed year; one without data ends at the fiscal year that contains `today`."""
+    if calendar.years:
+        completed = annual_periods(calendar)
+        reference = completed[-1].end if completed else _month_end_reference(company)
+        return reference, calendar.years[-1].fiscal_year
+    month = company.fiscal_year_end_month
+    candidate = date(today.year, month, month_calendar.monthrange(today.year, month)[1])
+    if candidate >= today:
+        year = candidate.year - 1
+        candidate = date(year, month, month_calendar.monthrange(year, month)[1])
+    return candidate, fiscal_year_of(candidate) + 1
+
+
+def _month_end_reference(company: Company) -> date:
+    """A fiscal year end on the last day of the company's fiscal-year month (any year works)."""
+    month = company.fiscal_year_end_month
+    return date(2001, month, month_calendar.monthrange(2001, month)[1])
+
+
+def _year_end_fallback(company: Company, calendar: Calendar) -> date:
+    """The fiscal year end for a file that has none: the latest completed year's, else the
+    company's fiscal-year month."""
+    completed = annual_periods(calendar)
+    return completed[-1].end if completed else _month_end_reference(company)
 
 
 def preview_import(
@@ -209,12 +254,19 @@ def _evaluate(
     now: datetime,
 ) -> tuple[ImportPreview, ImportPlan, list[StoredValue], list[repo.NewLine]]:
     inputs = load_inputs(session, company)
-    try:
-        parsed = parse_import(content, filename, inputs.items, scale, inputs.custom)
-    except ImportParseError as error:
-        raise InvalidStatementImport(error.errors) from error
     sec_calendar = fiscal_calendar(inputs.canonical)
     current_calendar = company_calendar(inputs.canonical, inputs.rules.imported)
+    try:
+        parsed = parse_import(
+            content,
+            filename,
+            inputs.items,
+            scale,
+            inputs.custom,
+            _year_end_fallback(company, current_calendar),
+        )
+    except ImportParseError as error:
+        raise InvalidStatementImport(error.errors) from error
     issues, plan = check_periods(parsed, sec_calendar, current_calendar)
     if issues:
         raise InvalidStatementImport(issues)

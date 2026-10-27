@@ -7,6 +7,7 @@ import {
   companiesQueryOptions,
   companyErrorMessage,
   useAddCompany,
+  useAddManualCompany,
   useRemoveCompany,
 } from "@/api/companies";
 import {
@@ -21,6 +22,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   formatCompact,
   formatMultiple,
@@ -61,10 +63,113 @@ function AddCompanyForm({ onError }: { onError: (message: string | null) => void
   );
 }
 
+const MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+// A company SEC does not cover: its statements come from an import, so it needs only a name and
+// the month its fiscal year ends in.
+function ManualCompanyForm({ onDone }: { onDone: () => void }) {
+  const add = useAddManualCompany();
+  const [ticker, setTicker] = useState("");
+  const [name, setName] = useState("");
+  const [month, setMonth] = useState(12);
+  const [sic, setSic] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    const symbol = ticker.trim().toUpperCase();
+    if (!symbol) return setError("Enter a ticker");
+    if (!name.trim()) return setError("Enter a name");
+    if (sic.trim() && !/^\d{4}$/.test(sic.trim())) return setError("SIC must be 4 digits");
+    setError(null);
+    add.mutate(
+      {
+        ticker: symbol,
+        name: name.trim(),
+        fiscal_year_end_month: month,
+        ...(sic.trim() ? { sic: sic.trim() } : {}),
+      },
+      {
+        onSuccess: onDone,
+        onError: (e) => setError(companyErrorMessage(e, "Could not create the company.")),
+      },
+    );
+  }
+
+  return (
+    <form
+      aria-label="Add manual company"
+      onSubmit={submit}
+      noValidate
+      className="border-border grid gap-3 border-b px-4 py-3 sm:grid-cols-[8rem_1fr_10rem_8rem_auto] sm:items-end"
+    >
+      <div className="space-y-1">
+        <Label htmlFor="manual-ticker">Ticker</Label>
+        <Input id="manual-ticker" value={ticker} onChange={(e) => setTicker(e.target.value)} />
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor="manual-name">Name</Label>
+        <Input id="manual-name" value={name} onChange={(e) => setName(e.target.value)} />
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor="manual-month">Fiscal year ends</Label>
+        <select
+          id="manual-month"
+          value={month}
+          onChange={(e) => setMonth(Number(e.target.value))}
+          className="border-input h-8 w-full rounded-lg border bg-transparent px-2 text-sm"
+        >
+          {MONTHS.map((label, index) => (
+            <option key={label} value={index + 1}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor="manual-sic">SIC (optional)</Label>
+        <Input
+          id="manual-sic"
+          inputMode="numeric"
+          value={sic}
+          onChange={(e) => setSic(e.target.value)}
+        />
+      </div>
+      <div className="flex gap-2">
+        <Button type="submit" size="sm" disabled={add.isPending}>
+          Create
+        </Button>
+        <Button type="button" size="sm" variant="outline" onClick={onDone}>
+          Cancel
+        </Button>
+      </div>
+      {error && (
+        <p role="alert" className="text-destructive text-sm sm:col-span-full">
+          {error}
+        </p>
+      )}
+    </form>
+  );
+}
+
 export function Companies() {
   const { data: companies, isPending, isError } = useQuery(companiesQueryOptions);
   const [error, setError] = useState<string | null>(null);
   const [toRemove, setToRemove] = useState<string | null>(null);
+  const [manualOpen, setManualOpen] = useState(false);
   const remove = useRemoveCompany();
   const now = useNow();
 
@@ -72,12 +177,16 @@ export function Companies() {
     <div>
       <div className="border-border flex flex-wrap items-center gap-3 border-b px-4 py-2">
         <AddCompanyForm onError={setError} />
+        <Button type="button" size="sm" variant="outline" onClick={() => setManualOpen(true)}>
+          Add manual company
+        </Button>
         {error && (
           <p role="alert" className="text-destructive text-sm">
             {error}
           </p>
         )}
       </div>
+      {manualOpen && <ManualCompanyForm onDone={() => setManualOpen(false)} />}
       {isPending && null}
       {isError && <p className="text-destructive p-4 text-sm">Could not load companies.</p>}
       {companies?.length === 0 && (
@@ -109,6 +218,9 @@ export function Companies() {
                     >
                       {company.ticker}
                     </Link>
+                    {company.source === "manual" && (
+                      <span className="text-muted-foreground ml-2 text-xs font-normal">manual</span>
+                    )}
                   </td>
                   <td className="px-2 py-1.5 whitespace-nowrap">{company.name}</td>
                   <td className="num px-2 py-1.5">{formatPrice(company.price)}</td>

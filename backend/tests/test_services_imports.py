@@ -15,6 +15,7 @@ from bedrock.mapping.config import load_canonical_items
 from bedrock.models.company import Company
 from bedrock.models.imported_fact import ImportedFact
 from bedrock.models.statement_import import StatementImport
+from bedrock.services.companies import add_manual_company
 from bedrock.services.errors import ImportNotFound, InvalidStatementImport
 from bedrock.services.imports import (
     ImportPreview,
@@ -282,3 +283,111 @@ def test_a_manual_scale_argument_is_used_when_the_file_has_none(
 
     assert preview.fills[0].value == 12_000
     assert isinstance(preview, ImportPreview)
+
+
+# -- the fiscal year end and the 20 prefilled years -------------------------------------------
+
+
+def _sheet(content: bytes, name: str) -> list[list[Any]]:
+    book = load_workbook(io.BytesIO(content), data_only=True)
+    return [list(r) for r in book[name].iter_rows(values_only=True)]
+
+
+def _instruction(content: bytes, name: str) -> Any:
+    return next(r[1] for r in _sheet(content, "Instructions") if r and r[0] == name)
+
+
+def test_the_template_ends_at_the_latest_calendar_year_with_twenty_years_of_columns(
+    db_session: Session, aapl: Company
+) -> None:
+    content = _template(db_session, aapl, prefill=False)
+    latest = max(year for year, _ in fiscal_periods(db_session, aapl))
+
+    years, periods = (_sheet(content, "IS")[n][5:] for n in (0, 1))
+    assert len(years) == 100
+    # The 20 years first, then the 80 quarters, so a whole row of either pastes in one block.
+    assert periods[:20] == ["FY"] * 20 and years[:20] == list(range(latest - 19, latest + 1))
+    assert periods[20:24] == ["Q1", "Q2", "Q3", "Q4"] and years[20:24] == [latest - 19] * 4
+    assert years[-4:] == [latest] * 4 and periods[-4:] == ["Q1", "Q2", "Q3", "Q4"]
+    annual = build_statements(db_session, aapl, "IS", "annual")
+    assert _instruction(content, "fiscal_year_end") == annual.periods[-1].end.isoformat()
+
+
+def test_every_period_the_company_has_is_a_column_of_the_template(
+    db_session: Session, aapl: Company
+) -> None:
+    rows = _sheet(_template(db_session, aapl, prefill=False), "BS")
+
+    columns = set(zip(rows[0][5:], rows[1][5:], strict=True))
+    assert fiscal_periods(db_session, aapl) <= columns
+
+
+def test_a_company_with_no_data_gets_the_year_containing_today(db_session: Session) -> None:
+    june = add_manual_company(db_session, "ACME", "Acme", 6, None).company
+    december = add_manual_company(db_session, "BETA", "Beta", 12, None).company
+
+    def frame(company: Company) -> tuple[Any, Any]:
+        content = import_template(
+            db_session, company, "xlsx", "millions", False, date(2026, 10, 27)
+        )
+        return _instruction(content, "fiscal_year_end"), _sheet(content, "IS")[0][-1]
+
+    assert frame(june) == ("2026-06-30", 2027)  # FY2027 runs July 2026 - June 2027
+    assert frame(december) == ("2025-12-31", 2026)
+
+
+def test_a_file_without_a_fiscal_year_end_uses_the_companys_fiscal_year_month(
+    db_session: Session,
+) -> None:
+    acme = add_manual_company(db_session, "ACME", "Acme", 6, None).company
+    statements = {
+        "IS": statement_rows(
+            tuple((2020, period, None, None) for period in ("FY", "Q1", "Q2", "Q3", "Q4")),
+            {"revenue": [100, 20, 30, 25, 25]},
+            ("fiscal_year", "fiscal_period"),
+        )
+    }
+
+    preview = preview_import(db_session, acme, workbook(statements, "millions"), "a.xlsx", None)
+    confirm_import(db_session, acme, workbook(statements, "millions"), "a.xlsx", None, NOW)
+
+    assert {f.period_key for f in preview.fills} == {
+        "FY2020",
+        *(f"FY2020Q{n}" for n in (1, 2, 3, 4)),
+    }
+    year = build_statements(db_session, acme, "IS", "annual").periods[0]
+    quarter = build_statements(db_session, acme, "IS", "quarterly").periods[0]
+    assert (year.start, year.end) == (date(2019, 7, 1), date(2020, 6, 30))
+    assert (quarter.start, quarter.end) == (date(2019, 7, 1), date(2019, 9, 30))
+
+
+def test_a_column_added_for_a_year_before_the_sec_history_needs_no_dates(
+    db_session: Session, aapl: Company
+) -> None:
+    book = load_workbook(io.BytesIO(_template(db_session, aapl, prefill=False)))
+    sheet = book["IS"]
+    column = sheet.max_column + 1  # the template ends at the SEC years; add FY2006 after them
+    sheet.cell(row=1, column=column).value = 2006
+    sheet.cell(row=2, column=column).value = "FY"
+    revenue = next(
+        r for r in range(1, sheet.max_row + 1) if sheet.cell(row=r, column=1).value == "revenue"
+    )
+    sheet.cell(row=revenue, column=column).value = 19315
+
+    preview = preview_import(db_session, aapl, save(book), "aapl.xlsx", None)
+
+    assert [(f.code, f.period_key, f.value) for f in preview.fills] == [
+        ("revenue", "FY2006", 19_315_000_000)
+    ]
+
+
+def test_a_blank_template_snaps_a_typed_sec_year_to_the_calendar(
+    db_session: Session, aapl: Company
+) -> None:
+    book = load_workbook(io.BytesIO(_template(db_session, aapl, prefill=False)))
+    for sheet, code, period in EMPTY_CELLS:
+        filled(book, sheet, code, period, 12)
+
+    preview = preview_import(db_session, aapl, save(book), "aapl.xlsx", None)
+
+    assert {(f.statement, f.code, f.period_key) for f in preview.fills} == set(EMPTY_CELLS)

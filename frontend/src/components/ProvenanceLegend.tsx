@@ -6,6 +6,7 @@ export function ProvenanceLegend() {
       <span className="prov-derived">
         ~ Approximated: rebuilt Q4 share counts and EPS, cover-page share counts
       </span>
+      <span className="prov-imported">Imported: from your file, where SEC has no value</span>
       <span>Inferred 0: a rule concluded the line is exactly 0</span>
       <span className="prov-normalized">Normalized: with your adjustments</span>
     </p>

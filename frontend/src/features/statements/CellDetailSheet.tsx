@@ -3,7 +3,12 @@ import { useState } from "react";
 
 import { useCreateAdjustment, useDeleteAdjustment, useUpdateAdjustment } from "@/api/adjustments";
 import { companyErrorMessage } from "@/api/companies";
-import type { AdjustmentIn, CellAdjustmentOut } from "@/api/generated/types.gen";
+import type {
+  AdjustmentIn,
+  CellAdjustmentOut,
+  StatementImportOut,
+} from "@/api/generated/types.gen";
+import { importsQueryOptions } from "@/api/imports";
 import { cellDetailQueryOptions } from "@/api/statements";
 import type { FiscalPeriod } from "@/api/context";
 import {
@@ -41,6 +46,7 @@ export interface CellTarget {
   label: string;
   unit: string;
   adjustable: boolean; // the row takes adjustments (the API's `adjustable`)
+  custom?: boolean; // a line added in an import: it takes no notes
   fiscalYear: number;
   fiscalPeriod: string;
 }
@@ -55,6 +61,18 @@ interface CellDetailSheetProps {
 
 function filingUrl(cik: string, accessionNo: string): string {
   return `https://www.sec.gov/Archives/edgar/data/${Number(cik)}/${accessionNo.replaceAll("-", "")}/`;
+}
+
+// An imported value's "filing" is the import: form `import`, accession `import:<id>`.
+const IMPORT_FORM = "import";
+const importId = (accessionNo: string) => Number(accessionNo.replace("import:", ""));
+
+// The name of the import behind an accession, from the history; its number when the history is
+// not loaded or the import was deleted.
+function importName(accessionNo: string, imports: StatementImportOut[] | undefined): string {
+  const id = importId(accessionNo);
+  const found = imports?.find((item) => item.id === id);
+  return found ? found.filename : `Import #${id}`;
 }
 
 function Field({ name, children }: { name: string; children: React.ReactNode }) {
@@ -72,6 +90,10 @@ const RULE_NOTES: Record<string, { name: string; text: string }> = {
   zero_inferred: {
     name: "inferred zero",
     text: "Inferred zero: the filing does not report this line, and a rule concluded it is exactly 0.",
+  },
+  imported: {
+    name: "imported",
+    text: "Imported: filled from a file you imported, where SEC reports no value. SEC data replaces it as soon as it reports this line.",
   },
   approximated: {
     name: "approximated",
@@ -301,6 +323,11 @@ function Body({
     cellDetailQueryOptions(ticker, target.code, target.fiscalYear, target.fiscalPeriod),
   );
 
+  // The import history names the files; it is only read for a cell an import touches.
+  const fromImport =
+    data?.filing?.form === IMPORT_FORM || data?.vintages.some((v) => v.form === IMPORT_FORM);
+  const { data: imports } = useQuery({ ...importsQueryOptions(ticker), enabled: !!fromImport });
+
   if (isPending) return <p className="text-muted-foreground p-4 text-sm">Loading…</p>;
   if (isError)
     return <p className="text-destructive p-4 text-sm">Could not load the cell details.</p>;
@@ -324,7 +351,7 @@ function Body({
           </>
         )}
       </Field>
-      {data.source && (
+      {data.source && data.source.taxonomy !== IMPORT_FORM && (
         <Field name="Source tag">
           <code className="break-all">
             {data.source.taxonomy}:{data.source.concept}
@@ -334,18 +361,24 @@ function Body({
       )}
       {data.filing && (
         <Field name="Filing">
-          {data.filing.form}{" "}
-          {cik === null ? (
-            data.filing.accession_no
+          {data.filing.form === IMPORT_FORM ? (
+            <>Import {importName(data.filing.accession_no, imports)}</>
           ) : (
-            <a
-              className="underline"
-              href={filingUrl(cik, data.filing.accession_no)}
-              target="_blank"
-              rel="noreferrer"
-            >
-              {data.filing.accession_no}
-            </a>
+            <>
+              {data.filing.form}{" "}
+              {cik === null ? (
+                data.filing.accession_no
+              ) : (
+                <a
+                  className="underline"
+                  href={filingUrl(cik, data.filing.accession_no)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {data.filing.accession_no}
+                </a>
+              )}
+            </>
           )}
           , filed {data.filing.filed_at}
         </Field>
@@ -386,7 +419,11 @@ function Body({
                 <tr key={vintage.accession_no}>
                   <td className="pr-3">{vintage.filed_at}</td>
                   <td className="pr-3">{vintage.form}</td>
-                  <td className="pr-3">{vintage.accession_no}</td>
+                  <td className="pr-3">
+                    {vintage.form === IMPORT_FORM
+                      ? importName(vintage.accession_no, imports)
+                      : vintage.accession_no}
+                  </td>
                   <td className="num">{money(vintage.value)}</td>
                 </tr>
               ))}
@@ -398,7 +435,9 @@ function Body({
         <Adjustments ticker={ticker} target={target} scale={scale} adjustments={data.adjustments} />
       </Field>
       <Field name="Notes">
-        {PERIODS.includes(target.fiscalPeriod) ? (
+        {target.custom ? (
+          <span className="text-muted-foreground">Notes: not available for custom lines</span>
+        ) : PERIODS.includes(target.fiscalPeriod) ? (
           <NotesPanel
             ticker={ticker}
             filter={{

@@ -29,8 +29,9 @@ def download_template(
     scale: Scale = "millions",
     company: Company = Depends(followed_company),
     session: Session = Depends(get_session),
+    now: datetime = Depends(get_clock),
 ) -> Response:
-    content = service.import_template(session, company, format, scale, prefill)
+    content = service.import_template(session, company, format, scale, prefill, now.date())
     name = f"{company.ticker}-import-template.{format}"
     return Response(
         content,
