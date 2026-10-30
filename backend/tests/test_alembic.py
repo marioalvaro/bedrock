@@ -18,6 +18,7 @@ from bedrock.models import (
     concept_mapping,
     corporate_action,
     custom_line,
+    driver_value,
     filing,
     guidance,
     imported_fact,
@@ -27,6 +28,7 @@ from bedrock.models import (
     qoe_custom_rule,
     qoe_threshold,
     raw_fact,
+    scenario,
     segment_series,
     segment_value,
     statement_import,
@@ -43,6 +45,7 @@ _MODELS = (
     concept_mapping,
     corporate_action,
     custom_line,
+    driver_value,
     filing,
     guidance,
     imported_fact,
@@ -52,6 +55,7 @@ _MODELS = (
     qoe_custom_rule,
     qoe_threshold,
     raw_fact,
+    scenario,
     segment_series,
     segment_value,
     statement_import,
@@ -735,3 +739,171 @@ def test_0008_keeps_the_rows_that_reference_company_both_ways(
     assert children() == 1
     _run_alembic(tmp_path, monkeypatch, ("downgrade", "0007"))
     assert children() == 1
+
+
+_FORECAST_TABLES = {"scenario", "driver_value"}
+
+
+def _scenario(connection: Connection, company_id: int, **cols: object) -> int:
+    row = {
+        "company_id": company_id,
+        "name": "Base",
+        "is_default": 1,
+        "base_id": None,
+        "revenue_method": "growth",
+        "horizon_years": 5,
+        "horizon_quarters": 4,
+        "created_at": _NOW,
+        "updated_at": _NOW,
+        **cols,
+    }
+    return _insert(connection, "scenario", **row)
+
+
+def _driver_value(connection: Connection, scenario_id: int, **cols: object) -> int:
+    row = {
+        "scenario_id": scenario_id,
+        "driver_code": "revenue_growth",
+        "fiscal_year": 2027,
+        "fiscal_period": "FY",
+        "kind": "value",
+        "value": "0.05",
+        "source": "manual",
+        "created_at": _NOW,
+        "updated_at": _NOW,
+        **cols,
+    }
+    return _insert(connection, "driver_value", **row)
+
+
+def test_0009_upgrade_creates_the_forecast_tables_and_downgrade_removes_only_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    inspector = inspect(create_engine(database_url))
+    assert _FORECAST_TABLES <= set(inspector.get_table_names())
+    uq = {
+        table: {tuple(c["column_names"]) for c in inspector.get_unique_constraints(table)}
+        for table in _FORECAST_TABLES
+    }
+    assert ("company_id", "name") in uq["scenario"]
+    assert ("scenario_id", "driver_code", "fiscal_year", "fiscal_period") in uq["driver_value"]
+    fks = {
+        (fk["referred_table"], tuple(fk["constrained_columns"]), fk["options"].get("ondelete"))
+        for table in _FORECAST_TABLES
+        for fk in inspector.get_foreign_keys(table)
+    }
+    assert ("company", ("company_id",), "CASCADE") in fks
+    assert ("scenario", ("base_id",), "CASCADE") in fks
+    assert ("scenario", ("scenario_id",), "CASCADE") in fks
+    value = next(c for c in inspector.get_columns("driver_value") if c["name"] == "value")
+    assert (value["type"].precision, value["type"].scale) == (28, 10)
+
+    database_url = _run_alembic(tmp_path, monkeypatch, ("downgrade", "0008"))
+    tables = set(inspect(create_engine(database_url)).get_table_names())
+    assert not _FORECAST_TABLES & tables
+    assert {"company", "segment_series", "custom_line"} <= tables
+
+
+def test_0009_uniques_and_checks_hold_at_the_database_level(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        company_id = _company(connection, "AAA")
+        base = _scenario(connection, company_id)
+        _driver_value(connection, base)
+    child = {"name": "X", "is_default": 0, "base_id": base}
+    bad_rows = (
+        lambda c: _scenario(c, company_id, is_default=0, base_id=base),  # the same name
+        lambda c: _scenario(c, company_id, name="Two"),  # a second Base
+        lambda c: _scenario(c, company_id, name="X", is_default=0),  # not Base, no base_id
+        lambda c: _scenario(c, company_id, name="X", base_id=base),  # Base with a base_id
+        lambda c: _scenario(c, company_id, **child, revenue_method="dcf"),
+        lambda c: _scenario(c, company_id, **child, segment_dimension="kpi"),
+        lambda c: _scenario(c, company_id, **child, horizon_years=4),
+        lambda c: _scenario(c, company_id, **child, horizon_years=11),
+        lambda c: _scenario(c, company_id, **child, horizon_quarters=3),
+        lambda c: _scenario(c, company_id, **child, horizon_quarters=9),
+        lambda c: _driver_value(c, base),  # the same (scenario, driver, year, period)
+        lambda c: _driver_value(c, base, fiscal_year=2028, fiscal_period="Q1"),
+        lambda c: _driver_value(c, base, fiscal_year=2028, kind="delta"),
+        lambda c: _driver_value(c, base, fiscal_year=2028, source="user"),
+    )
+    for bad in bad_rows:
+        with pytest.raises(IntegrityError), engine.begin() as connection:
+            bad(connection)
+    with engine.begin() as connection:
+        bull = _scenario(
+            connection,
+            company_id,
+            name="Bull",
+            is_default=0,
+            base_id=base,
+            revenue_method="segments",
+            segment_dimension="geo",
+            horizon_years=10,
+            horizon_quarters=8,
+        )
+        _driver_value(connection, bull, kind="offset", value="0.03")
+        _driver_value(connection, bull, fiscal_year=2028, source="engine", engine_code="arima")
+        _scenario(
+            connection,
+            company_id,
+            name="Volume",
+            is_default=0,
+            base_id=base,
+            revenue_method="volume_price",
+            volume_kpi="units",
+            price_kpi="asp",
+        )
+        other = _company(connection, "BBB")
+        _scenario(connection, other)  # another company has its own Base
+
+
+def test_0009_foreign_keys_cascade_on_delete(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+        owner = _company(connection, "AAA")
+        base = _scenario(connection, owner)
+        bull = _scenario(connection, owner, name="Bull", is_default=0, base_id=base)
+        _driver_value(connection, base)
+        _driver_value(connection, bull)
+        other = _company(connection, "BBB")
+        _driver_value(connection, _scenario(connection, other))
+
+        def count(table: str) -> int:
+            return int(connection.execute(text(f"SELECT count(*) FROM {table}")).scalar())
+
+        connection.execute(text("DELETE FROM scenario WHERE id = :id"), {"id": bull})
+        assert (count("scenario"), count("driver_value")) == (2, 2)
+        connection.execute(text("DELETE FROM company WHERE id = :id"), {"id": owner})
+        assert (count("scenario"), count("driver_value")) == (1, 1)
+
+
+def test_0009_keeps_existing_rows_both_ways(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0008"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        owner = _company(connection, "AAA")
+        _import(connection, owner)
+        _series(connection, owner)
+
+    def counts() -> tuple[int, ...]:
+        with engine.connect() as connection:
+            return tuple(
+                int(connection.execute(text(f"SELECT count(*) FROM {table}")).scalar())
+                for table in ("company", "statement_import", "segment_series")
+            )
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    assert counts() == (1, 1, 1)
+    _run_alembic(tmp_path, monkeypatch, ("downgrade", "0008"))
+    assert counts() == (1, 1, 1)
