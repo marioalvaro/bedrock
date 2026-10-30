@@ -111,6 +111,25 @@ def test_typing_into_three_empty_cells_fills_exactly_those(
         assert before[key][0] is None or key[1] in RESIDUALS, key
 
 
+def test_a_dry_run_that_changes_an_imported_value_matches_confirm(
+    db_session: Session, aapl: Company
+) -> None:
+    first = load_workbook(io.BytesIO(_template(db_session, aapl)))
+    filled(first, "IS", "interest_expense", "FY2008", 12)
+    confirm_import(db_session, aapl, save(first), "aapl.xlsx", None, NOW)
+    second = load_workbook(io.BytesIO(_template(db_session, aapl)))
+    filled(second, "IS", "interest_expense", "FY2008", 13)
+    later = NOW + timedelta(hours=1)
+
+    preview = preview_import(db_session, aapl, save(second), "aapl.xlsx", None)
+    result = confirm_import(db_session, aapl, save(second), "aapl.xlsx", None, later)
+
+    assert preview.ignored == [] and result.preview.ignored == []
+    expected = [("interest_expense", "FY2008", 13_000_000, 12_000_000)]
+    for outcome in (preview, result.preview):
+        assert [(f.code, f.period_key, f.value, f.previous) for f in outcome.fills] == expected
+
+
 def test_a_typed_value_over_an_sec_cell_is_ignored_and_not_stored(
     db_session: Session, aapl: Company
 ) -> None:
@@ -334,6 +353,20 @@ def test_a_company_with_no_data_gets_the_year_containing_today(db_session: Sessi
 
     assert frame(june) == ("2026-06-30", 2027)  # FY2027 runs July 2026 - June 2027
     assert frame(december) == ("2025-12-31", 2026)
+
+
+@pytest.mark.parametrize(
+    ("today", "expected"),
+    [(date(2026, 6, 30), ("2025-06-30", 2026)), (date(2026, 7, 1), ("2026-06-30", 2027))],
+)
+def test_a_company_with_no_data_on_its_fiscal_year_end_day_ends_at_that_year(
+    db_session: Session, today: date, expected: tuple[str, int]
+) -> None:
+    june = add_manual_company(db_session, "ACME", "Acme", 6, None).company
+
+    content = import_template(db_session, june, "xlsx", "millions", False, today)
+
+    assert (_instruction(content, "fiscal_year_end"), _sheet(content, "IS")[0][-1]) == expected
 
 
 def test_a_file_without_a_fiscal_year_end_uses_the_companys_fiscal_year_month(

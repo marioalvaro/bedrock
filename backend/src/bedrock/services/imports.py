@@ -163,9 +163,7 @@ def _template_frame(company: Company, calendar: Calendar, today: date) -> tuple[
     calendar ends at its latest year (the open one included) and takes the end of its latest
     completed year; one without data ends at the fiscal year that contains `today`."""
     if calendar.years:
-        completed = annual_periods(calendar)
-        reference = completed[-1].end if completed else _month_end_reference(company)
-        return reference, calendar.years[-1].fiscal_year
+        return _year_end_fallback(company, calendar), calendar.years[-1].fiscal_year
     month = company.fiscal_year_end_month
     candidate = date(today.year, month, month_calendar.monthrange(today.year, month)[1])
     if candidate >= today:
@@ -191,8 +189,9 @@ def preview_import(
     session: Session, company: Company, content: bytes, filename: str, scale: str | None
 ) -> ImportPreview:
     """The dry run: what the file would fill, what it would leave alone and why. Writes nothing.
-    Raises InvalidStatementImport with every error of the file."""
-    return _evaluate(session, company, content, filename, scale, datetime.min)[0]
+    Raises InvalidStatementImport with every error of the file. The file ranks as the newest
+    import, as it will on Confirm."""
+    return _evaluate(session, company, content, filename, scale, datetime.max)[0]
 
 
 def confirm_import(

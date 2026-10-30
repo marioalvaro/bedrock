@@ -1100,7 +1100,7 @@ def _whole_number(value: Any) -> int | None:
     if isinstance(value, float):
         return int(value) if value.is_integer() else None
     text = _text(value)
-    return int(text) if text.isdigit() else None
+    return int(text) if text.isascii() and text.isdecimal() else None
 
 
 def _date(value: Any) -> date | None:
@@ -1118,7 +1118,8 @@ def _date(value: Any) -> date | None:
 
 def _number(value: Any) -> Decimal | None:
     """A typed number: an int, a float, or text with thousands separators and a negative in
-    parentheses. Booleans, non-finite and anything else are not numbers."""
+    parentheses. Booleans, non-finite, exponent-notation text (which can overflow when scaled) and
+    anything else are not numbers."""
     if isinstance(value, bool):
         return None
     if isinstance(value, int):
@@ -1131,6 +1132,8 @@ def _number(value: Any) -> Decimal | None:
     negative = text.startswith("(") and text.endswith(")")
     if negative:
         text = text[1:-1]
+    if "e" in text.lower():
+        return None
     try:
         number = Decimal(text)
     except InvalidOperation:

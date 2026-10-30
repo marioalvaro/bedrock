@@ -78,6 +78,19 @@ beforeEach(() => {
 afterEach(() => vi.clearAllMocks());
 
 describe("CompsView sets", () => {
+  it("shows Loading… while the sets are pending", async () => {
+    listSets.mockReturnValue(new Promise(() => {}) as never);
+    renderView();
+    expect(await screen.findByText("Loading…")).toBeVisible();
+  });
+
+  it("shows an error when the sets cannot load", async () => {
+    listSets.mockResolvedValue(errorResult(500) as never);
+    renderView();
+    expect(await screen.findByText("Could not load the comps sets.")).toBeVisible();
+    expect(getComparison).not.toHaveBeenCalled();
+  });
+
   it("shows an empty state with New comps set when there is no set", async () => {
     listSets.mockResolvedValue(okResult([]) as never);
     renderView();

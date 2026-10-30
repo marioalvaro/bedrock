@@ -259,6 +259,7 @@ def test_a_missing_header_row_is_an_error() -> None:
     ("period", "row", "needle"),
     [
         (("x", "FY", date(2005, 9, 25), date(2006, 9, 30)), 1, "fiscal_year"),
+        (("²", "FY", date(2005, 9, 25), date(2006, 9, 30)), 1, "fiscal_year"),
         ((2006, "H1", date(2005, 9, 25), date(2006, 9, 30)), 2, "fiscal_period"),
         ((2006, "FY", "not a date", date(2006, 9, 30)), 3, "period_start"),
         ((2006, "FY", date(2005, 9, 25), None), 4, "period_end"),
@@ -314,6 +315,14 @@ def test_non_finite_huge_and_boolean_values_are_errors(bad: Any) -> None:
     issues = errors(workbook(income({"revenue": [bad]}), scale="units"))
 
     assert located(issues[0]) == ("IS", 6, "F")
+
+
+@pytest.mark.parametrize("bad", ["1e999999", "1E3", "-1e-999999"])
+def test_exponent_notation_is_not_a_number(bad: str) -> None:
+    issues = errors(workbook(income({"revenue": [bad]})))  # millions: 1e999999 would overflow
+
+    assert located(issues[0]) == ("IS", 6, "F")
+    assert bad in issues[0].message
 
 
 def test_a_duplicate_row_is_an_error() -> None:

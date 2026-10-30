@@ -1,10 +1,13 @@
 """The statement import routes over a followed AAPL (recorded fixtures, no network)."""
 
+import inspect
 import io
 
 import pytest
 from fastapi.testclient import TestClient
 from openpyxl import load_workbook
+
+from bedrock.api.v1.imports import import_statements
 
 from .import_data import add_line, filled, mark_complete, save
 
@@ -315,3 +318,15 @@ def test_a_custom_line_error_is_a_422_with_its_location(aapl_client: TestClient)
     assert response.status_code == 422
     (error,) = response.json()["errors"]
     assert (error["sheet"], error["column"]) == ("BS", "C") and "leaf" in error["message"]
+
+
+def test_a_file_over_10_mb_is_a_422(aapl_client: TestClient) -> None:
+    response = _upload(aapl_client, b"x" * (10 * 1024 * 1024 + 1), dry_run=True)
+
+    assert response.status_code == 422
+    assert "10 MB" in response.text
+
+
+def test_the_upload_runs_in_the_threadpool_not_on_the_event_loop() -> None:
+    """Parsing and solving a file takes seconds; a coroutine handler would block every request."""
+    assert not inspect.iscoroutinefunction(import_statements)

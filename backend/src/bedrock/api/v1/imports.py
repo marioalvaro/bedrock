@@ -41,7 +41,7 @@ def download_template(
 
 
 @router.post("/companies/{ticker}/imports", responses={422: {"model": ImportFileErrorsOut}})
-async def import_statements(
+def import_statements(
     file: UploadFile = File(),
     dry_run: bool = Form(False),
     scale: Scale | None = Form(None),
@@ -49,7 +49,7 @@ async def import_statements(
     session: Session = Depends(get_session),
     now: datetime = Depends(get_clock),
 ) -> ImportPreviewOut:
-    content = await file.read(MAX_BYTES + 1)
+    content = file.file.read(MAX_BYTES + 1)
     if len(content) > MAX_BYTES:
         raise InvalidStatementImport(
             [ImportIssue(None, None, None, "The file is larger than 10 MB")]

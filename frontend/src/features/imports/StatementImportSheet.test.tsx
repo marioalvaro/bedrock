@@ -316,6 +316,19 @@ describe("history", () => {
     expect(await screen.findByText("No imports yet.")).toBeInTheDocument();
   });
 
+  it("shows Loading… while the history is pending", async () => {
+    list.mockReturnValue(new Promise(() => {}) as never);
+    renderSheet();
+    expect(await screen.findByText("Loading…")).toBeInTheDocument();
+  });
+
+  it("shows an error when the import history cannot load", async () => {
+    list.mockResolvedValue(errorResult(500) as never);
+    renderSheet();
+    expect(await screen.findByText("Could not load the imports.")).toBeInTheDocument();
+    expect(screen.queryByText("No imports yet.")).not.toBeInTheDocument();
+  });
+
   it("asks before deleting and then deletes that import", async () => {
     list.mockResolvedValue(okResult([statementImport({ id: 3, filename: "first.xlsx" })]) as never);
     remove.mockResolvedValue(okResult(undefined, 204) as never);

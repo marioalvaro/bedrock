@@ -20,6 +20,7 @@ from bedrock.statements.cell_types import (
     Derivation,
     DerivationInput,
     FactRef,
+    Provenance,
     RuleWarning,
 )
 from bedrock.statements.periods import Period
@@ -205,7 +206,7 @@ def _accept(
     log: WarningLog,
 ) -> Cell | None:
     tolerance = max(BALANCE_FLOOR, BALANCE_RELATIVE * largest)
-    provenance: str = "derived"
+    provenance: Provenance = "derived"
     stored = result
     reason: str | None = None
     if rule.mode == "zero_only":
@@ -231,7 +232,7 @@ def _accept(
     )
     return Cell(
         stored,
-        provenance,  # type: ignore[arg-type]
+        provenance,
         derivation=derivation,
         solved_by=identity.id,
     )
