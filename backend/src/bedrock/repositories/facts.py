@@ -8,6 +8,7 @@ from sqlalchemy import Select, insert, select, tuple_
 from sqlalchemy.orm import Session
 
 from bedrock.ingest.parse import ParsedFacts
+from bedrock.mapping.mapper import CANONICAL_COLUMNS
 from bedrock.models.company import Company
 from bedrock.models.filing import Filing
 from bedrock.models.raw_fact import RawFact
@@ -123,6 +124,51 @@ def load_latest_annual_facts(session: Session, company_id: int) -> pd.DataFrame:
     if filing_id is None:
         return _frame([])
     return _frame(session.execute(_joined().where(RawFact.filing_id == filing_id)).all())
+
+
+def load_cover_shares(session: Session, company_id: int) -> pd.DataFrame:
+    """The cover-page share counts (`dei:EntityCommonStockSharesOutstanding`) in the canonical
+    frame's shape, as `shares_outstanding` instants. A cover fact is dated weeks after the period
+    it sits in, so each is dated on the period its filing reports (`Filing.period_end`). The
+    caller split-adjusts it like any share count."""
+    stmt = (
+        select(
+            RawFact.taxonomy,
+            RawFact.concept,
+            RawFact.unit,
+            Filing.period_end,
+            RawFact.value,
+            Filing.accession_no,
+            Filing.form,
+            Filing.filed_at,
+        )
+        .join(Filing, Filing.id == RawFact.filing_id)
+        .where(
+            RawFact.company_id == company_id,
+            RawFact.taxonomy == "dei",
+            RawFact.concept == "EntityCommonStockSharesOutstanding",
+            RawFact.unit == "shares",
+        )
+    )
+    records = [
+        (
+            "shares_outstanding",
+            None,
+            r[3],
+            plain(r[4]),
+            r[0],
+            r[1],
+            r[2],
+            r[5],
+            r[6],
+            r[7],
+            "instant",
+        )
+        for r in session.execute(stmt)
+    ]
+    return pd.DataFrame(records, columns=CANONICAL_COLUMNS).astype(
+        {"period_start": "object", "period_end": "object", "value": "object", "filed_at": "object"}
+    )
 
 
 class SharesOutstanding(NamedTuple):

@@ -1,12 +1,22 @@
 import { useQuery } from "@tanstack/react-query";
-import type { ColDef, ICellRendererParams } from "ag-grid-community";
+import type { CellClickedEvent, ColDef, ICellRendererParams } from "ag-grid-community";
 import { useMemo, useState } from "react";
 
 import { flagsQueryOptions, type AnalysisFreq } from "@/api/analysis";
-import type { FlagsOut } from "@/api/generated/types.gen";
+import type { FlagsOut, PeriodOut } from "@/api/generated/types.gen";
 import { DataGrid } from "@/components/DataGrid";
 import { UnitToggle } from "@/components/UnitToggle";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { NoteMarker } from "@/features/notes/NoteMarker";
+import { SubjectNotesSheet } from "@/features/notes/SubjectNotesSheet";
+import {
+  cellNotes,
+  cellTarget,
+  subjectNotes,
+  type NoteIndex,
+  type SubjectTarget,
+} from "@/features/notes/subjects";
+import { useNoteIndex } from "@/features/notes/useNoteIndex";
 import { formatRatio, formatThreshold } from "@/lib/format";
 
 import { OffBalanceItems } from "./OffBalanceItems";
@@ -41,7 +51,14 @@ function levelsTitle(rule: Rule, index: number): string {
   return `warn ${warn} · alert ${alert}`;
 }
 
-function columnDefs(payload: FlagsOut): ColDef<Rule>[] {
+// Notes sit on a rule's FY or quarter cell, not on TTM.
+const notable = (period: PeriodOut) => !period.key.startsWith("TTM");
+
+function columnDefs(
+  payload: FlagsOut,
+  markers: NoteIndex,
+  onRuleNotes: (rule: Rule) => void,
+): ColDef<Rule>[] {
   const periodColumns = payload.periods.map((period, index): ColDef<Rule> => ({
     colId: period.key,
     headerName: period.label,
@@ -62,6 +79,12 @@ function columnDefs(payload: FlagsOut): ColDef<Rule>[] {
         "num",
         "ag-right-aligned-cell",
         ...(severity === "warn" ? ["flag-warn"] : severity === "alert" ? ["flag-alert"] : []),
+        ...(data && notable(period) ? ["cursor-pointer", "hover:underline"] : []),
+        ...(data &&
+        notable(period) &&
+        cellNotes(markers, "quality", data.code, period.fiscal_year, period.fiscal_period) > 0
+          ? ["has-note"]
+          : []),
       ];
     },
   }));
@@ -74,9 +97,14 @@ function columnDefs(payload: FlagsOut): ColDef<Rule>[] {
       width: Math.min(240, Math.round(window.innerWidth * 0.4)),
       cellRenderer: ({ data }: { data?: Rule }) =>
         data ? (
-          <span className="truncate" title={data.code}>
-            {data.label}
-            {data.custom && <span className="text-muted-foreground ml-1.5 text-xs">custom</span>}
+          <span className="flex min-w-0 items-center gap-1">
+            <span className="truncate" title={data.code}>
+              {data.label}
+              {data.custom && <span className="text-muted-foreground ml-1.5 text-xs">custom</span>}
+            </span>
+            {subjectNotes(markers, "quality", data.code) > 0 && (
+              <NoteMarker label={data.label} onClick={() => onRuleNotes(data)} />
+            )}
           </span>
         ) : null,
     },
@@ -116,9 +144,25 @@ interface QualityViewProps {
  */
 export function QualityView({ ticker }: QualityViewProps) {
   const [freq, setFreq] = useState<AnalysisFreq>("annual");
+  const markers = useNoteIndex(ticker);
+  const [target, setTarget] = useState<SubjectTarget | null>(null);
   const { data, isPending, isError } = useQuery(flagsQueryOptions(ticker, freq));
-  const columns = useMemo(() => (data ? columnDefs(data) : []), [data]);
+  const columns = useMemo(
+    () =>
+      data
+        ? columnDefs(data, markers, (rule) =>
+            setTarget({ kind: "quality", code: rule.code, label: rule.label }),
+          )
+        : [],
+    [data, markers],
+  );
   const empty = data !== undefined && (data.rules.length === 0 || data.periods.length === 0);
+
+  function openCell({ data: rule, column }: CellClickedEvent<Rule>) {
+    const period = data?.periods.find((p) => p.key === column.getColId());
+    if (!rule || !period || !notable(period)) return;
+    setTarget(cellTarget("quality", rule.code, rule.label, period));
+  }
 
   return (
     <div>
@@ -144,8 +188,14 @@ export function QualityView({ ticker }: QualityViewProps) {
       {isError && <p className="text-destructive p-4 text-sm">Could not load the quality flags.</p>}
       {empty && <p className="text-muted-foreground p-4 text-sm">{EMPTY}</p>}
       {data && !empty && (
-        <DataGrid<Rule> rowData={data.rules} columnDefs={columns} getRowId={(r) => r.code} />
+        <DataGrid<Rule>
+          rowData={data.rules}
+          columnDefs={columns}
+          getRowId={(r) => r.code}
+          onCellClicked={openCell}
+        />
       )}
+      <SubjectNotesSheet ticker={ticker} target={target} onClose={() => setTarget(null)} />
       <OffBalanceItems ticker={ticker} />
     </div>
   );

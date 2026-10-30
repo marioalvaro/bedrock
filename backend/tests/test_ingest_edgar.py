@@ -91,6 +91,12 @@ def test_fetch_returns_companyfacts_and_writes_the_cache(tmp_path: Path) -> None
     assert json.loads(cached.read_bytes()) == payload.companyfacts
 
 
+def test_fetch_refuses_a_company_without_a_cik(tmp_path: Path) -> None:
+    # A manual company has no SEC filer; the refresh never asks EDGAR for it.
+    with pytest.raises(ValueError, match="CIK"):
+        _source(tmp_path).fetch(CompanyRef("ACME", None), None)
+
+
 def test_fetch_ignores_since_and_always_returns_the_full_history(tmp_path: Path) -> None:
     ref = CompanyRef("AAPL", "0000320193")
     source = _source(tmp_path)

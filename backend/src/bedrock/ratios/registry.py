@@ -12,7 +12,7 @@ from typing import Literal
 
 from bedrock.mapping.config import MappingConfigError, load_canonical_items, parse_formula
 
-Unit = Literal["pct", "x", "days", "USD/shares"]
+Unit = Literal["pct", "x", "days", "USD/shares", "USD"]
 Category = Literal[
     "Profitability", "DuPont", "Liquidity", "Solvency", "Efficiency", "Per share", "Valuation"
 ]
@@ -37,6 +37,7 @@ class Metric:
     inputs: tuple[str, ...]
     fn: Callable[[Mapping[str, Decimal | None]], Decimal | None]
     at_point: bool = False
+    definition: str = ""  # the formula in words, shown in the ratio cell details
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -119,22 +120,55 @@ def _cash_dividends(values: Mapping[str, Decimal | None]) -> Decimal | None:
 
 
 METRICS: tuple[Metric, ...] = (
-    Metric("ebitda", "EBITDA", ("operating_income", "d_and_a"), _ebitda),
-    Metric("tax_rate", "Effective tax rate", ("income_tax", "pretax_income"), _tax_rate),
-    Metric("nopat", "NOPAT", ("operating_income", "tax_rate"), _nopat),
+    Metric(
+        "ebitda",
+        "EBITDA",
+        ("operating_income", "d_and_a"),
+        _ebitda,
+        definition="operating_income + d_and_a",
+    ),
+    Metric(
+        "tax_rate",
+        "Effective tax rate",
+        ("income_tax", "pretax_income"),
+        _tax_rate,
+        definition="income_tax ÷ pretax_income, between 0 and 1; none when pretax_income ≤ 0",
+    ),
+    Metric(
+        "nopat",
+        "NOPAT",
+        ("operating_income", "tax_rate"),
+        _nopat,
+        definition="operating_income × (1 − tax_rate)",
+    ),
     Metric(
         "invested_capital",
         "Invested capital",
         ("total_debt", "total_equity", "cash", "short_term_investments"),
         _invested_capital,
+        definition="total_debt + total_equity − cash − short_term_investments",
     ),
-    Metric("price", "Share price", (), _not_called, at_point=True),
-    Metric("market_cap", "Market cap", ("price", "shares_outstanding"), _market_cap),
+    Metric(
+        "price",
+        "Share price",
+        (),
+        _not_called,
+        at_point=True,
+        definition="the close on or before the period end",
+    ),
+    Metric(
+        "market_cap",
+        "Market cap",
+        ("price", "shares_outstanding"),
+        _market_cap,
+        definition="price × shares_outstanding",
+    ),
     Metric(
         "minority_interest",
         "Minority interest",
         ("total_equity", "equity_parent"),
         _minority_interest,
+        definition="total_equity − equity_parent, not below 0",
     ),
     Metric(
         "enterprise_value",
@@ -148,10 +182,28 @@ METRICS: tuple[Metric, ...] = (
             "short_term_investments",
         ),
         _enterprise_value,
+        definition=(
+            "market_cap + total_debt + minority_interest − cash "
+            "(+ temporary_equity − short_term_investments, 0 when missing)"
+        ),
     ),
-    Metric("cash_dividends", "Cash dividends paid", ("dividends_paid",), _cash_dividends),
     Metric(
-        "earnings_growth", "Earnings growth (points)", ("net_income_common",), _not_called, True
+        "cash_dividends",
+        "Cash dividends paid",
+        ("dividends_paid",),
+        _cash_dividends,
+        definition="−dividends_paid (the cash outflow as a positive number)",
+    ),
+    Metric(
+        "earnings_growth",
+        "Earnings growth (points)",
+        ("net_income_common",),
+        _not_called,
+        True,
+        definition=(
+            "(net_income_common ÷ the same period a year earlier − 1) × 100; "
+            "none unless both are positive"
+        ),
     ),
 )
 
@@ -223,6 +275,14 @@ RATIOS: tuple[Ratio, ...] = (
         numerator="net_income",
         denominator="total_assets",
         avg_denominator=True,
+    ),
+    Ratio(
+        code="invested_capital_usd",
+        label="Invested capital",
+        category="Profitability",
+        unit="USD",
+        definition="total_debt + total_equity − cash − short_term_investments",
+        numerator="invested_capital",
     ),
     Ratio(
         code="roic",
@@ -472,6 +532,17 @@ RATIOS: tuple[Ratio, ...] = (
         definition="free_cash_flow ÷ market_cap",
         numerator="free_cash_flow",
         denominator="market_cap",
+    ),
+    Ratio(
+        code="enterprise_value_usd",
+        label="Enterprise value",
+        category="Valuation",
+        unit="USD",
+        definition=(
+            "market_cap + total_debt + minority_interest − cash "
+            "(+ temporary_equity − short_term_investments)"
+        ),
+        numerator="enterprise_value",
     ),
     Ratio(
         code="ev_sales",

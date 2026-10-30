@@ -10,12 +10,22 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
-from typing import Literal
 
 import pandas as pd
 
 from bedrock.mapping.config import CanonicalItemDef, formula_order, parse_formula
 from bedrock.mapping.vintage import BALANCE_DATE_TOLERANCE
+from bedrock.statements.averages import q4_average_cells
+from bedrock.statements.cell_types import (
+    EMPTY,
+    Cell,
+    CellKey,
+    Derivation,
+    DerivationInput,
+    FactRef,
+    RuleWarning,
+)
+from bedrock.statements.custom_lines import BUILT_FROM_CHILDREN
 from bedrock.statements.periods import (
     START_TOLERANCE,
     Calendar,
@@ -24,46 +34,17 @@ from bedrock.statements.periods import (
     annual_periods,
     quarterly_periods,
 )
+from bedrock.statements.rules import (
+    BALANCE_FLOOR,
+    BALANCE_RELATIVE,
+    NO_RULES,
+    Rules,
+    WarningLog,
+    infer_nci_zeros,
+    solve_identities,
+)
 
-Provenance = Literal["reported", "derived", "normalized"]
-
-
-@dataclass(frozen=True)
-class FactRef:
-    taxonomy: str
-    concept: str
-    unit: str
-    period_start: date | None
-    period_end: date
-    accession_no: str
-    form: str
-    filed_at: date
-
-
-@dataclass(frozen=True)
-class DerivationInput:
-    code: str
-    fiscal_period: str  # FY, Q1..Q4, or "YTD Q2" for a year-to-date figure
-    value: Decimal
-
-
-@dataclass(frozen=True)
-class Derivation:
-    formula: str
-    inputs: tuple[DerivationInput, ...]
-
-
-@dataclass(frozen=True)
-class Cell:
-    value: Decimal | None
-    provenance: Provenance | None
-    source: FactRef | None = None
-    derivation: Derivation | None = None
-
-
-EMPTY = Cell(None, None)
-
-CellKey = tuple[str, str]  # (code, period key)
+COVER_SHARES = "shares_outstanding"  # the line the cover-page count fills (R7)
 
 
 @dataclass(frozen=True)
@@ -131,21 +112,74 @@ class _Index:
         return min(near, key=lambda f: abs((f.start or start) - start), default=None)
 
 
+@dataclass(frozen=True)
+class SolvedCells:
+    cells: dict[CellKey, Cell]
+    warnings: tuple[RuleWarning, ...]  # rules whose result a guard refused (docs/erd/data.md R1)
+
+
 def compute_cells(
-    frame: pd.DataFrame, items: Sequence[CanonicalItemDef], calendar: Calendar
+    frame: pd.DataFrame,
+    items: Sequence[CanonicalItemDef],
+    calendar: Calendar,
+    rules: Rules = NO_RULES,
 ) -> dict[CellKey, Cell]:
+    return solve_cells(frame, items, calendar, rules).cells
+
+
+def solve_cells(
+    frame: pd.DataFrame,
+    items: Sequence[CanonicalItemDef],
+    calendar: Calendar,
+    rules: Rules = NO_RULES,
+) -> SolvedCells:
+    """Every item in every fiscal year and quarter, in the pass order of docs/erd/data.md "Rule
+    engine": mapped cells; then derive formulas, identities and the NCI rule filling empty cells
+    until nothing changes, each sweep followed by Q4 (FY less the quarters, or the year-end
+    balance); then residuals and the formulas that wait for them. A non-empty cell is never
+    replaced."""
     index = _Index(frame)
+    imported = None if rules.imported is None or rules.imported.empty else _Index(rules.imported)
     years = {y.fiscal_year: y for y in calendar.years}
+    by_code = {i.code: i for i in items}
     cells: dict[CellKey, Cell] = {}
     periods = annual_periods(calendar) + quarterly_periods(calendar)
+    log = WarningLog()
 
     for item in items:
         if item.residual:
             continue
         for period in periods:
             cells[(item.code, period.key)] = _mapped_cell(
-                item, period, years[period.fiscal_year], index, cells
+                item, period, years[period.fiscal_year], index, cells, imported, log
             )
+
+    solved_nonzero: set[CellKey] = set()
+    cover = None if rules.cover_shares is None else _cover_index(rules.cover_shares)
+    early = _formulas_before_residuals(items)
+    while True:
+        while True:
+            filled = _fill_formulas(early, periods, cells)
+            for key, cell in solve_identities(
+                rules.identities, by_code, cells, periods, solved_nonzero, log
+            ):
+                filled += _fill(cells, key, cell)
+            if rules.nci_filings is not None:
+                for key, cell in infer_nci_zeros(cells, by_code, periods, rules.nci_filings):
+                    filled += _fill(cells, key, cell)
+            filled += _fill_cover_shares(periods, cells, cover)
+            filled += _close_q4(items, periods, years, cells, index)
+            if not filled:
+                break
+        # An imported value of a line with a formula, and the sum of a complete custom breakdown,
+        # count only once the rules cannot fill the cell.
+        late = _fill_imported_formula_lines(items, periods, cells, imported)
+        late += _fill_built_parents(items, periods, cells, rules.complete_parents)
+        if not late:
+            break
+
+    for key, cell in q4_average_cells(cells, by_code, periods, log):
+        _fill(cells, key, cell)
 
     for item in formula_order(items):
         siblings = frozenset(i.code for i in items if item.residual and i.parent == item.parent)
@@ -153,7 +187,108 @@ def compute_cells(
             current = cells.get((item.code, period.key), EMPTY)
             if item.residual or current.value is None:
                 cells[(item.code, period.key)] = _formula_cell(item, period, cells, siblings)
-    return cells
+    _check_breakdowns(items, periods, cells, rules.complete_parents, log)
+    return SolvedCells(cells, log.all())
+
+
+def _fill(cells: dict[CellKey, Cell], key: CellKey, cell: Cell) -> int:
+    """Store `cell` where the cell is empty (the rules never replace a value); 1 if it was."""
+    if cell.value is None or cells.get(key, EMPTY).value is not None:
+        return 0
+    cells[key] = cell
+    return 1
+
+
+def _cover_index(frame: pd.DataFrame) -> _Index:
+    """The cover-page counts, the latest filed first so that it wins where a period has several."""
+    ordered = frame.sort_values(["filed_at", "accession_no"], ascending=False, kind="stable")
+    return _Index(ordered)
+
+
+def _fill_cover_shares(
+    periods: Sequence[Period], cells: dict[CellKey, Cell], cover: _Index | None
+) -> int:
+    """R7: an empty shares-outstanding instant (FY and Q1-Q3; Q4 follows FY) takes the cover-page
+    count of the filing that reports the period. Run after the identities, which are exact."""
+    if cover is None:
+        return 0
+    filled = 0
+    for period in periods:
+        key = (COVER_SHARES, period.key)
+        if period.fiscal_period == "Q4" or key not in cells:
+            continue
+        fact = cover.instant(COVER_SHARES, period.end)
+        if fact is not None:
+            filled += _fill(cells, key, _cover_cell(fact, period))
+    return filled
+
+
+def _cover_cell(fact: _Fact, period: Period) -> Cell:
+    formula = f"cover-page shares outstanding of {fact.ref.form} {fact.ref.accession_no}"
+    inputs: tuple[DerivationInput, ...] = ()
+    if fact.split_factor != 1:
+        reported = fact.value if fact.reported_value is None else fact.reported_value
+        formula += f"; {_split_formula(fact)}"
+        inputs = (DerivationInput(COVER_SHARES, period.fiscal_period, reported),)
+    return Cell(fact.value, "approximated", source=fact.ref, derivation=Derivation(formula, inputs))
+
+
+def _formulas_before_residuals(items: Sequence[CanonicalItemDef]) -> list[CanonicalItemDef]:
+    """The non-residual formulas that do not depend on a residual, operands first. The rest keep
+    their place after the residuals, which are computed once the rules filled their siblings."""
+    by_code = {i.code: i for i in items}
+
+    def waits(item: CanonicalItemDef) -> bool:
+        if item.derive is None:
+            return False
+        return any(
+            by_code[code].residual or waits(by_code[code]) for _, code in parse_formula(item.derive)
+        )
+
+    return [i for i in formula_order(items) if not i.residual and not waits(i)]
+
+
+def _fill_formulas(
+    formulas: Sequence[CanonicalItemDef], periods: Sequence[Period], cells: dict[CellKey, Cell]
+) -> int:
+    filled = 0
+    for item in formulas:
+        for period in periods:
+            if cells.get((item.code, period.key), EMPTY).value is None:
+                filled += _fill(cells, (item.code, period.key), _formula_cell(item, period, cells))
+    return filled
+
+
+def _close_q4(
+    items: Sequence[CanonicalItemDef],
+    periods: Sequence[Period],
+    years: dict[int, FiscalYear],
+    cells: dict[CellKey, Cell],
+    index: _Index,
+) -> int:
+    """Q4 of what a rule filled in FY or Q1-Q3: FY less the three quarters for a flow, the year-end
+    balance for an instant. Q4 of a flow whose year and quarters are all inferred zeros is an
+    inferred zero too. Average items have no Q4."""
+    filled = 0
+    for item in items:
+        if item.residual or item.kind == "average":
+            continue
+        for period in periods:
+            key = (item.code, period.key)
+            if period.fiscal_period != "Q4" or cells.get(key, EMPTY).value is not None:
+                continue
+            year = f"FY{period.fiscal_year}"
+            if item.kind == "instant":
+                filled += _fill(cells, key, cells.get((item.code, year), EMPTY))
+                continue
+            q4 = _q4(item.code, years[period.fiscal_year], cells, index)
+            if q4.value == 0 and all(
+                cells.get((item.code, f"{year}{suffix}"), EMPTY).provenance == "zero_inferred"
+                for suffix in ("", "Q1", "Q2", "Q3")
+            ):
+                q4 = Cell(q4.value, "zero_inferred", derivation=q4.derivation)
+            filled += _fill(cells, key, q4)
+    return filled
 
 
 def _mapped_cell(
@@ -162,18 +297,210 @@ def _mapped_cell(
     year: FiscalYear,
     index: _Index,
     cells: dict[CellKey, Cell],
+    imported: _Index | None,
+    log: WarningLog,
 ) -> Cell:
+    """The SEC value of the cell, else (R-import, docs/erd/data.md "Precedence") the imported one.
+    A line with a formula takes its imported value later, only if the formula cannot run."""
     code = item.code
+    typed = None if _has_formula(item) else imported
     if item.kind == "instant":
         if period.fiscal_period == "Q4":  # the fiscal year-end balance
             return cells.get((code, f"FY{period.fiscal_year}"), EMPTY)
-        return _reported(index.instant(code, period.end), code, period)
+        cell = _reported(index.instant(code, period.end), code, period)
+        if cell.value is None and typed is not None:
+            cell = _imported(typed.instant(code, period.end))
+        return cell
     if period.fiscal_period == "Q4":
-        return EMPTY if item.kind == "average" else _q4(code, year, cells, index)
-    reported = _reported(index.duration(code, period.start, period.end), code, period)
-    if reported.value is not None or item.kind == "average" or period.fiscal_period == "FY":
-        return reported
-    return _from_year_to_date(code, period, year, index)
+        if item.kind == "average":
+            return (
+                EMPTY
+                if typed is None
+                else _imported(typed.duration(code, period.start, period.end))
+            )
+        return _imported_q4(code, period, year, index, cells, typed, log)
+    cell = _reported(index.duration(code, period.start, period.end), code, period)
+    if cell.value is None and item.kind != "average" and period.fiscal_period != "FY":
+        cell = _from_year_to_date(code, period, year, index)
+    if cell.value is None and typed is not None:
+        cell = _imported(typed.duration(code, period.start, period.end))
+        if cell.value is None and period.fiscal_period == "FY" and item.kind == "flow":
+            cell = _year_from_quarters(code, year, typed)
+    return cell
+
+
+def _has_formula(item: CanonicalItemDef) -> bool:
+    return item.derive is not None and bool(item.concepts) and not item.residual
+
+
+def _imported(fact: _Fact | None) -> Cell:
+    return EMPTY if fact is None else Cell(fact.value, "imported", source=fact.ref)
+
+
+def _quarter_spans(year: FiscalYear) -> list[tuple[date, date]]:
+    """Start and end of Q1..Q4 of a year whose quarters are known."""
+    if year.end is None or len(year.quarter_ends) != 3:
+        return []
+    ends = [*year.quarter_ends, year.end]
+    starts = [year.start, *(end + timedelta(days=1) for end in year.quarter_ends)]
+    return list(zip(starts, ends, strict=True))
+
+
+def _year_from_quarters(code: str, year: FiscalYear, imported: _Index) -> Cell:
+    """FY = Q1 + Q2 + Q3 + Q4 of imported quarters, all four required."""
+    facts = [imported.duration(code, start, end) for start, end in _quarter_spans(year)]
+    if len(facts) != 4 or any(f is None for f in facts):
+        return EMPTY
+    values = [f.value for f in facts if f is not None]
+    return Cell(
+        sum(values, Decimal(0)),
+        "derived",
+        derivation=Derivation(
+            "Q1 + Q2 + Q3 + Q4",
+            tuple(DerivationInput(code, f"Q{n}", v) for n, v in enumerate(values, start=1)),
+        ),
+    )
+
+
+def _imported_q4(
+    code: str,
+    period: Period,
+    year: FiscalYear,
+    index: _Index,
+    cells: dict[CellKey, Cell],
+    imported: _Index | None,
+    log: WarningLog,
+) -> Cell:
+    """Q4 of a flow: FY less the quarters as always; an imported Q4 fills it only when that is
+    empty, and one that disagrees with the remainder is ignored with a warning."""
+    remainder = _q4(code, year, cells, index)
+    fact = None if imported is None else imported.duration(code, period.start, period.end)
+    if fact is None:
+        return remainder
+    if remainder.value is None:
+        return _imported(fact)
+    if abs(fact.value - remainder.value) > _tolerance(fact.ref.unit, remainder.value):
+        log.add(
+            RuleWarning(
+                "import_q4",
+                code,
+                period.key,
+                fact.value,
+                f"imported Q4 ({fact.value}) differs from FY - Q1 - Q2 - Q3 "
+                f"({remainder.value}); ignored",
+            )
+        )
+    return remainder
+
+
+def _fill_imported_formula_lines(
+    items: Sequence[CanonicalItemDef],
+    periods: Sequence[Period],
+    cells: dict[CellKey, Cell],
+    imported: _Index | None,
+) -> int:
+    """The imported value of a line with a formula (FY, Q1-Q3 and balance dates; Q4 follows), once
+    the rules have run and left the cell empty."""
+    if imported is None:
+        return 0
+    filled = 0
+    for item in items:
+        if not _has_formula(item):
+            continue
+        for period in periods:
+            if period.fiscal_period == "Q4":
+                continue
+            fact = (
+                imported.instant(item.code, period.end)
+                if item.kind == "instant"
+                else imported.duration(item.code, period.start, period.end)
+            )
+            filled += _fill(cells, (item.code, period.key), _imported(fact))
+    return filled
+
+
+def _breakdowns(
+    items: Sequence[CanonicalItemDef], complete: frozenset[str]
+) -> list[tuple[CanonicalItemDef, list[CanonicalItemDef]]]:
+    """The parents marked complete with the custom lines directly under each. A computed or
+    residual line is never built from its children."""
+    out = []
+    for parent in items:
+        if parent.code not in complete or parent.residual:
+            continue
+        if parent.derive is not None and not parent.concepts:
+            continue
+        children = [i for i in items if i.custom and i.parent == parent.code]
+        if children:
+            out.append((parent, children))
+    return out
+
+
+def _fill_built_parents(
+    items: Sequence[CanonicalItemDef],
+    periods: Sequence[Period],
+    cells: dict[CellKey, Cell],
+    complete: frozenset[str],
+) -> int:
+    """An empty parent whose custom breakdown is marked complete is the sum of its children in
+    each period where every child has a value (docs/erd/data.md "Custom lines")."""
+    filled = 0
+    for parent, children in _breakdowns(items, complete):
+        for period in periods:
+            key = (parent.code, period.key)
+            if cells.get(key, EMPTY).value is not None:
+                continue
+            parts = [(c.code, cells.get((c.code, period.key), EMPTY).value) for c in children]
+            if any(value is None for _, value in parts):
+                continue
+            total = sum((v for _, v in parts if v is not None), Decimal(0))
+            inputs = tuple(
+                DerivationInput(code, period.fiscal_period, v) for code, v in parts if v is not None
+            )
+            filled += _fill(
+                cells,
+                key,
+                Cell(total, "derived", derivation=Derivation(BUILT_FROM_CHILDREN, inputs)),
+            )
+    return filled
+
+
+def _check_breakdowns(
+    items: Sequence[CanonicalItemDef],
+    periods: Sequence[Period],
+    cells: dict[CellKey, Cell],
+    complete: frozenset[str],
+    log: WarningLog,
+) -> None:
+    """A complete breakdown whose children add up to something else than the parent's value, beyond
+    the balance tolerance, is a warning; the parent keeps its value."""
+    for parent, children in _breakdowns(items, complete):
+        for period in periods:
+            shown = cells.get((parent.code, period.key), EMPTY)
+            parts = [cells.get((c.code, period.key), EMPTY).value for c in children]
+            if shown.value is None or any(v is None for v in parts):
+                continue
+            total = sum((v for v in parts if v is not None), Decimal(0))
+            if abs(total - shown.value) > _tolerance(parent.unit, shown.value):
+                log.add(
+                    RuleWarning(
+                        "custom_breakdown",
+                        parent.code,
+                        period.key,
+                        total,
+                        f"the complete breakdown adds up to {total:,}, the line shows "
+                        f"{shown.value:,}",
+                    )
+                )
+
+
+def _tolerance(unit: str, base: Decimal) -> Decimal:
+    """How far two values of one line may differ: USD 0.01 per share, else the balance check's."""
+    return (
+        Decimal("0.01")
+        if unit == "USD/shares"
+        else max(BALANCE_FLOOR, BALANCE_RELATIVE * abs(base))
+    )
 
 
 def _reported(fact: _Fact | None, code: str, period: Period) -> Cell:

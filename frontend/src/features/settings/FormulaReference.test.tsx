@@ -48,6 +48,10 @@ describe("FormulaReference", () => {
     expect(codes("Ratios")).toContain("dividend_yield (pct)");
     expect(codes("Ratios")).toContain("roe (pct)");
     expect(codes("Ratios")).toContain("dso (days)");
+    expect(codes("Ratios")).toContain("enterprise_value_usd (USD)");
+    expect(codes("Ratios")).toContain("invested_capital_usd (USD)");
+    expect(codes("Balance sheet lines")).toContain("treasury_shares");
+    expect(codes("Balance sheet lines")).toContain("shares_issued");
   });
 
   it("has no duplicate code inside a group", () => {

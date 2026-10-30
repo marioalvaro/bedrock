@@ -13,14 +13,23 @@ from bedrock.models import (
     adjustment,
     canonical_item,
     company,
+    comps_member,
+    comps_set,
     concept_mapping,
     corporate_action,
+    custom_line,
     filing,
+    guidance,
+    imported_fact,
+    note,
     off_balance_item,
     price_daily,
     qoe_custom_rule,
     qoe_threshold,
     raw_fact,
+    segment_series,
+    segment_value,
+    statement_import,
 )
 from bedrock.models.base import Base
 
@@ -29,14 +38,23 @@ _MODELS = (
     adjustment,
     canonical_item,
     company,
+    comps_member,
+    comps_set,
     concept_mapping,
     corporate_action,
+    custom_line,
     filing,
+    guidance,
+    imported_fact,
+    note,
     off_balance_item,
     price_daily,
     qoe_custom_rule,
     qoe_threshold,
     raw_fact,
+    segment_series,
+    segment_value,
+    statement_import,
 )
 
 
@@ -217,3 +235,503 @@ def test_0004_keeps_threshold_rows_both_ways(
     }
     with engine.connect() as connection:
         assert tuple(map(float, connection.execute(select).one())) == (1.5, 3.0)
+
+
+_CONTEXT_TABLES = {
+    "segment_series",
+    "segment_value",
+    "comps_set",
+    "comps_member",
+    "guidance",
+    "note",
+}
+
+
+def _insert(connection: Connection, table: str, **cols: object) -> int:
+    names = ", ".join(cols)
+    marks = ", ".join(f":{k}" for k in cols)
+    result = connection.execute(text(f"INSERT INTO {table} ({names}) VALUES ({marks})"), cols)
+    return int(result.lastrowid)
+
+
+def _company(connection: Connection, ticker: str) -> int:
+    return _insert(
+        connection,
+        "company",
+        ticker=ticker,
+        cik=f"cik-{ticker}",
+        name=ticker,
+        fiscal_year_end_month=12,
+        currency="USD",
+    )
+
+
+def _series(connection: Connection, company_id: int, **cols: object) -> int:
+    row = {
+        "company_id": company_id,
+        "dimension": "business",
+        "name": "Cloud",
+        "metric": "revenue",
+        "unit": "USD",
+        "display_order": 0,
+        "created_at": _NOW,
+        "updated_at": _NOW,
+        **cols,
+    }
+    return _insert(connection, "segment_series", **row)
+
+
+def _value(connection: Connection, series_id: int, **cols: object) -> int:
+    row = {
+        "series_id": series_id,
+        "fiscal_year": 2025,
+        "fiscal_period": "FY",
+        "value": 1,
+        "created_at": _NOW,
+        "updated_at": _NOW,
+        **cols,
+    }
+    return _insert(connection, "segment_value", **row)
+
+
+def _guidance(connection: Connection, company_id: int, **cols: object) -> int:
+    row = {
+        "company_id": company_id,
+        "metric": "revenue",
+        "fiscal_year": 2026,
+        "fiscal_period": "FY",
+        "low": 1,
+        "high": 2,
+        "basis": "reported",
+        "direction": "higher",
+        "given_on": "2026-01-01",
+        "created_at": _NOW,
+        "updated_at": _NOW,
+        **cols,
+    }
+    return _insert(connection, "guidance", **row)
+
+
+def _note(connection: Connection, company_id: int, **cols: object) -> int:
+    row = {
+        "company_id": company_id,
+        "body_md": "x",
+        "note_date": "2026-01-01",
+        "created_at": _NOW,
+        "updated_at": _NOW,
+        **cols,
+    }
+    return _insert(connection, "note", **row)
+
+
+def _comps_set(connection: Connection, company_id: int, name: str = "Peers") -> int:
+    return _insert(
+        connection, "comps_set", company_id=company_id, name=name, created_at=_NOW, updated_at=_NOW
+    )
+
+
+def test_0005_upgrade_creates_context_tables_and_downgrade_removes_only_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    inspector = inspect(create_engine(database_url))
+    assert _CONTEXT_TABLES <= set(inspector.get_table_names())
+    uq = {
+        table: {tuple(c["column_names"]) for c in inspector.get_unique_constraints(table)}
+        for table in ("segment_series", "segment_value", "comps_set", "comps_member")
+    }
+    assert ("company_id", "dimension", "name", "metric") in uq["segment_series"]
+    assert ("series_id", "fiscal_year", "fiscal_period") in uq["segment_value"]
+    assert ("company_id", "name") in uq["comps_set"]
+    assert ("comps_set_id", "peer_company_id") in uq["comps_member"]
+
+    database_url = _run_alembic(tmp_path, monkeypatch, ("downgrade", "0004"))
+    tables = set(inspect(create_engine(database_url)).get_table_names())
+    assert not _CONTEXT_TABLES & tables
+    assert {"company", "qoe_custom_rule", "qoe_threshold", "price_daily"} <= tables
+
+
+def test_0005_uniques_reject_duplicates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        company_id = _company(connection, "AAA")
+        peer_id = _company(connection, "BBB")
+        series_id = _series(connection, company_id)
+        _value(connection, series_id)
+        set_id = _comps_set(connection, company_id)
+        _insert(connection, "comps_member", comps_set_id=set_id, peer_company_id=peer_id)
+    duplicates = (
+        lambda c: _series(c, company_id),
+        lambda c: _value(c, series_id),
+        lambda c: _comps_set(c, company_id),
+        lambda c: _insert(c, "comps_member", comps_set_id=set_id, peer_company_id=peer_id),
+    )
+    for duplicate in duplicates:
+        with pytest.raises(IntegrityError), engine.begin() as connection:
+            duplicate(connection)
+
+
+def test_0005_checks_hold_at_the_database_level(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        company_id = _company(connection, "AAA")
+        series_id = _series(connection, company_id)
+    bad_rows = (
+        lambda c: _guidance(c, company_id, low=3, high=2),
+        lambda c: _guidance(c, company_id, basis="gaap"),
+        lambda c: _guidance(c, company_id, direction="up"),
+        lambda c: _guidance(c, company_id, fiscal_period="Q5"),
+        lambda c: _note(c, company_id, fiscal_year=2025),
+        lambda c: _note(c, company_id, fiscal_period="FY"),
+        lambda c: _note(c, company_id, fiscal_year=2025, fiscal_period="H1"),
+        lambda c: _series(c, company_id, name="Other", dimension="region"),
+        lambda c: _series(c, company_id, name="Other", unit="EUR"),
+        lambda c: _value(c, series_id, fiscal_year=2024, fiscal_period="H1"),
+    )
+    for bad in bad_rows:
+        with pytest.raises(IntegrityError), engine.begin() as connection:
+            bad(connection)
+    with engine.begin() as connection:
+        _guidance(connection, company_id, low=2, high=2, basis="normalized", direction="lower")
+        _note(connection, company_id)
+        _note(connection, company_id, fiscal_year=2025, fiscal_period="Q4")
+
+
+def test_0005_foreign_keys_cascade_on_delete(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+        owner = _company(connection, "AAA")
+        peer = _company(connection, "BBB")
+        series_id = _series(connection, owner)
+        _value(connection, series_id)
+        set_id = _comps_set(connection, owner)
+        _insert(connection, "comps_member", comps_set_id=set_id, peer_company_id=peer)
+        _guidance(connection, owner)
+        _note(connection, owner)
+
+        connection.execute(text("DELETE FROM company WHERE id = :id"), {"id": peer})
+        assert connection.execute(text("SELECT count(*) FROM comps_member")).scalar() == 0
+        assert connection.execute(text("SELECT count(*) FROM comps_set")).scalar() == 1
+
+        connection.execute(text("DELETE FROM company WHERE id = :id"), {"id": owner})
+        for table in sorted(_CONTEXT_TABLES):
+            assert connection.execute(text(f"SELECT count(*) FROM {table}")).scalar() == 0, table
+
+
+def test_0005_creates_fk_indexes_and_the_partial_unique_kpi_index(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    inspector = inspect(create_engine(database_url))
+    for table, column in (
+        ("guidance", "company_id"),
+        ("note", "company_id"),
+        ("comps_member", "peer_company_id"),
+    ):
+        indexes = {i["name"]: i for i in inspector.get_indexes(table)}
+        assert indexes[f"ix_{table}_{column}"]["column_names"] == [column]
+    kpi = {i["name"]: i for i in inspector.get_indexes("segment_series")}[
+        "uq_segment_series_kpi_code"
+    ]
+    assert kpi["unique"]
+    assert kpi["column_names"] == ["company_id", "metric"]
+
+    database_url = _run_alembic(tmp_path, monkeypatch, ("downgrade", "0004"))
+    assert not _CONTEXT_TABLES & set(inspect(create_engine(database_url)).get_table_names())
+
+
+def test_0005_kpi_code_is_unique_per_company_among_kpi_series_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        first = _company(connection, "AAA")
+        second = _company(connection, "BBB")
+        _series(connection, first, dimension="kpi", name="Stores", metric="stores")
+    with pytest.raises(IntegrityError), engine.begin() as connection:
+        _series(connection, first, dimension="kpi", name="Store count", metric="stores")
+    with engine.begin() as connection:
+        _series(connection, first, dimension="business", name="Stores", metric="stores")
+        _series(connection, first, dimension="geo", name="Stores", metric="stores")
+        _series(connection, second, dimension="kpi", name="Stores", metric="stores")
+
+
+def test_0006_adds_metric_link_columns_and_index_and_downgrade_keeps_notes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    inspector = inspect(create_engine(database_url))
+    columns = {c["name"]: c for c in inspector.get_columns("note")}
+    assert columns["metric_kind"]["nullable"]
+    assert columns["metric_code"]["nullable"]
+    indexes = {i["name"]: i["column_names"] for i in inspector.get_indexes("note")}
+    assert indexes["ix_note_company_metric"] == ["company_id", "metric_kind", "metric_code"]
+
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        company_id = _company(connection, "AAA")
+        _note(connection, company_id, metric_kind="ratio", metric_code="roe")
+        _note(connection, company_id, canonical_code="revenue")
+
+    database_url = _run_alembic(tmp_path, monkeypatch, ("downgrade", "0005"))
+    inspector = inspect(create_engine(database_url))
+    assert {c["name"] for c in inspector.get_columns("note")} & {
+        "metric_kind",
+        "metric_code",
+    } == set()
+    with create_engine(database_url).connect() as connection:
+        assert connection.execute(text("SELECT count(*) FROM note")).scalar_one() == 2
+
+
+def test_0006_checks_hold_at_the_database_level(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        company_id = _company(connection, "AAA")
+    bad_rows = (
+        lambda c: _note(c, company_id, metric_kind="ratio"),
+        lambda c: _note(c, company_id, metric_code="roe"),
+        lambda c: _note(c, company_id, metric_kind="valuation", metric_code="roe"),
+        lambda c: _note(
+            c, company_id, canonical_code="revenue", metric_kind="ratio", metric_code="roe"
+        ),
+    )
+    for bad in bad_rows:
+        with pytest.raises(IntegrityError), engine.begin() as connection:
+            bad(connection)
+    with engine.begin() as connection:
+        _note(connection, company_id, metric_kind="capital", metric_code="capex")
+        _note(
+            connection,
+            company_id,
+            metric_kind="quality",
+            metric_code="custom_3",
+            fiscal_year=2025,
+            fiscal_period="FY",
+        )
+
+
+_IMPORT_TABLES = {"statement_import", "imported_fact", "custom_line"}
+
+
+def _import(connection: Connection, company_id: int, **cols: object) -> int:
+    row = {
+        "company_id": company_id,
+        "filename": "aapl.xlsx",
+        "format": "xlsx",
+        "scale": "millions",
+        "imported_at": _NOW,
+        "cells": 1,
+        **cols,
+    }
+    return _insert(connection, "statement_import", **row)
+
+
+def _imported_fact(connection: Connection, import_id: int, company_id: int, **cols: object) -> int:
+    row = {
+        "import_id": import_id,
+        "company_id": company_id,
+        "line_code": "revenue",
+        "fiscal_year": 2006,
+        "fiscal_period": "FY",
+        "period_start": "2005-09-26",
+        "period_end": "2006-09-30",
+        "value": 1,
+        **cols,
+    }
+    return _insert(connection, "imported_fact", **row)
+
+
+def _custom_line(connection: Connection, company_id: int, **cols: object) -> int:
+    row = {
+        "company_id": company_id,
+        "code": "custom:products",
+        "label": "Products",
+        "statement": "IS",
+        "parent_code": "cost_of_revenue",
+        "kind": "flow",
+        "unit": "USD",
+        "children_complete": 0,
+        "display_order": 1,
+        **cols,
+    }
+    return _insert(connection, "custom_line", **row)
+
+
+def test_0007_upgrade_creates_the_import_tables_and_downgrade_removes_only_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    inspector = inspect(create_engine(database_url))
+    assert _IMPORT_TABLES <= set(inspector.get_table_names())
+    uq = {
+        table: {tuple(c["column_names"]) for c in inspector.get_unique_constraints(table)}
+        for table in ("imported_fact", "custom_line")
+    }
+    assert ("import_id", "line_code", "fiscal_year", "fiscal_period") in uq["imported_fact"]
+    assert ("company_id", "code") in uq["custom_line"]
+    indexes = {i["name"]: i["column_names"] for i in inspector.get_indexes("imported_fact")}
+    assert indexes["ix_imported_fact_company_line"] == [
+        "company_id",
+        "line_code",
+        "fiscal_year",
+        "fiscal_period",
+    ]
+    assert inspector.get_indexes("statement_import")[0]["column_names"] == ["company_id"]
+
+    database_url = _run_alembic(tmp_path, monkeypatch, ("downgrade", "0006"))
+    tables = set(inspect(create_engine(database_url)).get_table_names())
+    assert not _IMPORT_TABLES & tables
+    assert {"company", "note", "segment_series"} <= tables
+
+
+def test_0007_uniques_and_checks_hold_at_the_database_level(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        company_id = _company(connection, "AAA")
+        import_id = _import(connection, company_id)
+        _imported_fact(connection, import_id, company_id)
+        _custom_line(connection, company_id)
+    bad_rows = (
+        lambda c: _imported_fact(c, import_id, company_id),  # the same (import, line, period)
+        lambda c: _imported_fact(c, import_id, company_id, line_code="cogs", fiscal_period="H1"),
+        lambda c: _import(c, company_id, format="pdf"),
+        lambda c: _import(c, company_id, scale="trillions"),
+        lambda c: _custom_line(c, company_id),  # the same code
+        lambda c: _custom_line(c, company_id, code="custom:b", statement="XX"),
+        lambda c: _custom_line(c, company_id, code="custom:b", kind="stock"),
+        lambda c: _custom_line(c, company_id, code="custom:b", unit="EUR"),
+    )
+    for bad in bad_rows:
+        with pytest.raises(IntegrityError), engine.begin() as connection:
+            bad(connection)
+    with engine.begin() as connection:
+        second = _import(connection, company_id, filename="again.csv", format="csv", scale="units")
+        _imported_fact(connection, second, company_id)  # a later vintage of the same cell
+        _imported_fact(
+            connection, second, company_id, line_code="cost_of_revenue", period_start=None
+        )
+
+
+def test_0007_foreign_keys_cascade_on_delete(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+        owner = _company(connection, "AAA")
+        other = _company(connection, "BBB")
+        first = _import(connection, owner)
+        _imported_fact(connection, first, owner)
+        _custom_line(connection, owner)
+        kept = _import(connection, other)
+        _imported_fact(connection, kept, other)
+
+        connection.execute(text("DELETE FROM statement_import WHERE id = :id"), {"id": first})
+        assert connection.execute(text("SELECT count(*) FROM imported_fact")).scalar() == 1
+
+        connection.execute(text("DELETE FROM company WHERE id = :id"), {"id": other})
+        assert connection.execute(text("SELECT count(*) FROM imported_fact")).scalar() == 0
+        connection.execute(text("DELETE FROM company WHERE id = :id"), {"id": owner})
+        for table in sorted(_IMPORT_TABLES):
+            assert connection.execute(text(f"SELECT count(*) FROM {table}")).scalar() == 0, table
+
+
+def test_0008_makes_cik_nullable_and_adds_source_and_downgrade_restores_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    columns = {c["name"]: c for c in inspect(engine).get_columns("company")}
+    assert columns["cik"]["nullable"] is True
+    assert columns["source"]["nullable"] is False
+    with engine.begin() as connection:
+        sec = _company(connection, "AAA")  # an existing-style row: source defaults to 'sec'
+        assert (
+            connection.execute(
+                text("SELECT source FROM company WHERE id = :id"), {"id": sec}
+            ).scalar()
+            == "sec"
+        )
+        # Several manual companies share a NULL cik; a real cik stays unique.
+        for ticker in ("MAN1", "MAN2"):
+            _insert(
+                connection,
+                "company",
+                ticker=ticker,
+                cik=None,
+                name=ticker,
+                fiscal_year_end_month=12,
+                currency="USD",
+                source="manual",
+            )
+    with pytest.raises(IntegrityError), engine.begin() as connection:
+        _insert(
+            connection,
+            "company",
+            ticker="DUP",
+            cik="cik-AAA",
+            name="DUP",
+            fiscal_year_end_month=12,
+            currency="USD",
+        )
+    with pytest.raises(IntegrityError), engine.begin() as connection:
+        _insert(
+            connection,
+            "company",
+            ticker="BAD",
+            cik=None,
+            name="BAD",
+            fiscal_year_end_month=12,
+            currency="USD",
+            source="other",
+        )
+
+    # A downgrade cannot give a manual company a CIK: it refuses while one exists.
+    with pytest.raises(RuntimeError, match="manual"):
+        _run_alembic(tmp_path, monkeypatch, ("downgrade", "0007"))
+    with engine.begin() as connection:
+        connection.execute(text("DELETE FROM company WHERE source = 'manual'"))
+    database_url = _run_alembic(tmp_path, monkeypatch, ("downgrade", "0007"))
+    engine = create_engine(database_url)
+    columns = {c["name"]: c for c in inspect(engine).get_columns("company")}
+    assert columns["cik"]["nullable"] is False
+    assert "source" not in columns
+    with engine.connect() as connection:
+        tickers = connection.execute(text("SELECT ticker FROM company")).scalars().all()
+    assert tickers == ["AAA"]
+
+
+def test_0008_keeps_the_rows_that_reference_company_both_ways(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Rebuilding `company` must not fire the ON DELETE CASCADE of the tables that reference it.
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0007"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        owner = _company(connection, "AAA")
+        _import(connection, owner)
+
+    def children() -> int:
+        with engine.connect() as connection:
+            return int(connection.execute(text("SELECT count(*) FROM statement_import")).scalar())
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    assert children() == 1
+    _run_alembic(tmp_path, monkeypatch, ("downgrade", "0007"))
+    assert children() == 1

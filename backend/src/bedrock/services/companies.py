@@ -16,6 +16,7 @@ __all__ = [
     "CompanyNotFound",
     "CompanyView",
     "add_company",
+    "add_manual_company",
     "get_company",
     "list_companies",
     "remove_company",
@@ -58,6 +59,29 @@ def add_company(session: Session, sources: Sources, ticker: str, now: datetime) 
     session.add(company)
     session.flush()
     refresh_company(session, sources, profile.ticker, now)  # commits, or rolls back and raises
+    return _view(session, company)
+
+
+def add_manual_company(
+    session: Session, ticker: str, name: str, fiscal_year_end_month: int, sic: str | None
+) -> CompanyView:
+    """Follow a company SEC does not cover: no CIK, no EDGAR data, filled by statement import. The
+    tickers of both sources share one namespace."""
+    symbol = ticker.strip().upper()
+    if companies_repo.get_by_ticker(session, symbol) is not None:
+        raise CompanyExists(symbol)
+    company = Company(
+        ticker=symbol,
+        cik=None,
+        name=name.strip(),
+        fiscal_year_end_month=fiscal_year_end_month,
+        currency="USD",
+        source="manual",
+        sic=sic,
+        last_refreshed_at=None,
+    )
+    session.add(company)
+    session.commit()
     return _view(session, company)
 
 

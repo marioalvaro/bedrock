@@ -8,6 +8,13 @@
 # item is empty rather than the securitization line alone.
 short_term_debt:
   - us-gaap:DebtCurrent + us-gaap:SecuredDebt
+# Deere's finance leases are inside "Short-term borrowings" and "Long-term borrowings" (lease note and
+# short-term borrowings table, 10-K FY2025), so the default lease members would count them twice. These
+# overrides rank ahead of the defaults and have the same anchors, so the default groups (which carry the
+# lease members) are never used for Deere; `test_deere_has_no_lease_member_in_its_debt_lines` guards it.
+# Long-term debt is the long-term debt tag alone (a `de:` tag from FY2022, hence empty after FY2021).
+long_term_debt:
+  - us-gaap:LongTermDebtNoncurrent
 # "Marketable securities": AvailableForSaleSecurities until FY2018, MarketableSecurities after (the
 # same 490 in FY2018 under both).
 short_term_investments:

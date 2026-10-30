@@ -1,16 +1,31 @@
 import { useQuery } from "@tanstack/react-query";
-import type { CellClassParams, ColDef, ProcessCellForExportParams } from "ag-grid-community";
+import type {
+  CellClassParams,
+  CellClickedEvent,
+  ColDef,
+  ProcessCellForExportParams,
+} from "ag-grid-community";
 import { Download } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 
 import { ratiosQueryOptions, type AnalysisFreq } from "@/api/analysis";
-import type { RatiosOut } from "@/api/generated/types.gen";
+import type { PeriodOut, RatiosOut } from "@/api/generated/types.gen";
 import type { Basis } from "@/api/statements";
 import { DataGrid, type DataGridHandle } from "@/components/DataGrid";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { downloadText } from "@/lib/download";
+import { NoteMarker } from "@/features/notes/NoteMarker";
+import { SubjectNotesSheet } from "@/features/notes/SubjectNotesSheet";
+import {
+  cellNotes,
+  subjectNotes,
+  type NoteIndex,
+  type SubjectTarget,
+} from "@/features/notes/subjects";
+import { useNoteIndex } from "@/features/notes/useNoteIndex";
 import { MultiplesTable } from "@/features/ratios/MultiplesTable";
+import { RatioCellSheet, type RatioCellTarget } from "@/features/ratios/RatioCellSheet";
 import { formatCsvRatio, formatRatio, type RatioUnit } from "@/lib/format";
 
 const FREQS: { value: AnalysisFreq; label: string }[] = [
@@ -72,7 +87,17 @@ function caveatNotes(payload: RatiosOut): { text: string; labels: string[] }[] {
   return [...notes].map(([text, labels]) => ({ text, labels }));
 }
 
-function columnDefs(payload: RatiosOut): ColDef<GridRow>[] {
+// Notes sit on a ratio's FY or quarter cell: not on a category heading, not on TTM. Every other
+// value cell opens its details.
+function notable(row: GridRow, period: PeriodOut): boolean {
+  return !row.heading && !period.key.startsWith("TTM");
+}
+
+function columnDefs(
+  payload: RatiosOut,
+  markers: NoteIndex,
+  onRatioNotes: (row: GridRow) => void,
+): ColDef<GridRow>[] {
   const labelColumn: ColDef<GridRow> = {
     colId: LABEL_COLUMN,
     headerName: "Ratio",
@@ -82,11 +107,16 @@ function columnDefs(payload: RatiosOut): ColDef<GridRow>[] {
       if (!data) return null;
       const text = data.caveat ? `${data.label} †` : data.label;
       return (
-        <span
-          className={data.heading ? "font-medium" : undefined}
-          title={data.definition ?? undefined}
-        >
-          {text}
+        <span className="flex min-w-0 items-center gap-1">
+          <span
+            className={data.heading ? "font-medium" : undefined}
+            title={data.definition ?? undefined}
+          >
+            {text}
+          </span>
+          {!data.heading && subjectNotes(markers, "ratio", data.id) > 0 && (
+            <NoteMarker label={data.label} onClick={() => onRatioNotes(data)} />
+          )}
         </span>
       );
     },
@@ -102,7 +132,18 @@ function columnDefs(payload: RatiosOut): ColDef<GridRow>[] {
       if (!data || data.heading || !data.unit) return "";
       return formatRatio(data.values[payload.periods.indexOf(period)] ?? null, data.unit);
     },
-    cellClass: (_params: CellClassParams<GridRow>) => ["num", "ag-right-aligned-cell"],
+    cellClass: ({ data }: CellClassParams<GridRow>) => {
+      const classes = ["num", "ag-right-aligned-cell"];
+      if (!data || data.heading) return classes;
+      classes.push("cursor-pointer", "hover:underline");
+      if (
+        notable(data, period) &&
+        cellNotes(markers, "ratio", data.id, period.fiscal_year, period.fiscal_period) > 0
+      ) {
+        classes.push("has-note");
+      }
+      return classes;
+    },
   }));
 
   return [labelColumn, ...periodColumns];
@@ -120,13 +161,37 @@ export function RatiosView({ ticker }: RatiosViewProps) {
   const [freq, setFreq] = useState<AnalysisFreq>("annual");
   const [basis, setBasis] = useState<Basis>("reported");
   const grid = useRef<DataGridHandle>(null);
+  const markers = useNoteIndex(ticker);
+  const [target, setTarget] = useState<SubjectTarget | null>(null);
+  const [cellTarget, setCellTarget] = useState<RatioCellTarget | null>(null);
 
   const { data, isPending, isError } = useQuery(ratiosQueryOptions(ticker, freq, basis));
 
   const rows = useMemo(() => (data ? toGridRows(data) : []), [data]);
-  const columns = useMemo(() => (data ? columnDefs(data) : []), [data]);
+  const columns = useMemo(
+    () =>
+      data
+        ? columnDefs(data, markers, (row) =>
+            setTarget({ kind: "ratio", code: row.id, label: row.label }),
+          )
+        : [],
+    [data, markers],
+  );
   const notes = useMemo(() => (data ? caveatNotes(data) : []), [data]);
   const empty = data !== undefined && (data.rows.length === 0 || data.periods.length === 0);
+
+  function openCell({ data: row, column }: CellClickedEvent<GridRow>) {
+    const period = data?.periods.find((p) => p.key === column.getColId());
+    if (!row || row.heading || !period) return;
+    setCellTarget({
+      code: row.id,
+      label: row.label,
+      periodLabel: period.label,
+      fiscalYear: period.fiscal_year,
+      fiscalPeriod: period.fiscal_period,
+      ttm: period.key.startsWith("TTM"),
+    });
+  }
 
   function exportCsv() {
     const csv = grid.current?.getCsv({
@@ -198,6 +263,7 @@ export function RatiosView({ ticker }: RatiosViewProps) {
             rowData={rows}
             columnDefs={columns}
             getRowId={(row) => row.id}
+            onCellClicked={openCell}
           />
           {notes.length > 0 && (
             <div className="text-muted-foreground space-y-1 px-4 py-2 text-xs">
@@ -210,6 +276,14 @@ export function RatiosView({ ticker }: RatiosViewProps) {
           )}
         </>
       )}
+      <SubjectNotesSheet ticker={ticker} target={target} onClose={() => setTarget(null)} />
+      <RatioCellSheet
+        ticker={ticker}
+        freq={freq}
+        basis={basis}
+        target={cellTarget}
+        onClose={() => setCellTarget(null)}
+      />
     </div>
   );
 }

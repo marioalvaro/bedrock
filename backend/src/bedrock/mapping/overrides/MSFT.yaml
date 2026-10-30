@@ -9,3 +9,10 @@ short_term_debt:
   - us-gaap:ShortTermBorrowings + us-gaap:LongTermDebtCurrent
   - us-gaap:CommercialPaper + us-gaap:LongTermDebtCurrent
   - us-gaap:LongTermDebtCurrent
+# Finance leases count as debt (M3 S6, user decision). Microsoft's lease note puts them in "Other
+# current liabilities" and "Other long-term liabilities" (outside the debt lines) and companyfacts
+# carries only their total, FinanceLeaseLiability (FY2017 on, every quarter). That total joins
+# long-term debt, so the current part (3,172 of 46,172 in FY2025) sits in the long-term line:
+# total_debt and net_debt are right, the split is approximate.
+long_term_debt:
+  - us-gaap:LongTermDebtNoncurrent + us-gaap:FinanceLeaseLiability

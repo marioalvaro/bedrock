@@ -14,6 +14,7 @@ from bedrock.mapping.candidates import (
 )
 from bedrock.mapping.config import DEFAULT_ITEMS_PATH, load_canonical_items
 from bedrock.mapping.gaps import missing_items
+from bedrock.mapping.triage import DEFAULT_TRIAGE_PATH, load_concept_triage
 from bedrock.models.company import Company
 from bedrock.services.refresh import refresh_company
 from bedrock.services.statements import (
@@ -22,6 +23,7 @@ from bedrock.services.statements import (
     cell_detail,
     mapping_gaps,
 )
+from bedrock.statements.coverage import table_coverage
 from bedrock.statements.view import trim_periods
 
 from .seed import fake_sources, follow
@@ -53,6 +55,22 @@ def test_the_database_path_gives_the_same_table_as_the_fixture_pipeline(
     assert table.periods == expected.periods
     assert table.rows == expected.rows
     assert table.balance_check == expected.balance_check
+    assert table.rule_warnings == expected.rule_warnings
+
+
+def test_the_key_stat_load_runs_the_nci_rule_but_no_identity(
+    db_session: Session, aapl: Company
+) -> None:
+    """An identity reads a line that was not loaded as empty and would solve it."""
+    from bedrock.services.statements import _key_stat_codes, _load
+
+    subset = _load(db_session, aapl, codes=_key_stat_codes(False))
+    full = _load(db_session, aapl)
+
+    assert subset.rules.identities == ()
+    assert [i.id for i in full.rules.identities][:2] == ["cash_rollforward", "gross_profit"]
+    assert subset.rules.nci_filings is not None
+    assert subset.rules.nci_filings == full.rules.nci_filings
 
 
 def test_annual_income_statement_has_ten_fiscal_years_of_revenue(
@@ -184,6 +202,80 @@ def test_unmapped_concepts_carry_the_suggested_codes_and_those_come_first(
         c.suggested_codes == candidate_codes(index, c.taxonomy, c.concept)
         for c in gaps.unmapped_concepts
     )
-    has_suggestion = [bool(c.suggested_codes) for c in gaps.unmapped_concepts]
-    assert any(has_suggestion)
-    assert has_suggestion == sorted(has_suggestion, reverse=True)  # suggested first, then the rest
+    assert any(c.suggested_codes for c in gaps.unmapped_concepts)
+    open_ones = [c for c in gaps.unmapped_concepts if c.classification is None]
+    has_suggestion = [bool(c.suggested_codes) for c in open_ones]
+    assert has_suggestion == sorted(has_suggestion, reverse=True)  # among the open ones
+
+
+def test_unmapped_concepts_carry_the_shipped_triage_and_the_classified_come_last(
+    db_session: Session, aapl: Company
+) -> None:
+    gaps = mapping_gaps(db_session, aapl)
+
+    triage = load_concept_triage(DEFAULT_TRIAGE_PATH, load_canonical_items(DEFAULT_ITEMS_PATH))
+    assert all(
+        c.classification == triage.get((c.taxonomy, c.concept)) for c in gaps.unmapped_concepts
+    )
+    classified = [c.classification is not None for c in gaps.unmapped_concepts]
+    assert any(classified)
+    assert classified == sorted(classified)
+
+
+def test_the_full_load_carries_the_cover_page_counts_and_the_key_stat_load_does_not(
+    db_session: Session, aapl: Company
+) -> None:
+    from bedrock.services.statements import _key_stat_codes, _load
+
+    subset = _load(db_session, aapl, codes=_key_stat_codes(False))
+    full = _load(db_session, aapl)
+
+    assert subset.rules.cover_shares is None
+    assert full.rules.cover_shares is not None
+    assert not full.rules.cover_shares.empty
+    assert set(full.rules.cover_shares["code"]) == {"shares_outstanding"}
+
+
+def test_mapping_gaps_carry_the_coverage_of_every_statement_and_frequency(
+    db_session: Session, aapl: Company
+) -> None:
+    pipeline = run_pipeline("AAPL")
+    mapped = set(pipeline.mappings["canonical_code"])
+
+    gaps = mapping_gaps(db_session, aapl)
+
+    assert [(c.statement, c.freq) for c in gaps.coverage] == [
+        (s, f) for s in STATEMENTS for f in ("annual", "quarterly")
+    ]
+    for result in gaps.coverage:
+        tables = pipeline.annual if result.freq == "annual" else pipeline.quarterly
+        table = tables[result.statement]
+        expected = table_coverage(table, pipeline.items, mapped, table.rule_warnings)
+        assert result == expected
+
+
+def test_mapping_gaps_list_the_rule_warnings_with_the_line_label(
+    db_session: Session, aapl: Company
+) -> None:
+    pipeline = run_pipeline("AAPL")
+    expected = pipeline.annual["CF"].rule_warnings
+    assert expected  # S7: Apple's cash roll-forward is refused in three periods
+
+    gaps = mapping_gaps(db_session, aapl)
+
+    assert [w.warning for w in gaps.rule_warnings] == list(expected)
+    labels = {i.code: i.label for i in pipeline.items}
+    assert all(w.label == labels[w.warning.code] for w in gaps.rule_warnings)
+    units = {i.code: i.unit for i in pipeline.items}
+    assert all(w.unit == units[w.warning.code] for w in gaps.rule_warnings)
+
+
+def test_a_company_with_no_facts_has_no_coverage_and_no_warnings(
+    db_session: Session,
+) -> None:
+    sources = fake_sources()
+    empty = follow(db_session, sources.edgar, "MSFT")
+
+    gaps = mapping_gaps(db_session, empty)
+
+    assert (gaps.coverage, gaps.rule_warnings) == ([], [])

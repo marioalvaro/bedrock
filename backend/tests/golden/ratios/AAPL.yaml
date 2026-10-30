@@ -13,7 +13,8 @@
 # statements foot (gross margin - opex = operating income; + other income = pretax; - tax = net income).
 # Units: USD millions in the comments; ratios are fractions (pct), multiples (x), days, or USD per share.
 # Canonical lines as Apple maps them (canonical_items.yaml + overrides/AAPL.yaml):
-#   short_term_debt = commercial paper + current term debt; long_term_debt = non-current term debt;
+#   short_term_debt = commercial paper + current term debt + current finance lease liability; long_term_debt = non-current term debt
+#   + non-current finance lease liability (finance leases count as debt, M3 S6; Apple tags them from FY2020);
 #   short_term_investments = current marketable securities; receivables = accounts receivable, net (vendor non-trade
 #   receivables are NOT included); total_equity = equity_parent (no noncontrolling interests);
 #   shares_outstanding = us-gaap CommonStockSharesOutstanding (balance-sheet count, not the dei cover-page count);
@@ -36,13 +37,17 @@ annual:
     # net income 57,411 [10-K FY2022] / avg(total assets 323,888 [10-K FY2021], 338,516 [10-K FY2020]) = 331,202
     roa: 0.173341
     # tax rate = provision 9,680 / pretax 67,091 = 0.144282; nopat = operating income 66,288 x (1 - 0.144282) = 56,723.858 [10-K FY2022]
-    # invested capital FY2020 = debt (CP 4,996 + current term debt 8,773 + term debt 98,667 = 112,436) + equity 65,339
-    #   - cash 38,016 - marketable securities (current) 52,927 = 86,832 [10-K FY2021]
-    # invested capital FY2019 = debt (CP 5,980 + 10,260 + 91,807 = 108,047) + equity 90,488 - cash 48,844 - 51,713 = 97,978 [10-K FY2020]
-    # 56,723.858 / avg(86,832, 97,978) = 92,405
-    roic: 0.613861
-    # total debt 112,436 (4,996 + 8,773 + 98,667) / total equity 65,339 [10-K FY2021]
-    debt_to_equity: 1.720810
+    # invested capital FY2020 = debt (CP 4,996 + current term debt 8,773 + term debt 98,667 = 112,436, + finance lease
+    #   liabilities 24 current + 637 non-current [10-K FY2021, lease note] = 113,097) + equity 65,339
+    #   - cash 38,016 - marketable securities (current) 52,927 = 87,493 [10-K FY2021]
+    # invested capital FY2019 = debt (CP 5,980 + 10,260 + 91,807 = 108,047; no finance lease: the engine has no Apple finance
+    #   lease liability before FY2020, so this operand is the debt alone) + equity 90,488 - cash 48,844 - 51,713 = 97,978 [10-K FY2020]
+    # 56,723.858 / avg(87,493, 97,978) = 92,735.5
+    roic: 0.611674
+    # invested capital in USD (the row of the same name): FY2020 87,493 million, derived above [10-K FY2021]
+    invested_capital_usd: 87493000000
+    # total debt 113,097 (4,996 + 8,773 + 98,667 + finance leases 24 + 637, M3 S6) / total equity 65,339 [10-K FY2021]
+    debt_to_equity: 1.730926
     # total current assets 143,713 / total current liabilities 105,392 [10-K FY2021]
     current_ratio: 1.363604
     # (cash 38,016 + marketable securities 52,927 + accounts receivable 16,120) = 107,063 / current liabilities 105,392 [10-K FY2021]
@@ -77,13 +82,16 @@ annual:
     # net income 112,010 / avg(total assets 359,241, 364,980) = 362,110.5 [10-K FY2025]
     roa: 0.309325
     # tax rate = provision 20,719 / pretax 132,729 = 0.156100; nopat = operating income 133,050 x (1 - 0.156100) = 112,280.892
-    # invested capital FY2025 = debt (CP 7,979 + current term debt 12,350 + term debt 78,328 = 98,657) + equity 73,733
-    #   - cash 35,934 - marketable securities (current) 18,763 = 117,693
-    # invested capital FY2024 = debt (CP 9,967 + 10,912 + 85,750 = 106,629) + equity 56,950 - cash 29,943 - 35,228 = 98,408
-    # 112,280.892 / avg(117,693, 98,408) = 108,050.5 [all 10-K FY2025]
-    roic: 1.039152
-    # total debt 98,657 (7,979 + 12,350 + 78,328) / total equity 73,733 [10-K FY2025]
-    debt_to_equity: 1.338030
+    # invested capital FY2025 = debt (CP 7,979 + current term debt 12,350 + term debt 78,328 = 98,657, + finance lease
+    #   liabilities 538 + 692 = 99,887) + equity 73,733 - cash 35,934 - marketable securities (current) 18,763 = 118,923
+    # invested capital FY2024 = debt (CP 9,967 + 10,912 + 85,750 = 106,629, + leases 144 + 752 = 107,525) + equity 56,950
+    #   - cash 29,943 - 35,228 = 99,304
+    # 112,280.892 / avg(118,923, 99,304) = 109,113.5 [all 10-K FY2025]
+    roic: 1.029028
+    # invested capital in USD: FY2025 118,923 million, derived above [10-K FY2025]
+    invested_capital_usd: 118923000000
+    # total debt 99,887 (7,979 + 12,350 + 78,328 + finance leases 538 + 692, M3 S6) / total equity 73,733 [10-K FY2025]
+    debt_to_equity: 1.354712
     # total current assets 147,957 / total current liabilities 165,631 [10-K FY2025]
     current_ratio: 0.893293
     # (cash 35,934 + marketable securities 18,763 + accounts receivable 39,777) = 94,474 / current liabilities 165,631 [10-K FY2025]
@@ -120,11 +128,11 @@ valuation:
     # free cash flow 73,365
     p_fcf: 23.140139
     fcf_yield: 0.043215
-    # EV = 1,697,676.300 + debt 112,436 + minority 0 - cash 38,016 - short-term investments 52,927 = 1,719,169.300
-    ev_sales: 6.26257
+    # EV = 1,697,676.300 + debt 113,097 (with finance leases) + minority 0 - cash 38,016 - short-term investments 52,927 = 1,719,830.300
+    ev_sales: 6.264978
     # operating income 66,288
-    ev_ebit: 25.934849
-    ev_fcf: 23.433099
+    ev_ebit: 25.944821
+    ev_fcf: 23.442109
     # dividends declared per share 0.795
     dividend_yield: 0.00795
   FY2025:
@@ -139,10 +147,10 @@ valuation:
     # free cash flow 98,767
     p_fcf: 37.394221
     fcf_yield: 0.026742
-    # EV = 3,693,315.000 + debt 98,657 + minority 0 - cash 35,934 - short-term investments 18,763 = 3,737,275.000
-    ev_sales: 8.980359
+    # EV = 3,693,315.000 + debt 99,887 (with finance leases) + minority 0 - cash 35,934 - short-term investments 18,763 = 3,738,505.000
+    ev_sales: 8.983314
     # operating income 133,050
-    ev_ebit: 28.089252
-    ev_fcf: 37.839309
+    ev_ebit: 28.098497
+    ev_fcf: 37.851762
     # dividends declared per share 1.02
     dividend_yield: 0.00408

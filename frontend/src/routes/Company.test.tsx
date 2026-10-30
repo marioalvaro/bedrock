@@ -8,14 +8,20 @@ import {
   getCapitalAllocationApiV1CompaniesTickerCapitalAllocationGet,
   getCompanyApiV1CompaniesTickerGet,
   getFlagsApiV1CompaniesTickerFlagsGet,
+  getGuidanceApiV1CompaniesTickerGuidanceGet,
   getMappingGapsApiV1CompaniesTickerMappingGapsGet,
   getRatiosApiV1CompaniesTickerRatiosGet,
+  getSegmentsApiV1CompaniesTickerSegmentsGet,
   getStatementApiV1CompaniesTickerStatementsGet,
+  listLinksApiV1CompaniesTickerNotesLinksGet,
+  listNotesApiV1CompaniesTickerNotesGet,
+  listSetsApiV1CompaniesTickerCompsSetsGet,
   refreshApiV1CompaniesTickerRefreshPost,
 } from "@/api/generated/sdk.gen";
 import { createQueryClient } from "@/lib/query-client";
 import { capitalAllocation, flags, ratios } from "@/test/analysis";
 import { companyItem, mappingGaps } from "@/test/companies";
+import { guidance, note, segments } from "@/test/context";
 import { errorResult, okResult } from "@/test/responses";
 import { incomeStatement } from "@/test/statements";
 
@@ -28,6 +34,12 @@ vi.mock("@/api/generated/sdk.gen", () => ({
   getRatiosApiV1CompaniesTickerRatiosGet: vi.fn(),
   getFlagsApiV1CompaniesTickerFlagsGet: vi.fn(),
   getCapitalAllocationApiV1CompaniesTickerCapitalAllocationGet: vi.fn(),
+  getSegmentsApiV1CompaniesTickerSegmentsGet: vi.fn(),
+  listNotesApiV1CompaniesTickerNotesGet: vi.fn(),
+  listLinksApiV1CompaniesTickerNotesLinksGet: vi.fn(),
+  listSetsApiV1CompaniesTickerCompsSetsGet: vi.fn(),
+  getGuidanceApiV1CompaniesTickerGuidanceGet: vi.fn(),
+  listMetricsApiV1CompaniesTickerGuidanceMetricsGet: vi.fn(),
   refreshApiV1CompaniesTickerRefreshPost: vi.fn(),
 }));
 
@@ -54,7 +66,18 @@ beforeEach(() => {
     okResult(incomeStatement()) as never,
   );
   vi.mocked(getRatiosApiV1CompaniesTickerRatiosGet).mockResolvedValue(okResult(ratios()) as never);
+  vi.mocked(getSegmentsApiV1CompaniesTickerSegmentsGet).mockResolvedValue(
+    okResult(segments()) as never,
+  );
+  vi.mocked(listNotesApiV1CompaniesTickerNotesGet).mockResolvedValue(
+    okResult([note({ body_md: "Thesis text" })]) as never,
+  );
+  vi.mocked(listLinksApiV1CompaniesTickerNotesLinksGet).mockResolvedValue(okResult([]) as never);
   vi.mocked(getFlagsApiV1CompaniesTickerFlagsGet).mockResolvedValue(okResult(flags()) as never);
+  vi.mocked(listSetsApiV1CompaniesTickerCompsSetsGet).mockResolvedValue(okResult([]) as never);
+  vi.mocked(getGuidanceApiV1CompaniesTickerGuidanceGet).mockResolvedValue(
+    okResult(guidance()) as never,
+  );
   vi.mocked(getCapitalAllocationApiV1CompaniesTickerCapitalAllocationGet).mockResolvedValue(
     okResult(capitalAllocation()) as never,
   );
@@ -187,7 +210,25 @@ describe("tabs", () => {
     expect(await screen.findByRole("region", { name: "Data gaps" })).toBeInTheDocument();
   });
 
-  it("lists the seven tabs in order, the analysis tabs after Cash Flow", async () => {
+  it("routes /segments to the segments grid", async () => {
+    renderAt("/c/AAPL/segments");
+
+    expect(await screen.findByText("Americas")).toBeInTheDocument();
+    expect(getSegmentsApiV1CompaniesTickerSegmentsGet).toHaveBeenCalledWith({
+      path: { ticker: "AAPL" },
+      query: { freq: "annual" },
+    });
+    expect(screen.getByRole("link", { name: "Segments" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("routes /notes to the notes journal", async () => {
+    renderAt("/c/AAPL/notes");
+
+    expect(await screen.findByText("Thesis text")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Notes" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("lists the eleven tabs in order, the analysis tabs after Cash Flow", async () => {
     renderAt("/c/AAPL");
     await screen.findByRole("heading", { name: "AAPL" });
 
@@ -200,6 +241,10 @@ describe("tabs", () => {
       "Ratios",
       "Quality",
       "Capital",
+      "Segments",
+      "Comps",
+      "Guidance",
+      "Notes",
     ]);
     expect(screen.getByRole("link", { name: "Ratios" })).toHaveAttribute("href", "/c/AAPL/ratios");
     expect(screen.getByRole("link", { name: "Quality" })).toHaveAttribute(
@@ -210,12 +255,24 @@ describe("tabs", () => {
       "href",
       "/c/AAPL/capital",
     );
+    expect(screen.getByRole("link", { name: "Segments" })).toHaveAttribute(
+      "href",
+      "/c/AAPL/segments",
+    );
+    expect(screen.getByRole("link", { name: "Comps" })).toHaveAttribute("href", "/c/AAPL/comps");
+    expect(screen.getByRole("link", { name: "Guidance" })).toHaveAttribute(
+      "href",
+      "/c/AAPL/guidance",
+    );
+    expect(screen.getByRole("link", { name: "Notes" })).toHaveAttribute("href", "/c/AAPL/notes");
   });
 
   it.each([
     ["ratios", "Ratios", getRatiosApiV1CompaniesTickerRatiosGet],
     ["quality", "Quality", getFlagsApiV1CompaniesTickerFlagsGet],
     ["capital", "Capital", getCapitalAllocationApiV1CompaniesTickerCapitalAllocationGet],
+    ["comps", "Comps", listSetsApiV1CompaniesTickerCompsSetsGet],
+    ["guidance", "Guidance", getGuidanceApiV1CompaniesTickerGuidanceGet],
   ])("routes /%s to its view and marks the tab", async (slug, name, sdk) => {
     renderAt(`/c/AAPL/${slug}`);
 

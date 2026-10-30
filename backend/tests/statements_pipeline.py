@@ -7,7 +7,8 @@ No DB and no network: it is the same chain `build_statements` runs in S4, minus 
 import csv
 import gzip
 import json
-from dataclasses import dataclass
+from collections.abc import Sequence
+from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal
 from functools import cache
@@ -20,14 +21,20 @@ from bedrock.mapping.config import (
     DEFAULT_ITEMS_PATH,
     DEFAULT_OVERRIDES_DIR,
     CanonicalItemDef,
+    IdentityDef,
     load_canonical_items,
     load_excludes,
+    load_identities,
     load_overrides,
     split_group,
 )
-from bedrock.mapping.mapper import map_facts
+from bedrock.mapping.mapper import CANONICAL_COLUMNS, map_facts
 from bedrock.mapping.vintage import balance_snapshot, select_vintage
 from bedrock.statements.build import StatementTable, build_statement
+from bedrock.statements.cells import SolvedCells, solve_cells
+from bedrock.statements.imports import StoredValue, company_calendar, imported_frames
+from bedrock.statements.periods import Calendar
+from bedrock.statements.rules import Rules, filings_tagging_nci
 from bedrock.statements.splits import split_adjust
 
 FIXTURES = Path(__file__).parent / "fixtures" / "edgar"
@@ -41,6 +48,8 @@ class Pipeline:
     facts: pd.DataFrame  # every vintage of the mapped concepts
     mappings: pd.DataFrame
     canonical: pd.DataFrame
+    identities: list[IdentityDef]
+    rules: Rules
     annual: dict[str, StatementTable]
     quarterly: dict[str, StatementTable]
 
@@ -112,6 +121,35 @@ def fact_frame(ticker: str, mappings: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+def cover_shares(ticker: str) -> pd.DataFrame:
+    """The cover-page counts of the fixture, dated on the period each filing reports, like
+    `load_cover_shares`."""
+    with gzip.open(FIXTURES / f"{ticker}.json.gz", "rt") as handle:
+        parsed = parse_companyfacts(json.load(handle))
+    filings = {f.accession_no: f for f in parsed.filings}
+    rows = [
+        (
+            "shares_outstanding",
+            None,
+            filings[f.accession_no].period_end,
+            f.value,
+            f.taxonomy,
+            f.concept,
+            f.unit,
+            f.accession_no,
+            filings[f.accession_no].form,
+            filings[f.accession_no].filed_at,
+            "instant",
+        )
+        for f in parsed.facts
+        if (f.taxonomy, f.concept, f.unit)
+        == ("dei", "EntityCommonStockSharesOutstanding", "shares")
+    ]
+    return pd.DataFrame(rows, columns=CANONICAL_COLUMNS).astype(
+        {"period_start": "object", "period_end": "object", "value": "object", "filed_at": "object"}
+    )
+
+
 FACT_COLUMNS = [
     "taxonomy",
     "concept",
@@ -179,11 +217,41 @@ def run_pipeline(ticker: str) -> Pipeline:
     facts = fact_frame(ticker, mappings)
     latest = select_vintage(facts, snapshot=balance_snapshot(mappings))
     canonical = split_adjust(map_facts(latest, mappings, items), fixture_splits(ticker))
+    identities = load_identities(DEFAULT_ITEMS_PATH, items)
+    splits = fixture_splits(ticker)
+    rules = Rules(
+        tuple(identities),
+        filings_tagging_nci(facts, mappings),
+        split_adjust(cover_shares(ticker), splits),
+    )
     return Pipeline(
         items=items,
         facts=facts,
         mappings=mappings,
         canonical=canonical,
-        annual={s: build_statement(canonical, items, s, "annual") for s in STATEMENTS},
-        quarterly={s: build_statement(canonical, items, s, "quarterly") for s in STATEMENTS},
+        identities=identities,
+        rules=rules,
+        annual={s: build_statement(canonical, items, s, "annual", rules=rules) for s in STATEMENTS},
+        quarterly={
+            s: build_statement(canonical, items, s, "quarterly", rules=rules) for s in STATEMENTS
+        },
     )
+
+
+def solve_with_imports(
+    ticker: str, stored: Sequence[StoredValue], drop: frozenset[tuple[str, str]] = frozenset()
+) -> tuple[SolvedCells, Calendar]:
+    """The fixture company's cells with `stored` imported values on top. `drop` removes SEC cells
+    first, as (code, period end ISO date) pairs, to open a gap the fixture does not have."""
+    base = run_pipeline(ticker)
+    canonical = base.canonical
+    if drop:
+        keep = [
+            (code, end.isoformat()) not in drop
+            for code, end in zip(canonical["code"], canonical["period_end"], strict=True)
+        ]
+        canonical = canonical[keep]
+    frames = imported_frames(stored, base.items)
+    rules = replace(base.rules, imported=frames.newest, imported_vintages=frames.vintages)
+    calendar = company_calendar(canonical, rules.imported)
+    return solve_cells(canonical, base.items, calendar, rules), calendar

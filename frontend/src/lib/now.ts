@@ -13,3 +13,10 @@ export function useNow(): Date {
 
   return now;
 }
+
+// The local calendar date as YYYY-MM-DD (what a date input holds), not the UTC date.
+export function localIsoDate(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}

@@ -61,6 +61,8 @@ def test_annual_income_statement_has_the_documented_shape(aapl_client: TestClien
         "common_size",
         "common_size_base",
         "adjustable",
+        "custom",
+        "parent",
     }
     for field in ("values", "provenance", "yoy", "common_size"):
         assert len(revenue[field]) == len(periods)  # type: ignore[arg-type]
@@ -209,6 +211,87 @@ def test_a_derived_cell_has_its_derivation(aapl_client: TestClient) -> None:
     assert {"code", "fiscal_period", "value"} <= set(cell["derivation"]["inputs"][0])
 
 
+def test_an_inferred_zero_has_its_own_provenance_and_derivation(aapl_client: TestClient) -> None:
+    body = _statement(aapl_client, "IS", "annual")
+    row = _row(body, "net_income_nci")
+    assert set(row["provenance"]) == {"zero_inferred"}  # type: ignore[arg-type]
+    assert set(row["values"]) == {"0"}  # type: ignore[arg-type]
+    year = body["periods"][-1]["fiscal_year"]  # type: ignore[index]
+
+    cell = aapl_client.get(
+        f"{STATEMENTS}/cell",
+        params={"code": "net_income_nci", "fiscal_year": year, "fiscal_period": "FY"},
+    ).json()
+
+    assert (cell["value"], cell["provenance"]) == ("0", "zero_inferred")
+    assert cell["source"] is None and cell["filing"] is None
+    assert cell["derivation"]["formula"].startswith(
+        "no NCI-inclusive total or NCI concept tagged in 10-K "
+    )
+    assert cell["derivation"]["inputs"] == []
+
+
+def test_a_rebuilt_q4_eps_is_approximated_and_explains_its_inputs(aapl_client: TestClient) -> None:
+    body = _statement(aapl_client, "IS", "quarterly")
+    row = _row(body, "eps_diluted")
+    q4_at = next(
+        i
+        for i in reversed(range(len(body["periods"])))  # type: ignore[arg-type]
+        if body["periods"][i]["fiscal_period"] == "Q4"  # type: ignore[index]
+    )
+    assert row["provenance"][q4_at] == "approximated"  # type: ignore[index]
+
+    cell = aapl_client.get(
+        f"{STATEMENTS}/cell",
+        params={
+            "code": "eps_diluted",
+            "fiscal_year": body["periods"][q4_at]["fiscal_year"],  # type: ignore[index]
+            "fiscal_period": "Q4",
+        },
+    ).json()
+
+    assert cell["provenance"] == "approximated"
+    assert cell["source"] is None and cell["filing"] is None
+    assert cell["derivation"]["formula"] == "net_income_common / shares_diluted"
+    assert [i["code"] for i in cell["derivation"]["inputs"]] == [
+        "net_income_common",
+        "shares_diluted",
+    ]
+
+
+def test_ttm_eps_is_returned_and_approximated(aapl_client: TestClient) -> None:
+    row = _row(_statement(aapl_client, "IS", "ttm"), "eps_diluted")
+
+    assert row["values"][-1] is not None  # type: ignore[index]
+    assert row["provenance"][-1] == "approximated"  # type: ignore[index]
+
+
+def test_an_identity_solved_cell_explains_the_identity(aapl_client: TestClient) -> None:
+    body = _statement(aapl_client, "BS", "annual")
+    row = _row(body, "temporary_equity")
+    latest = len(row["values"]) - 1  # type: ignore[arg-type]
+    assert (row["values"][latest], row["provenance"][latest]) == ("0", "zero_inferred")  # type: ignore[index]
+
+    cell = aapl_client.get(
+        f"{STATEMENTS}/cell",
+        params={
+            "code": "temporary_equity",
+            "fiscal_year": body["periods"][latest]["fiscal_year"],  # type: ignore[index]
+            "fiscal_period": "FY",
+        },
+    ).json()
+
+    assert cell["derivation"]["formula"] == (
+        "identity balance_sheet: temporary_equity = "
+        "total_liabilities_and_equity - total_liabilities - total_equity"
+    )
+    assert [i["code"] for i in cell["derivation"]["inputs"]] == [
+        "total_liabilities_and_equity",
+        "total_liabilities",
+        "total_equity",
+    ]
+
+
 def _annual(client: TestClient, code: str) -> dict[int, str]:
     body = _statement(client, "IS", "annual")
     values = _row(body, code)["values"]
@@ -283,11 +366,70 @@ def test_mapping_gaps_list_missing_items_and_unmapped_concepts(aapl_client: Test
         "latest_period_end",
         "facts",
         "suggested_codes",
+        "classification",
     }
     assert isinstance(unmapped["latest_value"], str)
     assert isinstance(unmapped["suggested_codes"], list)
-    suggested = [bool(u["suggested_codes"]) for u in gaps["unmapped_concepts"]]
-    assert suggested[0] and suggested == sorted(suggested, reverse=True)  # suggested ones first
+    unclassified = [u for u in gaps["unmapped_concepts"] if u["classification"] is None]
+    suggested = [bool(u["suggested_codes"]) for u in unclassified]
+    assert suggested == sorted(suggested, reverse=True)  # suggested ones first, among the open ones
+
+
+def test_mapping_gaps_carry_the_triage_verdict_and_list_the_classified_last(
+    aapl_client: TestClient,
+) -> None:
+    gaps = aapl_client.get("/api/v1/companies/AAPL/mapping-gaps").json()["unmapped_concepts"]
+
+    by_name = {u["concept"]: u for u in gaps}
+    ladder = by_name["LongTermDebtMaturitiesRepaymentsOfPrincipalInYearTwo"]
+    assert set(ladder["classification"]) == {"type", "reason", "codes"}
+    assert ladder["classification"]["type"] == "disclosure"
+    assert ladder["classification"]["reason"]
+    assert ladder["suggested_codes"]  # a classified concept keeps its suggestion
+    component = by_name["LongTermDebtMaturitiesRepaymentsOfPrincipalAfterYearFive"]
+    assert isinstance(component["classification"]["codes"], list)
+    classified = [u["classification"] is not None for u in gaps]
+    assert classified == sorted(classified)  # every unclassified concept before the classified
+    assert any(classified)
+
+
+def test_mapping_gaps_carry_coverage_and_rule_warnings(aapl_client: TestClient) -> None:
+    gaps = aapl_client.get("/api/v1/companies/AAPL/mapping-gaps").json()
+
+    coverage = gaps["coverage"]
+    assert [(c["statement"], c["freq"]) for c in coverage] == [
+        (s, f) for s in ("IS", "BS", "CF") for f in ("annual", "quarterly")
+    ]
+    income = coverage[0]
+    assert set(income) == {
+        "statement",
+        "freq",
+        "cells",
+        "filled",
+        "fraction",
+        "by_provenance",
+        "empty_by_cause",
+    }
+    assert set(income["by_provenance"]) == {
+        "reported",
+        "derived",
+        "zero_inferred",
+        "approximated",
+        "imported",
+    }
+    assert set(income["empty_by_cause"]) == {
+        "no_filing_data",
+        "structural",
+        "rule_rejected",
+        "not_reported",
+    }
+    assert isinstance(income["fraction"], str)
+    assert income["cells"] == income["filled"] + sum(income["empty_by_cause"].values())
+    assert income["filled"] == sum(income["by_provenance"].values())
+    assert gaps["rule_warnings"]
+    warning = gaps["rule_warnings"][0]
+    assert set(warning) == {"rule", "code", "label", "unit", "period_key", "value", "reason"}
+    assert warning["reason"]
 
 
 def test_the_openapi_schema_types_decimals_as_strings(app: FastAPI) -> None:

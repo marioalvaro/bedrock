@@ -256,7 +256,7 @@ describe("mutations", () => {
 });
 
 describe("invalidateAdjustmentViews", () => {
-  it("invalidates the ticker's statements, cells, adjustments and ratios only", async () => {
+  it("invalidates the ticker's statements, cells, adjustments, ratios, guidance and comps only", async () => {
     const { queryClient } = setup();
     const aapl = companyKey("AAPL");
     const stale = [
@@ -265,9 +265,18 @@ describe("invalidateAdjustmentViews", () => {
       [...aapl, "cell", "sga", 2024, "FY"],
       adjustmentsKey("AAPL"),
       [...ratiosKey("AAPL"), "annual"],
+      [...aapl, "guidance"],
+      [...aapl, "comps", 3, "normalized"],
     ];
     const fresh = [
       aapl,
+      [...aapl, "guidance-metrics"],
+      [...aapl, "comps-sets"],
+      [...aapl, "peer-suggestions", 3],
+      [...aapl, "segments", "annual"],
+      [...aapl, "notes", {}],
+      [...aapl, "note-links"],
+      [...companyKey("MSFT"), "guidance"],
       [...aapl, "mapping-gaps"],
       corporateActionsKey("AAPL"),
       ["companies"],

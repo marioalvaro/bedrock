@@ -1,8 +1,12 @@
 # Costco's only short-term debt line is the current portion of long-term debt, so that concept is the
 # whole item. Elsewhere it would understate the item (Apple and Microsoft also report commercial paper
 # or short-term borrowings on separate lines), which is why it is not a default.
+# Finance leases count as debt (M3 S6, user decision): current ones (capital leases before ASC 842, in
+# FY2020 Q1 on) are "Other current liabilities", long-term ones "Other long-term liabilities", so
+# neither is in the debt lines; the long-term lease is in the default long_term_debt group. Companyfacts
+# lacks them for FY2021-FY2023 and the other 10-Qs, where the debt shows alone.
 short_term_debt:
-  - us-gaap:LongTermDebtCurrent
+  - us-gaap:LongTermDebtCurrent + us-gaap:FinanceLeaseLiabilityCurrent + us-gaap:CapitalLeaseObligationsCurrent
 # Until FY2011 Costco's cash flow has "Maturities of short-term investments" and "Sales of
 # investments" as two lines; one combined tag (the default) takes over in FY2012, with the same
 # total. The sales tag is also tagged ...OfAvailableForSaleSecurities with the same value, which

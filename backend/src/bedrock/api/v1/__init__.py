@@ -5,12 +5,17 @@ from bedrock.api.v1 import (
     adjustments,
     auth,
     companies,
+    comps,
     corporate_actions,
     flags,
+    guidance,
     health,
+    imports,
     multiples,
+    notes,
     qoe_rules,
     ratios,
+    segments,
     statements,
 )
 
@@ -31,6 +36,11 @@ protected.include_router(multiples.router)
 protected.include_router(flags.router)
 protected.include_router(qoe_rules.router)
 protected.include_router(qoe_rules.custom_router)
+protected.include_router(segments.router)
+protected.include_router(comps.router)
+protected.include_router(guidance.router)
+protected.include_router(notes.router)
+protected.include_router(imports.router)
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(public)

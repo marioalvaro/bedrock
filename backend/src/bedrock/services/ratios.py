@@ -1,6 +1,6 @@
 """The ratio table of a followed company (FR-ANL-01..04)."""
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal
 from functools import cache
@@ -11,8 +11,11 @@ from bedrock.analysis.multiples import MultipleSummary, valuation_summary
 from bedrock.models.company import Company
 from bedrock.ratios.calculator import RatioFreq, RatioInputs, RatioTable, compute_ratios
 from bedrock.ratios.caveats import Caveat, load_caveats
+from bedrock.ratios.explain import RatioExplanation, explain_ratio
 from bedrock.repositories import prices as price_repo
+from bedrock.services.errors import RatioCellNotFound
 from bedrock.services.statements import Basis, statement_tables
+from bedrock.statements.build import StatementTable
 
 
 def ratios(session: Session, company: Company, freq: RatioFreq, basis: Basis) -> RatioTable:
@@ -20,6 +23,25 @@ def ratios(session: Session, company: Company, freq: RatioFreq, basis: Basis) ->
     statements gives a table with no periods and every ratio row."""
     inputs = ratio_inputs(session, company, freq, basis)
     return compute_ratios(inputs, freq, _caveats().get(company.ticker.upper(), ()))
+
+
+def ratio_cell(
+    session: Session,
+    company: Company,
+    freq: RatioFreq,
+    basis: Basis,
+    code: str,
+    fiscal_year: int,
+    fiscal_period: str,
+) -> RatioExplanation:
+    """How one value of the ratio table was computed: its formula and inputs (FR-ANL-11). Raises
+    `RatioCellNotFound` for an unknown ratio or a period that is not a column of the table."""
+    inputs = ratio_inputs(session, company, freq, basis)
+    caveats = _caveats().get(company.ticker.upper(), ())
+    try:
+        return explain_ratio(inputs, freq, code, (fiscal_year, fiscal_period), caveats)
+    except KeyError as error:
+        raise RatioCellNotFound(f"{code} {fiscal_year} {fiscal_period}") from error
 
 
 def ratio_inputs(session: Session, company: Company, freq: RatioFreq, basis: Basis) -> RatioInputs:
@@ -54,15 +76,32 @@ def _caveats() -> dict[str, tuple[Caveat, ...]]:
     return load_caveats()
 
 
+@dataclass(frozen=True)
+class CurrentTtm:
+    """The TTM view at the latest close: the close, the TTM income statement and the TTM ratio
+    table whose last period is priced at that close (the current multiples)."""
+
+    close: tuple[date, Decimal] | None
+    income: StatementTable
+    table: RatioTable
+
+
+def current_ttm(session: Session, company: Company, basis: Basis) -> CurrentTtm:
+    """One load of the company's TTM inputs, priced at the latest close (no close: the table is
+    the plain TTM one and the price-based numbers are null)."""
+    close = price_repo.latest_close(session, company.id)
+    inputs = ratio_inputs(session, company, "ttm", basis)
+    if close is not None:
+        inputs = replace(inputs, as_of=close[0])
+    table = compute_ratios(inputs, "ttm", _caveats().get(company.ticker.upper(), ()))
+    return CurrentTtm(close, inputs.income, table)
+
+
 def multiples(
     session: Session, company: Company, basis: Basis
 ) -> tuple[tuple[date, Decimal] | None, list[MultipleSummary]]:
     """The latest close and the valuation summary: annual history against the current multiples
     (TTM figures at the latest close). Without stored prices every number is null."""
     annual = ratios(session, company, "annual", basis)
-    close = price_repo.latest_close(session, company.id)
-    inputs = ratio_inputs(session, company, "ttm", basis)
-    if close is not None:
-        inputs = replace(inputs, as_of=close[0])
-    current = compute_ratios(inputs, "ttm", _caveats().get(company.ticker.upper(), ()))
-    return close, valuation_summary(annual, current)
+    current = current_ttm(session, company, basis)
+    return current.close, valuation_summary(annual, current.table)

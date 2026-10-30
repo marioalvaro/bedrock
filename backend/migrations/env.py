@@ -8,14 +8,23 @@ from bedrock.models import (  # noqa: F401  ensure models are registered
     adjustment,
     canonical_item,
     company,
+    comps_member,
+    comps_set,
     concept_mapping,
     corporate_action,
+    custom_line,
     filing,
+    guidance,
+    imported_fact,
+    note,
     off_balance_item,
     price_daily,
     qoe_custom_rule,
     qoe_threshold,
     raw_fact,
+    segment_series,
+    segment_value,
+    statement_import,
 )
 from bedrock.models.base import Base
 

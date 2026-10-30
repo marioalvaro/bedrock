@@ -1,7 +1,7 @@
 import { act, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useNow } from "./now";
+import { localIsoDate, useNow } from "./now";
 
 function Clock() {
   return <span>{useNow().toISOString()}</span>;
@@ -38,5 +38,12 @@ describe("useNow", () => {
     unmount();
 
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe("localIsoDate", () => {
+  it("is the local calendar date, zero padded, even late in the evening", () => {
+    expect(localIsoDate(new Date(2026, 0, 5, 23, 59))).toBe("2026-01-05");
+    expect(localIsoDate(new Date(2026, 9, 23, 0, 1))).toBe("2026-10-23");
   });
 });

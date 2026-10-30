@@ -6,7 +6,9 @@ import type {
   QoeCustomRuleOut,
   MultiplesOut,
   QoeRuleOut,
+  RatioCellOut,
   RatiosOut,
+  TermOut,
 } from "@/api/generated/types.gen";
 
 // Shapes of GET …/ratios, …/flags, …/capital-allocation, …/off-balance-items and /qoe-rules.
@@ -411,6 +413,78 @@ export function multiples(overrides: Partial<MultiplesOut> = {}): MultiplesOut {
         n: 5,
       },
     ],
+    ...overrides,
+  };
+}
+
+export function term(overrides: Partial<TermOut> = {}): TermOut {
+  return {
+    code: "net_income_common",
+    label: "Net income to common",
+    kind: "line",
+    unit: "USD",
+    sign: 1,
+    value: "20000000",
+    definition: "",
+    note: null,
+    children: [],
+    ...overrides,
+  };
+}
+
+// GET …/ratios/cell for DE's P/E in FY2024: market cap (price x shares) over net income.
+export function ratioCell(overrides: Partial<RatioCellOut> = {}): RatioCellOut {
+  return {
+    code: "pe",
+    label: "P/E",
+    category: "Valuation",
+    unit: "x",
+    definition: "market_cap ÷ net_income_common",
+    caveat: null,
+    fiscal_year: 2024,
+    fiscal_period: "FY",
+    value: "30",
+    scale: "1",
+    numerator: {
+      text: "market_cap",
+      average: false,
+      value: "600000000",
+      terms: [
+        term({
+          code: "market_cap",
+          label: "Market cap",
+          kind: "metric",
+          value: "600000000",
+          definition: "price × shares_outstanding",
+          children: [
+            term({
+              code: "price",
+              label: "Share price",
+              kind: "metric",
+              unit: "USD/shares",
+              value: "60",
+              definition: "the close on or before the period end",
+              note: "close of 2024-09-27, the last on or before the period end 2024-09-28",
+            }),
+            term({
+              code: "shares_outstanding",
+              label: "Shares outstanding",
+              unit: "shares",
+              value: "10000000",
+            }),
+          ],
+        }),
+      ],
+      prior_terms: [],
+    },
+    denominator: {
+      text: "net_income_common",
+      average: false,
+      value: "20000000",
+      terms: [term()],
+      prior_terms: [],
+    },
+    reason: null,
     ...overrides,
   };
 }

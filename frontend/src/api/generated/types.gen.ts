@@ -112,6 +112,56 @@ export type BalanceCheckOut = {
 };
 
 /**
+ * Body_import_statements_api_v1_companies__ticker__imports_post
+ */
+export type BodyImportStatementsApiV1CompaniesTickerImportsPost = {
+    /**
+     * Dry Run
+     */
+    dry_run?: boolean;
+    /**
+     * File
+     */
+    file: Blob | File;
+    /**
+     * Scale
+     */
+    scale?: 'units' | 'thousands' | 'millions' | 'billions' | null;
+};
+
+/**
+ * BuiltCellOut
+ *
+ * A parent cell the sum of a complete custom breakdown fills or changes.
+ */
+export type BuiltCellOut = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Period Key
+     */
+    period_key: string;
+    /**
+     * Statement
+     */
+    statement: 'IS' | 'BS' | 'CF';
+    /**
+     * Unit
+     */
+    unit: string;
+    /**
+     * Value
+     */
+    value: string;
+};
+
+/**
  * CapitalAllocationOut
  */
 export type CapitalAllocationOut = {
@@ -164,6 +214,28 @@ export type CapitalRowOut = {
      * Values
      */
     values: Array<string | null>;
+};
+
+/**
+ * CauseCountsOut
+ */
+export type CauseCountsOut = {
+    /**
+     * No Filing Data
+     */
+    no_filing_data: number;
+    /**
+     * Not Reported
+     */
+    not_reported: number;
+    /**
+     * Rule Rejected
+     */
+    rule_rejected: number;
+    /**
+     * Structural
+     */
+    structural: number;
 };
 
 /**
@@ -220,6 +292,54 @@ export type CellAdjustmentOut = {
 };
 
 /**
+ * CellCaveatOut
+ */
+export type CellCaveatOut = {
+    /**
+     * Text
+     */
+    text: string;
+    /**
+     * Ticker
+     */
+    ticker: string;
+};
+
+/**
+ * CellChangeOut
+ */
+export type CellChangeOut = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Period Key
+     */
+    period_key: string;
+    /**
+     * Previous
+     */
+    previous: string | null;
+    /**
+     * Statement
+     */
+    statement: 'IS' | 'BS' | 'CF';
+    /**
+     * Unit
+     */
+    unit: string;
+    /**
+     * Value
+     */
+    value: string;
+};
+
+/**
  * CellDetailOut
  */
 export type CellDetailOut = {
@@ -252,7 +372,7 @@ export type CellDetailOut = {
     /**
      * Provenance
      */
-    provenance: 'reported' | 'derived' | 'normalized' | null;
+    provenance: 'reported' | 'derived' | 'normalized' | 'zero_inferred' | 'approximated' | 'imported' | null;
     source: SourceOut | null;
     /**
      * Value
@@ -282,8 +402,10 @@ export type CompanyCreate = {
 export type CompanyListItem = {
     /**
      * Cik
+     *
+     * Null for a manual company
      */
-    cik: string;
+    cik: string | null;
     /**
      * Currency
      */
@@ -337,9 +459,193 @@ export type CompanyListItem = {
      */
     sic: string | null;
     /**
+     * Source
+     */
+    source: 'sec' | 'manual';
+    /**
      * Ticker
      */
     ticker: string;
+};
+
+/**
+ * ComparedCompanyOut
+ */
+export type ComparedCompanyOut = {
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Price Date
+     */
+    price_date: string | null;
+    /**
+     * Ticker
+     */
+    ticker: string;
+    /**
+     * Ttm Period
+     */
+    ttm_period: string | null;
+};
+
+/**
+ * CompsMemberOut
+ */
+export type CompsMemberOut = {
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Ticker
+     */
+    ticker: string;
+};
+
+/**
+ * CompsOut
+ */
+export type CompsOut = {
+    /**
+     * Basis
+     */
+    basis: 'reported' | 'normalized';
+    /**
+     * Companies
+     */
+    companies: Array<ComparedCompanyOut>;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Rows
+     */
+    rows: Array<CompsRowOut>;
+    /**
+     * Set Id
+     */
+    set_id: number;
+    /**
+     * Ticker
+     */
+    ticker: string;
+};
+
+/**
+ * CompsRowOut
+ *
+ * `pct` values are fractions. `peers` is aligned with `CompsOut.companies[1:]`; `n` counts
+ * the peer values the statistics use. `target_vs_median` is a ratio minus one for `x` and
+ * `days` rows and a difference for `pct` rows; `target_rank` is 1 for the highest.
+ */
+export type CompsRowOut = {
+    /**
+     * Category
+     */
+    category: 'Valuation' | 'Profitability' | 'Solvency' | 'Efficiency' | 'Growth';
+    /**
+     * Caveats
+     */
+    caveats: Array<CellCaveatOut>;
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * N
+     */
+    n: number;
+    /**
+     * Peer Max
+     */
+    peer_max: string | null;
+    /**
+     * Peer Median
+     */
+    peer_median: string | null;
+    /**
+     * Peer Min
+     */
+    peer_min: string | null;
+    /**
+     * Peers
+     */
+    peers: Array<string | null>;
+    /**
+     * Target
+     */
+    target: string | null;
+    /**
+     * Target Rank
+     */
+    target_rank: number | null;
+    /**
+     * Target Vs Median
+     */
+    target_vs_median: string | null;
+    /**
+     * Unit
+     */
+    unit: 'pct' | 'x' | 'days' | 'USD/shares' | 'USD';
+};
+
+/**
+ * CompsSetIn
+ *
+ * `members` are tickers of followed companies; a PUT replaces them all.
+ */
+export type CompsSetIn = {
+    /**
+     * Members
+     */
+    members: Array<string>;
+    /**
+     * Name
+     */
+    name: string;
+};
+
+/**
+ * CompsSetOut
+ */
+export type CompsSetOut = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Members
+     */
+    members: Array<CompsMemberOut>;
+    /**
+     * Name
+     */
+    name: string;
+};
+
+/**
+ * ConceptClassificationOut
+ */
+export type ConceptClassificationOut = {
+    /**
+     * Codes
+     */
+    codes: Array<string>;
+    /**
+     * Reason
+     */
+    reason: string;
+    /**
+     * Type
+     */
+    type: string;
 };
 
 /**
@@ -362,6 +668,34 @@ export type CorporateActionOut = {
      * Type
      */
     type: string;
+};
+
+/**
+ * CoverageOut
+ */
+export type CoverageOut = {
+    by_provenance: ProvenanceCountsOut;
+    /**
+     * Cells
+     */
+    cells: number;
+    empty_by_cause: CauseCountsOut;
+    /**
+     * Filled
+     */
+    filled: number;
+    /**
+     * Fraction
+     */
+    fraction: string | null;
+    /**
+     * Freq
+     */
+    freq: 'annual' | 'quarterly';
+    /**
+     * Statement
+     */
+    statement: 'IS' | 'BS' | 'CF';
 };
 
 /**
@@ -412,6 +746,36 @@ export type FilingOut = {
      * Form
      */
     form: string;
+};
+
+/**
+ * FillAnnualIn
+ *
+ * `dry_run` counts what would change and writes nothing.
+ */
+export type FillAnnualIn = {
+    /**
+     * Dry Run
+     */
+    dry_run?: boolean;
+};
+
+/**
+ * FillAnnualOut
+ */
+export type FillAnnualOut = {
+    /**
+     * Values Created
+     */
+    values_created: number;
+    /**
+     * Values Overwritten
+     */
+    values_overwritten: number;
+    /**
+     * Values Unchanged
+     */
+    values_unchanged: number;
 };
 
 /**
@@ -512,6 +876,181 @@ export type FlagsOut = {
 };
 
 /**
+ * GuidanceEntryOut
+ *
+ * `unit` is null for a KPI whose series was deleted (the entry stays, pending). `surprise` is
+ * (actual - midpoint) / |midpoint|, not flipped for `lower`. `latest` is false for a revision.
+ */
+export type GuidanceEntryOut = {
+    /**
+     * Actual
+     */
+    actual: string | null;
+    /**
+     * Basis
+     */
+    basis: 'reported' | 'normalized';
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Direction
+     */
+    direction: 'higher' | 'lower';
+    /**
+     * Fiscal Period
+     */
+    fiscal_period: string;
+    /**
+     * Fiscal Year
+     */
+    fiscal_year: number;
+    /**
+     * Given On
+     */
+    given_on: string;
+    /**
+     * High
+     */
+    high: string;
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Latest
+     */
+    latest: boolean;
+    /**
+     * Low
+     */
+    low: string;
+    /**
+     * Metric
+     */
+    metric: string;
+    /**
+     * Source Note
+     */
+    source_note: string | null;
+    /**
+     * Surprise
+     */
+    surprise: string | null;
+    /**
+     * Unit
+     */
+    unit: string | null;
+    /**
+     * Updated At
+     */
+    updated_at: string;
+    /**
+     * Verdict
+     */
+    verdict: 'beat' | 'in_range' | 'miss' | 'pending';
+};
+
+/**
+ * GuidanceIn
+ *
+ * `low` and `high` are in the metric's units and the displayed sign convention of the
+ * statements (capex guidance of 10-11 B is -11 B to -10 B); a point estimate has low = high.
+ * `direction` defaults from the metric.
+ */
+export type GuidanceIn = {
+    /**
+     * Basis
+     */
+    basis: 'reported' | 'normalized';
+    /**
+     * Direction
+     */
+    direction?: 'higher' | 'lower' | null;
+    /**
+     * Fiscal Period
+     */
+    fiscal_period: 'FY' | 'Q1' | 'Q2' | 'Q3' | 'Q4';
+    /**
+     * Fiscal Year
+     */
+    fiscal_year: number;
+    /**
+     * Given On
+     */
+    given_on: string;
+    /**
+     * High
+     */
+    high: number | string;
+    /**
+     * Low
+     */
+    low: number | string;
+    /**
+     * Metric
+     */
+    metric: string;
+    /**
+     * Source Note
+     */
+    source_note?: string | null;
+};
+
+/**
+ * GuidanceOut
+ */
+export type GuidanceOut = {
+    /**
+     * By Metric
+     */
+    by_metric: Array<MetricSummaryOut>;
+    /**
+     * Entries
+     */
+    entries: Array<GuidanceEntryOut>;
+    summary: GuidanceSummaryOut;
+    /**
+     * Ticker
+     */
+    ticker: string;
+};
+
+/**
+ * GuidanceSummaryOut
+ *
+ * Counts of the latest entries; `hit_rate` = (beat + in_range) / (beat + in_range + miss),
+ * null when nothing is decided.
+ */
+export type GuidanceSummaryOut = {
+    /**
+     * Beat
+     */
+    beat: number;
+    /**
+     * Hit Rate
+     */
+    hit_rate: string | null;
+    /**
+     * In Range
+     */
+    in_range: number;
+    /**
+     * Miss
+     */
+    miss: number;
+    /**
+     * Pending
+     */
+    pending: number;
+};
+
+/**
  * HTTPValidationError
  */
 export type HttpValidationError = {
@@ -519,6 +1058,195 @@ export type HttpValidationError = {
      * Detail
      */
     detail?: Array<ValidationError>;
+};
+
+/**
+ * IgnoredCellOut
+ */
+export type IgnoredCellOut = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Existing Value
+     */
+    existing_value: string;
+    /**
+     * Imported Value
+     */
+    imported_value: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Period Key
+     */
+    period_key: string;
+    /**
+     * Reason
+     */
+    reason: 'sec' | 'derived';
+    /**
+     * Statement
+     */
+    statement: 'IS' | 'BS' | 'CF';
+    /**
+     * Unit
+     */
+    unit: string;
+};
+
+/**
+ * ImportErrorOut
+ */
+export type ImportErrorOut = {
+    /**
+     * Detail
+     */
+    detail: string;
+    /**
+     * Errors
+     */
+    errors: Array<ImportIssueOut>;
+};
+
+/**
+ * ImportFileErrorsOut
+ *
+ * The 422 body of a file with errors.
+ */
+export type ImportFileErrorsOut = {
+    /**
+     * Detail
+     */
+    detail: string;
+    /**
+     * Errors
+     */
+    errors: Array<ImportFileIssueOut>;
+};
+
+/**
+ * ImportFileIssueOut
+ *
+ * A warning or an error of the file; `sheet`, `row` and `column` (a letter) say where.
+ */
+export type ImportFileIssueOut = {
+    /**
+     * Column
+     */
+    column: string | null;
+    /**
+     * Message
+     */
+    message: string;
+    /**
+     * Row
+     */
+    row: number | null;
+    /**
+     * Sheet
+     */
+    sheet: string | null;
+};
+
+/**
+ * ImportIssueOut
+ *
+ * One entry of the 422 body's `errors`; documented here for the OpenAPI client.
+ */
+export type ImportIssueOut = {
+    /**
+     * Column
+     */
+    column: number | null;
+    /**
+     * Message
+     */
+    message: string;
+    /**
+     * Row
+     */
+    row: number;
+};
+
+/**
+ * ImportPreviewOut
+ *
+ * What an import fills and leaves alone. `import_id` is null for a dry run and for a file
+ * that fills no cell and changes no custom line.
+ */
+export type ImportPreviewOut = {
+    /**
+     * Built
+     */
+    built: Array<BuiltCellOut>;
+    /**
+     * Dry Run
+     */
+    dry_run: boolean;
+    /**
+     * Fills
+     */
+    fills: Array<CellChangeOut>;
+    /**
+     * Format
+     */
+    format: 'xlsx' | 'csv';
+    /**
+     * Ignored
+     */
+    ignored: Array<IgnoredCellOut>;
+    /**
+     * Import Id
+     */
+    import_id: number | null;
+    /**
+     * Lines
+     */
+    lines: Array<LineChangeOut>;
+    /**
+     * Scale
+     */
+    scale: 'units' | 'thousands' | 'millions' | 'billions';
+    /**
+     * Unchanged
+     */
+    unchanged: number;
+    /**
+     * Warnings
+     */
+    warnings: Array<ImportFileIssueOut>;
+};
+
+/**
+ * LineChangeOut
+ *
+ * A custom line the import creates, under `parent`.
+ */
+export type LineChangeOut = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Parent
+     */
+    parent: string;
+    /**
+     * Parent Label
+     */
+    parent_label: string;
+    /**
+     * Statement
+     */
+    statement: 'IS' | 'BS' | 'CF';
 };
 
 /**
@@ -532,17 +1260,111 @@ export type LoginRequest = {
 };
 
 /**
+ * ManualCompanyCreate
+ */
+export type ManualCompanyCreate = {
+    /**
+     * Fiscal Year End Month
+     */
+    fiscal_year_end_month: number;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Sic
+     */
+    sic?: string | null;
+    /**
+     * Ticker
+     */
+    ticker: string;
+};
+
+/**
  * MappingGapsOut
  */
 export type MappingGapsOut = {
+    /**
+     * Coverage
+     */
+    coverage: Array<CoverageOut>;
     /**
      * Missing Items
      */
     missing_items: Array<MissingItemOut>;
     /**
+     * Rule Warnings
+     */
+    rule_warnings: Array<RuleWarningOut>;
+    /**
      * Unmapped Concepts
      */
     unmapped_concepts: Array<UnmappedConceptOut>;
+};
+
+/**
+ * MetricChoiceOut
+ */
+export type MetricChoiceOut = {
+    /**
+     * Default Direction
+     */
+    default_direction: 'higher' | 'lower';
+    /**
+     * Group
+     */
+    group: 'line' | 'ratio' | 'kpi';
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Metric
+     */
+    metric: string;
+    /**
+     * Quarterly
+     */
+    quarterly: boolean;
+    /**
+     * Unit
+     */
+    unit: string;
+};
+
+/**
+ * MetricSummaryOut
+ */
+export type MetricSummaryOut = {
+    /**
+     * Beat
+     */
+    beat: number;
+    /**
+     * Hit Rate
+     */
+    hit_rate: string | null;
+    /**
+     * In Range
+     */
+    in_range: number;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Metric
+     */
+    metric: string;
+    /**
+     * Miss
+     */
+    miss: number;
+    /**
+     * Pending
+     */
+    pending: number;
 };
 
 /**
@@ -613,7 +1435,7 @@ export type MultipleOut = {
     /**
      * Unit
      */
-    unit: 'pct' | 'x' | 'days' | 'USD/shares';
+    unit: 'pct' | 'x' | 'days' | 'USD/shares' | 'USD';
 };
 
 /**
@@ -640,6 +1462,127 @@ export type MultiplesOut = {
      * Ticker
      */
     ticker: string;
+};
+
+/**
+ * NoteIn
+ *
+ * The link is a subject (`canonical_code` for a line, or `metric_kind` + `metric_code` for a
+ * ratio, capital or quality metric; not both) and/or `fiscal_year` + `fiscal_period` (a cell,
+ * a subject, a period or none). A PUT replaces the whole note, so leaving the link out unlinks it;
+ * `note_date` defaults to today (UTC) on a POST and keeps the stored date on a PUT.
+ */
+export type NoteIn = {
+    /**
+     * Body Md
+     */
+    body_md: string;
+    /**
+     * Canonical Code
+     */
+    canonical_code?: string | null;
+    /**
+     * Fiscal Period
+     */
+    fiscal_period?: 'FY' | 'Q1' | 'Q2' | 'Q3' | 'Q4' | null;
+    /**
+     * Fiscal Year
+     */
+    fiscal_year?: number | null;
+    /**
+     * Metric Code
+     */
+    metric_code?: string | null;
+    /**
+     * Metric Kind
+     */
+    metric_kind?: 'ratio' | 'capital' | 'quality' | null;
+    /**
+     * Note Date
+     */
+    note_date?: string | null;
+};
+
+/**
+ * NoteLinkOut
+ *
+ * One distinct link and how many notes have it.
+ */
+export type NoteLinkOut = {
+    /**
+     * Canonical Code
+     */
+    canonical_code: string | null;
+    /**
+     * Count
+     */
+    count: number;
+    /**
+     * Fiscal Period
+     */
+    fiscal_period: string | null;
+    /**
+     * Fiscal Year
+     */
+    fiscal_year: number | null;
+    /**
+     * Metric Code
+     */
+    metric_code: string | null;
+    /**
+     * Metric Kind
+     */
+    metric_kind: 'ratio' | 'capital' | 'quality' | null;
+};
+
+/**
+ * NoteOut
+ */
+export type NoteOut = {
+    /**
+     * Body Md
+     */
+    body_md: string;
+    /**
+     * Canonical Code
+     */
+    canonical_code: string | null;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Fiscal Period
+     */
+    fiscal_period: string | null;
+    /**
+     * Fiscal Year
+     */
+    fiscal_year: number | null;
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Label
+     */
+    label: string | null;
+    /**
+     * Metric Code
+     */
+    metric_code: string | null;
+    /**
+     * Metric Kind
+     */
+    metric_kind: 'ratio' | 'capital' | 'quality' | null;
+    /**
+     * Note Date
+     */
+    note_date: string;
+    /**
+     * Updated At
+     */
+    updated_at: string;
 };
 
 /**
@@ -709,6 +1652,62 @@ export type OffBalanceItemOut = {
 };
 
 /**
+ * OperandOut
+ */
+export type OperandOut = {
+    /**
+     * Average
+     */
+    average: boolean;
+    /**
+     * Prior Terms
+     */
+    prior_terms: Array<TermOut>;
+    /**
+     * Terms
+     */
+    terms: Array<TermOut>;
+    /**
+     * Text
+     */
+    text: string;
+    /**
+     * Value
+     */
+    value: string | null;
+};
+
+/**
+ * PeerSuggestionOut
+ */
+export type PeerSuggestionOut = {
+    /**
+     * In Set
+     */
+    in_set: boolean;
+    /**
+     * Market Cap
+     */
+    market_cap: string | null;
+    /**
+     * Match
+     */
+    match: 'industry' | 'industry group' | 'major group';
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Sic
+     */
+    sic: string;
+    /**
+     * Ticker
+     */
+    ticker: string;
+};
+
+/**
  * PeriodOut
  */
 export type PeriodOut = {
@@ -740,6 +1739,32 @@ export type PeriodOut = {
      * Period Start
      */
     period_start: string;
+};
+
+/**
+ * ProvenanceCountsOut
+ */
+export type ProvenanceCountsOut = {
+    /**
+     * Approximated
+     */
+    approximated: number;
+    /**
+     * Derived
+     */
+    derived: number;
+    /**
+     * Imported
+     */
+    imported: number;
+    /**
+     * Reported
+     */
+    reported: number;
+    /**
+     * Zero Inferred
+     */
+    zero_inferred: number;
 };
 
 /**
@@ -924,6 +1949,60 @@ export type QoeThresholdsIn = {
 };
 
 /**
+ * RatioCellOut
+ *
+ * How one ratio value was computed: `value` = numerator ÷ denominator × `scale`.
+ */
+export type RatioCellOut = {
+    /**
+     * Category
+     */
+    category: 'Profitability' | 'DuPont' | 'Liquidity' | 'Solvency' | 'Efficiency' | 'Per share' | 'Valuation';
+    /**
+     * Caveat
+     */
+    caveat: string | null;
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Definition
+     */
+    definition: string;
+    denominator: OperandOut | null;
+    /**
+     * Fiscal Period
+     */
+    fiscal_period: string;
+    /**
+     * Fiscal Year
+     */
+    fiscal_year: number;
+    /**
+     * Label
+     */
+    label: string;
+    numerator: OperandOut;
+    /**
+     * Reason
+     */
+    reason: string | null;
+    /**
+     * Scale
+     */
+    scale: string;
+    /**
+     * Unit
+     */
+    unit: 'pct' | 'x' | 'days' | 'USD/shares' | 'USD';
+    /**
+     * Value
+     */
+    value: string | null;
+};
+
+/**
  * RatioRowOut
  *
  * One ratio. `values` is aligned with `periods`; `pct` values are fractions (0.05 = 5 %).
@@ -952,7 +2031,7 @@ export type RatioRowOut = {
     /**
      * Unit
      */
-    unit: 'pct' | 'x' | 'days' | 'USD/shares';
+    unit: 'pct' | 'x' | 'days' | 'USD/shares' | 'USD';
     /**
      * Values
      */
@@ -1044,6 +2123,10 @@ export type RowOut = {
      */
     common_size_base: string | null;
     /**
+     * Custom
+     */
+    custom: boolean;
+    /**
      * Depth
      */
     depth: number;
@@ -1056,9 +2139,13 @@ export type RowOut = {
      */
     label: string;
     /**
+     * Parent
+     */
+    parent: string | null;
+    /**
      * Provenance
      */
-    provenance: Array<'reported' | 'derived' | 'normalized' | null>;
+    provenance: Array<'reported' | 'derived' | 'normalized' | 'zero_inferred' | 'approximated' | 'imported' | null>;
     /**
      * Unit
      */
@@ -1071,6 +2158,282 @@ export type RowOut = {
      * Yoy
      */
     yoy: Array<string | null>;
+};
+
+/**
+ * RuleWarningOut
+ */
+export type RuleWarningOut = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Period Key
+     */
+    period_key: string;
+    /**
+     * Reason
+     */
+    reason: string;
+    /**
+     * Rule
+     */
+    rule: string;
+    /**
+     * Unit
+     */
+    unit: string;
+    /**
+     * Value
+     */
+    value: string | null;
+};
+
+/**
+ * SegmentBlockOut
+ */
+export type SegmentBlockOut = {
+    /**
+     * Dimension
+     */
+    dimension: string;
+    /**
+     * Metric
+     */
+    metric: string | null;
+    /**
+     * Series
+     */
+    series: Array<SegmentSeriesRowOut>;
+    /**
+     * Unallocated
+     */
+    unallocated: Array<string | null> | null;
+};
+
+/**
+ * SegmentImportIn
+ */
+export type SegmentImportIn = {
+    /**
+     * Dimension
+     */
+    dimension: 'business' | 'geo' | 'kpi';
+    /**
+     * Scale
+     */
+    scale: 'units' | 'K' | 'M' | 'B';
+    /**
+     * Text
+     */
+    text: string;
+};
+
+/**
+ * SegmentImportOut
+ */
+export type SegmentImportOut = {
+    /**
+     * Series Created
+     */
+    series_created: number;
+    /**
+     * Values Created
+     */
+    values_created: number;
+    /**
+     * Values Updated
+     */
+    values_updated: number;
+};
+
+/**
+ * SegmentPeriodOut
+ *
+ * Like `PeriodOut`, but the dates are null for a period that has only segment values.
+ */
+export type SegmentPeriodOut = {
+    /**
+     * Fiscal Period
+     */
+    fiscal_period: string;
+    /**
+     * Fiscal Year
+     */
+    fiscal_year: number;
+    /**
+     * Is Forecast
+     */
+    is_forecast: boolean;
+    /**
+     * Key
+     */
+    key: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Period End
+     */
+    period_end: string | null;
+    /**
+     * Period Start
+     */
+    period_start: string | null;
+};
+
+/**
+ * SegmentSeriesIn
+ */
+export type SegmentSeriesIn = {
+    /**
+     * Dimension
+     */
+    dimension: 'business' | 'geo' | 'kpi';
+    /**
+     * Metric
+     */
+    metric: string;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Unit
+     */
+    unit: 'USD' | 'pct' | 'count' | 'USD_per_unit';
+};
+
+/**
+ * SegmentSeriesOut
+ */
+export type SegmentSeriesOut = {
+    /**
+     * Dimension
+     */
+    dimension: string;
+    /**
+     * Display Order
+     */
+    display_order: number;
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Metric
+     */
+    metric: string;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Unit
+     */
+    unit: string;
+};
+
+/**
+ * SegmentSeriesRowOut
+ */
+export type SegmentSeriesRowOut = {
+    /**
+     * Display Order
+     */
+    display_order: number;
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Metric
+     */
+    metric: string;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Unit
+     */
+    unit: string;
+    /**
+     * Values
+     */
+    values: Array<string | null>;
+};
+
+/**
+ * SegmentSeriesUpdate
+ *
+ * Dimension, metric and unit are fixed once created.
+ */
+export type SegmentSeriesUpdate = {
+    /**
+     * Display Order
+     */
+    display_order: number;
+    /**
+     * Name
+     */
+    name: string;
+};
+
+/**
+ * SegmentValueIn
+ */
+export type SegmentValueIn = {
+    /**
+     * Fiscal Period
+     */
+    fiscal_period: 'FY' | 'Q1' | 'Q2' | 'Q3' | 'Q4';
+    /**
+     * Fiscal Year
+     */
+    fiscal_year: number;
+    /**
+     * Value
+     */
+    value: number | string | null;
+};
+
+/**
+ * SegmentValuesIn
+ */
+export type SegmentValuesIn = {
+    /**
+     * Values
+     */
+    values: Array<SegmentValueIn>;
+};
+
+/**
+ * SegmentsOut
+ */
+export type SegmentsOut = {
+    /**
+     * Blocks
+     */
+    blocks: Array<SegmentBlockOut>;
+    /**
+     * Freq
+     */
+    freq: string;
+    /**
+     * Periods
+     */
+    periods: Array<SegmentPeriodOut>;
+    /**
+     * Ticker
+     */
+    ticker: string;
 };
 
 /**
@@ -1089,6 +2452,36 @@ export type SourceOut = {
      * Unit
      */
     unit: string;
+};
+
+/**
+ * StatementImportOut
+ */
+export type StatementImportOut = {
+    /**
+     * Cells
+     */
+    cells: number;
+    /**
+     * Filename
+     */
+    filename: string;
+    /**
+     * Format
+     */
+    format: 'xlsx' | 'csv';
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Imported At
+     */
+    imported_at: string;
+    /**
+     * Scale
+     */
+    scale: 'units' | 'thousands' | 'millions' | 'billions';
 };
 
 /**
@@ -1130,9 +2523,54 @@ export type StatementOut = {
 };
 
 /**
+ * TermOut
+ *
+ * One input of a ratio operand; a metric lists its own inputs as `children`.
+ */
+export type TermOut = {
+    /**
+     * Children
+     */
+    children: Array<TermOut>;
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Definition
+     */
+    definition: string;
+    /**
+     * Kind
+     */
+    kind: 'line' | 'metric' | 'ratio';
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Note
+     */
+    note: string | null;
+    /**
+     * Sign
+     */
+    sign: number;
+    /**
+     * Unit
+     */
+    unit: string;
+    /**
+     * Value
+     */
+    value: string | null;
+};
+
+/**
  * UnmappedConceptOut
  */
 export type UnmappedConceptOut = {
+    classification: ConceptClassificationOut | null;
     /**
      * Concept
      */
@@ -1312,6 +2750,31 @@ export type AddCompanyApiV1CompaniesPostResponses = {
 };
 
 export type AddCompanyApiV1CompaniesPostResponse = AddCompanyApiV1CompaniesPostResponses[keyof AddCompanyApiV1CompaniesPostResponses];
+
+export type AddManualCompanyApiV1CompaniesManualPostData = {
+    body: ManualCompanyCreate;
+    path?: never;
+    query?: never;
+    url: '/api/v1/companies/manual';
+};
+
+export type AddManualCompanyApiV1CompaniesManualPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AddManualCompanyApiV1CompaniesManualPostError = AddManualCompanyApiV1CompaniesManualPostErrors[keyof AddManualCompanyApiV1CompaniesManualPostErrors];
+
+export type AddManualCompanyApiV1CompaniesManualPostResponses = {
+    /**
+     * Successful Response
+     */
+    201: CompanyListItem;
+};
+
+export type AddManualCompanyApiV1CompaniesManualPostResponse = AddManualCompanyApiV1CompaniesManualPostResponses[keyof AddManualCompanyApiV1CompaniesManualPostResponses];
 
 export type RemoveCompanyApiV1CompaniesTickerDeleteData = {
     body?: never;
@@ -1538,6 +3001,175 @@ export type GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetResponse
 
 export type GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetResponse = GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetResponses[keyof GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetResponses];
 
+export type ListSetsApiV1CompaniesTickerCompsSetsGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/comps-sets';
+};
+
+export type ListSetsApiV1CompaniesTickerCompsSetsGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListSetsApiV1CompaniesTickerCompsSetsGetError = ListSetsApiV1CompaniesTickerCompsSetsGetErrors[keyof ListSetsApiV1CompaniesTickerCompsSetsGetErrors];
+
+export type ListSetsApiV1CompaniesTickerCompsSetsGetResponses = {
+    /**
+     * Response List Sets Api V1 Companies  Ticker  Comps Sets Get
+     *
+     * Successful Response
+     */
+    200: Array<CompsSetOut>;
+};
+
+export type ListSetsApiV1CompaniesTickerCompsSetsGetResponse = ListSetsApiV1CompaniesTickerCompsSetsGetResponses[keyof ListSetsApiV1CompaniesTickerCompsSetsGetResponses];
+
+export type CreateSetApiV1CompaniesTickerCompsSetsPostData = {
+    body: CompsSetIn;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/comps-sets';
+};
+
+export type CreateSetApiV1CompaniesTickerCompsSetsPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateSetApiV1CompaniesTickerCompsSetsPostError = CreateSetApiV1CompaniesTickerCompsSetsPostErrors[keyof CreateSetApiV1CompaniesTickerCompsSetsPostErrors];
+
+export type CreateSetApiV1CompaniesTickerCompsSetsPostResponses = {
+    /**
+     * Successful Response
+     */
+    201: CompsSetOut;
+};
+
+export type CreateSetApiV1CompaniesTickerCompsSetsPostResponse = CreateSetApiV1CompaniesTickerCompsSetsPostResponses[keyof CreateSetApiV1CompaniesTickerCompsSetsPostResponses];
+
+export type DeleteSetApiV1CompaniesTickerCompsSetsSetIdDeleteData = {
+    body?: never;
+    path: {
+        /**
+         * Set Id
+         */
+        set_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/comps-sets/{set_id}';
+};
+
+export type DeleteSetApiV1CompaniesTickerCompsSetsSetIdDeleteErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeleteSetApiV1CompaniesTickerCompsSetsSetIdDeleteError = DeleteSetApiV1CompaniesTickerCompsSetsSetIdDeleteErrors[keyof DeleteSetApiV1CompaniesTickerCompsSetsSetIdDeleteErrors];
+
+export type DeleteSetApiV1CompaniesTickerCompsSetsSetIdDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeleteSetApiV1CompaniesTickerCompsSetsSetIdDeleteResponse = DeleteSetApiV1CompaniesTickerCompsSetsSetIdDeleteResponses[keyof DeleteSetApiV1CompaniesTickerCompsSetsSetIdDeleteResponses];
+
+export type UpdateSetApiV1CompaniesTickerCompsSetsSetIdPutData = {
+    body: CompsSetIn;
+    path: {
+        /**
+         * Set Id
+         */
+        set_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/comps-sets/{set_id}';
+};
+
+export type UpdateSetApiV1CompaniesTickerCompsSetsSetIdPutErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateSetApiV1CompaniesTickerCompsSetsSetIdPutError = UpdateSetApiV1CompaniesTickerCompsSetsSetIdPutErrors[keyof UpdateSetApiV1CompaniesTickerCompsSetsSetIdPutErrors];
+
+export type UpdateSetApiV1CompaniesTickerCompsSetsSetIdPutResponses = {
+    /**
+     * Successful Response
+     */
+    200: CompsSetOut;
+};
+
+export type UpdateSetApiV1CompaniesTickerCompsSetsSetIdPutResponse = UpdateSetApiV1CompaniesTickerCompsSetsSetIdPutResponses[keyof UpdateSetApiV1CompaniesTickerCompsSetsSetIdPutResponses];
+
+export type GetComparisonApiV1CompaniesTickerCompsSetsSetIdComparisonGetData = {
+    body?: never;
+    path: {
+        /**
+         * Set Id
+         */
+        set_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: {
+        /**
+         * Basis
+         */
+        basis?: 'reported' | 'normalized';
+    };
+    url: '/api/v1/companies/{ticker}/comps-sets/{set_id}/comparison';
+};
+
+export type GetComparisonApiV1CompaniesTickerCompsSetsSetIdComparisonGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetComparisonApiV1CompaniesTickerCompsSetsSetIdComparisonGetError = GetComparisonApiV1CompaniesTickerCompsSetsSetIdComparisonGetErrors[keyof GetComparisonApiV1CompaniesTickerCompsSetsSetIdComparisonGetErrors];
+
+export type GetComparisonApiV1CompaniesTickerCompsSetsSetIdComparisonGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: CompsOut;
+};
+
+export type GetComparisonApiV1CompaniesTickerCompsSetsSetIdComparisonGetResponse = GetComparisonApiV1CompaniesTickerCompsSetsSetIdComparisonGetResponses[keyof GetComparisonApiV1CompaniesTickerCompsSetsSetIdComparisonGetResponses];
+
 export type ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetData = {
     body?: never;
     path: {
@@ -1605,6 +3237,303 @@ export type GetFlagsApiV1CompaniesTickerFlagsGetResponses = {
 
 export type GetFlagsApiV1CompaniesTickerFlagsGetResponse = GetFlagsApiV1CompaniesTickerFlagsGetResponses[keyof GetFlagsApiV1CompaniesTickerFlagsGetResponses];
 
+export type GetGuidanceApiV1CompaniesTickerGuidanceGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/guidance';
+};
+
+export type GetGuidanceApiV1CompaniesTickerGuidanceGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetGuidanceApiV1CompaniesTickerGuidanceGetError = GetGuidanceApiV1CompaniesTickerGuidanceGetErrors[keyof GetGuidanceApiV1CompaniesTickerGuidanceGetErrors];
+
+export type GetGuidanceApiV1CompaniesTickerGuidanceGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: GuidanceOut;
+};
+
+export type GetGuidanceApiV1CompaniesTickerGuidanceGetResponse = GetGuidanceApiV1CompaniesTickerGuidanceGetResponses[keyof GetGuidanceApiV1CompaniesTickerGuidanceGetResponses];
+
+export type CreateEntryApiV1CompaniesTickerGuidancePostData = {
+    body: GuidanceIn;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/guidance';
+};
+
+export type CreateEntryApiV1CompaniesTickerGuidancePostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateEntryApiV1CompaniesTickerGuidancePostError = CreateEntryApiV1CompaniesTickerGuidancePostErrors[keyof CreateEntryApiV1CompaniesTickerGuidancePostErrors];
+
+export type CreateEntryApiV1CompaniesTickerGuidancePostResponses = {
+    /**
+     * Successful Response
+     */
+    201: GuidanceEntryOut;
+};
+
+export type CreateEntryApiV1CompaniesTickerGuidancePostResponse = CreateEntryApiV1CompaniesTickerGuidancePostResponses[keyof CreateEntryApiV1CompaniesTickerGuidancePostResponses];
+
+export type ListMetricsApiV1CompaniesTickerGuidanceMetricsGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/guidance/metrics';
+};
+
+export type ListMetricsApiV1CompaniesTickerGuidanceMetricsGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListMetricsApiV1CompaniesTickerGuidanceMetricsGetError = ListMetricsApiV1CompaniesTickerGuidanceMetricsGetErrors[keyof ListMetricsApiV1CompaniesTickerGuidanceMetricsGetErrors];
+
+export type ListMetricsApiV1CompaniesTickerGuidanceMetricsGetResponses = {
+    /**
+     * Response List Metrics Api V1 Companies  Ticker  Guidance Metrics Get
+     *
+     * Successful Response
+     */
+    200: Array<MetricChoiceOut>;
+};
+
+export type ListMetricsApiV1CompaniesTickerGuidanceMetricsGetResponse = ListMetricsApiV1CompaniesTickerGuidanceMetricsGetResponses[keyof ListMetricsApiV1CompaniesTickerGuidanceMetricsGetResponses];
+
+export type DeleteEntryApiV1CompaniesTickerGuidanceGuidanceIdDeleteData = {
+    body?: never;
+    path: {
+        /**
+         * Guidance Id
+         */
+        guidance_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/guidance/{guidance_id}';
+};
+
+export type DeleteEntryApiV1CompaniesTickerGuidanceGuidanceIdDeleteErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeleteEntryApiV1CompaniesTickerGuidanceGuidanceIdDeleteError = DeleteEntryApiV1CompaniesTickerGuidanceGuidanceIdDeleteErrors[keyof DeleteEntryApiV1CompaniesTickerGuidanceGuidanceIdDeleteErrors];
+
+export type DeleteEntryApiV1CompaniesTickerGuidanceGuidanceIdDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeleteEntryApiV1CompaniesTickerGuidanceGuidanceIdDeleteResponse = DeleteEntryApiV1CompaniesTickerGuidanceGuidanceIdDeleteResponses[keyof DeleteEntryApiV1CompaniesTickerGuidanceGuidanceIdDeleteResponses];
+
+export type UpdateEntryApiV1CompaniesTickerGuidanceGuidanceIdPutData = {
+    body: GuidanceIn;
+    path: {
+        /**
+         * Guidance Id
+         */
+        guidance_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/guidance/{guidance_id}';
+};
+
+export type UpdateEntryApiV1CompaniesTickerGuidanceGuidanceIdPutErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateEntryApiV1CompaniesTickerGuidanceGuidanceIdPutError = UpdateEntryApiV1CompaniesTickerGuidanceGuidanceIdPutErrors[keyof UpdateEntryApiV1CompaniesTickerGuidanceGuidanceIdPutErrors];
+
+export type UpdateEntryApiV1CompaniesTickerGuidanceGuidanceIdPutResponses = {
+    /**
+     * Successful Response
+     */
+    200: GuidanceEntryOut;
+};
+
+export type UpdateEntryApiV1CompaniesTickerGuidanceGuidanceIdPutResponse = UpdateEntryApiV1CompaniesTickerGuidanceGuidanceIdPutResponses[keyof UpdateEntryApiV1CompaniesTickerGuidanceGuidanceIdPutResponses];
+
+export type DownloadTemplateApiV1CompaniesTickerImportTemplateGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: {
+        /**
+         * Format
+         */
+        format?: 'xlsx' | 'csv';
+        /**
+         * Prefill
+         */
+        prefill?: boolean;
+        /**
+         * Scale
+         */
+        scale?: 'units' | 'thousands' | 'millions' | 'billions';
+    };
+    url: '/api/v1/companies/{ticker}/import-template';
+};
+
+export type DownloadTemplateApiV1CompaniesTickerImportTemplateGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DownloadTemplateApiV1CompaniesTickerImportTemplateGetError = DownloadTemplateApiV1CompaniesTickerImportTemplateGetErrors[keyof DownloadTemplateApiV1CompaniesTickerImportTemplateGetErrors];
+
+export type DownloadTemplateApiV1CompaniesTickerImportTemplateGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type ListImportsApiV1CompaniesTickerImportsGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/imports';
+};
+
+export type ListImportsApiV1CompaniesTickerImportsGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListImportsApiV1CompaniesTickerImportsGetError = ListImportsApiV1CompaniesTickerImportsGetErrors[keyof ListImportsApiV1CompaniesTickerImportsGetErrors];
+
+export type ListImportsApiV1CompaniesTickerImportsGetResponses = {
+    /**
+     * Response List Imports Api V1 Companies  Ticker  Imports Get
+     *
+     * Successful Response
+     */
+    200: Array<StatementImportOut>;
+};
+
+export type ListImportsApiV1CompaniesTickerImportsGetResponse = ListImportsApiV1CompaniesTickerImportsGetResponses[keyof ListImportsApiV1CompaniesTickerImportsGetResponses];
+
+export type ImportStatementsApiV1CompaniesTickerImportsPostData = {
+    body: BodyImportStatementsApiV1CompaniesTickerImportsPost;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/imports';
+};
+
+export type ImportStatementsApiV1CompaniesTickerImportsPostErrors = {
+    /**
+     * Unprocessable Entity
+     */
+    422: ImportFileErrorsOut;
+};
+
+export type ImportStatementsApiV1CompaniesTickerImportsPostError = ImportStatementsApiV1CompaniesTickerImportsPostErrors[keyof ImportStatementsApiV1CompaniesTickerImportsPostErrors];
+
+export type ImportStatementsApiV1CompaniesTickerImportsPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: ImportPreviewOut;
+};
+
+export type ImportStatementsApiV1CompaniesTickerImportsPostResponse = ImportStatementsApiV1CompaniesTickerImportsPostResponses[keyof ImportStatementsApiV1CompaniesTickerImportsPostResponses];
+
+export type DeleteImportApiV1CompaniesTickerImportsImportIdDeleteData = {
+    body?: never;
+    path: {
+        /**
+         * Import Id
+         */
+        import_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/imports/{import_id}';
+};
+
+export type DeleteImportApiV1CompaniesTickerImportsImportIdDeleteErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeleteImportApiV1CompaniesTickerImportsImportIdDeleteError = DeleteImportApiV1CompaniesTickerImportsImportIdDeleteErrors[keyof DeleteImportApiV1CompaniesTickerImportsImportIdDeleteErrors];
+
+export type DeleteImportApiV1CompaniesTickerImportsImportIdDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeleteImportApiV1CompaniesTickerImportsImportIdDeleteResponse = DeleteImportApiV1CompaniesTickerImportsImportIdDeleteResponses[keyof DeleteImportApiV1CompaniesTickerImportsImportIdDeleteResponses];
+
 export type GetMappingGapsApiV1CompaniesTickerMappingGapsGetData = {
     body?: never;
     path: {
@@ -1669,6 +3598,189 @@ export type GetMultiplesApiV1CompaniesTickerMultiplesGetResponses = {
 };
 
 export type GetMultiplesApiV1CompaniesTickerMultiplesGetResponse = GetMultiplesApiV1CompaniesTickerMultiplesGetResponses[keyof GetMultiplesApiV1CompaniesTickerMultiplesGetResponses];
+
+export type ListNotesApiV1CompaniesTickerNotesGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: {
+        /**
+         * Code
+         */
+        code?: string | null;
+        /**
+         * Fiscal Year
+         */
+        fiscal_year?: number | null;
+        /**
+         * Fiscal Period
+         */
+        fiscal_period?: 'FY' | 'Q1' | 'Q2' | 'Q3' | 'Q4' | null;
+        /**
+         * Metric Kind
+         */
+        metric_kind?: 'ratio' | 'capital' | 'quality' | null;
+        /**
+         * Metric Code
+         */
+        metric_code?: string | null;
+    };
+    url: '/api/v1/companies/{ticker}/notes';
+};
+
+export type ListNotesApiV1CompaniesTickerNotesGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListNotesApiV1CompaniesTickerNotesGetError = ListNotesApiV1CompaniesTickerNotesGetErrors[keyof ListNotesApiV1CompaniesTickerNotesGetErrors];
+
+export type ListNotesApiV1CompaniesTickerNotesGetResponses = {
+    /**
+     * Response List Notes Api V1 Companies  Ticker  Notes Get
+     *
+     * Successful Response
+     */
+    200: Array<NoteOut>;
+};
+
+export type ListNotesApiV1CompaniesTickerNotesGetResponse = ListNotesApiV1CompaniesTickerNotesGetResponses[keyof ListNotesApiV1CompaniesTickerNotesGetResponses];
+
+export type CreateNoteApiV1CompaniesTickerNotesPostData = {
+    body: NoteIn;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/notes';
+};
+
+export type CreateNoteApiV1CompaniesTickerNotesPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateNoteApiV1CompaniesTickerNotesPostError = CreateNoteApiV1CompaniesTickerNotesPostErrors[keyof CreateNoteApiV1CompaniesTickerNotesPostErrors];
+
+export type CreateNoteApiV1CompaniesTickerNotesPostResponses = {
+    /**
+     * Successful Response
+     */
+    201: NoteOut;
+};
+
+export type CreateNoteApiV1CompaniesTickerNotesPostResponse = CreateNoteApiV1CompaniesTickerNotesPostResponses[keyof CreateNoteApiV1CompaniesTickerNotesPostResponses];
+
+export type ListLinksApiV1CompaniesTickerNotesLinksGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/notes/links';
+};
+
+export type ListLinksApiV1CompaniesTickerNotesLinksGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListLinksApiV1CompaniesTickerNotesLinksGetError = ListLinksApiV1CompaniesTickerNotesLinksGetErrors[keyof ListLinksApiV1CompaniesTickerNotesLinksGetErrors];
+
+export type ListLinksApiV1CompaniesTickerNotesLinksGetResponses = {
+    /**
+     * Response List Links Api V1 Companies  Ticker  Notes Links Get
+     *
+     * Successful Response
+     */
+    200: Array<NoteLinkOut>;
+};
+
+export type ListLinksApiV1CompaniesTickerNotesLinksGetResponse = ListLinksApiV1CompaniesTickerNotesLinksGetResponses[keyof ListLinksApiV1CompaniesTickerNotesLinksGetResponses];
+
+export type DeleteNoteApiV1CompaniesTickerNotesNoteIdDeleteData = {
+    body?: never;
+    path: {
+        /**
+         * Note Id
+         */
+        note_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/notes/{note_id}';
+};
+
+export type DeleteNoteApiV1CompaniesTickerNotesNoteIdDeleteErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeleteNoteApiV1CompaniesTickerNotesNoteIdDeleteError = DeleteNoteApiV1CompaniesTickerNotesNoteIdDeleteErrors[keyof DeleteNoteApiV1CompaniesTickerNotesNoteIdDeleteErrors];
+
+export type DeleteNoteApiV1CompaniesTickerNotesNoteIdDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeleteNoteApiV1CompaniesTickerNotesNoteIdDeleteResponse = DeleteNoteApiV1CompaniesTickerNotesNoteIdDeleteResponses[keyof DeleteNoteApiV1CompaniesTickerNotesNoteIdDeleteResponses];
+
+export type UpdateNoteApiV1CompaniesTickerNotesNoteIdPutData = {
+    body: NoteIn;
+    path: {
+        /**
+         * Note Id
+         */
+        note_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/notes/{note_id}';
+};
+
+export type UpdateNoteApiV1CompaniesTickerNotesNoteIdPutErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateNoteApiV1CompaniesTickerNotesNoteIdPutError = UpdateNoteApiV1CompaniesTickerNotesNoteIdPutErrors[keyof UpdateNoteApiV1CompaniesTickerNotesNoteIdPutErrors];
+
+export type UpdateNoteApiV1CompaniesTickerNotesNoteIdPutResponses = {
+    /**
+     * Successful Response
+     */
+    200: NoteOut;
+};
+
+export type UpdateNoteApiV1CompaniesTickerNotesNoteIdPutResponse = UpdateNoteApiV1CompaniesTickerNotesNoteIdPutResponses[keyof UpdateNoteApiV1CompaniesTickerNotesNoteIdPutResponses];
 
 export type ListOffBalanceItemsApiV1CompaniesTickerOffBalanceItemsGetData = {
     body?: never;
@@ -1800,6 +3912,43 @@ export type UpdateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdPutResp
 
 export type UpdateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdPutResponse = UpdateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdPutResponses[keyof UpdateOffBalanceItemApiV1CompaniesTickerOffBalanceItemsItemIdPutResponses];
 
+export type GetPeerSuggestionsApiV1CompaniesTickerPeerSuggestionsGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: {
+        /**
+         * Set Id
+         */
+        set_id?: number | null;
+    };
+    url: '/api/v1/companies/{ticker}/peer-suggestions';
+};
+
+export type GetPeerSuggestionsApiV1CompaniesTickerPeerSuggestionsGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetPeerSuggestionsApiV1CompaniesTickerPeerSuggestionsGetError = GetPeerSuggestionsApiV1CompaniesTickerPeerSuggestionsGetErrors[keyof GetPeerSuggestionsApiV1CompaniesTickerPeerSuggestionsGetErrors];
+
+export type GetPeerSuggestionsApiV1CompaniesTickerPeerSuggestionsGetResponses = {
+    /**
+     * Response Get Peer Suggestions Api V1 Companies  Ticker  Peer Suggestions Get
+     *
+     * Successful Response
+     */
+    200: Array<PeerSuggestionOut>;
+};
+
+export type GetPeerSuggestionsApiV1CompaniesTickerPeerSuggestionsGetResponse = GetPeerSuggestionsApiV1CompaniesTickerPeerSuggestionsGetResponses[keyof GetPeerSuggestionsApiV1CompaniesTickerPeerSuggestionsGetResponses];
+
 export type GetRatiosApiV1CompaniesTickerRatiosGetData = {
     body?: never;
     path: {
@@ -1839,6 +3988,57 @@ export type GetRatiosApiV1CompaniesTickerRatiosGetResponses = {
 
 export type GetRatiosApiV1CompaniesTickerRatiosGetResponse = GetRatiosApiV1CompaniesTickerRatiosGetResponses[keyof GetRatiosApiV1CompaniesTickerRatiosGetResponses];
 
+export type GetRatioCellApiV1CompaniesTickerRatiosCellGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query: {
+        /**
+         * Freq
+         */
+        freq: 'annual' | 'ttm';
+        /**
+         * Code
+         */
+        code: string;
+        /**
+         * Fiscal Year
+         */
+        fiscal_year: number;
+        /**
+         * Fiscal Period
+         */
+        fiscal_period: string;
+        /**
+         * Basis
+         */
+        basis?: 'reported' | 'normalized';
+    };
+    url: '/api/v1/companies/{ticker}/ratios/cell';
+};
+
+export type GetRatioCellApiV1CompaniesTickerRatiosCellGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetRatioCellApiV1CompaniesTickerRatiosCellGetError = GetRatioCellApiV1CompaniesTickerRatiosCellGetErrors[keyof GetRatioCellApiV1CompaniesTickerRatiosCellGetErrors];
+
+export type GetRatioCellApiV1CompaniesTickerRatiosCellGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: RatioCellOut;
+};
+
+export type GetRatioCellApiV1CompaniesTickerRatiosCellGetResponse = GetRatioCellApiV1CompaniesTickerRatiosCellGetResponses[keyof GetRatioCellApiV1CompaniesTickerRatiosCellGetResponses];
+
 export type RefreshApiV1CompaniesTickerRefreshPostData = {
     body?: never;
     path: {
@@ -1868,6 +4068,233 @@ export type RefreshApiV1CompaniesTickerRefreshPostResponses = {
 };
 
 export type RefreshApiV1CompaniesTickerRefreshPostResponse = RefreshApiV1CompaniesTickerRefreshPostResponses[keyof RefreshApiV1CompaniesTickerRefreshPostResponses];
+
+export type CreateSeriesApiV1CompaniesTickerSegmentSeriesPostData = {
+    body: SegmentSeriesIn;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/segment-series';
+};
+
+export type CreateSeriesApiV1CompaniesTickerSegmentSeriesPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateSeriesApiV1CompaniesTickerSegmentSeriesPostError = CreateSeriesApiV1CompaniesTickerSegmentSeriesPostErrors[keyof CreateSeriesApiV1CompaniesTickerSegmentSeriesPostErrors];
+
+export type CreateSeriesApiV1CompaniesTickerSegmentSeriesPostResponses = {
+    /**
+     * Successful Response
+     */
+    201: SegmentSeriesOut;
+};
+
+export type CreateSeriesApiV1CompaniesTickerSegmentSeriesPostResponse = CreateSeriesApiV1CompaniesTickerSegmentSeriesPostResponses[keyof CreateSeriesApiV1CompaniesTickerSegmentSeriesPostResponses];
+
+export type DeleteSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdDeleteData = {
+    body?: never;
+    path: {
+        /**
+         * Series Id
+         */
+        series_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/segment-series/{series_id}';
+};
+
+export type DeleteSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdDeleteErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeleteSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdDeleteError = DeleteSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdDeleteErrors[keyof DeleteSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdDeleteErrors];
+
+export type DeleteSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeleteSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdDeleteResponse = DeleteSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdDeleteResponses[keyof DeleteSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdDeleteResponses];
+
+export type UpdateSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdPutData = {
+    body: SegmentSeriesUpdate;
+    path: {
+        /**
+         * Series Id
+         */
+        series_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/segment-series/{series_id}';
+};
+
+export type UpdateSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdPutErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdPutError = UpdateSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdPutErrors[keyof UpdateSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdPutErrors];
+
+export type UpdateSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdPutResponses = {
+    /**
+     * Successful Response
+     */
+    200: SegmentSeriesOut;
+};
+
+export type UpdateSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdPutResponse = UpdateSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdPutResponses[keyof UpdateSeriesApiV1CompaniesTickerSegmentSeriesSeriesIdPutResponses];
+
+export type SetValuesApiV1CompaniesTickerSegmentSeriesSeriesIdValuesPutData = {
+    body: SegmentValuesIn;
+    path: {
+        /**
+         * Series Id
+         */
+        series_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/segment-series/{series_id}/values';
+};
+
+export type SetValuesApiV1CompaniesTickerSegmentSeriesSeriesIdValuesPutErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SetValuesApiV1CompaniesTickerSegmentSeriesSeriesIdValuesPutError = SetValuesApiV1CompaniesTickerSegmentSeriesSeriesIdValuesPutErrors[keyof SetValuesApiV1CompaniesTickerSegmentSeriesSeriesIdValuesPutErrors];
+
+export type SetValuesApiV1CompaniesTickerSegmentSeriesSeriesIdValuesPutResponses = {
+    /**
+     * Successful Response
+     */
+    200: SegmentSeriesOut;
+};
+
+export type SetValuesApiV1CompaniesTickerSegmentSeriesSeriesIdValuesPutResponse = SetValuesApiV1CompaniesTickerSegmentSeriesSeriesIdValuesPutResponses[keyof SetValuesApiV1CompaniesTickerSegmentSeriesSeriesIdValuesPutResponses];
+
+export type GetSegmentsApiV1CompaniesTickerSegmentsGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: {
+        /**
+         * Freq
+         */
+        freq?: 'annual' | 'quarterly';
+    };
+    url: '/api/v1/companies/{ticker}/segments';
+};
+
+export type GetSegmentsApiV1CompaniesTickerSegmentsGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetSegmentsApiV1CompaniesTickerSegmentsGetError = GetSegmentsApiV1CompaniesTickerSegmentsGetErrors[keyof GetSegmentsApiV1CompaniesTickerSegmentsGetErrors];
+
+export type GetSegmentsApiV1CompaniesTickerSegmentsGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: SegmentsOut;
+};
+
+export type GetSegmentsApiV1CompaniesTickerSegmentsGetResponse = GetSegmentsApiV1CompaniesTickerSegmentsGetResponses[keyof GetSegmentsApiV1CompaniesTickerSegmentsGetResponses];
+
+export type FillAnnualApiV1CompaniesTickerSegmentsFillAnnualPostData = {
+    body: FillAnnualIn;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/segments/fill-annual';
+};
+
+export type FillAnnualApiV1CompaniesTickerSegmentsFillAnnualPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type FillAnnualApiV1CompaniesTickerSegmentsFillAnnualPostError = FillAnnualApiV1CompaniesTickerSegmentsFillAnnualPostErrors[keyof FillAnnualApiV1CompaniesTickerSegmentsFillAnnualPostErrors];
+
+export type FillAnnualApiV1CompaniesTickerSegmentsFillAnnualPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: FillAnnualOut;
+};
+
+export type FillAnnualApiV1CompaniesTickerSegmentsFillAnnualPostResponse = FillAnnualApiV1CompaniesTickerSegmentsFillAnnualPostResponses[keyof FillAnnualApiV1CompaniesTickerSegmentsFillAnnualPostResponses];
+
+export type ImportSegmentsApiV1CompaniesTickerSegmentsImportPostData = {
+    body: SegmentImportIn;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/segments/import';
+};
+
+export type ImportSegmentsApiV1CompaniesTickerSegmentsImportPostErrors = {
+    /**
+     * Unprocessable Entity
+     */
+    422: ImportErrorOut;
+};
+
+export type ImportSegmentsApiV1CompaniesTickerSegmentsImportPostError = ImportSegmentsApiV1CompaniesTickerSegmentsImportPostErrors[keyof ImportSegmentsApiV1CompaniesTickerSegmentsImportPostErrors];
+
+export type ImportSegmentsApiV1CompaniesTickerSegmentsImportPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: SegmentImportOut;
+};
+
+export type ImportSegmentsApiV1CompaniesTickerSegmentsImportPostResponse = ImportSegmentsApiV1CompaniesTickerSegmentsImportPostResponses[keyof ImportSegmentsApiV1CompaniesTickerSegmentsImportPostResponses];
 
 export type GetStatementApiV1CompaniesTickerStatementsGetData = {
     body?: never;

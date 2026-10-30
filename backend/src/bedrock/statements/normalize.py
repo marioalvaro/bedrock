@@ -15,13 +15,16 @@ from typing import Protocol
 
 from bedrock.mapping.config import (
     CanonicalItemDef,
+    IdentityDef,
     formula_order,
     is_adjustable,
     parse_formula,
     propagation_targets,
 )
-from bedrock.statements.cells import EMPTY, Cell, CellKey, _formula_cell
+from bedrock.statements.cell_types import EMPTY, Cell, CellKey
+from bedrock.statements.cells import _formula_cell
 from bedrock.statements.periods import Calendar, Period, annual_periods, quarterly_periods
+from bedrock.statements.rules import identity_derivation, identity_result
 from bedrock.statements.splits import per_share
 
 EPS_SHARES = {"eps_basic": "shares_basic", "eps_diluted": "shares_diluted"}
@@ -63,13 +66,16 @@ def apply_adjustments(
     items: Sequence[CanonicalItemDef],
     adjustments: Sequence[AdjustmentLike],
     calendar: Calendar,
+    identities: Sequence[IdentityDef] = (),
 ) -> tuple[dict[CellKey, Cell], dict[CellKey, list[AppliedAdjustment]]]:
     """The normalized cells (FY and Q1..Q4) and, per changed cell, the adjustments behind it.
     An adjustment for an unknown or non-adjustable code, or a period outside the calendar, is
     ignored. A line with no value takes the adjustment as its value; a line it rolls into that
     has no value stays empty. A line that has a value in the period it was adjusted but none in its
     paired period gets no value there: its amount is inside the residual of its breakdown, which
-    absorbs the delta there while the totals roll up as usual (Q1..Q4 = FY, footing)."""
+    absorbs the delta there while the totals roll up as usual (Q1..Q4 = FY, footing). A cell an
+    `exact` or `bounded` identity solved is solved again from the adjusted operands; an inferred
+    zero stays 0."""
     by_code = {i.code: i for i in items}
     period_by_key = {p.key: p for p in annual_periods(calendar) + quarterly_periods(calendar)}
     existing = set(period_by_key)
@@ -133,6 +139,7 @@ def apply_adjustments(
         changed[cell_key] = delta
 
     _recompute_computed_only(out, applied, items, period_by_key)
+    _resolve_identities(out, applied, cells, identities, by_code, period_by_key)
     _follow_eps(out, applied, by_code, changed)
     for entries_of_cell in applied.values():  # one rule for every path: by adjustment id (stable)
         entries_of_cell.sort(key=lambda e: e.adjustment_id)
@@ -220,6 +227,72 @@ def _recompute_computed_only(
                 applied[(item.code, key)] = list(seen.values())
 
 
+def _resolve_identities(
+    out: dict[CellKey, Cell],
+    applied: dict[CellKey, list[AppliedAdjustment]],
+    reported: dict[CellKey, Cell],
+    identities: Sequence[IdentityDef],
+    by_code: dict[str, CanonicalItemDef],
+    period_by_key: dict[str, Period],
+) -> None:
+    """Solve again every `exact` or `bounded` cell of `identities` whose operands an adjustment
+    changed, from the adjusted operands (an adjustment to a total that the identity ties to other
+    lines would otherwise leave the solved line behind). Q4 of a solved flow follows its year, so
+    it is solved again too. `zero_only` cells are never touched: an inferred zero stays 0."""
+    for identity in identities:
+        for code, rule in identity.solve.items():
+            if rule.mode == "zero_only" or code not in by_code:
+                continue
+            operands = [c for _, c in identity.terms if c != code]
+            for key, period in period_by_key.items():
+                if not _solved_by(identity, code, key, period, reported, by_code):
+                    continue
+                changed = [c for c in operands if (c, key) in applied]
+                values = {c: out.get((c, key), EMPTY).value for c in operands}
+                if not changed or any(v is None for v in values.values()):
+                    continue
+                known = {c: v for c, v in values.items() if v is not None}
+                result = identity_result(identity, code, known)
+                current = out.get((code, key), EMPTY)
+                if current.value == result:
+                    continue
+                out[(code, key)] = Cell(
+                    result,
+                    "normalized",
+                    None,
+                    identity_derivation(identity, code, known, period.fiscal_period),
+                )
+                seen: dict[int, AppliedAdjustment] = {}
+                for entry in (e for c in changed for e in applied[(c, key)]):
+                    seen.setdefault(
+                        entry.adjustment_id,
+                        AppliedAdjustment(
+                            entry.adjustment_id, entry.code, entry.amount, entry.code
+                        ),
+                    )
+                applied[(code, key)] = list(seen.values())
+
+
+def _solved_by(
+    identity: IdentityDef,
+    code: str,
+    key: str,
+    period: Period,
+    reported: dict[CellKey, Cell],
+    by_code: dict[str, CanonicalItemDef],
+) -> bool:
+    cell = reported.get((code, key), EMPTY)
+    if cell.solved_by == identity.id:
+        return True
+    year = reported.get((code, f"FY{period.fiscal_year}"), EMPTY)
+    return (
+        period.fiscal_period == "Q4"
+        and by_code[code].kind == "flow"
+        and cell.value is not None
+        and year.solved_by == identity.id
+    )
+
+
 def _follow_eps(
     cells: dict[CellKey, Cell],
     applied: dict[CellKey, list[AppliedAdjustment]],
@@ -227,7 +300,9 @@ def _follow_eps(
     changed: dict[CellKey, Decimal],
 ) -> None:
     """Normalized EPS = reported + change in net income common / shares of the same period; null
-    when net income changes and the shares are missing. Q4 and TTM stay null (EPS is an average)."""
+    when net income changes and the shares are missing. A Q4 EPS (rebuilt from Q4 net income and
+    shares) follows the same way; a period whose EPS is empty stays empty. TTM EPS is summed from
+    the normalized quarters by `build.py`."""
     for (code, key), delta in changed.items():
         if code != NET_INCOME_COMMON or delta == 0:
             continue

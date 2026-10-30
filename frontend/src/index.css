@@ -22,6 +22,8 @@
   --color-chart-1: var(--chart-1);
   --color-prov-derived: var(--prov-derived);
   --color-prov-normalized: var(--prov-normalized);
+  --color-prov-imported: var(--prov-imported);
+  --color-note-marker: var(--note-marker);
   --color-flag-warn: var(--flag-warn);
   --color-flag-alert: var(--flag-alert);
   --color-positive: var(--positive);
@@ -79,11 +81,15 @@
   --chart-5: oklch(0.269 0 0);
   --prov-derived: oklch(0.5 0.12 250);
   --prov-normalized: oklch(0.55 0.13 65);
+  --prov-imported: oklch(0.5 0.1 195);
+  --note-marker: oklch(0.55 0.05 250);
   --flag-warn: oklch(0.85 0.16 95);
   --flag-alert: oklch(0.6 0.22 25);
   --positive: oklch(0.5 0.14 150);
   --negative: oklch(0.55 0.21 27);
   --radius: 0.25rem;
+  /* One duration for every expander (grid rows, <details>, sheets, dialogs). */
+  --motion-fast: 140ms;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
@@ -115,6 +121,8 @@
   --ring: oklch(0.556 0 0);
   --prov-derived: oklch(0.75 0.1 250);
   --prov-normalized: oklch(0.78 0.12 70);
+  --prov-imported: oklch(0.78 0.1 195);
+  --note-marker: oklch(0.72 0.06 250);
   --flag-warn: oklch(0.8 0.15 95);
   --flag-alert: oklch(0.65 0.2 25);
   --positive: oklch(0.76 0.16 150);
@@ -147,6 +155,34 @@
   }
 }
 
+/* The OS asks for less motion: every expander appears at once. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0ms;
+  }
+}
+
+/* AG Grid slides inserted and moved rows over 400 ms; a toggle should settle at once. */
+.ag-row-animation .ag-row {
+  transition-duration: var(--motion-fast);
+}
+
+/* Digits keep one width in every grid cell, so a value never changes the column's look. */
+.ag-cell {
+  font-variant-numeric: tabular-nums;
+}
+
+/* An opened <details> fades its body in instead of snapping. */
+details[open] > :not(summary) {
+  animation: expand-in var(--motion-fast) ease-out;
+}
+
+@keyframes expand-in {
+  from {
+    opacity: 0;
+  }
+}
+
 .num {
   font-variant-numeric: tabular-nums;
   text-align: right;
@@ -158,9 +194,29 @@
   color: var(--prov-derived);
 }
 
+/* An inferred zero: a rule concluded the line is 0 and the filing says nothing, so it is muted. */
+.prov-zero {
+  color: var(--muted-foreground);
+}
+
+/* Imported: the figure comes from the user's own file, not SEC; teal, not italic. */
+.prov-imported {
+  color: var(--prov-imported);
+}
+
 /* Normalized: the figure includes the user's adjustments; amber, not italic. */
 .prov-normalized {
   color: var(--prov-normalized);
+}
+
+/* A note on a statement cell: a small corner triangle (AG Grid cells are positioned). */
+.has-note::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  border-top: 7px solid var(--note-marker);
+  border-left: 7px solid transparent;
 }
 
 /* Quality flags: a tinted cell background, yellow for warn and red for alert (the amber of

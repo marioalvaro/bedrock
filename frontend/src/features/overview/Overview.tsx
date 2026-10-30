@@ -7,7 +7,13 @@ import {
   useDeleteAdjustment,
 } from "@/api/adjustments";
 import { companyErrorMessage } from "@/api/companies";
-import type { AdjustmentOut, CompanyListItem } from "@/api/generated/types.gen";
+import type {
+  AdjustmentOut,
+  CompanyListItem,
+  CoverageOut,
+  RuleWarningOut,
+  UnmappedConceptOut,
+} from "@/api/generated/types.gen";
 import { mappingGapsQueryOptions } from "@/api/statements";
 import {
   AlertDialog,
@@ -31,6 +37,7 @@ import {
   scaleLabel,
 } from "@/lib/format";
 import { useScale } from "@/lib/scale";
+import { ImportButton } from "@/features/imports/ImportButton";
 
 function Stat({ name, value }: { name: string; value: string }) {
   return (
@@ -41,17 +48,234 @@ function Stat({ name, value }: { name: string; value: string }) {
   );
 }
 
+function UnmappedConcepts({ concepts }: { concepts: UnmappedConceptOut[] }) {
+  const scale = useScale();
+  const [showClassified, setShowClassified] = useState(false);
+  const open = concepts.filter((c) => c.classification === null);
+  const classified = concepts.filter((c) => c.classification !== null);
+
+  return (
+    <div>
+      <h3 className="text-muted-foreground mb-1 text-xs">
+        Unmapped concepts in the latest 10-K ({open.length}), {scaleLabel("USD", scale)}
+      </h3>
+      {concepts.length === 0 ? (
+        <p className="text-sm">No unmapped concepts.</p>
+      ) : open.length === 0 ? (
+        <p className="text-sm">No unclassified concepts.</p>
+      ) : (
+        <ConceptTable concepts={open} />
+      )}
+      {classified.length > 0 && (
+        <div className="mt-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-expanded={showClassified}
+            onClick={() => setShowClassified((shown) => !shown)}
+          >
+            {showClassified ? "Hide" : "Show"} classified ({classified.length})
+          </Button>
+          {showClassified && <ConceptTable concepts={classified} classified />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ConceptTable({
+  concepts,
+  classified = false,
+}: {
+  concepts: UnmappedConceptOut[];
+  classified?: boolean;
+}) {
+  const scale = useScale();
+  return (
+    <div className="max-h-96 overflow-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-muted-foreground text-left text-xs">
+            <th className="py-1 pr-4 font-normal">Concept</th>
+            <th className="py-1 pr-4 text-right font-normal">Latest value</th>
+            <th className="py-1 pr-4 font-normal">Unit</th>
+            <th className="py-1 pr-4 font-normal">Period end</th>
+            <th className="py-1 pr-4 text-right font-normal">Facts</th>
+            {classified ? (
+              <>
+                <th className="py-1 pr-4 font-normal">Type</th>
+                <th className="py-1 pr-4 font-normal">Codes</th>
+                <th className="py-1 font-normal">Reason</th>
+              </>
+            ) : (
+              <th className="py-1 font-normal">Suggested</th>
+            )}
+          </tr>
+        </thead>
+        <tbody>
+          {concepts.map((concept) => (
+            <tr
+              key={`${concept.taxonomy}:${concept.concept}:${concept.unit}`}
+              className="border-border border-b"
+            >
+              <td className="py-1 pr-4 whitespace-nowrap">
+                {concept.taxonomy}:{concept.concept}
+              </td>
+              <td className="num py-1 pr-4">
+                {concept.unit === "USD"
+                  ? formatValue(concept.latest_value, concept.unit, scale)
+                  : concept.latest_value}
+              </td>
+              <td className="text-muted-foreground py-1 pr-4">{concept.unit}</td>
+              <td className="text-muted-foreground py-1 pr-4">{concept.latest_period_end}</td>
+              <td className="num text-muted-foreground py-1 pr-4">{concept.facts}</td>
+              {classified && concept.classification ? (
+                <>
+                  <td className="py-1 pr-4">{concept.classification.type}</td>
+                  <td className="py-1 pr-4">{concept.classification.codes.join(", ")}</td>
+                  <td className="py-1">{concept.classification.reason}</td>
+                </>
+              ) : (
+                <td className="py-1">{concept.suggested_codes.join(", ")}</td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+const STATEMENT_NAMES: Record<CoverageOut["statement"], string> = {
+  IS: "Income statement",
+  BS: "Balance sheet",
+  CF: "Cash flow",
+};
+
+const FREQ_NAMES: Record<CoverageOut["freq"], string> = {
+  annual: "Annual",
+  quarterly: "Quarterly",
+};
+
+const COVERAGE_COLUMNS = [
+  "Statement",
+  "Frequency",
+  "Coverage",
+  "Filled",
+  "Inferred 0",
+  "Approximated",
+  "No filing data",
+  "Structural",
+  "Rule rejected",
+  "Not reported",
+];
+
+function CoverageTable({ coverage }: { coverage: CoverageOut[] }) {
+  return (
+    <div className="overflow-x-auto">
+      <table aria-label="Coverage" className="w-full text-sm">
+        <thead>
+          <tr className="text-muted-foreground text-left text-xs">
+            {COVERAGE_COLUMNS.map((name, at) => (
+              <th key={name} className={`py-1 pr-4 font-normal ${at >= 2 ? "text-right" : ""}`}>
+                {name}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {coverage.map((c) => (
+            <tr key={`${c.statement}-${c.freq}`} className="border-border border-b">
+              <td className="py-1 pr-4">{STATEMENT_NAMES[c.statement]}</td>
+              <td className="text-muted-foreground py-1 pr-4">{FREQ_NAMES[c.freq]}</td>
+              <td className="num py-1 pr-4">{formatPercent(c.fraction)}</td>
+              <td className="num py-1 pr-4">
+                {c.filled} / {c.cells}
+              </td>
+              <td className="num py-1 pr-4">{c.by_provenance.zero_inferred}</td>
+              <td className="num py-1 pr-4">{c.by_provenance.approximated}</td>
+              <td className="num py-1 pr-4">{c.empty_by_cause.no_filing_data}</td>
+              <td className="num py-1 pr-4">{c.empty_by_cause.structural}</td>
+              <td className="num py-1 pr-4">{c.empty_by_cause.rule_rejected}</td>
+              <td className="num py-1 pr-4">{c.empty_by_cause.not_reported}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// "FY2024" or "FY2024Q3", as the API's period keys, read "FY2024" and "Q3 FY2024".
+function warningPeriod(key: string): string {
+  const match = /^FY(\d{4})(Q[1-4])?$/.exec(key);
+  return match ? formatFiscalPeriod(Number(match[1]), match[2] ?? "FY") : key;
+}
+
+function RuleWarnings({ warnings }: { warnings: RuleWarningOut[] }) {
+  const scale = useScale();
+  return (
+    <div>
+      <h3 className="text-muted-foreground mb-1 text-xs">Rule warnings ({warnings.length})</h3>
+      {warnings.length === 0 ? (
+        <p className="text-sm">No rule warnings.</p>
+      ) : (
+        <div className="max-h-96 overflow-auto">
+          <table aria-label="Rule warnings" className="w-full text-sm">
+            <thead>
+              <tr className="text-muted-foreground text-left text-xs">
+                <th className="py-1 pr-4 font-normal">Rule</th>
+                <th className="py-1 pr-4 font-normal">Line</th>
+                <th className="py-1 pr-4 font-normal">Period</th>
+                <th className="py-1 pr-4 text-right font-normal">
+                  Value ({scaleLabel("USD", scale)})
+                </th>
+                <th className="py-1 font-normal">Reason</th>
+              </tr>
+            </thead>
+            <tbody>
+              {warnings.map((w) => (
+                <tr
+                  key={`${w.rule}-${w.code}-${w.period_key}`}
+                  className="border-border border-b align-top"
+                >
+                  <td className="py-1 pr-4 whitespace-nowrap">{w.rule}</td>
+                  <td className="py-1 pr-4">{w.label}</td>
+                  <td className="py-1 pr-4 whitespace-nowrap">{warningPeriod(w.period_key)}</td>
+                  <td className="num py-1 pr-4">{formatValue(w.value, w.unit, scale)}</td>
+                  <td className="py-1">{w.reason}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DataGaps({ ticker }: { ticker: string }) {
   const { data, isPending, isError } = useQuery(mappingGapsQueryOptions(ticker));
-  const scale = useScale();
 
   return (
     <section aria-label="Data gaps" className="px-4 py-3">
-      <h2 className="mb-2 text-sm font-medium">Data gaps</h2>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h2 className="text-sm font-medium">Data gaps</h2>
+        <ImportButton ticker={ticker} />
+      </div>
       {isPending && <p className="text-muted-foreground text-sm">Loading…</p>}
       {isError && <p className="text-destructive text-sm">Could not load the data gaps.</p>}
       {data && (
         <div className="flex flex-col gap-4">
+          <div>
+            <h3 className="text-muted-foreground mb-1 text-xs">Coverage</h3>
+            {data.coverage.length === 0 ? (
+              <p className="text-sm">No statement data yet.</p>
+            ) : (
+              <CoverageTable coverage={data.coverage} />
+            )}
+          </div>
+          <RuleWarnings warnings={data.rule_warnings} />
           <div>
             <h3 className="text-muted-foreground mb-1 text-xs">
               Missing items ({data.missing_items.length})
@@ -76,53 +300,7 @@ function DataGaps({ ticker }: { ticker: string }) {
               </div>
             )}
           </div>
-          <div>
-            <h3 className="text-muted-foreground mb-1 text-xs">
-              Unmapped concepts in the latest 10-K ({data.unmapped_concepts.length}),{" "}
-              {scaleLabel("USD", scale)}
-            </h3>
-            {data.unmapped_concepts.length === 0 ? (
-              <p className="text-sm">No unmapped concepts.</p>
-            ) : (
-              <div className="max-h-96 overflow-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-muted-foreground text-left text-xs">
-                      <th className="py-1 pr-4 font-normal">Concept</th>
-                      <th className="py-1 pr-4 text-right font-normal">Latest value</th>
-                      <th className="py-1 pr-4 font-normal">Unit</th>
-                      <th className="py-1 pr-4 font-normal">Period end</th>
-                      <th className="py-1 pr-4 text-right font-normal">Facts</th>
-                      <th className="py-1 font-normal">Suggested</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.unmapped_concepts.map((concept) => (
-                      <tr
-                        key={`${concept.taxonomy}:${concept.concept}:${concept.unit}`}
-                        className="border-border border-b"
-                      >
-                        <td className="py-1 pr-4 whitespace-nowrap">
-                          {concept.taxonomy}:{concept.concept}
-                        </td>
-                        <td className="num py-1 pr-4">
-                          {concept.unit === "USD"
-                            ? formatValue(concept.latest_value, concept.unit, scale)
-                            : concept.latest_value}
-                        </td>
-                        <td className="text-muted-foreground py-1 pr-4">{concept.unit}</td>
-                        <td className="text-muted-foreground py-1 pr-4">
-                          {concept.latest_period_end}
-                        </td>
-                        <td className="num text-muted-foreground py-1 pr-4">{concept.facts}</td>
-                        <td className="py-1">{concept.suggested_codes.join(", ")}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+          <UnmappedConcepts concepts={data.unmapped_concepts} />
         </div>
       )}
     </section>

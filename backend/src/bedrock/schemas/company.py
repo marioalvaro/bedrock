@@ -1,6 +1,6 @@
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
@@ -11,15 +11,23 @@ class CompanyCreate(BaseModel):
     ticker: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=12)]
 
 
+class ManualCompanyCreate(BaseModel):
+    ticker: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=12)]
+    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+    fiscal_year_end_month: Annotated[int, Field(ge=1, le=12)]
+    sic: Annotated[str, StringConstraints(pattern=r"^\d{4}$")] | None = None
+
+
 class CompanyOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     ticker: str
-    cik: str
+    cik: str | None = Field(description="Null for a manual company")
     name: str
     fiscal_year_end_month: int
     currency: str
+    source: Literal["sec", "manual"]
     sic: str | None
     last_refreshed_at: datetime | None
 

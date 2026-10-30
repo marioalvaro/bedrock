@@ -4,13 +4,18 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  createNoteApiV1CompaniesTickerNotesPost,
   getCellApiV1CompaniesTickerStatementsCellGet,
   getStatementApiV1CompaniesTickerStatementsGet,
+  listImportsApiV1CompaniesTickerImportsGet,
+  listLinksApiV1CompaniesTickerNotesLinksGet,
+  listNotesApiV1CompaniesTickerNotesGet,
 } from "@/api/generated/sdk.gen";
 import { createQueryClient } from "@/lib/query-client";
 import { setScale } from "@/lib/scale";
+import { note, noteLink, noteLinks } from "@/test/context";
 import { errorResult, okResult } from "@/test/responses";
-import { balanceStatement, incomeStatement } from "@/test/statements";
+import { balanceStatement, customIncomeStatement, incomeStatement } from "@/test/statements";
 
 import { StatementView } from "./StatementView";
 
@@ -20,6 +25,12 @@ vi.mock("@/api/generated/sdk.gen", () => ({
   createAdjustmentApiV1CompaniesTickerAdjustmentsPost: vi.fn(),
   updateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPut: vi.fn(),
   deleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDelete: vi.fn(),
+  listLinksApiV1CompaniesTickerNotesLinksGet: vi.fn(),
+  listNotesApiV1CompaniesTickerNotesGet: vi.fn(),
+  createNoteApiV1CompaniesTickerNotesPost: vi.fn(),
+  listImportsApiV1CompaniesTickerImportsGet: vi.fn(),
+  importStatementsApiV1CompaniesTickerImportsPost: vi.fn(),
+  deleteImportApiV1CompaniesTickerImportsImportIdDelete: vi.fn(),
 }));
 
 function renderView(type: "IS" | "BS" | "CF" = "IS") {
@@ -108,9 +119,16 @@ beforeEach(() => {
   vi.mocked(getStatementApiV1CompaniesTickerStatementsGet).mockResolvedValue(
     okResult(incomeStatement()) as never,
   );
+  vi.mocked(listLinksApiV1CompaniesTickerNotesLinksGet).mockResolvedValue(okResult([]) as never);
+  vi.mocked(listNotesApiV1CompaniesTickerNotesGet).mockResolvedValue(okResult([]) as never);
+  vi.mocked(listImportsApiV1CompaniesTickerImportsGet).mockResolvedValue(okResult([]) as never);
+  vi.mocked(createNoteApiV1CompaniesTickerNotesPost).mockResolvedValue(
+    okResult(note({ id: 9 }), 201) as never,
+  );
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.clearAllMocks();
 });
 
@@ -347,6 +365,59 @@ describe("StatementView", () => {
     expect(derived.closest("[col-id]")).toHaveClass("prov-derived");
     expect(reported.closest("[col-id]")).not.toHaveClass("prov-derived");
     expect(screen.getByText(/Derived/)).toBeInTheDocument();
+  });
+
+  it("marks approximated cells like derived ones, since they are not hard facts", async () => {
+    const payload = incomeStatement();
+    payload.rows[0]!.provenance = ["approximated", "reported"];
+    vi.mocked(getStatementApiV1CompaniesTickerStatementsGet).mockResolvedValue(
+      okResult(payload) as never,
+    );
+    renderView();
+
+    const approximated = (await screen.findByText("~383,285")).closest("[col-id]");
+    expect(approximated).toHaveClass("prov-derived");
+    expect(screen.getByText(/rebuilt Q4 share counts and EPS/)).toBeInTheDocument();
+  });
+
+  it("marks an approximated value with a tilde and leaves the other cells unmarked", async () => {
+    const payload = incomeStatement();
+    payload.rows[0]!.provenance = ["approximated", "reported"];
+    vi.mocked(getStatementApiV1CompaniesTickerStatementsGet).mockResolvedValue(
+      okResult(payload) as never,
+    );
+    renderView();
+
+    expect(await screen.findByText("~383,285")).toBeInTheDocument();
+    expect(screen.getByText("391,035")).toBeInTheDocument();
+    expect(screen.queryByText("~391,035")).not.toBeInTheDocument();
+    expect(screen.getByText(/~ Approximated/)).toBeInTheDocument();
+  });
+
+  it("shows an inferred zero as a muted 0", async () => {
+    const payload = incomeStatement();
+    payload.rows[0]!.values = ["0", "391035000000"];
+    payload.rows[0]!.provenance = ["zero_inferred", "reported"];
+    vi.mocked(getStatementApiV1CompaniesTickerStatementsGet).mockResolvedValue(
+      okResult(payload) as never,
+    );
+    renderView();
+    await screen.findByText("391,035");
+
+    expect(cell("revenue", "FY2023")).toHaveTextContent(/^0$/);
+    expect(cell("revenue", "FY2023")).toHaveClass("prov-zero");
+    expect(cell("revenue", "FY2024")).not.toHaveClass("prov-zero");
+    expect(screen.getByText(/Inferred 0/)).toBeInTheDocument();
+  });
+
+  it("keeps a reported cell exactly as it was", async () => {
+    renderView();
+    await screen.findByText("383,285");
+
+    const reported = cell("revenue", "FY2023");
+    expect(reported).toHaveTextContent(/^383,285$/);
+    expect(reported).not.toHaveClass("prov-zero");
+    expect(reported).not.toHaveClass("prov-derived");
   });
 
   describe("basis", () => {
@@ -749,6 +820,24 @@ describe("StatementView", () => {
   });
 
   describe("CSV export", () => {
+    it("keeps plain values for approximated and inferred cells", async () => {
+      const payload = incomeStatement();
+      payload.rows[0]!.values = ["0", "391035000000"];
+      payload.rows[0]!.provenance = ["zero_inferred", "approximated"];
+      vi.mocked(getStatementApiV1CompaniesTickerStatementsGet).mockResolvedValue(
+        okResult(payload) as never,
+      );
+      const download = captureDownload();
+      renderView();
+      await screen.findByText("~391,035");
+
+      await userEvent.click(screen.getByRole("button", { name: "Download CSV" }));
+
+      const lines = (await readText(download.blobs[0]!)).trim().split(/\r?\n/);
+      expect(lines).toContain('"Revenue","0","391035"');
+      expect(lines.join("")).not.toContain("~");
+    });
+
     it("exports the visible rows in the current scale with plain minus signs", async () => {
       const download = captureDownload();
       renderView();
@@ -766,5 +855,243 @@ describe("StatementView", () => {
       expect(lines.some((line) => line.includes("Cost of revenue"))).toBe(false); // collapsed
       expect(lines.some((line) => line.includes("Research"))).toBe(false);
     });
+  });
+});
+
+describe("StatementView note markers", () => {
+  const links = vi.mocked(listLinksApiV1CompaniesTickerNotesLinksGet);
+  const notes = vi.mocked(listNotesApiV1CompaniesTickerNotesGet);
+
+  it("marks the cell a note is linked to, and only that one", async () => {
+    links.mockResolvedValue(okResult(noteLinks()) as never);
+    renderView();
+    await screen.findByText("391,035");
+    await waitFor(() => expect(cell("revenue", "FY2024")).toHaveClass("has-note"));
+    expect(cell("revenue", "FY2023")).not.toHaveClass("has-note");
+    expect(cell("gross_profit", "FY2024")).not.toHaveClass("has-note");
+  });
+
+  it("marks nothing without links", async () => {
+    renderView();
+    await screen.findByText("391,035");
+    expect(document.querySelector(".has-note")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Notes on/ })).not.toBeInTheDocument();
+  });
+
+  it("marks a quarter cell on the quarterly grid", async () => {
+    const quarterly = incomeStatement({
+      freq: "quarterly",
+      periods: [
+        {
+          key: "Q42024",
+          label: "Q4 FY24",
+          fiscal_year: 2024,
+          fiscal_period: "Q4",
+          period_start: "2024-06-30",
+          period_end: "2024-09-28",
+          is_forecast: false,
+        },
+      ],
+      rows: incomeStatement().rows.map((row) => ({
+        ...row,
+        values: row.values.slice(1),
+        provenance: row.provenance.slice(1),
+        yoy: row.yoy.slice(1),
+        common_size: row.common_size.slice(1),
+      })),
+    });
+    vi.mocked(getStatementApiV1CompaniesTickerStatementsGet).mockResolvedValue(
+      okResult(quarterly) as never,
+    );
+    links.mockResolvedValue(
+      okResult([
+        noteLink({ canonical_code: "revenue", fiscal_year: 2024, fiscal_period: "Q4" }),
+      ]) as never,
+    );
+    renderView();
+    await screen.findByText("391,035");
+    await waitFor(() => expect(cell("revenue", "Q42024")).toHaveClass("has-note"));
+  });
+
+  it("never marks a TTM column", async () => {
+    const ttm = incomeStatement({
+      freq: "ttm",
+      periods: [
+        {
+          key: "TTM2024Q3",
+          label: "TTM Q3 FY24",
+          fiscal_year: 2024,
+          fiscal_period: "Q3",
+          period_start: "2023-07-01",
+          period_end: "2024-06-29",
+          is_forecast: false,
+        },
+      ],
+      rows: incomeStatement().rows.map((row) => ({
+        ...row,
+        values: row.values.slice(1),
+        provenance: row.provenance.slice(1),
+        yoy: row.yoy.slice(1),
+        common_size: row.common_size.slice(1),
+      })),
+    });
+    vi.mocked(getStatementApiV1CompaniesTickerStatementsGet).mockResolvedValue(
+      okResult(ttm) as never,
+    );
+    links.mockResolvedValue(
+      okResult([
+        noteLink({ canonical_code: "revenue", fiscal_year: 2024, fiscal_period: "Q3" }),
+      ]) as never,
+    );
+    renderView();
+    await screen.findByText("391,035");
+    await waitFor(() => expect(links).toHaveBeenCalled());
+    expect(cell("revenue", "TTM2024Q3")).not.toHaveClass("has-note");
+  });
+
+  it("still opens the cell details from a marked cell", async () => {
+    links.mockResolvedValue(okResult(noteLinks()) as never);
+    vi.mocked(getCellApiV1CompaniesTickerStatementsCellGet).mockResolvedValue(
+      okResult(cellDetail) as never,
+    );
+    renderView();
+    await screen.findByText("391,035");
+    await waitFor(() => expect(cell("revenue", "FY2024")).toHaveClass("has-note"));
+    await userEvent.click(cell("revenue", "FY2024"));
+    expect(await screen.findByText("Vintages")).toBeVisible();
+  });
+
+  it("puts a line marker after the label of a line with a line note", async () => {
+    links.mockResolvedValue(okResult([noteLink({ canonical_code: "gross_profit" })]) as never);
+    renderView();
+    expect(await screen.findByRole("button", { name: "Notes on Gross profit" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Notes on Revenue" })).not.toBeInTheDocument();
+  });
+
+  it("opens the line's notes from the line marker and adds a line note", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 9, 23, 22, 30));
+    links.mockResolvedValue(okResult([noteLink({ canonical_code: "gross_profit" })]) as never);
+    notes.mockResolvedValue(
+      okResult([
+        note({
+          id: 4,
+          body_md: "Watch services mix",
+          canonical_code: "gross_profit",
+          label: "Gross profit",
+          fiscal_year: null,
+          fiscal_period: null,
+        }),
+      ]) as never,
+    );
+    renderView();
+    await userEvent.click(await screen.findByRole("button", { name: "Notes on Gross profit" }));
+    expect(await screen.findByText("Watch services mix")).toBeVisible();
+    expect(notes).toHaveBeenCalledWith({
+      path: { ticker: "AAPL" },
+      query: { code: "gross_profit" },
+    });
+    await userEvent.click(screen.getByRole("button", { name: "Add note" }));
+    expect(screen.getByText("Linked to Gross profit")).toBeVisible();
+    await userEvent.type(screen.getByLabelText("Note"), "New thought");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(vi.mocked(createNoteApiV1CompaniesTickerNotesPost)).toHaveBeenCalledWith({
+        path: { ticker: "AAPL" },
+        body: {
+          body_md: "New thought",
+          canonical_code: "gross_profit",
+          fiscal_year: null,
+          fiscal_period: null,
+          note_date: "2026-10-23",
+        },
+      }),
+    );
+  });
+
+  it("keeps the statement when the links cannot load", async () => {
+    links.mockResolvedValue(errorResult(500) as never);
+    renderView();
+    expect(await screen.findByText("391,035")).toBeVisible();
+    expect(document.querySelector(".has-note")).toBeNull();
+  });
+});
+
+describe("StatementView import", () => {
+  it("opens the import sheet from the toolbar", async () => {
+    renderView();
+    await screen.findByText("391,035");
+    await userEvent.click(screen.getByRole("button", { name: "Import" }));
+    expect(await screen.findByText("Import statements")).toBeVisible();
+  });
+});
+
+describe("StatementView import and custom lines", () => {
+  const getStatement = vi.mocked(getStatementApiV1CompaniesTickerStatementsGet);
+  const getCell = vi.mocked(getCellApiV1CompaniesTickerStatementsCellGet);
+
+  async function renderCustom() {
+    getStatement.mockResolvedValue(okResult(customIncomeStatement()) as never);
+    renderView();
+    await screen.findByText("391,035");
+    await userEvent.click(screen.getByRole("button", { name: "Expand all" }));
+    await screen.findByText("Products");
+  }
+
+  it("styles an imported value apart and explains it in the legend", async () => {
+    await renderCustom();
+    expect(cell("custom:products", "FY2024")).toHaveClass("prov-imported");
+    expect(cell("revenue", "FY2024")).not.toHaveClass("prov-imported");
+    expect(screen.getByText(/Imported: from your file/)).toBeInTheDocument();
+  });
+
+  it("nests custom lines under their parent with a custom marker", async () => {
+    await renderCustom();
+    const label = (code: string) =>
+      document.querySelector(`[row-id="${code}"] [col-id="label"] span[style]`) as HTMLElement;
+    const parentPad = parseInt(label("cost_of_revenue").style.paddingLeft);
+    expect(parseInt(label("custom:products").style.paddingLeft)).toBeGreaterThan(parentPad);
+    expect(within(label("custom:products")).getByText("custom")).toBeInTheDocument();
+    expect(within(label("custom:services")).getByText("custom")).toBeInTheDocument();
+    expect(within(label("cost_of_revenue")).queryByText("custom")).not.toBeInTheDocument();
+    expect(within(label("other:cost_of_revenue")).queryByText("custom")).not.toBeInTheDocument();
+  });
+
+  it("collapses the breakdown with its parent", async () => {
+    await renderCustom();
+    await userEvent.click(screen.getByRole("button", { name: "Collapse Cost of revenue" }));
+    await waitFor(() => expect(screen.queryByText("Products")).not.toBeInTheDocument());
+    expect(screen.queryByText("Other Cost of revenue")).not.toBeInTheDocument();
+  });
+
+  it("opens the cell details of a custom line", async () => {
+    getCell.mockResolvedValue(
+      okResult({ ...cellDetail, code: "custom:products", label: "Products" }) as never,
+    );
+    await renderCustom();
+    await userEvent.click(cell("custom:products", "FY2024"));
+    await waitFor(() =>
+      expect(getCell).toHaveBeenCalledWith({
+        path: { ticker: "AAPL" },
+        query: { code: "custom:products", fiscal_year: 2024, fiscal_period: "FY" },
+      }),
+    );
+  });
+
+  it("leaves the Other row inert: it has no cell of its own", async () => {
+    await renderCustom();
+    expect(cell("other:cost_of_revenue", "FY2024")).not.toHaveClass("cursor-pointer");
+    await userEvent.click(cell("other:cost_of_revenue", "FY2024"));
+    expect(getCell).not.toHaveBeenCalled();
+  });
+
+  it("exports the custom lines and the Other row in the CSV", async () => {
+    const download = captureDownload();
+    await renderCustom();
+    await userEvent.click(screen.getByRole("button", { name: "Download CSV" }));
+    const lines = (await readText(download.blobs[0]!)).trim().split(/\r?\n/);
+    expect(lines).toContain('"Products","","150000"');
+    expect(lines).toContain('"Services","","50000"');
+    expect(lines).toContain('"Other Cost of revenue","","10352"');
   });
 });

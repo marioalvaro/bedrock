@@ -28,7 +28,8 @@ class RefreshResult:
 def refresh_company(
     session: Session, sources: Sources, ticker: str, now: datetime
 ) -> RefreshResult:
-    """Load what EDGAR and the price source have that is not stored yet, and commit.
+    """Load what EDGAR and the price source have that is not stored yet, and commit. A manual
+    company has no EDGAR data: only its prices are loaded.
 
     A price (or split) failure is a warning; an EDGAR failure is raised, and nothing is kept (not
     even the mapping sync), so a failed refresh leaves the database as it was."""
@@ -37,10 +38,12 @@ def refresh_company(
         raise CompanyNotFound(ticker)
     try:
         sync_mappings(session)
-        payload = sources.edgar.fetch(CompanyRef(company.ticker, company.cik), None)
-        new_filings, new_facts = facts_repo.insert_parsed(
-            session, company, parse_companyfacts(payload.companyfacts)
-        )
+        new_filings = new_facts = 0
+        if company.source == "sec":
+            payload = sources.edgar.fetch(CompanyRef(company.ticker, company.cik), None)
+            new_filings, new_facts = facts_repo.insert_parsed(
+                session, company, parse_companyfacts(payload.companyfacts)
+            )
 
         warnings: list[str] = []
         new_prices = 0

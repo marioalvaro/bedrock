@@ -41,6 +41,8 @@ export function incomeStatement(overrides: Partial<StatementOut> = {}): Statemen
         yoy: [null, "0.020219"],
         common_size: ["1.000000", "1.000000"],
         adjustable: false,
+        custom: false,
+        parent: null,
         common_size_base: "Revenue",
       },
       {
@@ -54,6 +56,8 @@ export function incomeStatement(overrides: Partial<StatementOut> = {}): Statemen
         yoy: [null, "0.068197"],
         common_size: ["0.441300", "0.462100"],
         adjustable: false,
+        custom: false,
+        parent: null,
         common_size_base: "Revenue",
       },
       {
@@ -67,6 +71,8 @@ export function incomeStatement(overrides: Partial<StatementOut> = {}): Statemen
         yoy: [null, "-0.017674"],
         common_size: ["0.558700", "0.537900"],
         adjustable: false,
+        custom: false,
+        parent: null,
         common_size_base: "Revenue",
       },
       {
@@ -80,6 +86,8 @@ export function incomeStatement(overrides: Partial<StatementOut> = {}): Statemen
         yoy: [null, null],
         common_size: [null, null],
         adjustable: false,
+        custom: false,
+        parent: null,
         common_size_base: "Revenue",
       },
       {
@@ -93,6 +101,8 @@ export function incomeStatement(overrides: Partial<StatementOut> = {}): Statemen
         yoy: [null, "-0.008157"],
         common_size: [null, null],
         adjustable: false,
+        custom: false,
+        parent: null,
         common_size_base: "Revenue",
       },
     ],
@@ -117,6 +127,8 @@ export function balanceStatement(): StatementOut {
         yoy: [null, "0.035"],
         common_size: ["1.000000", "1.000000"],
         adjustable: false,
+        custom: false,
+        parent: null,
         common_size_base: "Total assets",
       },
       {
@@ -130,6 +142,8 @@ export function balanceStatement(): StatementOut {
         yoy: [null, "0.065"],
         common_size: ["0.407200", "0.419200"],
         adjustable: false,
+        custom: false,
+        parent: null,
         common_size_base: "Total assets",
       },
       {
@@ -143,6 +157,8 @@ export function balanceStatement(): StatementOut {
         yoy: [null, "-0.001"],
         common_size: ["0.084900", "0.082000"],
         adjustable: false,
+        custom: false,
+        parent: null,
         common_size_base: "Total assets",
       },
       {
@@ -156,6 +172,8 @@ export function balanceStatement(): StatementOut {
         yoy: [null, "0.014"],
         common_size: ["0.592800", "0.580800"],
         adjustable: false,
+        custom: false,
+        parent: null,
         common_size_base: "Total assets",
       },
       {
@@ -169,6 +187,8 @@ export function balanceStatement(): StatementOut {
         yoy: [null, "0.045"],
         common_size: ["0.124000", "0.125200"],
         adjustable: false,
+        custom: false,
+        parent: null,
         common_size_base: "Total assets",
       },
     ],
@@ -177,4 +197,48 @@ export function balanceStatement(): StatementOut {
       { period_key: "FY2024", difference: "-2000000", ok: false },
     ],
   };
+}
+
+// The income statement with a manual breakdown under Cost of revenue: two custom lines and the
+// "Other" row that makes them add up to the parent (S10c).
+export function customIncomeStatement(): StatementOut {
+  const base = incomeStatement();
+  const line = (
+    code: string,
+    label: string,
+    values: (string | null)[],
+    provenance: StatementOut["rows"][number]["provenance"],
+    overrides: Partial<StatementOut["rows"][number]> = {},
+  ): StatementOut["rows"][number] => ({
+    code,
+    label,
+    unit: "USD",
+    kind: "flow",
+    depth: 2,
+    values,
+    provenance,
+    yoy: [null, null],
+    common_size: [null, null],
+    adjustable: false,
+    custom: true,
+    parent: "cost_of_revenue",
+    common_size_base: "Revenue",
+    ...overrides,
+  });
+  const rows = [...base.rows];
+  const at = rows.findIndex((row) => row.code === "cost_of_revenue") + 1;
+  rows.splice(
+    at,
+    0,
+    line("custom:products", "Products", [null, "150000000000"], [null, "imported"]),
+    line("custom:services", "Services", [null, "50000000000"], [null, "imported"]),
+    line(
+      "other:cost_of_revenue",
+      "Other Cost of revenue",
+      [null, "10352000000"],
+      [null, "derived"],
+      { custom: false, parent: null },
+    ),
+  );
+  return { ...base, rows };
 }

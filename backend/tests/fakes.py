@@ -33,6 +33,8 @@ def _companyfacts(ticker: str) -> dict[str, Any]:
 
 @cache
 def _prices(ticker: str) -> tuple[PriceRow, ...]:
+    if not (FIXTURES / "yfinance" / f"{ticker}.csv").is_file():
+        return ()  # a ticker the source has no history for (a manual company's)
     frame = pd.read_csv(FIXTURES / "yfinance" / f"{ticker}.csv", index_col="Date")
     return tuple(
         PriceRow(

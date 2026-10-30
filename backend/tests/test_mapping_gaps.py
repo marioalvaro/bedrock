@@ -5,6 +5,7 @@ import pandas as pd
 
 from bedrock.mapping.gaps import MissingItem, UnmappedConcept, missing_items, unmapped_concepts
 from bedrock.mapping.mapper import map_facts
+from bedrock.mapping.triage import ConceptVerdict
 from bedrock.mapping.vintage import select_vintage
 from bedrock.statements.build import build_statement
 from tests.engine_data import fact, facts, flow_facts, instant_facts, item, mappings
@@ -26,9 +27,21 @@ MAPS = mappings(
 REVENUE = {2021: (1, 1, 1, 1), 2022: (1, 1, 1, 1), 2023: (1, 1, 1, 1)}
 
 
-def tables(raw: list[dict[str, object]], freq: str = "annual"):  # type: ignore[no-untyped-def]
-    canonical = map_facts(select_vintage(facts(raw)), MAPS, ITEMS)
-    return {s: build_statement(canonical, ITEMS, s, freq) for s in ("IS", "BS")}  # type: ignore[arg-type]
+def tables(raw: list[dict[str, object]], freq: str = "annual", items=ITEMS):  # type: ignore[no-untyped-def]
+    canonical = map_facts(select_vintage(facts(raw)), MAPS, items)
+    return {s: build_statement(canonical, items, s, freq) for s in ("IS", "BS")}  # type: ignore[arg-type]
+
+
+def test_the_share_count_helper_lines_are_never_a_gap() -> None:
+    """`shares_issued` and `treasury_shares` only feed the shares-outstanding identity: a company
+    without a treasury count (Apple) has not left anything out."""
+    items = [*ITEMS, item("shares_issued", "BS", kind="instant", unit="shares")]
+    raw = flow_facts("Revenues", REVENUE)
+
+    codes = {g.code for g in missing_items(tables(raw, items=items), items)}
+
+    assert "shares_issued" not in codes
+    assert "cash" in codes  # other balance sheet lines are still reported
 
 
 def test_missing_items_lists_the_fiscal_years_with_no_value() -> None:
@@ -208,3 +221,80 @@ def test_without_an_index_nothing_is_suggested_and_the_order_is_by_name() -> Non
 
     assert [u.concept for u in result] == ["OddGain", "RestructuringCharges"]
     assert all(u.suggested_codes == [] for u in result)
+
+
+# --- triage verdicts (FR-DATA-13) ----------------------------------------------------------
+
+TRIAGE = {
+    ("us-gaap", "RestructuringCharges"): ConceptVerdict(
+        "component", "part of operating expenses", ("other_operating_expenses",)
+    ),
+    ("us-gaap", "ZebraLine"): ConceptVerdict("disclosure", "a note schedule", ()),
+    ("us-gaap", "NeverInTheFacts"): ConceptVerdict("disclosure", "not in this 10-K", ()),
+}
+
+
+def with_zebra() -> pd.DataFrame:
+    zebra = facts(
+        [fact("ZebraLine", date(2023, 7, 1), date(2024, 6, 30), 4, accession="K-24", filed=K24)]
+    )
+    return pd.concat([unmapped_facts(), zebra], ignore_index=True)
+
+
+def test_a_concept_carries_its_verdict_and_an_unclassified_one_carries_none() -> None:
+    result = {u.concept: u for u in unmapped_concepts(with_zebra(), MAPS, INDEX, TRIAGE)}
+
+    assert (
+        result["RestructuringCharges"].classification == TRIAGE[("us-gaap", "RestructuringCharges")]
+    )
+    assert result["ZebraLine"].classification == TRIAGE[("us-gaap", "ZebraLine")]
+    assert result["OddGain"].classification is None
+
+
+def test_a_classified_concept_keeps_its_suggestion() -> None:
+    result = {u.concept: u for u in unmapped_concepts(with_zebra(), MAPS, INDEX, TRIAGE)}
+
+    assert result["RestructuringCharges"].suggested_codes == ["other_operating_expenses"]
+    assert result["ZebraLine"].suggested_codes == ["short_term_debt", "long_term_debt"]
+
+
+def test_unclassified_with_a_suggestion_then_without_then_the_classified() -> None:
+    raw = pd.concat(
+        [
+            with_zebra(),
+            facts(
+                [fact("Gamma", date(2023, 7, 1), date(2024, 6, 30), 1, accession="K-24", filed=K24)]
+            ),
+            facts(
+                [fact("Alpha", date(2023, 7, 1), date(2024, 6, 30), 1, accession="K-24", filed=K24)]
+            ),
+        ],
+        ignore_index=True,
+    )
+    index = {**INDEX, ("us-gaap", "Gamma"): ["revenue"]}  # a suggested, unclassified concept
+
+    result = unmapped_concepts(raw, MAPS, index, TRIAGE)
+
+    # Gamma: unclassified with a suggestion; then OddGain (aapl:) and Alpha, unclassified without
+    # one, in (taxonomy, concept) order; then the classified two, also in name order.
+    assert [u.concept for u in result] == [
+        "Gamma",
+        "OddGain",
+        "Alpha",
+        "RestructuringCharges",
+        "ZebraLine",
+    ]
+
+
+def test_without_a_triage_nothing_is_classified_and_the_order_is_unchanged() -> None:
+    plain = unmapped_concepts(unmapped_facts(), MAPS, INDEX)
+    empty = unmapped_concepts(unmapped_facts(), MAPS, INDEX, {})
+
+    assert plain == empty
+    assert all(u.classification is None for u in plain)
+
+
+def test_a_verdict_for_a_concept_not_in_the_latest_10k_is_ignored() -> None:
+    result = unmapped_concepts(unmapped_facts(), MAPS, INDEX, TRIAGE)
+
+    assert "NeverInTheFacts" not in {u.concept for u in result}

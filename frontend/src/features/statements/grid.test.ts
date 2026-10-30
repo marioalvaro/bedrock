@@ -1,9 +1,21 @@
 import { describe, expect, it } from "vitest";
 
-import type { StatementOut } from "@/api/generated/types.gen";
-import { balanceStatement, incomeStatement } from "@/test/statements";
+import type { PeriodOut, StatementOut } from "@/api/generated/types.gen";
+import { noteLink, noteLinks } from "@/test/context";
+import { balanceStatement, customIncomeStatement, incomeStatement } from "@/test/statements";
 
-import { canExplain, csvLabel, expandableCodes, rowUnitHint, toGridRows } from "./grid";
+import {
+  canExplain,
+  cellNoteCount,
+  csvLabel,
+  expandableCodes,
+  lineNoteCount,
+  noteIndex,
+  provenanceClasses,
+  provenanceMark,
+  rowUnitHint,
+  toGridRows,
+} from "./grid";
 
 const NONE: ReadonlySet<string> = new Set();
 const OFF = { yoy: false, commonSize: false, expanded: NONE };
@@ -121,6 +133,31 @@ describe("toGridRows", () => {
     expect(toGridRows(incomeStatement(), OFF).some((row) => row.kind === "balance_check")).toBe(
       false,
     );
+  });
+});
+
+describe("toGridRows stability", () => {
+  // AG Grid diffs rows by id: a toggle must add or remove rows, never rename the others.
+  const ids = (rows: { id: string }[]) => rows.map((row) => row.id);
+
+  it("keeps every line's id when YoY and common size are switched on", () => {
+    const off = ids(toGridRows(incomeStatement(), OPEN));
+    const on = ids(toGridRows(incomeStatement(), { ...OPEN, yoy: true, commonSize: true }));
+
+    expect(on.filter((id) => !id.includes(":"))).toEqual(off);
+    expect(on.filter((id) => id.includes(":")).every((id) => /:(yoy|common_size)$/.test(id))).toBe(
+      true,
+    );
+  });
+
+  it("keeps the other rows' ids when a breakdown opens", () => {
+    const closed = ids(toGridRows(incomeStatement(), OFF));
+    const open = ids(
+      toGridRows(incomeStatement(), { ...OFF, expanded: new Set(["gross_profit"]) }),
+    );
+
+    expect(open.filter((id) => closed.includes(id))).toEqual(closed);
+    expect(open).toEqual(["revenue", "gross_profit", "cost_of_revenue", "eps_diluted"]);
   });
 });
 
@@ -494,5 +531,134 @@ describe("showEmpty with a hidden ancestor", () => {
         annual,
       ),
     ).toBe(true);
+  });
+});
+
+describe("note markers", () => {
+  const index = noteIndex(noteLinks());
+  const rows = toGridRows(incomeStatement(), { ...OFF, yoy: true });
+  const revenue = rows[0]!;
+  const yoy = rows[1]!;
+  const [fy2023, fy2024] = incomeStatement().periods as [PeriodOut, PeriodOut];
+
+  it("counts the notes of a cell by code, year and period", () => {
+    expect(cellNoteCount(index, revenue, fy2024)).toBe(2);
+    expect(cellNoteCount(index, revenue, fy2023)).toBe(0);
+  });
+
+  it("counts the line-only notes of a line", () => {
+    const sga = { ...revenue, code: "sga" };
+    expect(lineNoteCount(index, sga)).toBe(1);
+    expect(lineNoteCount(index, revenue)).toBe(0);
+  });
+
+  it("does not mix a cell note into the line count or the reverse", () => {
+    const sga = { ...revenue, code: "sga" };
+    expect(cellNoteCount(index, sga, fy2024)).toBe(0);
+  });
+
+  it("never marks a TTM column", () => {
+    const ttm = { ...fy2024, key: "TTM-FY2024Q3", fiscal_period: "FY" };
+    expect(cellNoteCount(index, revenue, ttm)).toBe(0);
+  });
+
+  it("marks a quarter cell", () => {
+    const quarterly = noteIndex([
+      noteLink({ canonical_code: "revenue", fiscal_year: 2024, fiscal_period: "Q4" }),
+    ]);
+    expect(
+      cellNoteCount(quarterly, revenue, { ...fy2024, key: "Q42024", fiscal_period: "Q4" }),
+    ).toBe(1);
+  });
+
+  it("never marks a sub-row", () => {
+    expect(cellNoteCount(index, yoy, fy2024)).toBe(0);
+    expect(lineNoteCount(index, { ...yoy, code: "sga" })).toBe(0);
+  });
+
+  it("ignores period-only links", () => {
+    const periodOnly = noteIndex([noteLink({ fiscal_year: 2024, fiscal_period: "FY", count: 4 })]);
+    expect(cellNoteCount(periodOnly, revenue, fy2024)).toBe(0);
+  });
+
+  it("marks nothing without links", () => {
+    expect(cellNoteCount(noteIndex([]), revenue, fy2024)).toBe(0);
+    expect(lineNoteCount(noteIndex([]), revenue)).toBe(0);
+  });
+});
+
+describe("provenance display", () => {
+  it("styles derived and approximated cells alike, so what is not a hard fact stands out", () => {
+    expect(provenanceClasses("derived")).toEqual(["prov-derived"]);
+    expect(provenanceClasses("approximated")).toEqual(["prov-derived"]);
+  });
+
+  it("styles an imported value apart from the SEC ones", () => {
+    expect(provenanceClasses("imported")).toEqual(["prov-imported"]);
+  });
+
+  it("mutes an inferred zero and styles normalized cells apart", () => {
+    expect(provenanceClasses("zero_inferred")).toEqual(["prov-zero"]);
+    expect(provenanceClasses("normalized")).toEqual(["prov-normalized"]);
+  });
+
+  it("leaves reported and empty cells plain", () => {
+    expect(provenanceClasses("reported")).toEqual([]);
+    expect(provenanceClasses(null)).toEqual([]);
+    expect(provenanceClasses(undefined)).toEqual([]);
+  });
+
+  it("marks only an approximated value with a tilde", () => {
+    expect(provenanceMark("approximated")).toBe("~");
+    for (const other of [
+      "reported",
+      "derived",
+      "normalized",
+      "zero_inferred",
+      "imported",
+      null,
+    ] as const) {
+      expect(provenanceMark(other)).toBe("");
+    }
+  });
+});
+
+describe("custom lines", () => {
+  const payload = customIncomeStatement();
+  const open = { ...OFF, expanded: new Set(["gross_profit", "cost_of_revenue"]) };
+  const period = payload.periods[1]!;
+
+  it("hides the breakdown under a collapsed parent and opens it with the parent", () => {
+    expect(toGridRows(payload, OFF).map((row) => row.id)).not.toContain("custom:products");
+    expect(expandableCodes(payload)).toContain("cost_of_revenue");
+    const rows = toGridRows(payload, open);
+    expect(rows.map((row) => row.id)).toEqual([
+      "revenue",
+      "gross_profit",
+      "cost_of_revenue",
+      "custom:products",
+      "custom:services",
+      "other:cost_of_revenue",
+      "eps_diluted",
+    ]);
+  });
+
+  it("flags custom lines, indents them under the parent and keeps their imported provenance", () => {
+    const rows = toGridRows(payload, open);
+    const parent = rows.find((row) => row.id === "cost_of_revenue")!;
+    const products = rows.find((row) => row.id === "custom:products")!;
+    expect(products.custom).toBe(true);
+    expect(products.depth).toBe(parent.depth + 1);
+    expect(products.provenance.FY2024).toBe("imported");
+    expect(parent.custom).toBe(false);
+    expect(rows.find((row) => row.id === "other:cost_of_revenue")!.custom).toBe(false);
+  });
+
+  it("explains a custom line but not the Other row", () => {
+    const rows = toGridRows(payload, open);
+    const products = rows.find((row) => row.id === "custom:products")!;
+    const other = rows.find((row) => row.id === "other:cost_of_revenue")!;
+    expect(canExplain(products, period)).toBe(true);
+    expect(canExplain(other, period)).toBe(false);
   });
 });

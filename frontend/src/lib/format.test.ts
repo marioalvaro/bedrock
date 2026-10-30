@@ -6,12 +6,24 @@ import {
   formatCsvRatio,
   formatCsvValue,
   formatFiscalPeriod,
+  formatGuidanceValue,
+  formatHitRate,
+  formatRange,
+  formatRank,
+  formatSignedPercent,
+  formatVsMedian,
+  parseGuidanceValue,
+  toGuidanceText,
   formatMultiple,
   formatPercent,
   formatPrice,
+  formatInput,
   formatRatio,
   formatThreshold,
   formatRelative,
+  formatSegmentValue,
+  parseSegmentValue,
+  toSegmentText,
   formatSplitRatio,
   formatValue,
   toScaledText,
@@ -268,12 +280,16 @@ describe("formatRatio", () => {
     ["6.1111", "USD/shares", "6.11"],
     ["-6.1111", "USD/shares", "(6.11)"],
     ["1234.5", "USD/shares", "1,234.50"],
+    ["118923000000", "USD", "118.9B"],
+    ["812400000", "USD", "812.4M"],
+    ["1500000000000", "USD", "1.5T"],
+    ["-1234000000", "USD", "(1.2B)"],
   ] as const)("formats %s as %s -> %s", (value, unit, text) => {
     expect(formatRatio(value, unit)).toBe(text);
   });
 
   it("shows an em dash for null in every unit", () => {
-    for (const unit of ["pct", "x", "days", "USD/shares"] as const) {
+    for (const unit of ["pct", "x", "days", "USD/shares", "USD"] as const) {
       expect(formatRatio(null, unit)).toBe("—");
     }
   });
@@ -296,12 +312,14 @@ describe("formatCsvRatio", () => {
     ["45", "days", "45"],
     ["6.1111", "USD/shares", "6.11"],
     ["-1234.567", "USD/shares", "-1234.57"],
+    ["118923000000", "USD", "118923000000"],
+    ["-1234000000", "USD", "-1234000000"],
   ] as const)("writes %s as %s -> %s", (value, unit, text) => {
     expect(formatCsvRatio(value, unit)).toBe(text);
   });
 
   it("writes null as an empty cell", () => {
-    for (const unit of ["pct", "x", "days", "USD/shares"] as const) {
+    for (const unit of ["pct", "x", "days", "USD/shares", "USD"] as const) {
       expect(formatCsvRatio(null, unit)).toBe("");
     }
   });
@@ -419,5 +437,190 @@ describe("formatThreshold", () => {
     ["1E-7", "x", "0.0000001x"],
   ] as const)("shows %j (%s) as %j", (level, unit, text) => {
     expect(formatThreshold(level, unit)).toBe(text);
+  });
+});
+
+describe("segment values by unit", () => {
+  it.each([
+    ["USD", "M", "391,035", "391035000000"],
+    ["USD", "B", "(1.5)", "-1500000000"],
+    ["pct", "M", "5.2", "0.052"],
+    ["pct", "M", "5.2%", "0.052"],
+    ["pct", "M", " (3) % ", "-0.03"],
+    ["count", "M", "4,230", "4230"],
+    ["count", "B", "1.5", "1.5"],
+    ["USD_per_unit", "M", "4.50", "4.5"],
+  ] as const)("parses %s typed in %s as %j", (unit, scale, text, stored) => {
+    expect(parseSegmentValue(text, unit, scale)).toBe(stored);
+  });
+
+  it.each([
+    ["USD", "abc"],
+    ["USD", "1e3"],
+    ["pct", "5.2 percent"],
+    ["pct", "%"],
+    ["count", "1,23"],
+    ["USD_per_unit", "$4"],
+  ] as const)("rejects %s text %j", (unit, text) => {
+    expect(parseSegmentValue(text, unit, "M")).toBeNull();
+  });
+
+  it("shows a stored value as editable text that parses back to it", () => {
+    const cases = [
+      ["USD", "167045000000", "167045"],
+      ["pct", "0.052", "5.2"],
+      ["count", "4230", "4230"],
+      ["USD_per_unit", "4.5", "4.5"],
+    ] as const;
+    for (const [unit, stored, text] of cases) {
+      expect(toSegmentText(stored, unit, "M")).toBe(text);
+      expect(parseSegmentValue(text, unit, "M")).toBe(stored);
+    }
+  });
+
+  it.each([
+    ["USD", "167045000000", "167,045"],
+    ["USD", "-1500000", "(2)"],
+    ["pct", "0.052", "5.2%"],
+    ["pct", "-0.031", "(3.1%)"],
+    ["count", "4230", "4,230"],
+    ["count", "1.5", "1.5"],
+    ["count", "1.234", "1.23"],
+    ["USD_per_unit", "4.5", "4.50"],
+  ] as const)("formats %s %s as %j", (unit, value, text) => {
+    expect(formatSegmentValue(value, unit, "M")).toBe(text);
+  });
+
+  it("formats null as an em dash", () => {
+    expect(formatSegmentValue(null, "USD", "M")).toBe("—");
+  });
+});
+
+describe("formatSignedPercent", () => {
+  it.each([
+    ["0.123", "+12.3%"],
+    ["-0.0512", "-5.1%"],
+    ["0", "0.0%"],
+    ["-0.0001", "0.0%"],
+    [null, "—"],
+  ] as const)("formats %j as %j", (value, text) => {
+    expect(formatSignedPercent(value)).toBe(text);
+  });
+});
+
+describe("formatVsMedian", () => {
+  it.each([
+    ["0.123", "x", "+12.3%"],
+    ["-0.25", "days", "-25.0%"],
+    ["0.021", "pct", "+2.1 pts"],
+    ["-0.0345", "pct", "-3.5 pts"],
+    ["0", "pct", "0.0 pts"],
+    [null, "x", "—"],
+  ] as const)("formats %j %s as %j", (value, unit, text) => {
+    expect(formatVsMedian(value, unit)).toBe(text);
+  });
+});
+
+describe("formatRange", () => {
+  it("joins the peer min and max by unit", () => {
+    expect(formatRange("12.1", "30.4", "x")).toBe("12.1x – 30.4x");
+    expect(formatRange("-0.02", "0.31", "pct")).toBe("(2.0%) – 31.0%");
+  });
+
+  it("is an em dash when either end is missing", () => {
+    expect(formatRange(null, null, "x")).toBe("—");
+    expect(formatRange("1", null, "x")).toBe("—");
+  });
+});
+
+describe("formatRank", () => {
+  it("ranks the target among itself and the peers used", () => {
+    expect(formatRank(2, 3)).toBe("2 / 4");
+    expect(formatRank(1, 1)).toBe("1 / 2");
+  });
+
+  it("is an em dash with no peer values or no target", () => {
+    expect(formatRank(1, 0)).toBe("—");
+    expect(formatRank(null, 3)).toBe("—");
+  });
+});
+
+describe("guidance values", () => {
+  it.each([
+    ["USD", "391035000000", "391,035"],
+    ["shares", "15000000000", "15,000"],
+    ["USD/shares", "6.11", "6.11"],
+    ["pct", "0.462", "46.2%"],
+    ["x", "1.5", "1.5x"],
+    ["days", "45", "45"],
+    ["count", "4230", "4,230"],
+    ["USD_per_unit", "4.5", "4.50"],
+  ] as const)("formats %s %s as %j in M", (unit, value, text) => {
+    expect(formatGuidanceValue(value, unit, "M")).toBe(text);
+  });
+
+  it("formats null as an em dash and an unknown unit (a deleted KPI) as a plain number", () => {
+    expect(formatGuidanceValue(null, "USD", "M")).toBe("—");
+    expect(formatGuidanceValue("12.5", null, "M")).toBe("12.5");
+  });
+
+  it.each([
+    ["USD", "380", "B", "380000000000"],
+    ["USD", "-11", "B", "-11000000000"],
+    ["shares", "15,000", "M", "15000000000"],
+    ["pct", "46", "M", "0.46"],
+    ["pct", "46.5%", "M", "0.465"],
+    ["x", "1.5", "M", "1.5"],
+    ["USD/shares", "6.11", "B", "6.11"],
+    ["count", "4230", "B", "4230"],
+    ["USD_per_unit", "4.5", "B", "4.5"],
+  ] as const)("parses %s %j in %s as %j", (unit, text, scale, value) => {
+    expect(parseGuidanceValue(text, unit, scale)).toBe(value);
+  });
+
+  it("rejects malformed text", () => {
+    expect(parseGuidanceValue("abc", "USD", "M")).toBeNull();
+    expect(parseGuidanceValue("", "pct", "M")).toBeNull();
+  });
+
+  it.each([
+    ["USD", "380000000000", "B", "380"],
+    ["pct", "0.465", "M", "46.5"],
+    ["USD/shares", "6.11", "M", "6.11"],
+  ] as const)("prefills %s %s in %s as %j", (unit, value, scale, text) => {
+    expect(toGuidanceText(value, unit, scale)).toBe(text);
+    expect(parseGuidanceValue(text, unit, scale)).toBe(value);
+  });
+});
+
+describe("formatHitRate", () => {
+  it.each([
+    ["0.500000", "50%"],
+    ["0.846154", "85%"],
+    ["1.000000", "100%"],
+    ["0.000000", "0%"],
+    [null, "—"],
+  ] as const)("formats %j as %j", (value, text) => {
+    expect(formatHitRate(value)).toBe(text);
+  });
+});
+
+describe("formatInput", () => {
+  it.each([
+    ["600000000", "USD", "600.0M"],
+    ["-1234000000", "USD", "(1.2B)"],
+    ["14773260000", "shares", "14.8B"],
+    ["60", "USD/shares", "60.00"],
+    ["0.156100", "pct", "15.6%"],
+    ["100", "points", "100.0 pts"],
+    ["-3.45", "points", "(3.5 pts)"],
+    ["30", "x", "30.0x"],
+    ["12", "days", "12"],
+  ] as const)("formats %s (%s) as %s", (value, unit, text) => {
+    expect(formatInput(value, unit)).toBe(text);
+  });
+
+  it("shows an em dash for a missing input", () => {
+    expect(formatInput(null, "USD")).toBe("—");
   });
 });

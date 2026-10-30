@@ -162,6 +162,13 @@ EXPECTED = [
     ("roe", "Return on equity", "Profitability", "net_income_common ÷ avg(equity_parent)", "pct"),
     ("roa", "Return on assets", "Profitability", "net_income ÷ avg(total_assets)", "pct"),
     (
+        "invested_capital_usd",
+        "Invested capital",
+        "Profitability",
+        "total_debt + total_equity − cash − short_term_investments",
+        "USD",
+    ),
+    (
         "roic",
         "Return on invested capital",
         "Profitability",
@@ -308,6 +315,14 @@ EXPECTED = [
         "pct",
     ),
     (
+        "enterprise_value_usd",
+        "Enterprise value",
+        "Valuation",
+        "market_cap + total_debt + minority_interest − cash "
+        "(+ temporary_equity − short_term_investments)",
+        "USD",
+    ),
+    (
         "ev_sales",
         "EV/Sales",
         "Valuation",
@@ -392,6 +407,8 @@ def by_code(code: str) -> Ratio:
         ("roe", "net_income_common", "equity_parent", False, True, 1),
         ("roa", "net_income", "total_assets", False, True, 1),
         ("roic", "nopat", "invested_capital", False, True, 1),
+        ("invested_capital_usd", "invested_capital", None, False, False, 1),
+        ("enterprise_value_usd", "enterprise_value", None, False, False, 1),
         ("dupont_equity_multiplier", "total_assets", "equity_parent", True, True, 1),
         (
             "quick_ratio",

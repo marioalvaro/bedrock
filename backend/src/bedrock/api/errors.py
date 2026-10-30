@@ -9,14 +9,26 @@ from bedrock.services.errors import (
     CellNotFound,
     CompanyExists,
     CompanyNotFound,
+    CompsSetNotFound,
     CustomRuleNotFound,
+    GuidanceNotFound,
+    ImportNotFound,
     InvalidAdjustment,
+    InvalidCompsSet,
     InvalidCustomRule,
     InvalidFormula,
+    InvalidGuidance,
+    InvalidImport,
+    InvalidNote,
     InvalidOffBalanceItem,
+    InvalidSeries,
+    InvalidStatementImport,
     InvalidThreshold,
+    NoteNotFound,
     OffBalanceItemNotFound,
+    RatioCellNotFound,
     RuleNotFound,
+    SeriesNotFound,
     user_message,
 )
 
@@ -24,6 +36,7 @@ _STATUS: dict[type[Exception], int] = {
     CompanyNotFound: 404,
     UnknownTicker: 404,
     CellNotFound: 404,
+    RatioCellNotFound: 404,
     AdjustmentNotFound: 404,
     InvalidAdjustment: 422,
     RuleNotFound: 404,
@@ -33,6 +46,15 @@ _STATUS: dict[type[Exception], int] = {
     CustomRuleNotFound: 404,
     InvalidFormula: 422,
     InvalidCustomRule: 422,
+    SeriesNotFound: 404,
+    InvalidSeries: 422,
+    CompsSetNotFound: 404,
+    InvalidCompsSet: 422,
+    GuidanceNotFound: 404,
+    InvalidGuidance: 422,
+    NoteNotFound: 404,
+    ImportNotFound: 404,
+    InvalidNote: 422,
     CompanyExists: 409,
     SourceNotConfigured: 503,
     SourceUnavailable: 502,
@@ -45,5 +67,32 @@ def register_error_handlers(app: FastAPI) -> None:
             status_code=_STATUS[type(error)], content={"detail": user_message(error)}
         )
 
+    async def handle_import(_: Request, error: Exception) -> JSONResponse:
+        assert isinstance(error, InvalidImport)
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": user_message(error),
+                "errors": [
+                    {"row": i.row, "column": i.column, "message": i.message} for i in error.issues
+                ],
+            },
+        )
+
+    async def handle_statement_import(_: Request, error: Exception) -> JSONResponse:
+        assert isinstance(error, InvalidStatementImport)
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": user_message(error),
+                "errors": [
+                    {"sheet": i.sheet, "row": i.row, "column": i.column, "message": i.message}
+                    for i in error.issues
+                ],
+            },
+        )
+
     for error_type in _STATUS:
         app.add_exception_handler(error_type, handle)
+    app.add_exception_handler(InvalidImport, handle_import)
+    app.add_exception_handler(InvalidStatementImport, handle_statement_import)

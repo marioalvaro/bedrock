@@ -1,5 +1,6 @@
 # Canonical line items. File order is display order, each subtotal above its breakdown. `concepts` are filled per company by the map-xbrl skill (M1 S3).
 # Format and rules: docs/erd/data.md, "Canonical mapping file".
+items:
 - code: revenue
   statement: IS
   label: Revenue
@@ -419,7 +420,7 @@
   sign: 1
   parent: total_current_liabilities
   concepts:
-    - us-gaap:DebtCurrent
+    - us-gaap:DebtCurrent + us-gaap:FinanceLeaseLiabilityCurrent + us-gaap:CapitalLeaseObligationsCurrent
   residual: false
 - code: deferred_revenue_current
   statement: BS
@@ -470,7 +471,7 @@
   sign: 1
   parent: total_noncurrent_liabilities
   concepts:
-    - us-gaap:LongTermDebtNoncurrent
+    - us-gaap:LongTermDebtNoncurrent + us-gaap:FinanceLeaseLiabilityNoncurrent + us-gaap:CapitalLeaseObligationsNoncurrent
   residual: false
 - code: operating_lease_liabilities_noncurrent
   statement: BS
@@ -619,6 +620,27 @@
   concepts:
     - us-gaap:CommonStockSharesOutstanding
   residual: false
+- code: shares_issued
+  statement: BS
+  label: Shares issued
+  kind: instant
+  unit: shares
+  sign: 1
+  parent: null
+  concepts:
+    - us-gaap:CommonStockSharesIssued
+  residual: false
+- code: treasury_shares
+  statement: BS
+  label: Treasury shares
+  kind: instant
+  unit: shares
+  sign: 1
+  parent: null
+  concepts:
+    - us-gaap:TreasuryStockCommonShares
+    - us-gaap:TreasuryStockShares
+  residual: false
 - code: cfo
   statement: CF
   label: Cash from operations
@@ -685,6 +707,7 @@
   parent: cfo
   concepts:
     - us-gaap:IncreaseDecreaseInAccountsReceivable
+    - us-gaap:IncreaseDecreaseInReceivables
   residual: false
 - code: change_inventory
   statement: CF
@@ -804,7 +827,7 @@
   sign: 1
   parent: cff
   concepts:
-    - us-gaap:ProceedsFromIssuanceOfLongTermDebt
+    - us-gaap:ProceedsFromIssuanceOfLongTermDebt + us-gaap:ProceedsFromShortTermDebt
     - us-gaap:ProceedsFromDebtMaturingInMoreThanThreeMonths
   residual: false
 - code: debt_repaid
@@ -815,7 +838,7 @@
   sign: -1
   parent: cff
   concepts:
-    - us-gaap:RepaymentsOfLongTermDebt
+    - us-gaap:RepaymentsOfLongTermDebt + us-gaap:RepaymentsOfShortTermDebt
     - us-gaap:RepaymentsOfDebtMaturingInMoreThanThreeMonths
   residual: false
 - code: buybacks
@@ -884,3 +907,30 @@
   concepts: []
   derive: cfo + capex
   residual: false
+
+# Accounting identities that fill an empty term from the others (docs/erd/data.md, "R1: identities").
+# Equations are in displayed values. Only terms under `solve` may be solved; modes: zero_only (the
+# result must be about 0 and is stored as an inferred 0), exact (a complete accounting definition),
+# bounded (|result| <= max_ratio x the largest other term).
+identities:
+  - id: cash_rollforward
+    equation: net_change_in_cash = cfo + cfi + cff + fx_effect
+    solve: {fx_effect: {mode: bounded, max_ratio: 0.05}}
+  - id: gross_profit
+    equation: gross_profit = revenue - cost_of_revenue
+    solve: {cost_of_revenue: {mode: exact}}
+  - id: equity_split
+    equation: total_equity = equity_parent + nci
+    solve: {nci: {mode: zero_only}, equity_parent: {mode: exact}}
+  - id: net_income_split
+    equation: net_income = net_income_common + net_income_nci
+    solve: {net_income_nci: {mode: zero_only}}
+  - id: balance_sheet
+    equation: total_liabilities_and_equity = total_liabilities + temporary_equity + total_equity
+    solve: {temporary_equity: {mode: zero_only}}
+  - id: total_assets_equals_le
+    equation: total_assets = total_liabilities_and_equity
+    solve: {total_assets: {mode: exact}, total_liabilities_and_equity: {mode: exact}}
+  - id: shares_outstanding_count
+    equation: shares_outstanding = shares_issued - treasury_shares
+    solve: {shares_outstanding: {mode: exact}}

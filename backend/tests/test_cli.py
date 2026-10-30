@@ -16,6 +16,7 @@ from bedrock.ingest.sources import Sources
 from bedrock.models.base import Base
 from bedrock.models.canonical_item import CanonicalItem
 from bedrock.models.company import Company
+from bedrock.services.companies import add_manual_company
 
 from .fakes import FakeEdgar, FakePrices
 from .seed import fake_sources
@@ -165,11 +166,40 @@ def test_refresh_exits_1_when_a_source_fails_but_still_tries_the_rest(
     assert "AAPL" in result.output and "MSFT" in result.output  # both were attempted
 
 
+def _add_manual(db: Path, ticker: str) -> None:
+    engine = make_engine(f"sqlite:///{db}")
+    with Session(engine) as session:
+        add_manual_company(session, ticker, "Manual Co", 12, None)
+    engine.dispose()
+
+
+def test_refresh_all_covers_a_manual_company_without_asking_edgar(
+    cli_db: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _add_manual(cli_db, "ACME")
+    edgar = FakeEdgar(raises=AssertionError("EDGAR was called"))
+    monkeypatch.setattr("bedrock.cli.build_sources", lambda s: Sources(edgar, FakePrices()))
+
+    result = runner.invoke(app, ["refresh", "--all"])
+
+    assert result.exit_code == 0, result.output
+    assert "ACME" in result.output
+
+
+def test_add_of_a_manual_companys_ticker_fails_with_the_reason(cli_db: Path) -> None:
+    _add_manual(cli_db, "AAPL")
+
+    result = runner.invoke(app, ["add", "AAPL"])
+
+    assert result.exit_code == 1
+    assert "already followed" in result.output
+
+
 def test_sync_mappings_stores_the_canonical_items(cli_db: Path) -> None:
     result = runner.invoke(app, ["sync-mappings"])
 
     assert result.exit_code == 0, result.output
     engine = make_engine(f"sqlite:///{cli_db}")
     with Session(engine) as session:
-        assert session.execute(select(func.count()).select_from(CanonicalItem)).scalar_one() == 82
+        assert session.execute(select(func.count()).select_from(CanonicalItem)).scalar_one() == 84
     engine.dispose()

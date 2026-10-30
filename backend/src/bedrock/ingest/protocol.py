@@ -21,7 +21,7 @@ class SourceNotConfigured(Exception):
 @dataclass(frozen=True)
 class CompanyRef:
     ticker: str
-    cik: str
+    cik: str | None  # None for a manual company, which has no SEC filer
 
 
 @dataclass(frozen=True)

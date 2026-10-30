@@ -12,7 +12,9 @@ from bedrock.statements.build import StatementTable
 from bedrock.statements.explain import CellExplanation
 from bedrock.statements.periods import Period
 
-Provenance = Literal["reported", "derived", "normalized"]
+Provenance = Literal[
+    "reported", "derived", "normalized", "zero_inferred", "approximated", "imported"
+]
 
 
 class PeriodOut(BaseModel):
@@ -54,6 +56,8 @@ class RowOut(BaseModel):
     common_size: list[Decimal | None]
     common_size_base: str | None
     adjustable: bool  # a normalization adjustment may target this line
+    custom: bool  # a custom line, or the `Other` row of a custom breakdown
+    parent: str | None  # the line a custom row sits under
 
 
 class BalanceCheckOut(BaseModel):
@@ -103,6 +107,8 @@ class StatementOut(BaseModel):
                     common_size=r.common_size,
                     common_size_base=r.common_size_base,
                     adjustable=r.adjustable,
+                    custom=r.custom,
+                    parent=r.parent,
                 )
                 for r in table.rows
             ],
@@ -213,6 +219,12 @@ class MissingItemOut(BaseModel):
     missing_periods: list[str]
 
 
+class ConceptClassificationOut(BaseModel):
+    type: str  # disclosure | component | rejected | scope | candidate
+    reason: str
+    codes: list[str]  # the canonical codes the verdict is about; empty for a disclosure
+
+
 class UnmappedConceptOut(BaseModel):
     taxonomy: str
     concept: str
@@ -221,11 +233,50 @@ class UnmappedConceptOut(BaseModel):
     latest_period_end: date
     facts: int
     suggested_codes: list[str]  # canonical codes it might belong to: a hint, not a mapping
+    classification: ConceptClassificationOut | None  # the triage verdict; null while undecided
+
+
+class ProvenanceCountsOut(BaseModel):
+    reported: int
+    derived: int
+    zero_inferred: int
+    approximated: int
+    imported: int
+
+
+class CauseCountsOut(BaseModel):
+    no_filing_data: int  # the statement has no data at all in the period
+    structural: int  # the company maps no concept to the line and it has no formula
+    rule_rejected: int  # a rule produced a value that a guard refused
+    not_reported: int  # everything else
+
+
+class CoverageOut(BaseModel):
+    statement: Literal["IS", "BS", "CF"]
+    freq: Literal["annual", "quarterly"]
+    cells: int
+    filled: int
+    # filled / (cells - no_filing_data) as a fraction; null when there is nothing to cover
+    fraction: Decimal | None
+    by_provenance: ProvenanceCountsOut
+    empty_by_cause: CauseCountsOut
+
+
+class RuleWarningOut(BaseModel):
+    rule: str
+    code: str
+    label: str
+    unit: str  # of the line, for `value`
+    period_key: str
+    value: Decimal | None  # the refused value; null when a guard refused to solve
+    reason: str
 
 
 class MappingGapsOut(BaseModel):
     missing_items: list[MissingItemOut]
     unmapped_concepts: list[UnmappedConceptOut]
+    coverage: list[CoverageOut]
+    rule_warnings: list[RuleWarningOut]
 
     @classmethod
     def from_gaps(cls, gaps: MappingGaps) -> "MappingGapsOut":
@@ -248,7 +299,40 @@ class MappingGapsOut(BaseModel):
                     latest_period_end=u.latest_period_end,
                     facts=u.facts,
                     suggested_codes=u.suggested_codes,
+                    classification=(
+                        ConceptClassificationOut(
+                            type=u.classification.type,
+                            reason=u.classification.reason,
+                            codes=list(u.classification.codes),
+                        )
+                        if u.classification is not None
+                        else None
+                    ),
                 )
                 for u in gaps.unmapped_concepts
+            ],
+            coverage=[
+                CoverageOut(
+                    statement=c.statement,
+                    freq=c.freq,
+                    cells=c.cells,
+                    filled=c.filled,
+                    fraction=c.fraction,
+                    by_provenance=ProvenanceCountsOut(**c.by_provenance),
+                    empty_by_cause=CauseCountsOut(**c.empty_by_cause),
+                )
+                for c in gaps.coverage
+            ],
+            rule_warnings=[
+                RuleWarningOut(
+                    rule=w.warning.rule,
+                    code=w.warning.code,
+                    label=w.label,
+                    unit=w.unit,
+                    period_key=w.warning.period_key,
+                    value=w.warning.value,
+                    reason=w.warning.reason,
+                )
+                for w in gaps.rule_warnings
             ],
         )

@@ -1,0 +1,124 @@
+# One verdict per concept that an open table suggests for a Bedrock code and that no default maps
+# (FR-DATA-13, docs/erd/data.md "Unmapped concept triage and debt definitions"). Concept names are
+# the same for every filer, so a verdict holds for all companies. Data gaps lists the concepts with
+# no verdict here; the classified ones sit behind "Show classified".
+#
+#   disclosure  a note schedule, never a statement line (codes optional)
+#   component   part of a line; the line is mapped (or waits for a parent item) on its own
+#   rejected    a different measure from the code it is suggested for
+#   scope       a total of a different scope, kept for the identity solver, not mapped
+#   candidate   not yet decided (none ships: each was verified with map-xbrl and mapped or reclassified)
+#
+# Covers every unmapped concept with a suggestion in the latest 10-K of AAPL, MSFT, COST and DE
+# (classified 2026-10-25). Figures in the reasons are the latest fiscal year of the fixtures.
+# A concept that is a default of an item cannot be listed (the loader rejects it).
+
+# --- note schedules -------------------------------------------------------------------------
+AvailableForSaleSecuritiesDebtMaturitiesAfterFiveThroughTenYearsFairValue:
+  {type: disclosure, reason: "investments-note maturity bucket (Costco 265), not a balance-sheet line"}
+AvailableForSaleSecuritiesDebtMaturitiesWithoutSingleMaturityDateFairValue:
+  {type: disclosure, reason: "investments-note maturity bucket (Deere 234), not a balance-sheet line"}
+FinanceLeaseLiabilityUndiscountedExcessAmount:
+  {type: disclosure, reason: "lease maturity note: the interest included in the lease payments, not a liability line"}
+InventoryLIFOReserve:
+  {type: disclosure, reason: "inventory-note LIFO adjustment (Deere 2,721), not a balance-sheet line"}
+LongTermDebtMaturitiesRepaymentsOfPrincipalAfterYearFive:
+  {type: disclosure, reason: "debt maturity schedule, not a balance-sheet line"}
+LongTermDebtMaturitiesRepaymentsOfPrincipalInNextTwelveMonths:
+  {type: disclosure, reason: "debt maturity schedule (principal due within a year), not the current debt line"}
+LongTermDebtMaturitiesRepaymentsOfPrincipalInYearFive:
+  {type: disclosure, reason: "debt maturity schedule, not a balance-sheet line"}
+LongTermDebtMaturitiesRepaymentsOfPrincipalInYearFour:
+  {type: disclosure, reason: "debt maturity schedule, not a balance-sheet line"}
+LongTermDebtMaturitiesRepaymentsOfPrincipalInYearThree:
+  {type: disclosure, reason: "debt maturity schedule, not a balance-sheet line"}
+LongTermDebtMaturitiesRepaymentsOfPrincipalInYearTwo:
+  {type: disclosure, reason: "debt maturity schedule, not a balance-sheet line"}
+
+# --- components of a line ---------------------------------------------------------------------
+BuildingsAndImprovementsGross:
+  {type: component, codes: [ppe_net], reason: "gross property component of the PP&E note, before accumulated depreciation"}
+ConstructionInProgressGross:
+  {type: component, codes: [ppe_net], reason: "gross property component of the PP&E note, before accumulated depreciation"}
+FixturesAndEquipmentGross:
+  {type: component, codes: [ppe_net], reason: "gross property component of the PP&E note, before accumulated depreciation"}
+FurnitureAndFixturesGross:
+  {type: component, codes: [ppe_net], reason: "gross property component of the PP&E note, before accumulated depreciation"}
+LeaseholdImprovementsGross:
+  {type: component, codes: [ppe_net], reason: "gross property component of the PP&E note, before accumulated depreciation"}
+Land:
+  {type: component, codes: [ppe_net], reason: "gross property component of the PP&E note, before accumulated depreciation"}
+DebtInstrumentUnamortizedDiscountPremiumAndDebtIssuanceCostsNet:
+  {type: component, codes: [long_term_debt, short_term_debt], reason: "the discount and issuance-cost deduction inside the debt carrying amount, not a balance-sheet line"}
+EquitySecuritiesWithoutReadilyDeterminableFairValueAmount:
+  {type: component, codes: [long_term_investments], reason: "investments-note component (Microsoft 12,400), part of the investment lines rather than a line of its own"}
+FinanceLeaseInterestExpense:
+  {type: component, codes: [interest_expense], reason: "lease-note part of interest expense, which is mapped as the whole line"}
+GeneralAndAdministrativeExpense:
+  {type: component, codes: [sga], reason: "half of selling, general and administrative; Apple reports the total (S&M 19,524 + G&A 8,077 = 27,601), Microsoft's override sums the two"}
+SellingAndMarketingExpense:
+  {type: component, codes: [sga], reason: "half of selling, general and administrative; Apple reports the total (S&M 19,524 + G&A 8,077 = 27,601), Microsoft's override sums the two"}
+HeldToMaturitySecurities:
+  {type: component, codes: [long_term_investments], reason: "investments-note component of Costco's investment lines (298), not a balance-sheet line"}
+RestrictedInvestments:
+  {type: component, codes: [long_term_investments], reason: "investments-note component (Microsoft 11,300), not a balance-sheet line"}
+IncomeLossFromContinuingOperationsBeforeIncomeTaxesDomestic:
+  {type: component, codes: [pretax_income], reason: "domestic part of income before taxes in the tax note (Deere 2,700 of 6,257); pretax_income is the total"}
+IncreaseDecreaseInOtherReceivables:
+  {type: component, codes: [change_receivables], reason: "Apple's separate cash-flow line for vendor non-trade receivables, next to accounts receivable; receivables is accounts receivable alone, as on the balance sheet"}
+InventoryFinishedGoodsNetOfReserves:
+  {type: component, codes: [inventory], reason: "component of inventories in the inventory note; the total is mapped"}
+InventoryRawMaterialsAndSuppliesNetOfReserves:
+  {type: component, codes: [inventory], reason: "component of inventories in the inventory note; the total is mapped"}
+InventoryWorkInProcessNetOfReserves:
+  {type: component, codes: [inventory], reason: "component of inventories in the inventory note; the total is mapped"}
+OperatingLeaseLeaseIncomeLeasePayments:
+  {type: component, codes: [revenue], reason: "lease income of Deere's equipment on operating leases (1,472), a part of revenue; revenue is the total line"}
+OtherCostOfOperatingRevenue:
+  {type: component, codes: [cost_of_revenue], reason: "cost-of-revenue note component (Deere 82), not the cost of sales line"}
+ProceedsFromMaturitiesPrepaymentsAndCallsOfAvailableForSaleSecurities:
+  {type: component, codes: [sales_maturities_of_investments], reason: "the maturities line of the two that make this item; Microsoft's sales line is a custom tag companyfacts omits, so the maturities alone would be partial (Apple sums both)"}
+TemporaryEquityNetIncome:
+  {type: component, codes: [net_income_nci], reason: "net income of Deere's redeemable noncontrolling interest (-31), part of the income attributable to noncontrolling interests, not income to common"}
+
+# --- a different measure ----------------------------------------------------------------------
+CapitalExpendituresIncurredButNotYetPaid:
+  {type: rejected, codes: [capex], reason: "non-cash disclosure of capital expenditures not yet paid, not the cash paid"}
+ComprehensiveIncomeNetOfTaxAttributableToNoncontrollingInterest:
+  {type: rejected, codes: [net_income_nci], reason: "comprehensive income of the noncontrolling interests (it includes other comprehensive income), not their net income"}
+FIFOInventoryAmount:
+  {type: rejected, codes: [inventory], reason: "inventory-note figure before the LIFO reserve (Deere 10,127 against 7,406 on the balance sheet)"}
+GoodwillImpairedAccumulatedImpairmentLoss:
+  {type: rejected, codes: [goodwill], reason: "accumulated impairment disclosed in the goodwill note (Microsoft 11,300), not the goodwill balance"}
+IncomeLossAttributableToParent:
+  {type: rejected, codes: [net_income_common], reason: "income before taxes attributable to the parent (Costco 12,251 in FY2026, equal to pretax income every year), not net income (9,226); checked with map-xbrl 2026-10-25"}
+IncreaseDecreaseInIncomeTaxesPayableNetOfIncomeTaxesReceivable:
+  {type: rejected, codes: [change_receivables], reason: "change in income taxes payable or receivable, a separate cash-flow line, not trade receivables"}
+InterestPaid:
+  {type: rejected, codes: [interest_expense], reason: "cash paid for interest (a supplemental disclosure), not the expense"}
+InterestPaidNet:
+  {type: rejected, codes: [interest_expense], reason: "cash paid for interest, net of amounts capitalized (a supplemental disclosure), not the expense"}
+PropertySubjectToOrAvailableForOperatingLeaseAccumulatedDepreciation:
+  {type: rejected, codes: [inventory], reason: "accumulated depreciation of Deere's equipment on operating leases (note), not inventory"}
+PropertySubjectToOrAvailableForOperatingLeaseGross:
+  {type: rejected, codes: [ppe_net], reason: "gross equipment on operating leases (Deere 9,270), a note figure; the equipment is its own asset line, not property and equipment"}
+PropertySubjectToOrAvailableForOperatingLeaseNet:
+  {type: rejected, codes: [inventory], reason: "Deere's 'Equipment on operating leases - net' (7,600) is its own asset line, not inventory"}
+TemporaryEquityForeignCurrencyTranslationAdjustments:
+  {type: rejected, codes: [net_income_nci], reason: "translation adjustment in the redeemable noncontrolling interest's roll-forward, not its net income"}
+
+# --- totals of a different scope (kept for the identity solver) --------------------------------
+AccountsPayableAndAccruedLiabilitiesCurrentAndNoncurrent:
+  {type: scope, codes: [accounts_payable], reason: "Deere's one balance-sheet line for payables plus accruals (13,909); it waits for parent items, which split a combined line"}
+AvailableForSaleSecuritiesDebtSecurities:
+  {type: scope, codes: [short_term_investments, long_term_investments], reason: "investments-note total of debt securities, spanning more than one balance-sheet investment line"}
+DebtInstrumentCarryingAmount:
+  {type: scope, codes: [long_term_debt, short_term_debt], reason: "debt-note carrying amount of the notes, current and non-current together"}
+IncreaseDecreaseInAccountsPayableAndAccruedLiabilities:
+  {type: scope, codes: [change_payables], reason: "Deere's cash-flow line combines payables with accruals; it waits for parent items"}
+LongTermDebt:
+  {type: scope, codes: [long_term_debt], reason: "total long-term debt including its current portion; long_term_debt is the non-current line"}
+OperatingLeaseLiability:
+  {type: scope, codes: [operating_lease_liabilities_noncurrent], reason: "current plus non-current operating lease liability; the canonical line is the non-current one"}
+TransfersAccountedForAsSecuredBorrowingsAssociatedLiabilitiesCarryingAmount:
+  {type: scope, codes: [long_term_debt, short_term_debt], reason: "Deere's securitization-note liability (6,611), spanning its short- and long-term borrowings lines"}

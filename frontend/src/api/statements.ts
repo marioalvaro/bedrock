@@ -22,9 +22,18 @@ export const statementQueryOptions = (
   commonSizeBase: CommonSizeBase = "total",
   // Sent as `basis` and part of the query key.
   basis: Basis = "reported",
-) =>
-  queryOptions({
-    queryKey: [...companyKey(ticker), "statements", type, freq, commonSizeBase, basis],
+) => {
+  // Everything before the frequency: same company, same statement.
+  const scope = [...companyKey(ticker), "statements", type];
+  return queryOptions({
+    queryKey: [...scope, freq, commonSizeBase, basis],
+    // While another frequency, base or basis loads, keep showing the previous one of the same
+    // statement, so the grid is not unmounted and rebuilt (its width, height and scroll jump).
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey.length === scope.length + 3 &&
+      scope.every((part, index) => previousQuery.queryKey[index] === part)
+        ? previous
+        : undefined,
     queryFn: async () => {
       const statement = await unwrap(
         getStatementApiV1CompaniesTickerStatementsGet({
@@ -40,6 +49,7 @@ export const statementQueryOptions = (
       return statement;
     },
   });
+};
 
 export const cellDetailQueryOptions = (
   ticker: string,
@@ -65,7 +75,12 @@ export const mappingGapsQueryOptions = (ticker: string) =>
       const gaps = await unwrap(
         getMappingGapsApiV1CompaniesTickerMappingGapsGet({ path: { ticker } }),
       );
-      if (!Array.isArray(gaps?.missing_items) || !Array.isArray(gaps?.unmapped_concepts)) {
+      if (
+        !Array.isArray(gaps?.missing_items) ||
+        !Array.isArray(gaps?.unmapped_concepts) ||
+        !Array.isArray(gaps?.coverage) ||
+        !Array.isArray(gaps?.rule_warnings)
+      ) {
         throw new ApiError(200, "Unexpected response");
       }
       return gaps;

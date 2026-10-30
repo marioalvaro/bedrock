@@ -1,6 +1,6 @@
 """Statement tables: periods as columns, canonical items as rows. Pure."""
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Literal
@@ -8,15 +8,17 @@ from typing import Literal
 import pandas as pd
 
 from bedrock.mapping.config import CanonicalItemDef, is_adjustable
-from bedrock.statements.cells import EMPTY, Cell, CellKey, Provenance, compute_cells
+from bedrock.statements.cell_types import EMPTY, Cell, CellKey, Provenance, RuleWarning
+from bedrock.statements.cells import solve_cells
+from bedrock.statements.imports import company_calendar
 from bedrock.statements.normalize import AdjustmentLike, apply_adjustments
 from bedrock.statements.periods import (
     Period,
     annual_periods,
-    fiscal_calendar,
     quarterly_periods,
     ttm_windows,
 )
+from bedrock.statements.rules import BALANCE_FLOOR, BALANCE_RELATIVE, NO_RULES, Rules
 
 Freq = Literal["annual", "quarterly", "ttm"]
 CommonSizeBase = Literal["total", "parent"]
@@ -35,6 +37,8 @@ class Row:
     common_size: list[Decimal | None]
     common_size_base: str | None = None  # label of the row `common_size` divides by
     adjustable: bool = False  # a normalization adjustment may target this line
+    custom: bool = False  # a custom line, or the `Other` row of a custom breakdown
+    parent: str | None = None  # the line a custom row sits under; None for a canonical line
 
 
 @dataclass(frozen=True)
@@ -52,11 +56,13 @@ class StatementTable:
     rows: list[Row]
     balance_check: list[BalanceCheck] | None
     warnings: list[str]
+    # rules whose result a guard refused (the same list on every table of one company)
+    rule_warnings: tuple[RuleWarning, ...] = ()
 
 
+OTHER_PREFIX = "other:"
 RATIO_PLACES = Decimal("0.000001")
-BALANCE_FLOOR = Decimal(1_000_000)
-BALANCE_RELATIVE = Decimal("0.00001")
+TTM_EPS_CODES = frozenset({"eps_basic", "eps_diluted"})
 
 
 def build_statement(
@@ -66,18 +72,20 @@ def build_statement(
     freq: Freq,
     common_size_base: CommonSizeBase = "total",
     adjustments: Sequence[AdjustmentLike] = (),
+    rules: Rules = NO_RULES,
 ) -> StatementTable:
-    """Evaluation order: discrete periods -> formulas -> adjustments (normalized basis) -> TTM ->
-    YoY / common-size.
+    """Evaluation order: discrete periods -> formulas and rules (`solve_cells`) -> adjustments
+    (normalized basis) -> TTM -> YoY / common-size.
 
     Common-size divides every row by one base row of the same period: `total` is revenue (IS, CF)
     or total assets (BS); `parent` is the row's parent, and a row without one uses the total."""
     if statement == "BS" and freq == "ttm":
         raise ValueError("TTM is only defined for flow statements, not the balance sheet")
-    calendar = fiscal_calendar(frame)
-    cells = compute_cells(frame, items, calendar)
+    calendar = company_calendar(frame, rules.imported)
+    solved = solve_cells(frame, items, calendar, rules)
+    cells = solved.cells
     if adjustments:
-        cells, _ = apply_adjustments(cells, items, adjustments, calendar)
+        cells, _ = apply_adjustments(cells, items, adjustments, calendar, rules.identities)
     if freq == "annual":
         periods = annual_periods(calendar)
     elif freq == "quarterly":
@@ -93,27 +101,115 @@ def build_statement(
 
     by_code = {i.code: i for i in items}
     total = by_code.get("total_assets" if statement == "BS" else "revenue")
-    rows = [
-        _row(item, periods, cells, by_code, _base_item(item, by_code, total, common_size_base))
-        for item in items
-        if item.statement == statement
-    ]
+    shown = [i for i in items if i.statement == statement]
+    others = _other_items(shown)
+    for other in others.values():
+        for p in periods:
+            cells[(other.code, p.key)] = _other_cell(other, shown, p.key, cells)
+        by_code[other.code] = other
+    rows = _with_others(
+        shown,
+        others,
+        lambda item: _row(
+            item, periods, cells, by_code, _base_item(item, by_code, total, common_size_base)
+        ),
+    )
     balance = _balance_check(periods, cells) if statement == "BS" else None
-    return StatementTable(statement, freq, periods, rows, balance, list(calendar.warnings))
+    return StatementTable(
+        statement, freq, periods, rows, balance, list(calendar.warnings), solved.warnings
+    )
+
+
+def _other_items(shown: Sequence[CanonicalItemDef]) -> dict[str, CanonicalItemDef]:
+    """The `Other <label>` row of every line that has custom lines under it, by the parent's code
+    (`other:<parent code>`): the part of the line its breakdown does not name."""
+    parents = {i.parent for i in shown if i.custom}
+    return {
+        item.code: CanonicalItemDef(
+            f"{OTHER_PREFIX}{item.code}",
+            item.statement,
+            f"Other {item.label}",
+            item.kind,
+            item.unit,
+            item.sign,
+            item.code,
+            (),
+            None,
+            False,
+            (),
+            custom=True,
+        )
+        for item in shown
+        if item.code in parents
+    }
+
+
+def _other_cell(
+    other: CanonicalItemDef, shown: Sequence[CanonicalItemDef], key: str, cells: dict[CellKey, Cell]
+) -> Cell:
+    """The parent less the custom lines under it that have a value; empty when the parent or all
+    of them are."""
+    parent = cells.get((other.parent or "", key), EMPTY).value
+    parts = [
+        v
+        for i in shown
+        if i.custom and i.parent == other.parent
+        if (v := cells.get((i.code, key), EMPTY).value) is not None
+    ]
+    if parent is None or not parts:
+        return EMPTY
+    return Cell(parent - sum(parts, Decimal(0)), "derived")
+
+
+def _with_others(
+    shown: Sequence[CanonicalItemDef],
+    others: dict[str, CanonicalItemDef],
+    make: Callable[[CanonicalItemDef], Row],
+) -> list[Row]:
+    """The rows of `shown` in order, each `Other` row after the last line of its breakdown."""
+    by_code = {i.code: i for i in shown}
+
+    def under(item: CanonicalItemDef, ancestor: str) -> bool:
+        while item.parent is not None:
+            if item.parent == ancestor:
+                return True
+            parent = by_code.get(item.parent)
+            if parent is None:
+                return False
+            item = parent
+        return False
+
+    rows: list[Row] = []
+    open_breakdowns: list[str] = []
+    for item in shown:
+        while open_breakdowns and not under(item, open_breakdowns[-1]):
+            rows.append(make(others[open_breakdowns.pop()]))
+        rows.append(make(item))
+        if item.code in others:
+            open_breakdowns.append(item.code)
+    while open_breakdowns:
+        rows.append(make(others[open_breakdowns.pop()]))
+    return rows
 
 
 def _ttm_cell(item: CanonicalItemDef, quarter_keys: list[str], cells: dict[CellKey, Cell]) -> Cell:
-    if item.kind != "flow":
+    """The sum of the last four discrete quarters: flows, and the two EPS lines (market convention:
+    the sum of the quarterly EPS). Other average items have no TTM."""
+    if item.kind != "flow" and item.code not in TTM_EPS_CODES:
         return EMPTY
-    values = [cells.get((item.code, key), EMPTY).value for key in quarter_keys]
-    if any(v is None for v in values):
+    quarters = [cells.get((item.code, key), EMPTY) for key in quarter_keys]
+    if any(q.value is None for q in quarters):
         return EMPTY
-    normalized = any(
-        cells.get((item.code, key), EMPTY).provenance == "normalized" for key in quarter_keys
-    )
+    provenance = {q.provenance for q in quarters}
     return Cell(
-        sum((v for v in values if v is not None), Decimal(0)),
-        "normalized" if normalized else "derived",
+        sum((q.value for q in quarters if q.value is not None), Decimal(0)),
+        "zero_inferred"
+        if provenance == {"zero_inferred"}
+        else "normalized"
+        if "normalized" in provenance
+        else "approximated"
+        if "approximated" in provenance
+        else "derived",
     )
 
 
@@ -146,6 +242,8 @@ def _row(
         common_size=[_ratio(v, b) for v, b in zip(values, base_values, strict=True)],
         common_size_base=None if base is None else base.label,
         adjustable=is_adjustable(item),
+        custom=item.custom,
+        parent=item.parent if item.custom else None,
     )
 
 

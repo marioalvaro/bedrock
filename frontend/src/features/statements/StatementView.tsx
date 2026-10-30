@@ -10,6 +10,7 @@ import {
   type Freq,
   type StatementType,
 } from "@/api/statements";
+import { noteLinksQueryOptions } from "@/api/context";
 import type { StatementOut } from "@/api/generated/types.gen";
 import { DataGrid, type DataGridHandle } from "@/components/DataGrid";
 import { ProvenanceLegend } from "@/components/ProvenanceLegend";
@@ -26,16 +27,24 @@ import {
 } from "@/lib/format";
 import { downloadText } from "@/lib/download";
 import { useScale, type Scale } from "@/lib/scale";
+import { ImportButton } from "@/features/imports/ImportButton";
 
 import { CellDetailSheet, type CellTarget } from "./CellDetailSheet";
 import {
   canExplain,
+  cellNoteCount,
   csvLabel,
   expandableCodes,
+  lineNoteCount,
+  noteIndex,
+  provenanceClasses,
+  provenanceMark,
   rowUnitHint,
   toGridRows,
   type GridRow,
+  type NoteIndex,
 } from "./grid";
+import { LineNotesSheet, type LineTarget } from "./LineNotesSheet";
 
 const FREQS: { value: Freq; label: string }[] = [
   { value: "annual", label: "Annual" },
@@ -73,7 +82,8 @@ function formatCell(row: GridRow, key: string, scale: Scale): string {
     return row.ok?.[key] ? "✓" : formatValue(value, row.unit, scale);
   }
   if (row.kind === "yoy" || row.kind === "common_size") return formatPercent(value);
-  return formatValue(value, row.unit, scale);
+  const text = formatValue(value, row.unit, scale);
+  return value === null ? text : provenanceMark(row.provenance[key]) + text;
 }
 
 function csvCell(row: GridRow, key: string, scale: Scale): string {
@@ -85,7 +95,9 @@ function csvCell(row: GridRow, key: string, scale: Scale): string {
 function columnDefs(
   payload: StatementOut,
   scale: Scale,
+  notes: NoteIndex,
   onToggle: (code: string) => void,
+  onLineNotes: (row: GridRow) => void,
 ): ColDef<GridRow>[] {
   const labelColumn: ColDef<GridRow> = {
     colId: LABEL_COLUMN,
@@ -121,6 +133,21 @@ function columnDefs(
             <span className={CHEVRON} aria-hidden />
           )}
           <span className="truncate">{data.label}</span>
+          {data.custom && (
+            <span className="text-muted-foreground border-border shrink-0 rounded border px-1 text-[10px] leading-4">
+              custom
+            </span>
+          )}
+          {lineNoteCount(notes, data) > 0 && (
+            <button
+              type="button"
+              className="text-note-marker cursor-pointer leading-none"
+              aria-label={`Notes on ${data.label}`}
+              onClick={() => onLineNotes(data)}
+            >
+              •
+            </button>
+          )}
           {hint && <span className="text-muted-foreground shrink-0">· {hint}</span>}
         </span>
       );
@@ -139,10 +166,9 @@ function columnDefs(
     cellClass: ({ data }: CellClassParams<GridRow>) => {
       if (!data) return "num";
       const classes = ["num", "ag-right-aligned-cell", ...growthClass(data, period.key)];
-      const provenance = data.provenance[period.key];
-      if (provenance === "derived") classes.push("prov-derived");
-      if (provenance === "normalized") classes.push("prov-normalized");
+      classes.push(...provenanceClasses(data.provenance[period.key]));
       if (canExplain(data, period)) classes.push("cursor-pointer", "hover:underline");
+      if (cellNoteCount(notes, data, period) > 0) classes.push("has-note");
       if (data.kind === "balance_check" && data.ok?.[period.key] === false) {
         classes.push("text-destructive");
       }
@@ -155,7 +181,7 @@ function columnDefs(
 
 interface StatementViewProps {
   ticker: string;
-  cik: string;
+  cik: string | null;
   type: StatementType;
 }
 
@@ -168,11 +194,20 @@ export function StatementView({ ticker, cik, type }: StatementViewProps) {
   const [base, setBase] = useState<CommonSizeBase>("total");
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const [selected, setSelected] = useState<CellTarget | null>(null);
+  const [lineTarget, setLineTarget] = useState<LineTarget | null>(null);
   const scale = useScale();
   const grid = useRef<DataGridHandle>(null);
 
-  const { data, isPending, isError } = useQuery(
+  const { data, isPending, isError, isPlaceholderData } = useQuery(
     statementQueryOptions(ticker, type, freq, base, basis),
+  );
+
+  // The markers are optional: a failed links request leaves the statement without them.
+  const { data: links } = useQuery(noteLinksQueryOptions(ticker));
+  const notes = useMemo(() => noteIndex(links ?? []), [links]);
+  const openLineNotes = useCallback(
+    (row: GridRow) => setLineTarget({ code: row.code, label: row.label }),
+    [],
   );
 
   const toggle = useCallback((code: string) => {
@@ -193,8 +228,8 @@ export function StatementView({ ticker, cik, type }: StatementViewProps) {
     [data, yoy, commonSize, expanded, showEmpty],
   );
   const columns = useMemo(
-    () => (data ? columnDefs(data, scale, toggle) : []),
-    [data, scale, toggle],
+    () => (data ? columnDefs(data, scale, notes, toggle, openLineNotes) : []),
+    [data, scale, notes, toggle, openLineNotes],
   );
 
   function exportCsv() {
@@ -278,16 +313,18 @@ export function StatementView({ ticker, cik, type }: StatementViewProps) {
           {allOpen ? "Collapse all" : "Expand all"}
         </Button>
         <UnitToggle />
-        <Button
-          variant="outline"
-          size="sm"
-          className="ml-auto"
-          aria-label="Download CSV"
-          disabled={!data}
-          onClick={exportCsv}
-        >
-          <Download /> CSV
-        </Button>
+        <span className="ml-auto flex items-center gap-2">
+          <ImportButton ticker={ticker} />
+          <Button
+            variant="outline"
+            size="sm"
+            aria-label="Download CSV"
+            disabled={!data || isPlaceholderData}
+            onClick={exportCsv}
+          >
+            <Download /> CSV
+          </Button>
+        </span>
       </div>
       <div className="px-4 py-1">
         <ProvenanceLegend />
@@ -308,6 +345,7 @@ export function StatementView({ ticker, cik, type }: StatementViewProps) {
               label: row.label,
               unit: row.unit,
               adjustable: row.adjustable,
+              custom: row.custom,
               fiscalYear: period.fiscal_year,
               fiscalPeriod: period.fiscal_period,
             });
@@ -321,6 +359,7 @@ export function StatementView({ ticker, cik, type }: StatementViewProps) {
         scale={scale}
         onClose={() => setSelected(null)}
       />
+      <LineNotesSheet ticker={ticker} target={lineTarget} onClose={() => setLineTarget(null)} />
     </div>
   );
 }

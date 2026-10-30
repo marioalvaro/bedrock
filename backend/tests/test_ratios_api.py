@@ -135,3 +135,112 @@ def test_an_adjustment_moves_normalized_ratios_only_until_it_is_deleted(
     assert aapl_client.delete(f"{ADJUSTMENTS}/{created.json()['id']}").status_code == 204
     restored = get_ratios(aapl_client, freq="annual", basis="normalized")
     assert restored["rows"] == reported["rows"] and restored["periods"] == reported["periods"]
+
+
+# --- ratio cell details ----------------------------------------------------------------------
+
+CELL_PATH = f"{RATIOS_PATH}/cell"
+
+
+def get_cell(client: TestClient, **params: str | int) -> Any:
+    return client.get(CELL_PATH, params=params)
+
+
+def test_a_ratio_cell_explains_its_value_and_inputs(aapl_client: TestClient) -> None:
+    table = get_ratios(aapl_client, freq="annual")
+    period = table["periods"][-1]
+
+    response = get_cell(
+        aapl_client,
+        freq="annual",
+        code="roic",
+        fiscal_year=period["fiscal_year"],
+        fiscal_period="FY",
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["value"] == str(value(table, "roic", period["key"]))
+    assert body["unit"] == "pct" and body["code"] == "roic"
+    assert body["definition"] == "nopat ÷ avg(invested_capital)"
+    assert (body["fiscal_year"], body["fiscal_period"]) == (period["fiscal_year"], "FY")
+    assert body["numerator"]["text"] == "nopat" and body["numerator"]["average"] is False
+    assert body["denominator"]["average"] is True
+    nopat = body["numerator"]["terms"][0]
+    assert (nopat["code"], nopat["kind"]) == ("nopat", "metric")
+    assert {c["code"] for c in nopat["children"]} == {"operating_income", "tax_rate"}
+    assert body["denominator"]["prior_terms"][0]["code"] == "invested_capital"
+    assert body["reason"] is None
+    assert isinstance(nopat["value"], str)
+
+
+def test_a_ratio_cell_follows_the_basis(aapl_client: TestClient) -> None:
+    assert aapl_client.post(ADJUSTMENTS, json=SGA_FY2024).status_code == 201
+    reported = get_cell(
+        aapl_client, freq="annual", code="net_margin", fiscal_year=2024, fiscal_period="FY"
+    ).json()
+    normalized = get_cell(
+        aapl_client,
+        freq="annual",
+        code="net_margin",
+        fiscal_year=2024,
+        fiscal_period="FY",
+        basis="normalized",
+    ).json()
+
+    assert Decimal(normalized["value"]) > Decimal(reported["value"])
+
+
+def test_a_ttm_ratio_cell_is_the_quarter_the_window_ends_at(aapl_client: TestClient) -> None:
+    table = get_ratios(aapl_client, freq="ttm")
+    period = table["periods"][-1]
+
+    body = get_cell(
+        aapl_client,
+        freq="ttm",
+        code="pe",
+        fiscal_year=period["fiscal_year"],
+        fiscal_period=period["fiscal_period"],
+    ).json()
+
+    assert body["value"] == str(value(table, "pe", period["key"]))
+    price = body["numerator"]["terms"][0]["children"][0]
+    assert price["code"] == "price" and price["note"].startswith("close of ")
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"freq": "annual", "code": "ghost", "fiscal_year": 2024, "fiscal_period": "FY"},
+        {"freq": "annual", "code": "roic", "fiscal_year": 1999, "fiscal_period": "FY"},
+        {"freq": "annual", "code": "roic", "fiscal_year": 2024, "fiscal_period": "Q2"},
+    ],
+    ids=["unknown-ratio", "unknown-year", "annual-needs-fy"],
+)
+def test_an_unknown_ratio_cell_is_a_404(aapl_client: TestClient, params: dict[str, Any]) -> None:
+    response = get_cell(aapl_client, **params)
+
+    assert response.status_code == 404
+    assert "No such ratio cell" in response.json()["detail"]
+
+
+@pytest.mark.parametrize(
+    "params",
+    [{"freq": "quarterly"}, {}, {"freq": "annual", "basis": "adjusted"}],
+    ids=["quarterly", "missing-freq", "bad-basis"],
+)
+def test_a_bad_ratio_cell_request_is_a_422(aapl_client: TestClient, params: dict[str, Any]) -> None:
+    base = {"code": "roic", "fiscal_year": 2024, "fiscal_period": "FY"}
+
+    assert get_cell(aapl_client, **base, **params).status_code == 422
+
+
+CELL_PARAMS = {"freq": "annual", "code": "roic", "fiscal_year": 2024, "fiscal_period": "FY"}
+
+
+def test_ratio_cells_require_a_session(client: TestClient) -> None:
+    assert client.get(CELL_PATH, params=CELL_PARAMS).status_code == 401
+
+
+def test_a_ratio_cell_of_an_unfollowed_company_is_a_404(authed_client: TestClient) -> None:
+    assert authed_client.get(CELL_PATH, params=CELL_PARAMS).status_code == 404

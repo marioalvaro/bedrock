@@ -1,6 +1,7 @@
 import { queryOptions, useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 
 import { companyKey } from "@/api/companies";
+import { compsKey, guidanceKey } from "@/api/context";
 import { ApiError, unwrap } from "@/api/errors";
 import {
   createAdjustmentApiV1CompaniesTickerAdjustmentsPost,
@@ -52,8 +53,9 @@ export const corporateActionsQueryOptions = (ticker: string) =>
 
 /**
  * Marks stale everything an adjustment change can move for `ticker`: its statements (every
- * type, frequency and basis), cell details, the adjustments list and the ratios. Nothing else
- * (the company header, the list, the mapping gaps) is touched.
+ * type, frequency and basis), cell details, the adjustments list, the ratios, the guidance log
+ * and the comps comparisons. Nothing else (the company header, the list, the mapping gaps) is
+ * touched.
  */
 export function invalidateAdjustmentViews(queryClient: QueryClient, ticker: string): Promise<void> {
   const prefixes = [
@@ -61,6 +63,8 @@ export function invalidateAdjustmentViews(queryClient: QueryClient, ticker: stri
     [...companyKey(ticker), "cell"],
     adjustmentsKey(ticker),
     ratiosKey(ticker),
+    guidanceKey(ticker),
+    compsKey(ticker),
   ];
   return Promise.all(prefixes.map((queryKey) => queryClient.invalidateQueries({ queryKey }))).then(
     () => undefined,

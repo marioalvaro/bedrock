@@ -4,8 +4,9 @@ Pure apart from reading the YAML files it is given.
 """
 
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
@@ -46,10 +47,38 @@ class CanonicalItemDef:
     residual: bool
     # M2: where a normalization adjustment of this line propagates, as (code, sign)
     rolls_into: tuple[tuple[str, int], ...] = ()
+    # M3 S10c: a child line the user added in an import (`code` is `custom:<slug>`, `parent` a
+    # canonical leaf or another custom line); it has no concept, formula or adjustment
+    custom: bool = False
 
 
 # Memo lines whose charge sits inside another line: adjust that line instead.
 MEMO_CODES = frozenset({"goodwill_impairment"})
+
+# Lines that only feed an identity (R7): a company that does not report them has left nothing out,
+# so Data gaps does not list them.
+SUPPORT_CODES = frozenset({"shares_issued", "treasury_shares"})
+
+SOLVE_MODES = ("zero_only", "exact", "bounded")
+
+
+@dataclass(frozen=True)
+class SolveRule:
+    """How an identity may fill one of its terms (docs/erd/data.md "R1: identities")."""
+
+    mode: str  # zero_only | exact | bounded
+    max_ratio: Decimal | None  # bounded: the largest |result| / largest |other term|
+
+
+@dataclass(frozen=True)
+class IdentityDef:
+    """An accounting identity over canonical items of one statement, in displayed values.
+    `terms` has the equation moved to one side: sum(coefficient * value) = 0, coefficients ±1."""
+
+    id: str
+    equation: str
+    terms: tuple[tuple[int, str], ...]
+    solve: Mapping[str, SolveRule]
 
 
 def split_concept(text: str) -> tuple[str, str]:
@@ -71,13 +100,40 @@ def parse_formula(text: str) -> list[tuple[int, str]]:
     return [(-1 if sign == "-" else 1, code) for sign, code in _TERM.findall(text)]
 
 
-def load_canonical_items(path: Path = DEFAULT_ITEMS_PATH) -> list[CanonicalItemDef]:
+def _read_items_file(path: Path) -> tuple[Any, Any]:
+    """The raw `(items, identities)` of the file: a plain list of items, or a mapping with an
+    `items` list and an optional `identities` list."""
     raw = yaml.safe_load(path.read_text())
+    if isinstance(raw, dict):
+        if set(raw) - {"items", "identities"}:
+            raise MappingConfigError(f"{path.name} takes only `items` and `identities`")
+        return raw.get("items"), raw.get("identities")
+    return raw, None
+
+
+def load_canonical_items(path: Path = DEFAULT_ITEMS_PATH) -> list[CanonicalItemDef]:
+    raw, _ = _read_items_file(path)
     if not isinstance(raw, list):
         raise MappingConfigError(f"{path.name} must be a list of items")
     items = [_item(entry) for entry in raw]
     _validate(items)
     return items
+
+
+def load_identities(path: Path, items: Sequence[CanonicalItemDef]) -> list[IdentityDef]:
+    """The file's `identities:` list, validated against `items`; none for a plain item list."""
+    _, raw = _read_items_file(path)
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise MappingConfigError(f"`identities` in {path.name} must be a list")
+    by_code = {i.code: i for i in items}
+    identities = [_identity(entry, by_code) for entry in raw]
+    ids = [i.id for i in identities]
+    for identity_id in ids:
+        if ids.count(identity_id) > 1:
+            raise MappingConfigError(f"duplicate identity id {identity_id!r}")
+    return identities
 
 
 def load_overrides(
@@ -199,7 +255,8 @@ def is_adjustable(item: CanonicalItemDef) -> bool:
     per-share figures."""
     computed_only = item.derive is not None and not item.concepts and not item.residual
     return (
-        item.unit == "USD"
+        not item.custom
+        and item.unit == "USD"
         and item.kind in ("flow", "instant")
         and not computed_only
         and item.code not in MEMO_CODES
@@ -278,6 +335,82 @@ def _item(entry: Any) -> CanonicalItemDef:
         residual=bool(entry.get("residual", False)),
         rolls_into=_rolls_into(code, entry.get("rolls_into")),
     )
+
+
+def _identity(entry: Any, by_code: dict[str, CanonicalItemDef]) -> IdentityDef:
+    if not isinstance(entry, dict):
+        raise MappingConfigError(f"identity must be a mapping, got {entry!r}")
+    for field in ("id", "equation", "solve"):
+        if field not in entry:
+            raise MappingConfigError(f"identity is missing field {field!r}: {entry!r}")
+    identity_id, equation = entry["id"], entry["equation"]
+    if not isinstance(identity_id, str) or not identity_id or not isinstance(equation, str):
+        raise MappingConfigError(f"identity needs a text `id` and `equation`: {entry!r}")
+    terms = _equation_terms(identity_id, equation)
+    for _, code in terms:
+        if code not in by_code:
+            raise MappingConfigError(f"{identity_id}: unknown code {code!r}", code)
+        if by_code[code].statement != by_code[terms[0][1]].statement:
+            raise MappingConfigError(f"{identity_id}: {code!r} is on another statement", code)
+    if len({code for _, code in terms}) != len(terms):
+        raise MappingConfigError(f"{identity_id}: repeated term in {equation!r}")
+    return IdentityDef(
+        identity_id,
+        equation.strip(),
+        terms,
+        _solve_rules(identity_id, entry["solve"], terms, by_code),
+    )
+
+
+def _equation_terms(identity_id: str, equation: str) -> tuple[tuple[int, str], ...]:
+    sides = equation.split("=")
+    if len(sides) != 2:
+        raise MappingConfigError(f"{identity_id}: malformed equation {equation!r}")
+    try:
+        left, right = (parse_formula(side) for side in sides)
+    except MappingConfigError as error:
+        raise MappingConfigError(f"{identity_id}: malformed equation {equation!r}") from error
+    return tuple([*left, *((-sign, code) for sign, code in right)])
+
+
+def _solve_rules(
+    identity_id: str,
+    raw: Any,
+    terms: tuple[tuple[int, str], ...],
+    by_code: dict[str, CanonicalItemDef],
+) -> dict[str, SolveRule]:
+    if not isinstance(raw, dict) or not raw:
+        raise MappingConfigError(f"{identity_id}: solve must name at least one term")
+    rules: dict[str, SolveRule] = {}
+    for code, spec in raw.items():
+        if code not in {c for _, c in terms}:
+            raise MappingConfigError(f"{identity_id}: solve key {code!r} is not a term", code)
+        if by_code[code].residual:
+            raise MappingConfigError(f"{identity_id}: {code!r} is a residual, never solved", code)
+        if not isinstance(spec, dict) or "mode" not in spec:
+            raise MappingConfigError(f"{identity_id}: solve for {code!r} needs a mode", code)
+        if set(spec) - {"mode", "max_ratio"}:
+            raise MappingConfigError(f"{identity_id}: unknown key in solve for {code!r}", code)
+        if spec["mode"] not in SOLVE_MODES:
+            raise MappingConfigError(f"{identity_id}: unknown mode {spec['mode']!r}", code)
+        rules[code] = SolveRule(spec["mode"], _max_ratio(identity_id, code, spec))
+    return rules
+
+
+def _max_ratio(identity_id: str, code: str, spec: dict[str, Any]) -> Decimal | None:
+    if spec["mode"] != "bounded":
+        return None
+    try:
+        ratio = Decimal(str(spec["max_ratio"]))
+    except (KeyError, InvalidOperation):
+        raise MappingConfigError(
+            f"{identity_id}: bounded needs a positive max_ratio for {code!r}", code
+        ) from None
+    if not ratio.is_finite() or ratio <= 0:
+        raise MappingConfigError(
+            f"{identity_id}: bounded needs a positive max_ratio for {code!r}", code
+        )
+    return ratio
 
 
 def _qualify(code: str, concepts: list[str]) -> list[str]:

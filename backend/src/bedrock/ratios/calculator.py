@@ -168,10 +168,21 @@ class Operands:
             self._memo[key] = self._compute(self._ratios[code], point)
         return self._memo[key]
 
-    def _compute(self, ratio: Ratio, point: Point) -> Decimal | None:
-        numerator, denominator = ratio.numerator, ratio.denominator
+    def definition(self, code: str) -> Ratio:
+        """The ratio `code` (KeyError when there is none)."""
+        return self._ratios[code]
+
+    def has_period(self, point: Point) -> bool:
+        return point in self._ends
+
+    def operands_of(self, ratio: Ratio) -> tuple[str, str | None]:
+        """The numerator and denominator this frequency reads (TTM may replace both)."""
         if self._freq == "ttm" and ratio.ttm is not None:
-            numerator, denominator = ratio.ttm
+            return ratio.ttm
+        return ratio.numerator, ratio.denominator
+
+    def _compute(self, ratio: Ratio, point: Point) -> Decimal | None:
+        numerator, denominator = self.operands_of(ratio)
         num = self.operand(numerator, point, ratio.avg_numerator)
         if num is None:
             return None
@@ -213,16 +224,25 @@ class Operands:
             return metric.fn({name: self.value(name, point) for name in metric.inputs})
         return self.ratio(code, point)
 
+    def period_end(self, point: Point) -> date | None:
+        """The date prices are read at: the period end (the `as_of` date for the latest period)."""
+        return self._ends.get(point)
+
+    def price_close(self, point: Point) -> tuple[date, Decimal] | None:
+        """The close used for `point`: the last on or before its end date."""
+        end = self._ends.get(point)
+        if end is None:
+            return None
+        at = bisect_right(self._prices, end, key=lambda row: row[0])
+        return self._prices[at - 1] if at else None
+
     def _at_point(self, code: str, point: Point) -> Decimal | None:
         """The `at_point` metrics: `price` (last close on or before the period end) and
         `earnings_growth` (net income growth over a year earlier in percentage points, None unless
         both are positive)."""
         if code == "price":
-            end = self._ends.get(point)
-            if end is None:
-                return None
-            at = bisect_right(self._prices, end, key=lambda row: row[0])
-            return self._prices[at - 1][1] if at else None
+            close = self.price_close(point)
+            return None if close is None else close[1]
         now = self._line("net_income_common", point)
         before = self._line("net_income_common", year_earlier(point))
         if now is None or before is None or now <= 0 or before <= 0:

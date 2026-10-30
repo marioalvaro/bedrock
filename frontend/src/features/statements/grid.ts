@@ -1,8 +1,10 @@
 import type { PeriodOut, RowOut, StatementOut } from "@/api/generated/types.gen";
+import { cellNotes, subjectNotes, type NoteIndex } from "@/features/notes/subjects";
 import { scaleLabel } from "@/lib/format";
 import type { Scale } from "@/lib/scale";
 
-export type Provenance = "reported" | "derived" | "normalized";
+export type Provenance =
+  "reported" | "derived" | "normalized" | "zero_inferred" | "approximated" | "imported";
 export type GridRowKind = "line" | "yoy" | "common_size" | "balance_check";
 
 // One AG Grid row. Values stay the API's decimal strings: the grid formats them at
@@ -21,6 +23,7 @@ export interface GridRow {
   parentLabel?: string;
   hasChildren: boolean; // a line item with a breakdown under it
   expanded: boolean; // whether that breakdown is shown
+  custom: boolean; // a line the user added in an import (S10c)
 }
 
 export interface GridOptions {
@@ -98,6 +101,7 @@ function subRow(
     adjustable: false,
     hasChildren: false,
     expanded: false,
+    custom: false,
   };
 }
 
@@ -132,6 +136,7 @@ export function toGridRows(payload: StatementOut, options: GridOptions): GridRow
       adjustable: line.adjustable,
       hasChildren,
       expanded,
+      custom: line.custom,
     });
     if (options.yoy) {
       const yoy = subRow(line, keys, "yoy", "YoY", line.yoy);
@@ -162,16 +167,22 @@ export function toGridRows(payload: StatementOut, options: GridOptions): GridRow
       adjustable: false,
       hasChildren: false,
       expanded: false,
+      custom: false,
     });
   }
 
   return rows;
 }
 
+// The "Other <line>" row of a custom breakdown: parent less its lines, computed by the table.
+const OTHER_PREFIX = "other:";
+
 // A line item's value has details, and an empty cell of an adjustable line opens them too so an
-// adjustment can be added there; the cell endpoint covers FY and Q1..Q4, not TTM.
+// adjustment can be added there; the cell endpoint covers FY and Q1..Q4, not TTM, and not the
+// "Other" row of a custom breakdown (it has no cell of its own).
 export function canExplain(row: GridRow, period: PeriodOut): boolean {
   if (row.kind !== "line" || period.key.startsWith("TTM")) return false;
+  if (row.code.startsWith(OTHER_PREFIX)) return false;
   return row.values[period.key] !== null || row.adjustable;
 }
 
@@ -183,4 +194,43 @@ export function rowUnitHint(unit: string, scale: Scale): string | null {
 // The first CSV column: a sub-row is named after its line item.
 export function csvLabel(row: GridRow): string {
   return row.parentLabel ? `${row.parentLabel} ${row.label}` : row.label;
+}
+
+// The classes a cell's provenance gives its value. Derived and approximated values are not hard
+// facts and share one style, an inferred zero is muted, a normalized value is amber, an imported
+// one (your file, not SEC) is teal; reported is plain.
+export function provenanceClasses(provenance: Provenance | null | undefined): string[] {
+  switch (provenance) {
+    case "derived":
+    case "approximated":
+      return ["prov-derived"];
+    case "zero_inferred":
+      return ["prov-zero"];
+    case "normalized":
+      return ["prov-normalized"];
+    case "imported":
+      return ["prov-imported"];
+    default:
+      return [];
+  }
+}
+
+// An approximated value carries a tilde in front of its number; the CSV export does not.
+export function provenanceMark(provenance: Provenance | null | undefined): string {
+  return provenance === "approximated" ? "~" : "";
+}
+
+// The statement markers read the shared note-links index (`features/notes/subjects.ts`) as the
+// "line" subject kind.
+export { noteIndex, type NoteIndex } from "@/features/notes/subjects";
+
+// Notes on a line item's FY or quarter cell; sub-rows and TTM columns carry no notes.
+export function cellNoteCount(index: NoteIndex, row: GridRow, period: PeriodOut): number {
+  if (row.kind !== "line" || period.key.startsWith("TTM")) return 0;
+  return cellNotes(index, "line", row.code, period.fiscal_year, period.fiscal_period);
+}
+
+// Notes linked to a line item as a whole.
+export function lineNoteCount(index: NoteIndex, row: GridRow): number {
+  return row.kind === "line" ? subjectNotes(index, "line", row.code) : 0;
 }

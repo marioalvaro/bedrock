@@ -8,10 +8,13 @@ import {
   type FirstDataRenderedEvent,
   type GridReadyEvent,
   type CellClickedEvent,
+  type CellValueChangedEvent,
+  type GetRowIdParams,
 } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
-import { useCallback, useImperativeHandle, useMemo, useRef, type Ref } from "react";
+import { useCallback, useImperativeHandle, useMemo, useRef, useState, type Ref } from "react";
 
+import { usePrefersReducedMotion } from "@/lib/motion";
 import { useTheme } from "@/lib/theme";
 
 export interface DataGridHandle {
@@ -22,8 +25,11 @@ export interface DataGridHandle {
 interface DataGridProps<T> {
   rowData: T[];
   columnDefs: ColDef<T>[];
+  // A pure function of the row (the grid reads it once).
   getRowId: (row: T) => string;
   onCellClicked?: (event: CellClickedEvent<T>) => void;
+  // Fires when an editable column's edit is committed with a changed value.
+  onCellValueChanged?: (event: CellValueChangedEvent<T>) => void;
   ref?: Ref<DataGridHandle>;
 }
 
@@ -46,6 +52,13 @@ const gridTheme = (scheme: "light" | "dark") =>
     spacing: 4,
   });
 
+// Module-level, because AG Grid rebuilds every column when this object's identity changes.
+const DEFAULT_COL_DEF: ColDef = {
+  sortable: false,
+  resizable: false,
+  suppressHeaderMenuButton: true,
+};
+
 // AG Grid Community wrapper: pinned first column, every column rendered (statements are
 // small, and it lets jsdom see every cell), theme following the app's, CSV handle.
 export function DataGrid<T>({
@@ -53,12 +66,18 @@ export function DataGrid<T>({
   columnDefs,
   getRowId,
   onCellClicked,
+  onCellValueChanged,
   ref,
 }: DataGridProps<T>) {
   const theme = useTheme();
   const api = useRef<GridApi<T> | null>(null);
 
   const agTheme = useMemo(() => gridTheme(theme), [theme]);
+  const animateRows = !usePrefersReducedMotion();
+
+  // The parent's closure changes on every render, but the row-id function is a pure mapping of
+  // the row: read it once, so AG Grid always sees the same function.
+  const [getAgRowId] = useState(() => (params: GetRowIdParams<T>) => getRowId(params.data));
 
   useImperativeHandle(
     ref,
@@ -81,15 +100,18 @@ export function DataGrid<T>({
       theme={agTheme}
       rowData={rowData}
       columnDefs={columnDefs}
-      getRowId={(params) => getRowId(params.data)}
+      getRowId={getAgRowId}
+      animateRows={animateRows}
       domLayout="autoHeight"
       suppressColumnVirtualisation
       suppressMovableColumns
       suppressCellFocus
-      defaultColDef={{ sortable: false, resizable: false, suppressHeaderMenuButton: true }}
+      defaultColDef={DEFAULT_COL_DEF}
       onGridReady={onGridReady}
       onFirstDataRendered={onFirstDataRendered}
+      stopEditingWhenCellsLoseFocus
       onCellClicked={onCellClicked}
+      onCellValueChanged={onCellValueChanged}
     />
   );
 }

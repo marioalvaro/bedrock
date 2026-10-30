@@ -8,16 +8,20 @@ from decimal import Decimal
 
 import pandas as pd
 
+from bedrock.mapping.config import IdentityDef, SolveRule
 from bedrock.mapping.mapper import map_facts
 from bedrock.mapping.vintage import select_vintage
 from bedrock.statements.build import StatementTable, build_statement
 from bedrock.statements.cells import EMPTY, Cell
 from bedrock.statements.normalize import AppliedAdjustment, apply_adjustments
 from bedrock.statements.periods import Calendar, FiscalYear
+from bedrock.statements.rules import Rules
 from tests.engine_data import Row as FactRow
 from tests.engine_data import fact, facts, flow_facts, fy_dates, instant_facts, item, mappings
 
 D = Decimal
+B = 1_000_000_000
+EXACT = SolveRule("exact", None)
 
 
 @dataclass(frozen=True)
@@ -395,7 +399,8 @@ def test_eps_is_untouched_when_net_income_does_not_change() -> None:
 def test_the_share_counts_are_never_adjusted() -> None:
     quarterly = table("IS", "quarterly", [adj(1, "sga", 2023, "Q2", -5)])
 
-    assert q(quarterly, "shares_diluted") == [10, 10, 10, None]
+    assert q(quarterly, "shares_diluted") == [10, 10, 10, 10]  # Q4 is rebuilt (R2), not adjusted
+    assert provenance(quarterly, "shares_diluted")["FY2023Q4"] == "approximated"
 
 
 # --- the applied map --------------------------------------------------------------------------
@@ -883,3 +888,103 @@ def test_rows_say_which_lines_can_be_adjusted() -> None:
     assert flags["sga"] and flags["revenue"] and flags["other_operating_expenses"]
     assert not flags["total_operating_costs"] and not flags["eps_diluted"]
     assert not flags["shares_diluted"]
+
+
+# --- identity-solved cells (docs/erd/data.md "R1: identities", "Normalized view") ----------
+
+SUM = IdentityDef("sum", "x = y + z", ((1, "x"), (-1, "y"), (-1, "z")), {"z": EXACT})
+
+
+def solved_table(freq: str, *adjustments: Adj) -> StatementTable:
+    """x = y + z, with z empty as reported: the identity solves it. No line rolls into another,
+    so an adjustment to y reaches z only through the re-solve."""
+    items = [item("x"), item("y"), item("z")]
+    maps = mappings(("x", "X", 0), ("y", "Y", 0))
+    quarters = {2023: (10 * B,) * 4}
+    canonical = map_facts(
+        select_vintage(facts([*flow_facts("X", quarters), *flow_facts("Y", {2023: (4 * B,) * 4})])),
+        maps,
+        items,
+    )  # type: ignore[arg-type]
+    return build_statement(
+        canonical, items, "IS", freq, adjustments=adjustments, rules=Rules((SUM,))
+    )
+
+
+def z_row(table: StatementTable) -> dict[str, tuple[Decimal | None, str | None]]:
+    (z,) = [r for r in table.rows if r.code == "z"]
+    keys = [p.key for p in table.periods]
+    return dict(zip(keys, zip(z.values, z.provenance, strict=True), strict=True))
+
+
+def test_an_adjustment_to_an_operand_re_solves_an_exact_cell() -> None:
+    reported = z_row(solved_table("quarterly"))
+    adjusted = z_row(solved_table("quarterly", adj(1, "y", 2023, "Q2", B)))
+
+    assert reported["FY2023Q2"] == (6 * B, "derived")
+    assert adjusted["FY2023Q2"] == (5 * B, "normalized")  # x - (y + 1 B)
+    assert adjusted["FY2023Q1"] == reported["FY2023Q1"]
+
+
+def test_the_quarters_of_a_re_solved_flow_add_up_to_the_year() -> None:
+    for adjustment in (adj(1, "y", 2023, "Q2", B), adj(2, "y", 2023, "FY", 3 * B)):
+        quarterly = z_row(solved_table("quarterly", adjustment))
+        year = z_row(solved_table("annual", adjustment))["FY2023"][0]
+
+        parts = [quarterly[f"FY2023Q{n}"][0] for n in (1, 2, 3, 4)]
+        assert year is not None and None not in parts
+        assert sum(parts) == year  # type: ignore[arg-type]
+        assert year == 24 * B - (B if adjustment.fiscal_period == "Q2" else 3 * B)
+
+
+def test_an_adjustment_that_touches_no_operand_leaves_the_solved_cell_alone() -> None:
+    other = adj(1, "x", 2022, "Q2", B)  # a period the company does not have
+
+    assert z_row(solved_table("quarterly", other)) == z_row(solved_table("quarterly"))
+
+
+def test_an_inferred_zero_stays_zero_when_an_operand_is_adjusted() -> None:
+    items = [
+        item("revenue"),
+        item("total_equity", "BS", kind="instant"),
+        item("equity_parent", "BS", kind="instant"),
+        item("nci", "BS", kind="instant"),
+    ]
+    maps = mappings(
+        ("revenue", "Revenues", 0),
+        ("total_equity", "EquityIncl", 0),
+        ("equity_parent", "Equity", 0),
+    )
+    equity = IdentityDef(
+        "equity",
+        "total_equity = equity_parent + nci",
+        ((1, "total_equity"), (-1, "equity_parent"), (-1, "nci")),
+        {"nci": SolveRule("zero_only", None)},
+    )
+    balances = (50 * B, 60 * B, 70 * B, 80 * B)
+    canonical = map_facts(
+        select_vintage(
+            facts(
+                [
+                    *flow_facts("Revenues", {2023: (B,) * 4}),
+                    *instant_facts("EquityIncl", {2023: balances}),
+                    *instant_facts("Equity", {2023: balances}),
+                ]
+            )
+        ),
+        maps,
+        items,
+    )  # type: ignore[arg-type]
+
+    table = build_statement(
+        canonical,
+        items,
+        "BS",
+        "annual",
+        adjustments=[adj(1, "equity_parent", 2023, "FY", 5 * B)],
+        rules=Rules((equity,)),
+    )
+
+    (nci,) = [r for r in table.rows if r.code == "nci"]
+    assert nci.values == [0]
+    assert nci.provenance == ["zero_inferred"]
