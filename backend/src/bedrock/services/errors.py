@@ -1,3 +1,4 @@
+from bedrock.forecast.errors import ForecastUnavailable
 from bedrock.ingest.manual_import import ImportIssue as FileIssue
 from bedrock.ingest.protocol import SourceNotConfigured, SourceUnavailable, UnknownTicker
 from bedrock.statements.segments import ImportIssue
@@ -114,6 +115,27 @@ class ImportNotFound(Exception):
     unknown)."""
 
 
+class ScenarioNotFound(Exception):
+    """No scenario with this id on the company (another company's id counts as unknown)."""
+
+
+class ScenarioConflict(Exception):
+    """The scenario write clashes with another one: a duplicate name, or deleting Base."""
+
+
+class InvalidScenario(Exception):
+    """The scenario's name or settings break a rule; the message says which."""
+
+
+class InvalidDrivers(Exception):
+    """A driver PUT breaks a rule (unknown code, a year that is not a forecast year, a bound, an
+    offset on Base); the message says which. Nothing was written."""
+
+
+class UnknownLineItem(Exception):
+    """A requested line item code is not a canonical IS, BS or CF line."""
+
+
 # What a use-case can raise on purpose; the API maps these to statuses, the CLI prints them.
 DOMAIN_ERRORS = (
     CompanyNotFound,
@@ -140,6 +162,12 @@ DOMAIN_ERRORS = (
     InvalidStatementImport,
     ImportNotFound,
     NoteNotFound,
+    ScenarioNotFound,
+    ScenarioConflict,
+    InvalidScenario,
+    InvalidDrivers,
+    UnknownLineItem,
+    ForecastUnavailable,
     UnknownTicker,
     SourceNotConfigured,
     SourceUnavailable,
@@ -175,6 +203,10 @@ def user_message(error: Exception) -> str:
             return f"No such note: {error}"
         case ImportNotFound():
             return f"No such import: {error}"
+        case ScenarioNotFound():
+            return f"No such scenario: {error}"
+        case ForecastUnavailable():
+            return error.detail
         case CompanyExists():
             return f"{error} is already followed"
         case SourceNotConfigured():

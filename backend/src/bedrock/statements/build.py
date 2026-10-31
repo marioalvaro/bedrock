@@ -1,7 +1,7 @@
 """Statement tables: periods as columns, canonical items as rows. Pure."""
 
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from typing import Literal
 
@@ -192,6 +192,46 @@ def _with_others(
     return rows
 
 
+def extend_table(
+    table: StatementTable,
+    periods: Sequence[Period],
+    values: Mapping[CellKey, Decimal | None],
+) -> StatementTable:
+    """`table` with forecast `periods` appended (docs/erd/forecasting.md "API" → forecast). Each
+    row takes its value from `values` (null where absent; a non-null value has provenance
+    `forecast`); YoY of a new column runs against the same period one year earlier among all the
+    columns; common size divides by the period's total in `values` (total assets for BS, else
+    revenue); a balance sheet gets the check of each new column. The existing columns are kept
+    as built."""
+    added = list(periods)
+    combined = table.periods + added
+    position = {(p.fiscal_year, p.fiscal_period): i for i, p in enumerate(combined)}
+    total = "total_assets" if table.statement == "BS" else "revenue"
+    rows = []
+    for row in table.rows:
+        new = [values.get((row.code, p.key)) for p in added]
+        all_values = row.values + new
+        yoy = []
+        for p, value in zip(added, new, strict=True):
+            prior_at = position.get((p.fiscal_year - 1, p.fiscal_period))
+            yoy.append(growth(value, None if prior_at is None else all_values[prior_at]))
+        rows.append(
+            replace(
+                row,
+                values=all_values,
+                provenance=row.provenance + ["forecast" if v is not None else None for v in new],
+                yoy=row.yoy + yoy,
+                common_size=row.common_size
+                + [_ratio(v, values.get((total, p.key))) for v, p in zip(new, added, strict=True)],
+            )
+        )
+    balance = None
+    if table.balance_check is not None:
+        cells = {key: Cell(v, "forecast") for key, v in values.items()}
+        balance = table.balance_check + _balance_check(added, cells)
+    return replace(table, periods=combined, rows=rows, balance_check=balance)
+
+
 def _ttm_cell(item: CanonicalItemDef, quarter_keys: list[str], cells: dict[CellKey, Cell]) -> Cell:
     """The sum of the last four discrete quarters: flows, and the two EPS lines (market convention:
     the sum of the quarterly EPS). Other average items have no TTM."""
@@ -272,7 +312,7 @@ def _ratio(value: Decimal | None, base: Decimal | None) -> Decimal | None:
     return (value / base).quantize(RATIO_PLACES)
 
 
-def _balance_check(periods: list[Period], cells: dict[CellKey, Cell]) -> list[BalanceCheck]:
+def _balance_check(periods: list[Period], cells: Mapping[CellKey, Cell]) -> list[BalanceCheck]:
     checks = []
     for p in periods:
         assets, liabilities, equity = (

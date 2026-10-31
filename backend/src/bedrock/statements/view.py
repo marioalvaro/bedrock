@@ -1,5 +1,6 @@
 """What the API shows of a statement table. Pure."""
 
+from collections.abc import Collection
 from dataclasses import replace
 
 from bedrock.statements.build import Row, StatementTable
@@ -30,6 +31,22 @@ def trim_periods(table: StatementTable) -> StatementTable:
             None
             if table.balance_check is None
             else [c for c in table.balance_check if c.period_key in kept_keys]
+        ),
+    )
+
+
+def select_periods(table: StatementTable, keys: Collection[str]) -> StatementTable:
+    """The table with only the periods whose key is in `keys`, in the table's order, every row and
+    the balance check kept aligned."""
+    keep = [i for i, period in enumerate(table.periods) if period.key in keys]
+    return replace(
+        table,
+        periods=[table.periods[i] for i in keep],
+        rows=[_pick(row, keep) for row in table.rows],
+        balance_check=(
+            None
+            if table.balance_check is None
+            else [c for c in table.balance_check if c.period_key in keys]
         ),
     )
 

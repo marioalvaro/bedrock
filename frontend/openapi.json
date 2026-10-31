@@ -619,7 +619,8 @@
                   "normalized",
                   "zero_inferred",
                   "approximated",
-                  "imported"
+                  "imported",
+                  "forecast"
                 ],
                 "type": "string"
               },
@@ -852,6 +853,61 @@
         "title": "CompanyListItem",
         "type": "object"
       },
+      "CompareCodeOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "label",
+          "unit"
+        ],
+        "title": "CompareCodeOut",
+        "type": "object"
+      },
+      "CompareOut": {
+        "properties": {
+          "codes": {
+            "items": {
+              "$ref": "#/components/schemas/CompareCodeOut"
+            },
+            "title": "Codes",
+            "type": "array"
+          },
+          "periods": {
+            "items": {
+              "$ref": "#/components/schemas/PeriodOut"
+            },
+            "title": "Periods",
+            "type": "array"
+          },
+          "scenarios": {
+            "items": {
+              "$ref": "#/components/schemas/ComparedScenarioOut"
+            },
+            "title": "Scenarios",
+            "type": "array"
+          }
+        },
+        "required": [
+          "periods",
+          "codes",
+          "scenarios"
+        ],
+        "title": "CompareOut",
+        "type": "object"
+      },
       "ComparedCompanyOut": {
         "properties": {
           "name": {
@@ -893,6 +949,55 @@
           "ttm_period"
         ],
         "title": "ComparedCompanyOut",
+        "type": "object"
+      },
+      "ComparedScenarioOut": {
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "values": {
+            "additionalProperties": {
+              "items": {
+                "anyOf": [
+                  {
+                    "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "values",
+          "error"
+        ],
+        "title": "ComparedScenarioOut",
         "type": "object"
       },
       "CompsMemberOut": {
@@ -1317,6 +1422,246 @@
         "title": "DerivationOut",
         "type": "object"
       },
+      "DriverGridOut": {
+        "properties": {
+          "forecast_years": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Forecast Years",
+            "type": "array"
+          },
+          "history_years": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "History Years",
+            "type": "array"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/DriverRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "scenario_id": {
+            "title": "Scenario Id",
+            "type": "integer"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "scenario_id",
+          "history_years",
+          "forecast_years",
+          "rows",
+          "warnings"
+        ],
+        "title": "DriverGridOut",
+        "type": "object"
+      },
+      "DriverRowIn": {
+        "properties": {
+          "driver_code": {
+            "title": "Driver Code",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "value",
+              "offset"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "values": {
+            "items": {
+              "$ref": "#/components/schemas/DriverYearIn"
+            },
+            "title": "Values",
+            "type": "array"
+          }
+        },
+        "required": [
+          "driver_code",
+          "kind",
+          "values"
+        ],
+        "title": "DriverRowIn",
+        "type": "object"
+      },
+      "DriverRowOut": {
+        "description": "`history` is aligned with the grid's `history_years`; `values`, `sources` and `own` with\nits `forecast_years`. A value held flat is null with source `default`; a required driver\nnothing sets is null with source null. `own` is the scenario's stored value, or offset when\n`kind` is `offset`.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "group": {
+            "title": "Group",
+            "type": "string"
+          },
+          "history": {
+            "items": {
+              "anyOf": [
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "History",
+            "type": "array"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "value",
+                  "offset"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "own": {
+            "items": {
+              "anyOf": [
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Own",
+            "type": "array"
+          },
+          "sources": {
+            "items": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "own",
+                    "offset",
+                    "base",
+                    "default"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "unit": {
+            "enum": [
+              "pct",
+              "days",
+              "USD"
+            ],
+            "title": "Unit",
+            "type": "string"
+          },
+          "values": {
+            "items": {
+              "anyOf": [
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Values",
+            "type": "array"
+          }
+        },
+        "required": [
+          "code",
+          "label",
+          "group",
+          "unit",
+          "history",
+          "values",
+          "sources",
+          "own",
+          "kind"
+        ],
+        "title": "DriverRowOut",
+        "type": "object"
+      },
+      "DriverYearIn": {
+        "properties": {
+          "fiscal_year": {
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "fiscal_year",
+          "value"
+        ],
+        "title": "DriverYearIn",
+        "type": "object"
+      },
+      "DriversIn": {
+        "description": "Each row replaces every stored row of its driver in the scenario.",
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/DriverRowIn"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rows"
+        ],
+        "title": "DriversIn",
+        "type": "object"
+      },
       "FilingOut": {
         "properties": {
           "accession_no": {
@@ -1597,6 +1942,106 @@
           "off_balance_items"
         ],
         "title": "FlagsOut",
+        "type": "object"
+      },
+      "ForecastOut": {
+        "description": "The statement payload with the actual periods then the forecast ones (`is_forecast`).",
+        "properties": {
+          "balance_check": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/BalanceCheckOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Balance Check"
+          },
+          "basis": {
+            "enum": [
+              "reported",
+              "normalized"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "freq": {
+            "enum": [
+              "annual",
+              "quarterly",
+              "ttm"
+            ],
+            "title": "Freq",
+            "type": "string"
+          },
+          "integrity": {
+            "items": {
+              "$ref": "#/components/schemas/IntegrityOut"
+            },
+            "title": "Integrity",
+            "type": "array"
+          },
+          "periods": {
+            "items": {
+              "$ref": "#/components/schemas/PeriodOut"
+            },
+            "title": "Periods",
+            "type": "array"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/RowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "scenario_id": {
+            "title": "Scenario Id",
+            "type": "integer"
+          },
+          "statement": {
+            "enum": [
+              "IS",
+              "BS",
+              "CF"
+            ],
+            "title": "Statement",
+            "type": "string"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ticker",
+          "statement",
+          "freq",
+          "basis",
+          "currency",
+          "periods",
+          "rows",
+          "balance_check",
+          "scenario_id",
+          "warnings",
+          "integrity"
+        ],
+        "title": "ForecastOut",
         "type": "object"
       },
       "GuidanceEntryOut": {
@@ -2205,6 +2650,56 @@
           "built"
         ],
         "title": "ImportPreviewOut",
+        "type": "object"
+      },
+      "IntegrityOut": {
+        "description": "One forecast period's checks (USD differences); `ok` when each is within 0.01 USD.",
+        "properties": {
+          "balance_diff": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Balance Diff",
+            "type": "string"
+          },
+          "cash_diff": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Cash Diff",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "period_key": {
+            "title": "Period Key",
+            "type": "string"
+          },
+          "quarters_diff": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quarters Diff"
+          },
+          "re_diff": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Re Diff",
+            "type": "string"
+          }
+        },
+        "required": [
+          "period_key",
+          "balance_diff",
+          "cash_diff",
+          "re_diff",
+          "quarters_diff",
+          "ok"
+        ],
+        "title": "IntegrityOut",
         "type": "object"
       },
       "LineChangeOut": {
@@ -3985,7 +4480,8 @@
                     "normalized",
                     "zero_inferred",
                     "approximated",
-                    "imported"
+                    "imported",
+                    "forecast"
                   ],
                   "type": "string"
                 },
@@ -4099,6 +4595,295 @@
           "reason"
         ],
         "title": "RuleWarningOut",
+        "type": "object"
+      },
+      "ScenarioIn": {
+        "description": "A POST: the settings not given are Base's.",
+        "properties": {
+          "horizon_quarters": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Horizon Quarters"
+          },
+          "horizon_years": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Horizon Years"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "price_kpi": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Kpi"
+          },
+          "revenue_method": {
+            "anyOf": [
+              {
+                "enum": [
+                  "growth",
+                  "segments",
+                  "volume_price"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revenue Method"
+          },
+          "segment_dimension": {
+            "anyOf": [
+              {
+                "enum": [
+                  "business",
+                  "geo"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Segment Dimension"
+          },
+          "volume_kpi": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volume Kpi"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ScenarioIn",
+        "type": "object"
+      },
+      "ScenarioOut": {
+        "properties": {
+          "base_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "horizon_quarters": {
+            "title": "Horizon Quarters",
+            "type": "integer"
+          },
+          "horizon_years": {
+            "title": "Horizon Years",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "is_default": {
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "price_kpi": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Kpi"
+          },
+          "revenue_method": {
+            "enum": [
+              "growth",
+              "segments",
+              "volume_price"
+            ],
+            "title": "Revenue Method",
+            "type": "string"
+          },
+          "segment_dimension": {
+            "anyOf": [
+              {
+                "enum": [
+                  "business",
+                  "geo"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Segment Dimension"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "volume_kpi": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volume Kpi"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "is_default",
+          "base_id",
+          "revenue_method",
+          "segment_dimension",
+          "volume_kpi",
+          "price_kpi",
+          "horizon_years",
+          "horizon_quarters",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ScenarioOut",
+        "type": "object"
+      },
+      "ScenarioSettingsIn": {
+        "description": "A PUT: every field optional, an absent one is left as it is.",
+        "properties": {
+          "horizon_quarters": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Horizon Quarters"
+          },
+          "horizon_years": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Horizon Years"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "price_kpi": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Kpi"
+          },
+          "revenue_method": {
+            "anyOf": [
+              {
+                "enum": [
+                  "growth",
+                  "segments",
+                  "volume_price"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revenue Method"
+          },
+          "segment_dimension": {
+            "anyOf": [
+              {
+                "enum": [
+                  "business",
+                  "geo"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Segment Dimension"
+          },
+          "volume_kpi": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volume Kpi"
+          }
+        },
+        "title": "ScenarioSettingsIn",
         "type": "object"
       },
       "SegmentBlockOut": {
@@ -7103,6 +7888,466 @@
         "summary": "Refresh",
         "tags": [
           "companies"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/scenarios": {
+      "get": {
+        "operationId": "list_scenarios_api_v1_companies__ticker__scenarios_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ScenarioOut"
+                  },
+                  "title": "Response List Scenarios Api V1 Companies  Ticker  Scenarios Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Scenarios",
+        "tags": [
+          "scenarios"
+        ]
+      },
+      "post": {
+        "operationId": "create_scenario_api_v1_companies__ticker__scenarios_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScenarioIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScenarioOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Scenario",
+        "tags": [
+          "scenarios"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/scenarios/compare": {
+      "get": {
+        "operationId": "compare_scenarios_api_v1_companies__ticker__scenarios_compare_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "freq",
+            "required": true,
+            "schema": {
+              "enum": [
+                "annual",
+                "quarterly"
+              ],
+              "title": "Freq",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated line item codes",
+            "in": "query",
+            "name": "codes",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated line item codes",
+              "title": "Codes"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompareOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Compare Scenarios",
+        "tags": [
+          "forecasts"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/scenarios/{scenario_id}": {
+      "delete": {
+        "operationId": "delete_scenario_api_v1_companies__ticker__scenarios__scenario_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scenario_id",
+            "required": true,
+            "schema": {
+              "title": "Scenario Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Scenario",
+        "tags": [
+          "scenarios"
+        ]
+      },
+      "put": {
+        "operationId": "update_scenario_api_v1_companies__ticker__scenarios__scenario_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scenario_id",
+            "required": true,
+            "schema": {
+              "title": "Scenario Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScenarioSettingsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScenarioOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Scenario",
+        "tags": [
+          "scenarios"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/scenarios/{scenario_id}/drivers": {
+      "get": {
+        "operationId": "get_drivers_api_v1_companies__ticker__scenarios__scenario_id__drivers_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scenario_id",
+            "required": true,
+            "schema": {
+              "title": "Scenario Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriverGridOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Drivers",
+        "tags": [
+          "scenarios"
+        ]
+      },
+      "put": {
+        "operationId": "put_drivers_api_v1_companies__ticker__scenarios__scenario_id__drivers_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scenario_id",
+            "required": true,
+            "schema": {
+              "title": "Scenario Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DriversIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriverGridOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Drivers",
+        "tags": [
+          "scenarios"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/scenarios/{scenario_id}/forecast": {
+      "get": {
+        "operationId": "get_forecast_api_v1_companies__ticker__scenarios__scenario_id__forecast_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scenario_id",
+            "required": true,
+            "schema": {
+              "title": "Scenario Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "type",
+            "required": true,
+            "schema": {
+              "enum": [
+                "IS",
+                "BS",
+                "CF"
+              ],
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "freq",
+            "required": true,
+            "schema": {
+              "enum": [
+                "annual",
+                "quarterly"
+              ],
+              "title": "Freq",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForecastOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Forecast",
+        "tags": [
+          "forecasts"
         ]
       }
     },
