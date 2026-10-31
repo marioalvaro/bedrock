@@ -112,6 +112,20 @@ export type BalanceCheckOut = {
 };
 
 /**
+ * Body_import_drivers_api_v1_companies__ticker__scenarios__scenario_id__drivers_import_post
+ */
+export type BodyImportDriversApiV1CompaniesTickerScenariosScenarioIdDriversImportPost = {
+    /**
+     * Dry Run
+     */
+    dry_run?: boolean;
+    /**
+     * File
+     */
+    file: Blob | File;
+};
+
+/**
  * Body_import_statements_api_v1_companies__ticker__imports_post
  */
 export type BodyImportStatementsApiV1CompaniesTickerImportsPost = {
@@ -791,6 +805,74 @@ export type DerivationOut = {
 };
 
 /**
+ * DriverChangeOut
+ *
+ * A stored row a driver file changes: its kind and value before and after (null: none).
+ */
+export type DriverChangeOut = {
+    /**
+     * Driver Code
+     */
+    driver_code: string;
+    /**
+     * Fiscal Year
+     */
+    fiscal_year: number;
+    /**
+     * New
+     */
+    new: string | null;
+    /**
+     * New Kind
+     */
+    new_kind: 'value' | 'offset' | null;
+    /**
+     * Old
+     */
+    old: string | null;
+    /**
+     * Old Kind
+     */
+    old_kind: 'value' | 'offset' | null;
+};
+
+/**
+ * DriverFileErrorsOut
+ *
+ * The 422 body of a driver file with errors.
+ */
+export type DriverFileErrorsOut = {
+    /**
+     * Detail
+     */
+    detail: string;
+    /**
+     * Errors
+     */
+    errors: Array<DriverFileIssueOut>;
+};
+
+/**
+ * DriverFileIssueOut
+ *
+ * An error of a driver file; `row` and `column` (a letter) say where, null for the file.
+ */
+export type DriverFileIssueOut = {
+    /**
+     * Column
+     */
+    column: string | null;
+    /**
+     * Message
+     */
+    message: string;
+    /**
+     * Row
+     */
+    row: number | null;
+};
+
+/**
  * DriverGridOut
  */
 export type DriverGridOut = {
@@ -814,6 +896,24 @@ export type DriverGridOut = {
      * Warnings
      */
     warnings: Array<string>;
+};
+
+/**
+ * DriverImportOut
+ *
+ * A driver file's changes; `grid` is the new grid after a confirmed import, null for a dry
+ * run.
+ */
+export type DriverImportOut = {
+    /**
+     * Changes
+     */
+    changes: Array<DriverChangeOut>;
+    /**
+     * Dry Run
+     */
+    dry_run: boolean;
+    grid: DriverGridOut | null;
 };
 
 /**
@@ -4694,6 +4794,77 @@ export type PutDriversApiV1CompaniesTickerScenariosScenarioIdDriversPutResponses
 };
 
 export type PutDriversApiV1CompaniesTickerScenariosScenarioIdDriversPutResponse = PutDriversApiV1CompaniesTickerScenariosScenarioIdDriversPutResponses[keyof PutDriversApiV1CompaniesTickerScenariosScenarioIdDriversPutResponses];
+
+export type ExportDriversApiV1CompaniesTickerScenariosScenarioIdDriversExportGetData = {
+    body?: never;
+    path: {
+        /**
+         * Scenario Id
+         */
+        scenario_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: {
+        /**
+         * Format
+         */
+        format?: 'csv' | 'xlsx';
+    };
+    url: '/api/v1/companies/{ticker}/scenarios/{scenario_id}/drivers/export';
+};
+
+export type ExportDriversApiV1CompaniesTickerScenariosScenarioIdDriversExportGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ExportDriversApiV1CompaniesTickerScenariosScenarioIdDriversExportGetError = ExportDriversApiV1CompaniesTickerScenariosScenarioIdDriversExportGetErrors[keyof ExportDriversApiV1CompaniesTickerScenariosScenarioIdDriversExportGetErrors];
+
+export type ExportDriversApiV1CompaniesTickerScenariosScenarioIdDriversExportGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type ImportDriversApiV1CompaniesTickerScenariosScenarioIdDriversImportPostData = {
+    body: BodyImportDriversApiV1CompaniesTickerScenariosScenarioIdDriversImportPost;
+    path: {
+        /**
+         * Scenario Id
+         */
+        scenario_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/scenarios/{scenario_id}/drivers/import';
+};
+
+export type ImportDriversApiV1CompaniesTickerScenariosScenarioIdDriversImportPostErrors = {
+    /**
+     * Unprocessable Entity
+     */
+    422: DriverFileErrorsOut;
+};
+
+export type ImportDriversApiV1CompaniesTickerScenariosScenarioIdDriversImportPostError = ImportDriversApiV1CompaniesTickerScenariosScenarioIdDriversImportPostErrors[keyof ImportDriversApiV1CompaniesTickerScenariosScenarioIdDriversImportPostErrors];
+
+export type ImportDriversApiV1CompaniesTickerScenariosScenarioIdDriversImportPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: DriverImportOut;
+};
+
+export type ImportDriversApiV1CompaniesTickerScenariosScenarioIdDriversImportPostResponse = ImportDriversApiV1CompaniesTickerScenariosScenarioIdDriversImportPostResponses[keyof ImportDriversApiV1CompaniesTickerScenariosScenarioIdDriversImportPostResponses];
 
 export type GetForecastApiV1CompaniesTickerScenariosScenarioIdForecastGetData = {
     body?: never;

@@ -1,3 +1,4 @@
+from bedrock.forecast.driver_io import DriverFileIssue
 from bedrock.forecast.errors import ForecastUnavailable
 from bedrock.ingest.manual_import import ImportIssue as FileIssue
 from bedrock.ingest.protocol import SourceNotConfigured, SourceUnavailable, UnknownTicker
@@ -106,6 +107,15 @@ class InvalidStatementImport(Exception):
     with its sheet, row and column where it has them."""
 
     def __init__(self, issues: list[FileIssue]) -> None:
+        super().__init__(f"The file has {len(issues)} error(s)")
+        self.issues = issues
+
+
+class InvalidDriverFile(Exception):
+    """A driver file has errors; nothing was written. `issues` lists every one, each with its row
+    and column where it has them."""
+
+    def __init__(self, issues: list[DriverFileIssue]) -> None:
         super().__init__(f"The file has {len(issues)} error(s)")
         self.issues = issues
 

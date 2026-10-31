@@ -166,6 +166,25 @@
         "title": "BalanceCheckOut",
         "type": "object"
       },
+      "Body_import_drivers_api_v1_companies__ticker__scenarios__scenario_id__drivers_import_post": {
+        "properties": {
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_import_drivers_api_v1_companies__ticker__scenarios__scenario_id__drivers_import_post",
+        "type": "object"
+      },
       "Body_import_statements_api_v1_companies__ticker__imports_post": {
         "properties": {
           "dry_run": {
@@ -1422,6 +1441,143 @@
         "title": "DerivationOut",
         "type": "object"
       },
+      "DriverChangeOut": {
+        "description": "A stored row a driver file changes: its kind and value before and after (null: none).",
+        "properties": {
+          "driver_code": {
+            "title": "Driver Code",
+            "type": "string"
+          },
+          "fiscal_year": {
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "new": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New"
+          },
+          "new_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "value",
+                  "offset"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Kind"
+          },
+          "old": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Old"
+          },
+          "old_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "value",
+                  "offset"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Old Kind"
+          }
+        },
+        "required": [
+          "driver_code",
+          "fiscal_year",
+          "old",
+          "new",
+          "old_kind",
+          "new_kind"
+        ],
+        "title": "DriverChangeOut",
+        "type": "object"
+      },
+      "DriverFileErrorsOut": {
+        "description": "The 422 body of a driver file with errors.",
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/DriverFileIssueOut"
+            },
+            "title": "Errors",
+            "type": "array"
+          }
+        },
+        "required": [
+          "detail",
+          "errors"
+        ],
+        "title": "DriverFileErrorsOut",
+        "type": "object"
+      },
+      "DriverFileIssueOut": {
+        "description": "An error of a driver file; `row` and `column` (a letter) say where, null for the file.",
+        "properties": {
+          "column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "row": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row"
+          }
+        },
+        "required": [
+          "row",
+          "column",
+          "message"
+        ],
+        "title": "DriverFileIssueOut",
+        "type": "object"
+      },
       "DriverGridOut": {
         "properties": {
           "forecast_years": {
@@ -1465,6 +1621,39 @@
           "warnings"
         ],
         "title": "DriverGridOut",
+        "type": "object"
+      },
+      "DriverImportOut": {
+        "description": "A driver file's changes; `grid` is the new grid after a confirmed import, null for a dry\nrun.",
+        "properties": {
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/DriverChangeOut"
+            },
+            "title": "Changes",
+            "type": "array"
+          },
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "grid": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DriverGridOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "dry_run",
+          "changes",
+          "grid"
+        ],
+        "title": "DriverImportOut",
         "type": "object"
       },
       "DriverRowIn": {
@@ -8268,6 +8457,130 @@
           }
         },
         "summary": "Put Drivers",
+        "tags": [
+          "scenarios"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/scenarios/{scenario_id}/drivers/export": {
+      "get": {
+        "operationId": "export_drivers_api_v1_companies__ticker__scenarios__scenario_id__drivers_export_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scenario_id",
+            "required": true,
+            "schema": {
+              "title": "Scenario Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "csv",
+              "enum": [
+                "csv",
+                "xlsx"
+              ],
+              "title": "Format",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Drivers",
+        "tags": [
+          "scenarios"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/scenarios/{scenario_id}/drivers/import": {
+      "post": {
+        "operationId": "import_drivers_api_v1_companies__ticker__scenarios__scenario_id__drivers_import_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scenario_id",
+            "required": true,
+            "schema": {
+              "title": "Scenario Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_drivers_api_v1_companies__ticker__scenarios__scenario_id__drivers_import_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriverImportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriverFileErrorsOut"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Import Drivers",
         "tags": [
           "scenarios"
         ]

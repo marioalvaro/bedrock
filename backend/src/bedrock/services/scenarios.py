@@ -5,21 +5,29 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Literal
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from bedrock.forecast.driver_io import (
+    DriverChange,
+    DriverFileError,
+    export_csv,
+    export_xlsx,
+    parse_driver_file,
+    plan_import,
+)
 from bedrock.forecast.drivers import (
     METHODS,
-    DriverKind,
     RevenueMethod,
-    Unit,
     UnknownDriver,
     check_bounds,
     driver_def,
     segment_code,
 )
 from bedrock.forecast.errors import ForecastUnavailable
+from bedrock.forecast.grid import DriverGrid, GridRow
 from bedrock.forecast.history import (
     FLAT,
     ForecastHistory,
@@ -31,13 +39,14 @@ from bedrock.forecast.history import (
     history_years,
     scenario_drivers,
 )
-from bedrock.forecast.resolve import DriverRow, ResolvedDrivers, Source, resolve_drivers
+from bedrock.forecast.resolve import DriverRow, ResolvedDrivers, resolve_drivers
 from bedrock.models.company import Company
 from bedrock.models.driver_value import DriverValue
 from bedrock.models.scenario import HORIZON_QUARTERS, HORIZON_YEARS, SEGMENT_DIMENSIONS, Scenario
 from bedrock.repositories import scenarios as repo
 from bedrock.repositories import segments as segments_repo
 from bedrock.services.errors import (
+    InvalidDriverFile,
     InvalidDrivers,
     InvalidScenario,
     ScenarioConflict,
@@ -48,6 +57,7 @@ from bedrock.statements.build import Freq
 
 __all__ = [
     "DriverGrid",
+    "DriverImportResult",
     "DriverRowInput",
     "GridRow",
     "ScenarioDrivers",
@@ -56,7 +66,9 @@ __all__ = [
     "delete_scenario",
     "driver_grid",
     "ensure_defaults",
+    "export_drivers",
     "get_scenario",
+    "import_drivers",
     "list_scenarios",
     "load_history",
     "put_drivers",
@@ -98,30 +110,12 @@ class DriverRowInput:
 
 
 @dataclass(frozen=True)
-class GridRow:
-    """One driver of the grid. `history` is aligned with the grid's history years; `values`,
-    `sources` and `own` with its forecast years. A value held flat is None with source
-    `default`; a required driver nothing sets is None with source None. `own` is the scenario's
-    stored value or offset (as stored), `kind` the stored kind of its own rows."""
+class DriverImportResult:
+    """What a driver file changes; `grid` is the new grid after a confirmed import, None for a
+    dry run."""
 
-    code: str
-    label: str
-    group: str
-    unit: Unit
-    history: list[Decimal | None]
-    values: list[Decimal | None]
-    sources: list[Source | None]
-    own: list[Decimal | None]
-    kind: DriverKind | None
-
-
-@dataclass(frozen=True)
-class DriverGrid:
-    scenario_id: int
-    history_years: list[int]
-    forecast_years: list[int]
-    rows: list[GridRow]
-    warnings: list[str]
+    changes: list[DriverChange]
+    grid: DriverGrid | None
 
 
 @dataclass(frozen=True)
@@ -488,11 +482,79 @@ def put_drivers(
             for year, value in row.values
             if value is not None
         )
-    repo.delete_rows(session, scenario.id, seen)
-    repo.add_rows(session, new)
+    _replace_rows(session, scenario, seen, new, stamp)
+    return driver_grid(session, company, scenario.id)
+
+
+def _replace_rows(
+    session: Session,
+    scenario: Scenario,
+    codes: set[str],
+    rows: list[DriverValue],
+    stamp: datetime,
+) -> None:
+    """Deletes every stored row of `codes` in the scenario and adds `rows`; one transaction."""
+    repo.delete_rows(session, scenario.id, codes)
+    repo.add_rows(session, rows)
     scenario.updated_at = stamp
     session.commit()
-    return driver_grid(session, company, scenario.id)
+
+
+def export_drivers(
+    session: Session, company: Company, scenario_id: int, fmt: Literal["csv", "xlsx"]
+) -> tuple[bytes, str]:
+    """The scenario's driver file and its name `<TICKER>-<scenario name>-drivers.<fmt>`. Raises
+    ScenarioNotFound, and ForecastUnavailable when the company has no opening balance sheet."""
+    scenario = get_scenario(session, company, scenario_id)
+    grid = driver_grid(session, company, scenario_id)
+    content = export_csv(grid) if fmt == "csv" else export_xlsx(grid)
+    return content, f"{company.ticker}-{scenario.name}-drivers.{fmt}"
+
+
+def import_drivers(
+    session: Session,
+    company: Company,
+    scenario_id: int,
+    content: bytes,
+    filename: str,
+    dry_run: bool,
+    now: datetime,
+) -> DriverImportResult:
+    """The changes a driver file makes to the scenario's own rows (`forecast/driver_io.py::
+    plan_import`); unless `dry_run`, writes them in one transaction and returns the new grid.
+    Raises ScenarioNotFound, InvalidDriverFile and ForecastUnavailable (no opening)."""
+    scenario = get_scenario(session, company, scenario_id)
+    history = load_history(session, company)
+    settings = settings_of(scenario)
+    years = forecast_years(history, scenario.horizon_years)
+    catalog = scenario_drivers(history, settings)
+    try:
+        plan = parse_driver_file(content, filename, catalog, years, scenario.is_default)
+    except DriverFileError as error:
+        raise InvalidDriverFile(error.issues) from error
+    own = repo.list_rows(session, [scenario.id])
+    result = plan_import(plan, [_driver_row(r) for r in own])
+    if dry_run:
+        return DriverImportResult(result.changes, None)
+    if result.rows:
+        stamp = _naive_utc(now)
+        new = [
+            DriverValue(
+                scenario_id=scenario.id,
+                driver_code=r.code,
+                fiscal_year=r.fiscal_year,
+                fiscal_period="FY",
+                kind=r.kind,
+                value=r.value,
+                source="manual",
+                created_at=stamp,
+                updated_at=stamp,
+            )
+            for rows in result.rows.values()
+            for r in rows
+        ]
+        _replace_rows(session, scenario, set(result.rows), new, stamp)
+    return DriverImportResult(result.changes, driver_grid(session, company, scenario.id))
 
 
 def _check_row(

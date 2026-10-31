@@ -22,6 +22,7 @@ from bedrock.services.errors import (
     InvalidAdjustment,
     InvalidCompsSet,
     InvalidCustomRule,
+    InvalidDriverFile,
     InvalidDrivers,
     InvalidFormula,
     InvalidGuidance,
@@ -96,6 +97,18 @@ def register_error_handlers(app: FastAPI) -> None:
             },
         )
 
+    async def handle_driver_file(_: Request, error: Exception) -> JSONResponse:
+        assert isinstance(error, InvalidDriverFile)
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": user_message(error),
+                "errors": [
+                    {"row": i.row, "column": i.column, "message": i.message} for i in error.issues
+                ],
+            },
+        )
+
     async def handle_statement_import(_: Request, error: Exception) -> JSONResponse:
         assert isinstance(error, InvalidStatementImport)
         return JSONResponse(
@@ -121,6 +134,7 @@ def register_error_handlers(app: FastAPI) -> None:
         app.add_exception_handler(error_type, handle)
     app.add_exception_handler(InvalidImport, handle_import)
     app.add_exception_handler(InvalidStatementImport, handle_statement_import)
+    app.add_exception_handler(InvalidDriverFile, handle_driver_file)
     app.add_exception_handler(RequestValidationError, handle_validation)
 
 

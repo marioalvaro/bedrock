@@ -941,7 +941,7 @@ class _Parser:
         raw: Any,
         scale: str | None,
     ) -> None:
-        typed = _number(raw)
+        typed = parse_number(raw)
         if typed is None:
             self._err(sheet, number, column.letter, f"'{_text(raw)}' is not a number")
             return
@@ -1116,7 +1116,7 @@ def _date(value: Any) -> date | None:
     return None
 
 
-def _number(value: Any) -> Decimal | None:
+def parse_number(value: Any) -> Decimal | None:
     """A typed number: an int, a float, or text with thousands separators and a negative in
     parentheses. Booleans, non-finite, exponent-notation text (which can overflow when scaled) and
     anything else are not numbers."""

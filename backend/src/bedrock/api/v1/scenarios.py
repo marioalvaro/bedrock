@@ -1,21 +1,35 @@
+import re
 from datetime import datetime
+from typing import Literal
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, Form, Response, UploadFile
 from sqlalchemy.orm import Session
 
 from bedrock.api.deps import get_clock, get_session
 from bedrock.api.v1.statements import followed_company
+from bedrock.forecast.driver_io import DriverFileIssue
 from bedrock.models.company import Company
 from bedrock.schemas.scenarios import (
+    DriverFileErrorsOut,
     DriverGridOut,
+    DriverImportOut,
     DriversIn,
     ScenarioIn,
     ScenarioOut,
     ScenarioSettingsIn,
 )
 from bedrock.services import scenarios as service
+from bedrock.services.errors import InvalidDriverFile
 
 router = APIRouter(tags=["scenarios"])
+
+MAX_BYTES = 1024 * 1024  # a driver file is a few kB
+_MEDIA = {
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "csv": "text/csv; charset=utf-8",
+}
+_UNSAFE = re.compile(r"[^A-Za-z0-9 ._-]")
 
 
 @router.get("/companies/{ticker}/scenarios")
@@ -77,3 +91,44 @@ def put_drivers(
 ) -> DriverGridOut:
     grid = service.put_drivers(session, company, scenario_id, body.to_input(), now)
     return DriverGridOut.from_grid(grid)
+
+
+@router.get("/companies/{ticker}/scenarios/{scenario_id}/drivers/export")
+def export_drivers(
+    scenario_id: int,
+    format: Literal["csv", "xlsx"] = "csv",
+    company: Company = Depends(followed_company),
+    session: Session = Depends(get_session),
+) -> Response:
+    content, name = service.export_drivers(session, company, scenario_id, format)
+    return Response(
+        content, media_type=_MEDIA[format], headers={"Content-Disposition": _attachment(name)}
+    )
+
+
+@router.post(
+    "/companies/{ticker}/scenarios/{scenario_id}/drivers/import",
+    responses={422: {"model": DriverFileErrorsOut}},
+)
+def import_drivers(
+    scenario_id: int,
+    file: UploadFile = File(),
+    dry_run: bool = Form(False),
+    company: Company = Depends(followed_company),
+    session: Session = Depends(get_session),
+    now: datetime = Depends(get_clock),
+) -> DriverImportOut:
+    content = file.file.read(MAX_BYTES + 1)
+    if len(content) > MAX_BYTES:
+        raise InvalidDriverFile([DriverFileIssue(None, None, "The file is larger than 1 MB")])
+    result = service.import_drivers(
+        session, company, scenario_id, content, file.filename or "drivers", dry_run, now
+    )
+    return DriverImportOut.from_result(result, dry_run)
+
+
+def _attachment(name: str) -> str:
+    """An attachment header: an ASCII `filename` with unsafe characters as `_` (a scenario name
+    is free text) and the exact name as RFC 5987 `filename*`."""
+    ascii_name = _UNSAFE.sub("_", name)
+    return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(name, safe='')}"

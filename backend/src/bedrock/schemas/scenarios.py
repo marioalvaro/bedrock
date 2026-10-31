@@ -7,7 +7,12 @@ from pydantic import BaseModel
 from bedrock.forecast.drivers import DriverKind, RevenueMethod, Unit
 from bedrock.forecast.resolve import Source
 from bedrock.models.scenario import Scenario
-from bedrock.services.scenarios import DriverGrid, DriverRowInput, SettingsInput
+from bedrock.services.scenarios import (
+    DriverGrid,
+    DriverImportResult,
+    DriverRowInput,
+    SettingsInput,
+)
 
 
 class ScenarioSettingsIn(BaseModel):
@@ -119,3 +124,56 @@ class DriversIn(BaseModel):
             DriverRowInput(r.driver_code, r.kind, [(v.fiscal_year, v.value) for v in r.values])
             for r in self.rows
         ]
+
+
+class DriverChangeOut(BaseModel):
+    """A stored row a driver file changes: its kind and value before and after (null: none)."""
+
+    driver_code: str
+    fiscal_year: int
+    old: Decimal | None
+    new: Decimal | None
+    old_kind: DriverKind | None
+    new_kind: DriverKind | None
+
+
+class DriverImportOut(BaseModel):
+    """A driver file's changes; `grid` is the new grid after a confirmed import, null for a dry
+    run."""
+
+    dry_run: bool
+    changes: list[DriverChangeOut]
+    grid: DriverGridOut | None
+
+    @classmethod
+    def from_result(cls, result: DriverImportResult, dry_run: bool) -> "DriverImportOut":
+        return cls(
+            dry_run=dry_run,
+            changes=[
+                DriverChangeOut(
+                    driver_code=c.driver_code,
+                    fiscal_year=c.fiscal_year,
+                    old=c.old,
+                    new=c.new,
+                    old_kind=c.old_kind,
+                    new_kind=c.new_kind,
+                )
+                for c in result.changes
+            ],
+            grid=None if result.grid is None else DriverGridOut.from_grid(result.grid),
+        )
+
+
+class DriverFileIssueOut(BaseModel):
+    """An error of a driver file; `row` and `column` (a letter) say where, null for the file."""
+
+    row: int | None
+    column: str | None
+    message: str
+
+
+class DriverFileErrorsOut(BaseModel):
+    """The 422 body of a driver file with errors."""
+
+    detail: str
+    errors: list[DriverFileIssueOut]
