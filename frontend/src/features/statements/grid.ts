@@ -1,6 +1,6 @@
 import type { PeriodOut, RowOut, StatementOut } from "@/api/generated/types.gen";
 import { cellNotes, subjectNotes, type NoteIndex } from "@/features/notes/subjects";
-import { scaleLabel } from "@/lib/format";
+import { formatPercent, formatValue, scaleLabel } from "@/lib/format";
 import type { Scale } from "@/lib/scale";
 
 export type Provenance =
@@ -184,10 +184,11 @@ export function toGridRows(payload: StatementOut, options: GridOptions): GridRow
 const OTHER_PREFIX = "other:";
 
 // A line item's value has details, and an empty cell of an adjustable line opens them too so an
-// adjustment can be added there; the cell endpoint covers FY and Q1..Q4, not TTM, and not the
-// "Other" row of a custom breakdown (it has no cell of its own).
+// adjustment can be added there; the cell endpoint covers FY and Q1..Q4, not TTM, not a forecast
+// period (no filing behind it), and not the "Other" row of a custom breakdown (it has no cell of
+// its own).
 export function canExplain(row: GridRow, period: PeriodOut): boolean {
-  if (row.kind !== "line" || period.key.startsWith("TTM")) return false;
+  if (row.kind !== "line" || period.key.startsWith("TTM") || period.is_forecast) return false;
   if (row.code.startsWith(OTHER_PREFIX)) return false;
   return row.values[period.key] !== null || row.adjustable;
 }
@@ -197,6 +198,18 @@ export function rowUnitHint(unit: string, scale: Scale): string | null {
   return unit === "USD/shares" || unit === "shares" ? scaleLabel(unit, scale) : null;
 }
 
+// A cell's display text: the check row shows ✓ or the difference, sub-rows a percent, a line its
+// value in the page scale behind its provenance mark.
+export function cellText(row: GridRow, key: string, scale: Scale): string {
+  const value = row.values[key] ?? null;
+  if (row.kind === "balance_check") {
+    return row.ok?.[key] ? "✓" : formatValue(value, row.unit, scale);
+  }
+  if (row.kind === "yoy" || row.kind === "common_size") return formatPercent(value);
+  const text = formatValue(value, row.unit, scale);
+  return value === null ? text : provenanceMark(row.provenance[key]) + text;
+}
+
 // The first CSV column: a sub-row is named after its line item.
 export function csvLabel(row: GridRow): string {
   return row.parentLabel ? `${row.parentLabel} ${row.label}` : row.label;
@@ -204,7 +217,8 @@ export function csvLabel(row: GridRow): string {
 
 // The classes a cell's provenance gives its value. Derived and approximated values are not hard
 // facts and share one style, an inferred zero is muted, a normalized value is amber, an imported
-// one (your file, not SEC) is teal; reported is plain.
+// one (your file, not SEC) is teal, a forecast one is plain text in a tinted column; reported is
+// plain.
 export function provenanceClasses(provenance: Provenance | null | undefined): string[] {
   switch (provenance) {
     case "derived":
@@ -216,9 +230,16 @@ export function provenanceClasses(provenance: Provenance | null | undefined): st
       return ["prov-normalized"];
     case "imported":
       return ["prov-imported"];
+    case "forecast":
+      return ["prov-forecast"];
     default:
       return [];
   }
+}
+
+// A forecast ("E") column is tinted, header and cells, so estimates never read as actuals.
+export function forecastColumnClass(period: PeriodOut): string[] {
+  return period.is_forecast ? ["cell-forecast"] : [];
 }
 
 // An approximated value carries a tilde in front of its number; the CSV export does not.

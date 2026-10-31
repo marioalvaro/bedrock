@@ -23,6 +23,7 @@ from bedrock.models.scenario import Scenario
 from bedrock.models.segment_series import SegmentSeries
 from bedrock.models.segment_value import SegmentValue
 from bedrock.repositories import scenarios as scenarios_repo
+from bedrock.services import scenarios as scenarios_service
 from bedrock.services.errors import (
     InvalidDrivers,
     InvalidScenario,
@@ -39,6 +40,8 @@ from bedrock.services.scenarios import (
     delete_scenario,
     driver_grid,
     ensure_defaults,
+    export_drivers,
+    import_drivers,
     list_scenarios,
     load_history,
     put_drivers,
@@ -746,3 +749,49 @@ def test_defaults_created_by_a_concurrent_request_are_not_an_error(
     ensure_defaults(db_session, aapl, NOW)
 
     assert [s.id for s in list_scenarios(db_session, aapl, NOW)] == [s.id for s in created]
+
+
+def _count_history_loads(monkeypatch: pytest.MonkeyPatch) -> list[int]:
+    """A spy on the real `load_history`: one entry per build of the company's history."""
+    calls: list[int] = []
+    real = scenarios_service.load_history
+
+    def counting(*args, **kwargs):  # type: ignore[no-untyped-def]  # a spy on the real loader
+        calls.append(1)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(scenarios_service, "load_history", counting)
+    return calls
+
+
+def test_a_driver_put_builds_the_history_once(
+    db_session: Session, aapl: Company, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bull = _named(db_session, aapl)["Bull"]
+    years = driver_grid(db_session, aapl, bull.id).forecast_years
+    calls = _count_history_loads(monkeypatch)
+
+    grid = put_drivers(
+        db_session,
+        aapl,
+        bull.id,
+        [DriverRowInput("gross_margin", "offset", [(y, Decimal("0.02")) for y in years])],
+        NOW,
+    )
+
+    assert len(calls) == 1
+    row = next(r for r in grid.rows if r.code == "gross_margin")
+    assert row.own == [Decimal("0.02")] * len(years)  # the returned grid holds the write
+
+
+def test_a_confirmed_driver_import_builds_the_history_once(
+    db_session: Session, aapl: Company, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bull = _named(db_session, aapl)["Bull"]
+    content, name = export_drivers(db_session, aapl, bull.id, "csv")
+    calls = _count_history_loads(monkeypatch)
+
+    result = import_drivers(db_session, aapl, bull.id, content, name, False, NOW)
+
+    assert len(calls) == 1
+    assert result.grid is not None

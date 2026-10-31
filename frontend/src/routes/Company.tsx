@@ -10,6 +10,7 @@ import type { StatementType } from "@/api/statements";
 import { Button } from "@/components/ui/button";
 import { CapitalView } from "@/features/capital/CapitalView";
 import { CompsView } from "@/features/comps/CompsView";
+import { ForecastView } from "@/features/forecast/ForecastView";
 import { GuidanceView } from "@/features/guidance/GuidanceView";
 import { NotesView } from "@/features/notes/NotesView";
 import { Overview } from "@/features/overview/Overview";
@@ -40,7 +41,7 @@ const TABS: { slug: string; label: string; render: (company: CompanyListItem) =>
   {
     slug: "forecast",
     label: "Forecast",
-    render: () => <p className="text-muted-foreground p-4 text-sm">Coming in S6</p>,
+    render: (c) => <ForecastView ticker={c.ticker} />,
   },
   { slug: "scenarios", label: "Scenarios", render: (c) => <ScenariosView ticker={c.ticker} /> },
   { slug: "notes", label: "Notes", render: (c) => <NotesView ticker={c.ticker} /> },

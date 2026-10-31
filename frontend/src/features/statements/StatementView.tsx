@@ -18,13 +18,7 @@ import { UnitToggle } from "@/components/UnitToggle";
 import { Button } from "@/components/ui/button";
 import { Toggle } from "@/components/ui/toggle";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import {
-  formatCsvPercent,
-  formatCsvValue,
-  formatPercent,
-  formatValue,
-  scaleLabel,
-} from "@/lib/format";
+import { formatCsvPercent, formatCsvValue, scaleLabel } from "@/lib/format";
 import { downloadText } from "@/lib/download";
 import { useScale, type Scale } from "@/lib/scale";
 import { ImportButton } from "@/features/imports/ImportButton";
@@ -33,12 +27,12 @@ import { CellDetailSheet, type CellTarget } from "./CellDetailSheet";
 import {
   canExplain,
   cellNoteCount,
+  cellText,
   csvLabel,
   expandableCodes,
   lineNoteCount,
   noteIndex,
   provenanceClasses,
-  provenanceMark,
   rowUnitHint,
   toGridRows,
   type GridRow,
@@ -74,16 +68,6 @@ function growthClass(row: GridRow, key: string): string[] {
   if (value === null || value === undefined) return ["italic"];
   const sign = Number(value);
   return ["italic", ...(sign > 0 ? ["text-positive"] : sign < 0 ? ["text-negative"] : [])];
-}
-
-function formatCell(row: GridRow, key: string, scale: Scale): string {
-  const value = row.values[key] ?? null;
-  if (row.kind === "balance_check") {
-    return row.ok?.[key] ? "✓" : formatValue(value, row.unit, scale);
-  }
-  if (row.kind === "yoy" || row.kind === "common_size") return formatPercent(value);
-  const text = formatValue(value, row.unit, scale);
-  return value === null ? text : provenanceMark(row.provenance[key]) + text;
 }
 
 function csvCell(row: GridRow, key: string, scale: Scale): string {
@@ -162,7 +146,7 @@ function columnDefs(
     // label as well as the cell text.
     headerClass: ["num", "ag-right-aligned-header"],
     valueGetter: ({ data }) => data?.values[period.key] ?? null,
-    valueFormatter: ({ data }) => (data ? formatCell(data, period.key, scale) : ""),
+    valueFormatter: ({ data }) => (data ? cellText(data, period.key, scale) : ""),
     cellClass: ({ data }: CellClassParams<GridRow>) => {
       if (!data) return "num";
       const classes = ["num", "ag-right-aligned-cell", ...growthClass(data, period.key)];

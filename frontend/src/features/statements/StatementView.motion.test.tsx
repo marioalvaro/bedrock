@@ -96,8 +96,6 @@ describe("StatementView stays put while it changes", () => {
     expect(screen.getByRole("button", { name: "Download CSV" })).toBeDisabled();
 
     resolve(okResult(incomeStatement({ freq: "quarterly" })) as never);
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Download CSV" })).toBeEnabled(),
-    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "Download CSV" })).toBeEnabled());
   });
 });

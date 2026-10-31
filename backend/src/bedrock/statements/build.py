@@ -13,6 +13,7 @@ from bedrock.statements.cells import solve_cells
 from bedrock.statements.imports import company_calendar
 from bedrock.statements.normalize import AdjustmentLike, apply_adjustments
 from bedrock.statements.periods import (
+    Calendar,
     Period,
     annual_periods,
     quarterly_periods,
@@ -79,13 +80,47 @@ def build_statement(
 
     Common-size divides every row by one base row of the same period: `total` is revenue (IS, CF)
     or total assets (BS); `parent` is the row's parent, and a row without one uses the total."""
-    if statement == "BS" and freq == "ttm":
+    tables = build_tables(frame, items, [(statement, freq)], common_size_base, adjustments, rules)
+    return tables[(statement, freq)]
+
+
+def build_tables(
+    frame: pd.DataFrame,
+    items: Sequence[CanonicalItemDef],
+    wanted: Sequence[tuple[str, Freq]],
+    common_size_base: CommonSizeBase = "total",
+    adjustments: Sequence[AdjustmentLike] = (),
+    rules: Rules = NO_RULES,
+) -> dict[tuple[str, Freq], StatementTable]:
+    """Every (statement, freq) table of `wanted`, keyed in request order, each equal to its
+    `build_statement`. The cells (and the adjustments on them) do not depend on the statement or
+    the frequency, so they are solved once for all the tables. Raises ValueError for a TTM
+    balance sheet."""
+    if ("BS", "ttm") in wanted:
         raise ValueError("TTM is only defined for flow statements, not the balance sheet")
     calendar = company_calendar(frame, rules.imported)
     solved = solve_cells(frame, items, calendar, rules)
     cells = solved.cells
     if adjustments:
         cells, _ = apply_adjustments(cells, items, adjustments, calendar, rules.identities)
+    return {
+        (statement, freq): _table(
+            items, statement, freq, common_size_base, calendar, dict(cells), solved.warnings
+        )
+        for statement, freq in wanted
+    }
+
+
+def _table(
+    items: Sequence[CanonicalItemDef],
+    statement: str,
+    freq: Freq,
+    common_size_base: CommonSizeBase,
+    calendar: Calendar,
+    cells: dict[CellKey, Cell],
+    rule_warnings: tuple[RuleWarning, ...],
+) -> StatementTable:
+    """One table from the solved cells; adds its TTM and "Other" cells to `cells` (its own copy)."""
     if freq == "annual":
         periods = annual_periods(calendar)
     elif freq == "quarterly":
@@ -116,7 +151,7 @@ def build_statement(
     )
     balance = _balance_check(periods, cells) if statement == "BS" else None
     return StatementTable(
-        statement, freq, periods, rows, balance, list(calendar.warnings), solved.warnings
+        statement, freq, periods, rows, balance, list(calendar.warnings), rule_warnings
     )
 
 

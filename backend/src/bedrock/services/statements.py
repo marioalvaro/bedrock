@@ -42,7 +42,12 @@ from bedrock.repositories import mappings as mappings_repo
 from bedrock.repositories import prices as prices_repo
 from bedrock.repositories.numeric import plain
 from bedrock.services.errors import CellNotFound
-from bedrock.statements.build import CommonSizeBase, Freq, StatementTable, build_statement
+from bedrock.statements.build import (
+    CommonSizeBase,
+    Freq,
+    StatementTable,
+    build_tables,
+)
 from bedrock.statements.cell_types import RuleWarning
 from bedrock.statements.coverage import Coverage, table_coverage
 from bedrock.statements.custom_lines import complete_parents, custom_items, merge_lines
@@ -175,21 +180,19 @@ def statement_tables(
     common_size_base: CommonSizeBase = "total",
 ) -> dict[tuple[str, Freq], StatementTable]:
     """Every requested (statement, freq) table on `basis`, untrimmed, from one load of the
-    company's facts (and one read of its adjustments when `normalized`), keyed in request order.
-    `common_size_base` applies to every table. A company with no facts gives empty tables. Raises
-    ValueError for a TTM balance sheet."""
+    company's facts (and one read of its adjustments when `normalized`) and one solve of its
+    cells (`statements/build.py::build_tables`), keyed in request order. `common_size_base`
+    applies to every table. A company with no facts gives empty tables. Raises ValueError for a
+    TTM balance sheet."""
     if ("BS", "ttm") in wanted:
         raise ValueError("TTM is only defined for flow statements, not the balance sheet")
     loaded = _load(session, company)
     if loaded.empty:
         return {(s, f): StatementTable(s, f, [], [], None, []) for s, f in wanted}
     adjustments = adjustments_repo.list_for(session, company.id) if basis == "normalized" else []
-    return {
-        (s, f): build_statement(
-            loaded.canonical, loaded.lines, s, f, common_size_base, adjustments, loaded.rules
-        )
-        for s, f in wanted
-    }
+    return build_tables(
+        loaded.canonical, loaded.lines, wanted, common_size_base, adjustments, loaded.rules
+    )
 
 
 def cell_detail(
@@ -234,11 +237,10 @@ def mapping_gaps(session: Session, company: Company) -> MappingGaps:
     if loaded.empty:
         return MappingGaps([], [], [], [])
     lines = loaded.lines  # the tables are built as the statements are; coverage counts the items
-    tables = {
-        (s, f): build_statement(loaded.canonical, lines, s, f, rules=loaded.rules)
-        for s in ("IS", "BS", "CF")
-        for f in ("annual", "quarterly")
-    }
+    wanted: list[tuple[str, Freq]] = [
+        (s, f) for s in ("IS", "BS", "CF") for f in ("annual", "quarterly")
+    ]
+    tables = build_tables(loaded.canonical, lines, wanted, rules=loaded.rules)
     annual = {s: tables[(s, "annual")] for s in ("IS", "BS", "CF")}
     mapped = set(loaded.mappings["canonical_code"])
     warnings = annual["IS"].rule_warnings  # the same on every table of the company
@@ -265,21 +267,15 @@ def company_key_stats(session: Session, company: Company) -> KeyStats:
         return key_stats(
             close=close, shares=_cover_shares(session, company), ttm={}, quarterly_bs=None
         )
-    ttm = {
-        statement: build_statement(
-            loaded.canonical, loaded.items, statement, "ttm", rules=loaded.rules
-        )
-        for statement in ("IS", "CF")
-    }
-    quarterly_bs = build_statement(
-        loaded.canonical, loaded.items, "BS", "quarterly", rules=loaded.rules
-    )
+    wanted: list[tuple[str, Freq]] = [("IS", "ttm"), ("CF", "ttm"), ("BS", "quarterly")]
+    if manual:
+        wanted.append(("BS", "annual"))
+    tables = build_tables(loaded.canonical, loaded.items, wanted, rules=loaded.rules)
+    ttm = {statement: tables[(statement, "ttm")] for statement in ("IS", "CF")}
+    quarterly_bs = tables[("BS", "quarterly")]
     # A manual company has no cover-page count; its imported balance sheet has the shares.
     shares = (
-        balance_sheet_shares(
-            quarterly_bs,
-            build_statement(loaded.canonical, loaded.items, "BS", "annual", rules=loaded.rules),
-        )
+        balance_sheet_shares(quarterly_bs, tables[("BS", "annual")])
         if manual
         else _cover_shares(session, company)
     )

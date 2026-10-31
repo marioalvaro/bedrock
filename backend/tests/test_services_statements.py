@@ -21,8 +21,10 @@ from bedrock.services.statements import (
     CellNotFound,
     build_statements,
     cell_detail,
+    company_key_stats,
     mapping_gaps,
 )
+from bedrock.statements import build as build_module
 from bedrock.statements.coverage import table_coverage
 from bedrock.statements.view import trim_periods
 
@@ -279,3 +281,27 @@ def test_a_company_with_no_facts_has_no_coverage_and_no_warnings(
     gaps = mapping_gaps(db_session, empty)
 
     assert (gaps.coverage, gaps.rule_warnings) == ([], [])
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        pytest.param(lambda session, company: company_key_stats(session, company), id="key stats"),
+        pytest.param(lambda session, company: mapping_gaps(session, company), id="mapping gaps"),
+    ],
+)
+def test_the_cells_are_solved_once_for_all_the_tables_a_request_builds(
+    db_session: Session, aapl: Company, monkeypatch: pytest.MonkeyPatch, build
+) -> None:  # type: ignore[no-untyped-def]  # `build` is a parametrized lambda
+    calls: list[int] = []
+    real = build_module.solve_cells
+
+    def counting(*args, **kwargs):  # type: ignore[no-untyped-def]  # a spy on the real solver
+        calls.append(1)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(build_module, "solve_cells", counting)
+
+    build(db_session, aapl)
+
+    assert len(calls) == 1

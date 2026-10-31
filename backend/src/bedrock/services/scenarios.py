@@ -402,7 +402,11 @@ def driver_grid(session: Session, company: Company, scenario_id: int) -> DriverG
     HISTORY_YEARS actual values and its resolved value and source per forecast year. Raises
     ScenarioNotFound, and ForecastUnavailable when the company has no opening balance sheet."""
     scenario = get_scenario(session, company, scenario_id)
-    history = load_history(session, company)
+    return _grid(session, scenario, load_history(session, company))
+
+
+def _grid(session: Session, scenario: Scenario, history: ForecastHistory) -> DriverGrid:
+    """`driver_grid` on an already built history (a driver write does not change it)."""
     drivers = resolve_scenario(session, scenario, history)
     past = history_years(history)
     actual = historical_drivers(history, drivers.settings)
@@ -471,7 +475,7 @@ def put_drivers(
             if value is not None
         )
     _replace_rows(session, scenario, seen, new, stamp)
-    return driver_grid(session, company, scenario.id)
+    return _grid(session, scenario, history)
 
 
 def _replace_rows(
@@ -542,7 +546,7 @@ def import_drivers(
             for r in rows
         ]
         _replace_rows(session, scenario, set(result.rows), new, stamp)
-    return DriverImportResult(result.changes, driver_grid(session, company, scenario.id))
+    return DriverImportResult(result.changes, _grid(session, scenario, history))
 
 
 def _check_row(

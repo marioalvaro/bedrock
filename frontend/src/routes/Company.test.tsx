@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  getForecastApiV1CompaniesTickerScenariosScenarioIdForecastGet,
   getCapitalAllocationApiV1CompaniesTickerCapitalAllocationGet,
   getCompanyApiV1CompaniesTickerGet,
   getFlagsApiV1CompaniesTickerFlagsGet,
@@ -46,6 +47,7 @@ vi.mock("@/api/generated/sdk.gen", () => ({
   listScenariosApiV1CompaniesTickerScenariosGet: vi.fn(),
   getDriversApiV1CompaniesTickerScenariosScenarioIdDriversGet: vi.fn(() => new Promise(() => {})),
   compareScenariosApiV1CompaniesTickerScenariosCompareGet: vi.fn(() => new Promise(() => {})),
+  getForecastApiV1CompaniesTickerScenariosScenarioIdForecastGet: vi.fn(() => new Promise(() => {})),
 }));
 
 function renderAt(path: string) {
@@ -285,9 +287,17 @@ describe("tabs", () => {
     expect(screen.getByRole("link", { name: "Notes" })).toHaveAttribute("href", "/c/AAPL/notes");
   });
 
-  it("shows a placeholder on the Forecast tab until S6", async () => {
-    renderAt("/c/AAPL/forecast");
-    expect(await screen.findByText("Coming in S6")).toBeInTheDocument();
+  it("routes /forecast to the picked scenario's forecast and marks the tab", async () => {
+    renderAt("/c/AAPL/forecast?scenario=2");
+
+    await waitFor(() =>
+      expect(getForecastApiV1CompaniesTickerScenariosScenarioIdForecastGet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: { ticker: "AAPL", scenario_id: 2 },
+          query: { type: "IS", freq: "annual" },
+        }),
+      ),
+    );
     expect(screen.getByRole("link", { name: "Forecast" })).toHaveAttribute("aria-current", "page");
   });
 

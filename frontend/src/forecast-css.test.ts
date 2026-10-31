@@ -30,3 +30,9 @@ describe.each(Object.entries(themes))("%s theme", (_, body) => {
 it("tints forecast cells with the token", () => {
   expect(css).toMatch(/\.cell-forecast\s*\{[^}]*background-color:\s*var\(--forecast-tint\)/);
 });
+
+it("styles forecast values as plain text, not as derived italics", () => {
+  const rule = css.match(/\n\.prov-forecast\s*\{([^}]*)\}/)?.[1];
+  expect(rule).toBeDefined();
+  expect(rule).toMatch(/font-style:\s*normal/);
+});

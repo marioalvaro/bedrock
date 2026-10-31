@@ -30,6 +30,7 @@ import {
   useDeleteScenario,
   usePreviewDriverImport,
   usePutDrivers,
+  withDriverRows,
   useUpdateScenario,
 } from "@/api/scenarios";
 import {
@@ -334,7 +335,132 @@ describe("mutations", () => {
       path: { ticker: "AAPL", scenario_id: 2 },
       body: { rows },
     });
-    expectInvalidated(queryClient, true);
+    // The edited scenario's drivers take the reply (no refetch); every other view is refreshed.
+    const edited = [...aapl, "scenarios", 2, "drivers"];
+    expect(queryClient.getQueryData(edited)).toEqual(driverGrid());
+    expect(queryClient.getQueryState(edited)?.isInvalidated).toBe(false);
+    for (const key of moved.filter((key) => JSON.stringify(key) !== JSON.stringify(edited))) {
+      expect(queryClient.getQueryState(key)?.isInvalidated, JSON.stringify(key)).toBe(true);
+    }
+    for (const key of untouched) {
+      expect(queryClient.getQueryState(key)?.isInvalidated, JSON.stringify(key)).toBe(false);
+    }
+  });
+
+  describe("usePutDrivers with saves in flight", () => {
+    const edited = [...aapl, "scenarios", 2, "drivers"];
+    const row = (value: string) => [
+      {
+        driver_code: "gross_margin",
+        kind: "value" as const,
+        values: [{ fiscal_year: 2026, value }],
+      },
+    ];
+
+    // Each PUT settles when the test says so, in any order.
+    function controlled() {
+      const settle: ((result: unknown) => void)[] = [];
+      putDrivers.mockImplementation(
+        (() => new Promise((resolve) => settle.push(resolve))) as never,
+      );
+      return settle;
+    }
+
+    function start() {
+      const { queryClient, wrapper } = setup();
+      queryClient.setQueryData(edited, driverGrid());
+      const { result } = renderHook(() => usePutDrivers("AAPL"), { wrapper });
+      return { queryClient, result };
+    }
+
+    it("reloads the drivers when a save fails", async () => {
+      const settle = controlled();
+      const { queryClient, result } = start();
+      result.current.mutate({ id: 2, rows: row("0.5") });
+      await waitFor(() => expect(settle).toHaveLength(1));
+
+      settle[0]!(errorResult(422, { detail: "out of bounds" }));
+
+      await waitFor(() => expect(result.current.isError).toBe(true));
+      expect(queryClient.getQueryData(edited)).toEqual(driverGrid()); // rolled back
+      expect(queryClient.getQueryState(edited)?.isInvalidated).toBe(true);
+    });
+
+    it("reloads the drivers when a held-back reply is followed by a failed save", async () => {
+      const settle = controlled();
+      const { queryClient, result } = start();
+      result.current.mutate({ id: 2, rows: row("0.5") });
+      result.current.mutate({ id: 2, rows: row("0.6") });
+      await waitFor(() => expect(settle).toHaveLength(2));
+
+      settle[0]!(okResult(driverGrid()));
+      settle[1]!(errorResult(422, { detail: "out of bounds" }));
+
+      await waitFor(() => expect(queryClient.isMutating()).toBe(0));
+      expect(queryClient.getQueryState(edited)?.isInvalidated).toBe(true);
+    });
+
+    it("reloads the drivers, not the older reply, when the replies arrive out of order", async () => {
+      const settle = controlled();
+      const { queryClient, result } = start();
+      const older = driverGrid({ warnings: ["older"] });
+      result.current.mutate({ id: 2, rows: row("0.5") });
+      result.current.mutate({ id: 2, rows: row("0.6") });
+      await waitFor(() => expect(settle).toHaveLength(2));
+
+      settle[1]!(okResult(driverGrid({ warnings: ["newer"] })));
+      await waitFor(() => expect(queryClient.isMutating()).toBe(1));
+      settle[0]!(okResult(older));
+
+      await waitFor(() => expect(queryClient.isMutating()).toBe(0));
+      expect(queryClient.getQueryData(edited)).not.toEqual(older);
+      expect(queryClient.getQueryState(edited)?.isInvalidated).toBe(true);
+    });
+  });
+
+  it("withDriverRows writes the sent rows in for display, leaving other drivers alone", () => {
+    const grid = driverGrid();
+    const shown = withDriverRows(grid, [
+      {
+        driver_code: "revenue_growth",
+        kind: "value",
+        values: [{ fiscal_year: 2027, value: "0.08" }],
+      },
+      { driver_code: "gross_margin", kind: "value", values: [] },
+    ]);
+
+    expect(shown.rows[0]).toMatchObject({
+      own: [null, "0.08"],
+      kind: "value",
+      values: ["0.0234", "0.08"],
+      sources: ["default", "own"],
+    });
+    // A cleared row: no own value and no kind; the value and source wait for the reply.
+    expect(shown.rows[1]).toMatchObject({
+      own: [null, null],
+      kind: null,
+      values: ["0.47", "0.4573"],
+      sources: ["own", "default"],
+    });
+    expect(shown.rows.slice(2)).toEqual(grid.rows.slice(2));
+    expect(grid.rows[0]?.own).toEqual([null, null]); // the cached grid is not mutated
+  });
+
+  it("withDriverRows leaves an offset year's resolved value unknown: the backend computes it", () => {
+    const shown = withDriverRows(driverGrid(), [
+      {
+        driver_code: "revenue_growth",
+        kind: "offset",
+        values: [{ fiscal_year: 2026, value: "0.03" }],
+      },
+    ]);
+
+    expect(shown.rows[0]).toMatchObject({
+      own: ["0.03", null],
+      kind: "offset",
+      values: [null, "0.0234"],
+      sources: ["offset", "default"],
+    });
   });
 
   it("usePreviewDriverImport sends a dry run and invalidates nothing", async () => {

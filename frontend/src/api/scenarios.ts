@@ -181,10 +181,71 @@ export function useDeleteScenario(ticker: string) {
   });
 }
 
-/** PUT …/drivers: each row replaces that driver's rows; on success invalidates the views. */
+/**
+ * The drivers grid with `rows` written in as the scenario's own rows, for display while their PUT
+ * runs. A value-kind year shows the sent value with source `own`; an offset-kind year has source
+ * `offset` and no resolved value until the reply (Base + offset is the backend's); a year the row
+ * no longer sets keeps its value and source until the reply. Rows of other drivers are unchanged.
+ */
+export function withDriverRows(grid: DriverGridOut, rows: DriverRowIn[]): DriverGridOut {
+  const sent = new Map(rows.map((row) => [row.driver_code, row]));
+  return {
+    ...grid,
+    rows: grid.rows.map((driver) => {
+      const row = sent.get(driver.code);
+      if (!row) return driver;
+      const byYear = new Map(
+        row.values.map((v) => [v.fiscal_year, v.value == null ? null : String(v.value)]),
+      );
+      const own = grid.forecast_years.map((year) => byYear.get(year) ?? null);
+      return {
+        ...driver,
+        kind: own.some((value) => value !== null) ? row.kind : null,
+        own,
+        // An offset year's resolved value (Base + offset) is the backend's: unknown until the reply.
+        values: driver.values.map((value, i) =>
+          own[i] === null ? value : row.kind === "value" ? (own[i] ?? null) : null,
+        ),
+        sources: driver.sources.map((source, i) =>
+          own[i] === null ? source : row.kind === "value" ? "own" : "offset",
+        ),
+      };
+    }),
+  };
+}
+
+const putDriversKey = (ticker: string) => [...scenariosKey(ticker), "put-drivers"] as const;
+
+/**
+ * PUT …/drivers: each row replaces that driver's rows. The edited grid shows at once
+ * (`withDriverRows`) and goes back on an error. When no other save of the company is running,
+ * the reply (the saved grid) replaces it with no refetch; a reply that lands while another save
+ * runs is not applied but marks the grid stale, and the last save to settle then reloads it
+ * instead (replies can arrive out of order). An error also reloads it, after the rollback. The
+ * other scenario views (other scenarios' drivers, forecasts, the comparison) are refreshed in the
+ * background.
+ */
 export function usePutDrivers(ticker: string) {
   const queryClient = useQueryClient();
-  return useMutation<DriverGridOut, Error, { id: number; rows: DriverRowIn[] }>({
+  const driversKey = (id: number) => driversQueryOptions(ticker, id).queryKey;
+  // `saved` is the reply, or undefined after an error. This save still counts as running here.
+  const settleDrivers = (id: number, saved: DriverGridOut | undefined) => {
+    const key = driversKey(id);
+    if (queryClient.isMutating({ mutationKey: putDriversKey(ticker) }) > 1) {
+      void queryClient.invalidateQueries({ queryKey: key, exact: true, refetchType: "none" });
+    } else if (saved && !queryClient.getQueryState(key)?.isInvalidated) {
+      queryClient.setQueryData(key, saved);
+    } else {
+      void queryClient.invalidateQueries({ queryKey: key, exact: true });
+    }
+  };
+  return useMutation<
+    DriverGridOut,
+    Error,
+    { id: number; rows: DriverRowIn[] },
+    { previous: DriverGridOut | undefined }
+  >({
+    mutationKey: putDriversKey(ticker),
     mutationFn: ({ id, rows }) =>
       unwrap(
         putDriversApiV1CompaniesTickerScenariosScenarioIdDriversPut({
@@ -192,7 +253,26 @@ export function usePutDrivers(ticker: string) {
           body: { rows },
         }),
       ),
-    onSuccess: () => invalidateScenarioViews(queryClient, ticker),
+    onMutate: async ({ id, rows }) => {
+      await queryClient.cancelQueries({ queryKey: driversKey(id) });
+      const previous = queryClient.getQueryData<DriverGridOut>(driversKey(id));
+      if (Array.isArray(previous?.rows)) {
+        queryClient.setQueryData(driversKey(id), withDriverRows(previous, rows));
+      }
+      return { previous };
+    },
+    onError: (_error, { id }, context) => {
+      if (context?.previous) queryClient.setQueryData(driversKey(id), context.previous);
+      settleDrivers(id, undefined);
+    },
+    onSuccess: (saved, { id }) => {
+      settleDrivers(id, saved);
+      const own = JSON.stringify(driversKey(id));
+      void queryClient.invalidateQueries({
+        queryKey: scenariosKey(ticker),
+        predicate: (query) => JSON.stringify(query.queryKey) !== own,
+      });
+    },
   });
 }
 

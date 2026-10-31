@@ -232,3 +232,84 @@ export function forecast(overrides: Partial<ForecastOut> = {}): ForecastOut {
     ...overrides,
   };
 }
+
+function actualPeriod(year: number): PeriodOut {
+  return {
+    key: `FY${year}`,
+    label: `FY${year}`,
+    fiscal_year: year,
+    fiscal_period: "FY",
+    period_start: `${year - 1}-09-28`,
+    period_end: `${year}-09-26`,
+    is_forecast: false,
+  };
+}
+
+/**
+ * GET …/scenarios/1/forecast?type=IS&freq=annual: FY2024–FY2025 actuals (normalized), then
+ * FY2026E–FY2027E. Rows: revenue with gross profit under it, and net income.
+ */
+export function forecastIncome(overrides: Partial<ForecastOut> = {}): ForecastOut {
+  const line = (code: string, label: string, depth: number, values: string[]) => ({
+    code,
+    label,
+    unit: "USD",
+    kind: "flow" as const,
+    depth,
+    values,
+    provenance: [
+      "reported",
+      "normalized",
+      "forecast",
+      "forecast",
+    ] as ForecastOut["rows"][number]["provenance"],
+    yoy: [null, null, null, null],
+    common_size: [null, null, null, null],
+    adjustable: false,
+    custom: false,
+    parent: null,
+    common_size_base: null,
+  });
+  return forecast({
+    periods: [actualPeriod(2024), actualPeriod(2025), forecastPeriod(2026), forecastPeriod(2027)],
+    rows: [
+      line("revenue", "Revenue", 0, [
+        "391035000000",
+        "416161000000",
+        "425900000000",
+        "435870000000",
+      ]),
+      line("gross_profit", "Gross profit", 1, [
+        "180683000000",
+        "195201000000",
+        "199773000000",
+        "204453000000",
+      ]),
+      line("net_income", "Net income", 0, [
+        "93736000000",
+        "112010000000",
+        "114300000000",
+        "117900000000",
+      ]),
+    ],
+    integrity: [
+      {
+        period_key: "FY2026",
+        balance_diff: "0",
+        cash_diff: "0",
+        re_diff: "0",
+        quarters_diff: "0",
+        ok: true,
+      },
+      {
+        period_key: "FY2027",
+        balance_diff: "0",
+        cash_diff: "0",
+        re_diff: "0",
+        quarters_diff: null,
+        ok: true,
+      },
+    ],
+    ...overrides,
+  });
+}

@@ -213,6 +213,12 @@ details[open] > :not(summary) {
   color: var(--prov-normalized);
 }
 
+/* Forecast: built from the scenario's drivers; plain text (never the derived italics), its
+   column carries the tint (`.cell-forecast`). */
+.prov-forecast {
+  font-style: normal;
+}
+
 /* A note on a statement cell: a small corner triangle (AG Grid cells are positioned). */
 .has-note::after {
   content: "";

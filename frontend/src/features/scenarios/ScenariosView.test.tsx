@@ -19,7 +19,7 @@ import { createQueryClient } from "@/lib/query-client";
 import { setScale } from "@/lib/scale";
 import { segments } from "@/test/context";
 import { errorResult, okResult } from "@/test/responses";
-import { bullGrid, driverGrid, scenario, scenarios } from "@/test/scenarios";
+import { bullGrid, comparison, driverGrid, scenario, scenarios } from "@/test/scenarios";
 
 import { ScenariosView } from "./ScenariosView";
 
@@ -590,11 +590,10 @@ describe("vs Base mode", () => {
   });
 
   it("keeps a reset vs Base row in vs Base mode", async () => {
-    putDrivers.mockResolvedValue(okResult(bullGrid()) as never);
     await renderLoaded("/c/AAPL/scenarios?scenario=2");
     const reset = bullGrid();
     reset.rows[0] = { ...reset.rows[0]!, own: [null, null], kind: null, sources: ["base", "base"] };
-    getDrivers.mockResolvedValue(okResult(reset) as never);
+    putDrivers.mockResolvedValue(okResult(reset) as never); // the PUT replies with the saved grid
     await userEvent.click(screen.getByRole("button", { name: "Reset Revenue growth" }));
     await waitFor(() =>
       expect(
@@ -619,5 +618,67 @@ describe("vs Base mode", () => {
         values: [{ fiscal_year: 2027, value: "0.01" }],
       },
     ]);
+  });
+});
+
+describe("saving an edit", () => {
+  const driverCalls = (id: number) =>
+    getDrivers.mock.calls.filter(([options]) => options.path.scenario_id === id).length;
+
+  it("shows the typed value at once, before the save returns", async () => {
+    putDrivers.mockReturnValue(new Promise(() => {}) as never);
+    await renderLoaded();
+    expect(cell("driver:gross_margin", "f:2027")).toHaveTextContent("45.7%");
+
+    await edit("driver:gross_margin", "f:2027", "50");
+
+    await waitFor(() => expect(cell("driver:gross_margin", "f:2027")).toHaveTextContent("50.0%"));
+  });
+
+  it("shows a typed offset at once in vs Base mode", async () => {
+    putDrivers.mockReturnValue(new Promise(() => {}) as never);
+    await renderLoaded("/c/AAPL/scenarios?scenario=2");
+
+    await edit("driver:revenue_growth", "f:2026", "-5");
+
+    await waitFor(() =>
+      expect(cell("driver:revenue_growth", "f:2026")).toHaveTextContent("-5.0 pts"),
+    );
+  });
+
+  it("puts the previous value back and says why when the save fails", async () => {
+    let fail: (value: unknown) => void = () => {};
+    putDrivers.mockReturnValue(new Promise((resolve) => (fail = resolve)) as never);
+    await renderLoaded();
+    await edit("driver:gross_margin", "f:2027", "50");
+    await waitFor(() => expect(cell("driver:gross_margin", "f:2027")).toHaveTextContent("50.0%"));
+
+    fail(errorResult(422, { detail: "gross_margin must be in [-1, 1]" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("gross_margin must be in [-1, 1]");
+    expect(cell("driver:gross_margin", "f:2027")).toHaveTextContent("45.7%");
+  });
+
+  it("takes the saved grid from the reply, without reloading the drivers", async () => {
+    const saved = driverGrid();
+    saved.rows[1] = {
+      ...saved.rows[1]!,
+      values: ["0.47", "0.52"],
+      sources: ["own", "own"],
+      own: ["0.47", "0.52"],
+    };
+    putDrivers.mockResolvedValue(okResult(saved) as never);
+    // A comparison with data, so its background refresh is a new request (a pending one is
+    // joined, not repeated).
+    compare.mockResolvedValue(okResult(comparison()) as never);
+    await renderLoaded();
+    const loads = driverCalls(1);
+    const compares = compare.mock.calls.length;
+
+    await edit("driver:gross_margin", "f:2027", "50");
+
+    await waitFor(() => expect(cell("driver:gross_margin", "f:2027")).toHaveTextContent("52.0%"));
+    await waitFor(() => expect(compare.mock.calls.length).toBeGreaterThan(compares));
+    expect(driverCalls(1)).toBe(loads);
   });
 });

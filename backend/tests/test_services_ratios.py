@@ -13,6 +13,7 @@ from bedrock.ratios.registry import RATIOS
 from bedrock.services.ratios import ratios
 from bedrock.services.refresh import refresh_company
 from bedrock.services.statements import statement_tables
+from bedrock.statements import build
 from bedrock.statements.build import build_statement
 
 from .seed import fake_sources, follow
@@ -68,6 +69,24 @@ def test_statement_tables_of_a_company_without_facts_are_empty(db_session: Sessi
 
     assert tables[("IS", "annual")].periods == [] and tables[("IS", "annual")].rows == []
     assert tables[("BS", "quarterly")].balance_check is None
+
+
+def test_statement_tables_solves_the_cells_once_for_every_table(
+    db_session: Session, aapl: Company, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[int] = []
+    real = build.solve_cells
+
+    def counting(*args, **kwargs):  # type: ignore[no-untyped-def]  # a spy on the real solver
+        calls.append(1)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(build, "solve_cells", counting)
+    wanted = [(s, f) for f in ("annual", "quarterly") for s in ("IS", "BS", "CF")]
+
+    statement_tables(db_session, aapl, wanted, "normalized")  # type: ignore[arg-type]
+
+    assert len(calls) == 1
 
 
 def test_statement_tables_rejects_a_ttm_balance_sheet(db_session: Session, aapl: Company) -> None:

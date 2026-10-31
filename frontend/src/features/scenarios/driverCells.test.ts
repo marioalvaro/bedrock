@@ -203,6 +203,14 @@ describe("forecastCell", () => {
     });
   });
 
+  it("leaves the resolved value out of the title while it is unknown (a save is pending)", () => {
+    const row = driverRow({ values: [null], sources: ["offset"], own: ["-0.05"], kind: "offset" });
+    expect(forecastCell(row, 0, "offset", "M", years)).toMatchObject({
+      text: "-5.0 pts",
+      title: "Base - 5.0 pts",
+    });
+  });
+
   it("starts an empty editor on a vs Base year with no offset", () => {
     const row = driverRow({ values: ["0.0234"], sources: ["base"], own: [null] });
     const cell = forecastCell(row, 0, "offset", "M", years);

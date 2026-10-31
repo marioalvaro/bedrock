@@ -126,7 +126,10 @@ export function forecastCell(
     return {
       text: offset,
       classes: [],
-      title: `Base ${sign} ${offset.replace(/^[+-]/, "")} = ${formatDriverValue(value, row.unit, scale)}`,
+      // The resolved value is unknown while the offset's save is pending (`withDriverRows`).
+      title:
+        `Base ${sign} ${offset.replace(/^[+-]/, "")}` +
+        (value === null ? "" : ` = ${formatDriverValue(value, row.unit, scale)}`),
       editText: toDriverText(own, row.unit, scale),
     };
   }
