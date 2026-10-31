@@ -9,3 +9,8 @@ class ForecastUnavailable(Exception):
     def __init__(self, detail: str) -> None:
         super().__init__(detail)
         self.detail = detail
+
+
+class ForecastIntegrityError(Exception):
+    """A forecast failed one of its integrity checks (balance, cash or retained-earnings
+    roll-forward, quarters summing to the year). Always a bug, never user input."""

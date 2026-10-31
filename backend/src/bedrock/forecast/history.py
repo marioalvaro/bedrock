@@ -73,7 +73,7 @@ class ScenarioSettings:
     price_kpi: str | None = None
 
 
-class _Values:
+class StatementValues:
     """Every value of one frequency's tables by (code, period key), and its periods in order."""
 
     def __init__(self, tables: Mapping[str, StatementTable]) -> None:
@@ -93,9 +93,9 @@ class _Values:
 def opening_period(history: ForecastHistory) -> Period:
     """The latest quarter (the latest FY for a company with no quarters) whose balance sheet has
     its totals and whose revenue is not null. Raises ForecastUnavailable."""
-    values = _Values(history.quarterly)
+    values = StatementValues(history.quarterly)
     if not values.periods:
-        values = _Values(history.annual)
+        values = StatementValues(history.annual)
     for period in reversed(values.periods):
         if all(values.get(code, period.key) is not None for code in OPENING_TOTALS):
             return period
@@ -112,7 +112,7 @@ def forecast_years(history: ForecastHistory, horizon_years: int) -> list[int]:
 
 def history_years(history: ForecastHistory) -> list[int]:
     """The last HISTORY_YEARS actual fiscal years, oldest first."""
-    return [p.fiscal_year for p in _Values(history.annual).periods][-HISTORY_YEARS:]
+    return [p.fiscal_year for p in StatementValues(history.annual).periods][-HISTORY_YEARS:]
 
 
 def scenario_drivers(history: ForecastHistory, settings: ScenarioSettings) -> list[DriverDef]:
@@ -150,7 +150,7 @@ class _Reader:
     def __init__(self, history: ForecastHistory, settings: ScenarioSettings) -> None:
         self.history = history
         self.settings = settings
-        self.annual = _Values(history.annual)
+        self.annual = StatementValues(history.annual)
         self.by_year = {p.fiscal_year: p for p in self.annual.periods}
         self.series = {s.id: s for s in history.segment_series}
 
@@ -233,6 +233,7 @@ __all__ = [
     "ForecastHistory",
     "ScenarioSettings",
     "SeriesHistory",
+    "StatementValues",
     "days",
     "default_drivers",
     "forecast_years",

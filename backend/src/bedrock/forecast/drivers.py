@@ -237,7 +237,7 @@ DRIVERS: tuple[DriverDef, ...] = (
         "pct",
         Ratio("net_income_nci", "net_income", positive_denominator=True),
         "zero",
-        SHARE,
+        SIGNED,  # NCI can lose while the parent earns (DE FY2022-25)
     ),
     DriverDef(
         "receivable_days",

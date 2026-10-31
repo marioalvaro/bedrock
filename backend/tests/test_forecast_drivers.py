@@ -106,6 +106,8 @@ def test_driver_def_resolves_a_segment_code_and_rejects_unknown_codes() -> None:
         # [-1, 1]
         ("gross_margin", ["-1", "1"], ["-1.0001", "1.0001"]),
         ("other_opex_pct_revenue", ["-1", "1"], ["-1.01", "1.01"]),
+        # NCI can take a loss while the parent earns (DE FY2022-25)
+        ("nci_share", ["-1", "-0.0058", "1"], ["-1.0001", "1.0001"]),
         # [0, 1]
         ("rnd_pct_revenue", ["0", "1"], ["-0.0001", "1.0001"]),
         ("tax_rate", ["0", "1"], ["-0.01", "1.01"]),

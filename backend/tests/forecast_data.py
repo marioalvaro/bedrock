@@ -6,7 +6,9 @@ from datetime import date
 from decimal import Decimal
 from functools import cache
 
-from bedrock.forecast.history import ForecastHistory, SeriesHistory
+from bedrock.forecast.drivers import drivers_for
+from bedrock.forecast.history import FLAT, Flat, ForecastHistory, SeriesHistory
+from bedrock.forecast.resolve import Resolved, ResolvedDrivers
 from bedrock.mapping.config import CanonicalItemDef, load_canonical_items
 from bedrock.statements.build import Row, StatementTable
 from bedrock.statements.fiscal_grid import period_dates
@@ -108,3 +110,19 @@ def fixture_history(ticker: str) -> ForecastHistory:
         segment_series=(),
         latest_fy_end=periods[-1].end if periods else None,
     )
+
+
+def resolved(
+    by_year: Mapping[int, Mapping[str, Decimal | int | str | Flat]],
+    codes: Sequence[str] | None = None,
+) -> ResolvedDrivers:
+    """A `ResolvedDrivers` with every driver `own`; `codes` defaults to the growth method's."""
+    codes = codes or [d.code for d in drivers_for("growth")]
+    values: dict[tuple[str, int], Resolved] = {}
+    for year, drivers in by_year.items():
+        for code in codes:
+            value = drivers[code]
+            values[(code, year)] = Resolved(
+                value if value is FLAT or isinstance(value, Decimal) else Decimal(value), "own"
+            )
+    return ResolvedDrivers(tuple(codes), tuple(by_year), values, (), frozenset())
