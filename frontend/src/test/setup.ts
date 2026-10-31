@@ -20,6 +20,11 @@ if (!window.matchMedia) {
     }) as MediaQueryList;
 }
 
+// jsdom has no 2D canvas and logs "Not implemented" on every call; a browser without one returns
+// null, which is what the chart wrapper's color reading expects.
+HTMLCanvasElement.prototype.getContext = (() =>
+  null) as typeof HTMLCanvasElement.prototype.getContext;
+
 // Vitest runs without globals, so Testing Library cannot register this itself.
 afterEach(() => {
   cleanup();

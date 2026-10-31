@@ -2562,14 +2562,6 @@ export type RuleWarningOut = {
  */
 export type ScenarioIn = {
     /**
-     * Horizon Quarters
-     */
-    horizon_quarters?: number | null;
-    /**
-     * Horizon Years
-     */
-    horizon_years?: number | null;
-    /**
      * Name
      */
     name: string;
@@ -2603,14 +2595,6 @@ export type ScenarioOut = {
      * Created At
      */
     created_at: string;
-    /**
-     * Horizon Quarters
-     */
-    horizon_quarters: number;
-    /**
-     * Horizon Years
-     */
-    horizon_years: number;
     /**
      * Id
      */
@@ -2648,17 +2632,10 @@ export type ScenarioOut = {
 /**
  * ScenarioSettingsIn
  *
- * A PUT: every field optional, an absent one is left as it is.
+ * A PUT: every field optional, an absent one is left as it is. An unknown field is a 422,
+ * so a client still sending the removed horizon fields learns it at once.
  */
 export type ScenarioSettingsIn = {
-    /**
-     * Horizon Quarters
-     */
-    horizon_quarters?: number | null;
-    /**
-     * Horizon Years
-     */
-    horizon_years?: number | null;
     /**
      * Name
      */

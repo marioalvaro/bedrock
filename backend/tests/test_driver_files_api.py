@@ -187,18 +187,16 @@ def test_one_edited_cell_imports_as_exactly_that_change(aapl_client: TestClient,
     assert _ok(_import(aapl_client, bull, edited, fmt, dry_run=True))["changes"] == []
 
 
-def test_the_default_offsets_beyond_the_horizon_survive_a_round_trip(
+def test_the_default_offsets_fill_the_forecast_years_so_a_round_trip_keeps_them_all(
     aapl_client: TestClient,
 ) -> None:
-    """Bull's default offsets cover 10 years; the file shows the 5 of its horizon."""
+    """The horizon is fixed at 5 years: Bull's default offsets are exactly the file's 5 years."""
     bull = _ids(aapl_client)["Bull"]
     content = _export(aapl_client, bull, "csv")
-    _ok(_import(aapl_client, bull, content, "csv", dry_run=False))
+    assert _ok(_import(aapl_client, bull, content, "csv", dry_run=False))["changes"] == []
 
-    longer = aapl_client.put(f"{SCENARIOS}/{bull}", json={"horizon_years": 10})
-    assert longer.status_code == 200, longer.text
     growth = next(r for r in _grid(aapl_client, bull)["rows"] if r["code"] == "revenue_growth")
-    assert growth["own"] == ["0.03"] * 10
+    assert growth["own"] == ["0.03"] * 5
 
 
 def test_bull_exported_into_a_new_scenario_gives_the_same_forecast(

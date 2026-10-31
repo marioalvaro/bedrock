@@ -1,5 +1,5 @@
 """The driver model on the recorded companies (AAPL, MSFT, COST, DE): Base defaults and Bull- and
-Bear-like offsets, at the shortest and the longest horizon, pass every integrity check."""
+Bear-like offsets, at the fixed horizon (5 years, 8 quarters), pass every integrity check."""
 
 import time
 from decimal import Decimal
@@ -7,7 +7,12 @@ from functools import cache
 
 import pytest
 
-from bedrock.forecast.engines.driver import DriverModel, ForecastStatements, Horizon
+from bedrock.forecast.engines.driver import (
+    FORECAST_HORIZON,
+    DriverModel,
+    ForecastStatements,
+    Horizon,
+)
 from bedrock.forecast.history import (
     ForecastHistory,
     ScenarioSettings,
@@ -22,7 +27,7 @@ GROWTH = ScenarioSettings("growth")
 TICKERS = ["AAPL", "MSFT", "COST", "DE"]
 # offsets on Base: (revenue growth, gross margin)
 SCENARIOS = {"base": None, "bull": ("0.03", "0.01"), "bear": ("-0.03", "-0.01")}
-HORIZONS = [Horizon(5, 4), Horizon(10, 8)]
+HORIZONS = [FORECAST_HORIZON]
 
 
 @cache

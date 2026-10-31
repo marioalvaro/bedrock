@@ -779,7 +779,7 @@ def _driver_value(connection: Connection, scenario_id: int, **cols: object) -> i
 def test_0009_upgrade_creates_the_forecast_tables_and_downgrade_removes_only_them(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0009"))
     inspector = inspect(create_engine(database_url))
     assert _FORECAST_TABLES <= set(inspector.get_table_names())
     uq = {
@@ -808,7 +808,7 @@ def test_0009_upgrade_creates_the_forecast_tables_and_downgrade_removes_only_the
 def test_0009_uniques_and_checks_hold_at_the_database_level(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0009"))
     engine = create_engine(database_url)
     with engine.begin() as connection:
         company_id = _company(connection, "AAA")
@@ -865,7 +865,7 @@ def test_0009_uniques_and_checks_hold_at_the_database_level(
 def test_0009_foreign_keys_cascade_on_delete(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0009"))
     engine = create_engine(database_url)
     with engine.begin() as connection:
         connection.execute(text("PRAGMA foreign_keys=ON"))
@@ -907,3 +907,82 @@ def test_0009_keeps_existing_rows_both_ways(
     assert counts() == (1, 1, 1)
     _run_alembic(tmp_path, monkeypatch, ("downgrade", "0008"))
     assert counts() == (1, 1, 1)
+
+
+# M4 (user, 2026-10-31): the horizon is fixed at 5 years and 8 quarters, so 0010 drops the columns.
+_HORIZON_COLUMNS = {"horizon_years", "horizon_quarters"}
+
+
+def _scenario_columns(database_url: str) -> set[str]:
+    return {c["name"] for c in inspect(create_engine(database_url)).get_columns("scenario")}
+
+
+def test_0010_drops_the_horizon_columns_and_keeps_every_scenario_and_driver_both_ways(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0009"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        owner = _company(connection, "AAA")
+        base = _scenario(connection, owner, horizon_years=7, horizon_quarters=6)
+        bull = _scenario(connection, owner, name="Bull", is_default=0, base_id=base)
+        _driver_value(connection, base)
+        _driver_value(connection, bull, kind="offset", value="0.03")
+
+    def counts() -> list[int]:
+        with engine.connect() as connection:
+            return [
+                int(connection.execute(text(f"SELECT count(*) FROM {table}")).scalar())
+                for table in ("scenario", "driver_value")
+            ]
+
+    # The app's engine turns foreign keys on: a rebuild of `scenario` must not cascade (G34).
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    assert not _HORIZON_COLUMNS & _scenario_columns(database_url)
+    assert counts() == [2, 2]
+
+    _run_alembic(tmp_path, monkeypatch, ("downgrade", "0009"))
+    assert _HORIZON_COLUMNS <= _scenario_columns(database_url)
+    assert counts() == [2, 2]
+    with engine.connect() as connection:
+        horizons = connection.execute(
+            text("SELECT DISTINCT horizon_years, horizon_quarters FROM scenario")
+        ).all()
+    assert horizons == [(5, 8)]  # the fixed horizon
+
+
+def test_0010_keeps_the_scenario_keys_and_checks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    inspector = inspect(create_engine(database_url))
+    fks = {
+        (fk["referred_table"], tuple(fk["constrained_columns"]), fk["options"].get("ondelete"))
+        for fk in inspector.get_foreign_keys("scenario")
+    }
+    assert fks == {("company", ("company_id",), "CASCADE"), ("scenario", ("base_id",), "CASCADE")}
+    assert ("company_id", "name") in {
+        tuple(c["column_names"]) for c in inspector.get_unique_constraints("scenario")
+    }
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        company_id = _company(connection, "AAA")
+        row = dict(_SCENARIO_NOW)
+        base = _insert(connection, "scenario", company_id=company_id, **row)
+    for bad in (
+        {"name": "Two"},  # a second Base
+        {"name": "X", "is_default": 0},  # not Base, no base_id
+        {"name": "X", "is_default": 0, "base_id": base, "revenue_method": "dcf"},
+    ):
+        with pytest.raises(IntegrityError), engine.begin() as connection:
+            _insert(connection, "scenario", company_id=company_id, **{**row, **bad})
+
+
+_SCENARIO_NOW = {
+    "name": "Base",
+    "is_default": 1,
+    "base_id": None,
+    "revenue_method": "growth",
+    "created_at": _NOW,
+    "updated_at": _NOW,
+}

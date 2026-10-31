@@ -85,7 +85,11 @@ Values = dict[str, Decimal | None]
 @dataclass(frozen=True)
 class Horizon:
     years: int
-    quarters: int
+    quarters: int  # the quarters after the opening; the span runs on to that fiscal year's end
+
+
+# Every scenario forecasts this far (user decision 2026-10-31: further adds no value).
+FORECAST_HORIZON = Horizon(years=5, quarters=8)
 
 
 @dataclass(frozen=True)

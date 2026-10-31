@@ -267,6 +267,9 @@ describe("invalidateAdjustmentViews", () => {
       [...ratiosKey("AAPL"), "annual"],
       [...aapl, "guidance"],
       [...aapl, "comps", 3, "normalized"],
+      [...aapl, "scenarios"],
+      [...aapl, "scenarios", 1, "forecast", "IS", "annual"],
+      [...aapl, "scenarios", "compare", "annual"],
     ];
     const fresh = [
       aapl,
@@ -282,6 +285,7 @@ describe("invalidateAdjustmentViews", () => {
       ["companies"],
       [...companyKey("MSFT"), "statements", "IS", "annual", "total", "reported"],
       adjustmentsKey("MSFT"),
+      [...companyKey("MSFT"), "scenarios"],
     ];
     for (const key of [...stale, ...fresh]) queryClient.setQueryData(key, {});
 

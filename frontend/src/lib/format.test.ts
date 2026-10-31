@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  formatChartNumber,
+  scaledNumber,
   formatCompact,
   formatCsvPercent,
   formatCsvRatio,
@@ -622,5 +624,35 @@ describe("formatInput", () => {
 
   it("shows an em dash for a missing input", () => {
     expect(formatInput(null, "USD")).toBe("—");
+  });
+});
+
+describe("scaledNumber", () => {
+  it("puts USD and shares in the page scale, for a chart axis", () => {
+    expect(scaledNumber("425000000000", "USD", "B")).toBe(425);
+    expect(scaledNumber("425000000000", "USD", "M")).toBe(425000);
+    expect(scaledNumber("15200000000", "shares", "M")).toBe(15200);
+  });
+
+  it("leaves per-share and ratio units as they are", () => {
+    expect(scaledNumber("7.45", "USD/shares", "M")).toBe(7.45);
+    expect(scaledNumber("0.46", "pct", "B")).toBe(0.46);
+  });
+
+  it("keeps a missing value missing", () => {
+    expect(scaledNumber(null, "USD", "M")).toBeNull();
+  });
+});
+
+describe("formatChartNumber", () => {
+  it("shows 1 decimal, 2 for per-share units, grouped, negatives in parentheses", () => {
+    expect(formatChartNumber(437123.456, "USD")).toBe("437,123.5");
+    expect(formatChartNumber(7.523, "USD/shares")).toBe("7.52");
+    expect(formatChartNumber(-12.34, "USD")).toBe("(12.3)");
+    expect(formatChartNumber(0.00001, "USD")).toBe("0.0");
+  });
+
+  it("shows a missing point as a dash", () => {
+    expect(formatChartNumber(null, "USD")).toBe("—");
   });
 });

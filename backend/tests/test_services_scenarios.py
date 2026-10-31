@@ -118,15 +118,16 @@ def test_the_first_list_creates_base_bull_and_bear_once(db_session: Session, aap
     assert (base.is_default, base.base_id) == (True, None)
     assert (bull.is_default, bull.base_id, bear.base_id) == (False, base.id, base.id)
     for s in first:
-        assert (s.revenue_method, s.horizon_years, s.horizon_quarters) == ("growth", 5, 4)
+        assert s.revenue_method == "growth"
         assert s.created_at == datetime(2026, 10, 31, 9, 0)  # naive UTC from the clock
 
 
-def test_bull_and_bear_hold_offsets_for_ten_years_and_base_holds_none(
+def test_bull_and_bear_hold_offsets_for_the_five_forecast_years_and_base_holds_none(
     db_session: Session, aapl: Company
 ) -> None:
+    """The horizon is fixed at 5 years (user, 2026-10-31): no offset lies beyond it."""
     scenarios = _named(db_session, aapl)
-    years = forecast_years(load_history(db_session, aapl), 10)
+    years = forecast_years(load_history(db_session, aapl), 5)
 
     assert _rows(db_session, scenarios["Base"]) == {}
     assert _rows(db_session, scenarios["Bull"]) == {
@@ -167,19 +168,15 @@ def test_a_new_scenario_copies_base_settings_and_inherits_base(
     db_session: Session, aapl: Company
 ) -> None:
     base = _named(db_session, aapl)["Base"]
-    update_scenario(db_session, aapl, base.id, SettingsInput(horizon_years=8), NOW)
+    _series(db_session, aapl, "Americas", dimension="geo")
+    geo = SettingsInput(revenue_method="segments", segment_dimension="geo")
+    update_scenario(db_session, aapl, base.id, geo, NOW)
 
-    created = create_scenario(
-        db_session, aapl, SettingsInput(name="  Mine  ", horizon_quarters=6), NOW
-    )
+    created = create_scenario(db_session, aapl, SettingsInput(name="  Mine  "), NOW)
 
     assert created.name == "Mine"
     assert (created.is_default, created.base_id) == (False, base.id)
-    assert (created.revenue_method, created.horizon_years, created.horizon_quarters) == (
-        "growth",
-        8,
-        6,
-    )
+    assert (created.revenue_method, created.segment_dimension) == ("segments", "geo")
     assert _rows(db_session, created) == {}
 
 
@@ -204,10 +201,6 @@ def test_a_duplicate_name_is_a_conflict_on_create_and_update(
         (SettingsInput(name=""), "name must not be blank"),
         (SettingsInput(name="   "), "name must not be blank"),
         (SettingsInput(name="x" * 61), "at most 60 characters"),
-        (SettingsInput(name="A", horizon_years=4), "horizon_years must be between 5 and 10"),
-        (SettingsInput(name="A", horizon_years=11), "horizon_years must be between 5 and 10"),
-        (SettingsInput(name="A", horizon_quarters=3), "horizon_quarters must be between 4 and 8"),
-        (SettingsInput(name="A", horizon_quarters=9), "horizon_quarters must be between 4 and 8"),
         (SettingsInput(name="A", revenue_method="magic"), "revenue_method must be one of"),
         (SettingsInput(name="A", revenue_method="segments"), "needs a segment_dimension"),
         (
@@ -227,20 +220,9 @@ def test_invalid_settings_are_refused_and_nothing_is_stored(
     assert len(list_scenarios(db_session, aapl, NOW)) == 3
 
 
-def test_a_sixty_character_name_and_the_horizon_bounds_are_accepted(
-    db_session: Session, aapl: Company
-) -> None:
-    created = create_scenario(
-        db_session,
-        aapl,
-        SettingsInput(name="x" * 60, horizon_years=10, horizon_quarters=8),
-        NOW,
-    )
-    assert (created.horizon_years, created.horizon_quarters) == (10, 8)
-    low = update_scenario(
-        db_session, aapl, created.id, SettingsInput(horizon_years=5, horizon_quarters=4), NOW
-    )
-    assert (low.horizon_years, low.horizon_quarters) == (5, 4)
+def test_a_sixty_character_name_is_accepted(db_session: Session, aapl: Company) -> None:
+    created = create_scenario(db_session, aapl, SettingsInput(name="x" * 60), NOW)
+    assert created.name == "x" * 60
 
 
 def test_volume_and_price_must_be_kpis_of_the_company_with_their_units(
@@ -288,17 +270,17 @@ def test_an_update_keeps_the_settings_it_does_not_name(db_session: Session, aapl
         SettingsInput(revenue_method="segments", segment_dimension="geo"),
         NOW,
     )
-    again = update_scenario(db_session, aapl, bull.id, SettingsInput(horizon_years=7), NOW)
-
     assert (updated.name, updated.revenue_method, updated.segment_dimension) == (
         "Bull",
         "segments",
         "geo",
     )
-    assert (again.revenue_method, again.segment_dimension, again.horizon_years) == (
+    again = update_scenario(db_session, aapl, bull.id, SettingsInput(name="Bullish"), NOW)
+
+    assert (again.revenue_method, again.segment_dimension, again.name) == (
         "segments",
         "geo",
-        7,
+        "Bullish",
     )
     assert again.updated_at == datetime(2026, 10, 31, 9, 0)
 
@@ -345,7 +327,7 @@ def test_bull_and_bear_switched_to_segments_get_an_offset_on_each_segment(
     geo = _series(db_session, aapl, "Americas", dimension="geo")
     income = _series(db_session, aapl, "iPhone OI", metric="operating_income")
     scenarios = _named(db_session, aapl)
-    years = forecast_years(load_history(db_session, aapl), 10)
+    years = forecast_years(load_history(db_session, aapl), 5)
     segments = SettingsInput(revenue_method="segments", segment_dimension="business")
 
     for name, sign in (("Bull", ""), ("Bear", "-")):
@@ -369,7 +351,7 @@ def test_a_segment_with_own_rows_keeps_them_and_a_later_segment_gets_none(
 ) -> None:
     iphone = _series(db_session, aapl, "iPhone")
     bull = _named(db_session, aapl)["Bull"]
-    first_year = forecast_years(load_history(db_session, aapl), 10)[0]
+    first_year = forecast_years(load_history(db_session, aapl), 5)[0]
     db_session.add(
         DriverValue(
             scenario_id=bull.id,
@@ -390,13 +372,13 @@ def test_a_segment_with_own_rows_keeps_them_and_a_later_segment_gets_none(
         NOW,
     )
     later = _series(db_session, aapl, "Services")
-    update_scenario(db_session, aapl, bull.id, SettingsInput(horizon_years=6), NOW)
+    update_scenario(db_session, aapl, bull.id, SettingsInput(name="Bull 2"), NOW)
 
     rows = _rows(db_session, bull)
     assert {k: v for k, v in rows.items() if k[0] == f"segment_growth:{iphone.id}"} == {
         (f"segment_growth:{iphone.id}", first_year): ("value", D("0.2"))
     }
-    assert sum(1 for code, _ in rows if code == f"segment_growth:{mac.id}") == 10
+    assert sum(1 for code, _ in rows if code == f"segment_growth:{mac.id}") == 5
     assert not any(code == f"segment_growth:{later.id}" for code, _ in rows)
 
 
@@ -412,7 +394,7 @@ def test_changing_the_dimension_writes_the_offsets_of_the_new_dimension(
     update_scenario(db_session, aapl, bear.id, SettingsInput(segment_dimension="geo"), NOW)
 
     rows = _rows(db_session, bear)
-    assert sum(1 for code, _ in rows if code == f"segment_growth:{americas.id}") == 10
+    assert sum(1 for code, _ in rows if code == f"segment_growth:{americas.id}") == 5
     assert all(
         v == ("offset", D("-0.03")) for (c, _), v in rows.items() if c.endswith(f":{americas.id}")
     )
@@ -734,10 +716,10 @@ def test_a_stale_kpi_off_volume_price_does_not_block_later_writes(
         db_session.delete(series)
     db_session.commit()
 
-    renamed = update_scenario(db_session, aapl, base.id, SettingsInput(horizon_years=6), NOW)
+    renamed = update_scenario(db_session, aapl, base.id, SettingsInput(name="Base 2"), NOW)
     created = create_scenario(db_session, aapl, SettingsInput(name="New"), NOW)
 
-    assert renamed.horizon_years == 6
+    assert renamed.name == "Base 2"
     assert created.revenue_method == "growth"
     with pytest.raises(InvalidScenario, match="volume_kpi 'units' is not a KPI"):
         update_scenario(

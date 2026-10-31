@@ -26,6 +26,7 @@ from bedrock.forecast.drivers import (
     driver_def,
     segment_code,
 )
+from bedrock.forecast.engines.driver import FORECAST_HORIZON
 from bedrock.forecast.errors import ForecastUnavailable
 from bedrock.forecast.grid import DriverGrid, GridRow
 from bedrock.forecast.history import (
@@ -42,7 +43,7 @@ from bedrock.forecast.history import (
 from bedrock.forecast.resolve import DriverRow, ResolvedDrivers, resolve_drivers
 from bedrock.models.company import Company
 from bedrock.models.driver_value import DriverValue
-from bedrock.models.scenario import HORIZON_QUARTERS, HORIZON_YEARS, SEGMENT_DIMENSIONS, Scenario
+from bedrock.models.scenario import SEGMENT_DIMENSIONS, Scenario
 from bedrock.repositories import scenarios as repo
 from bedrock.repositories import segments as segments_repo
 from bedrock.services.errors import (
@@ -77,7 +78,6 @@ __all__ = [
 ]
 
 NAME_LIMIT = 60
-OFFSET_YEARS = 10  # the default offsets cover this many years from the first forecast year
 # The default Bull and Bear: their sign, and their offsets at creation (docs "Scenarios" →
 # Defaults). A segment's growth takes the revenue growth offset.
 DEFAULT_SIGNS = {"Bull": 1, "Bear": -1}
@@ -96,8 +96,6 @@ class SettingsInput:
     segment_dimension: str | None = None
     volume_kpi: str | None = None
     price_kpi: str | None = None
-    horizon_years: int | None = None
-    horizon_quarters: int | None = None
 
 
 @dataclass(frozen=True)
@@ -269,8 +267,6 @@ def _copy(base: Scenario, name: str, stamp: datetime) -> Scenario:
         segment_dimension=base.segment_dimension,
         volume_kpi=base.volume_kpi,
         price_kpi=base.price_kpi,
-        horizon_years=base.horizon_years,
-        horizon_quarters=base.horizon_quarters,
         created_at=stamp,
         updated_at=stamp,
     )
@@ -282,8 +278,6 @@ def _apply(scenario: Scenario, data: SettingsInput) -> None:
         "segment_dimension",
         "volume_kpi",
         "price_kpi",
-        "horizon_years",
-        "horizon_quarters",
     ):
         value = getattr(data, field)
         if value is not None:
@@ -310,12 +304,6 @@ def _check_settings(session: Session, company: Company, scenario: Scenario) -> N
         raise InvalidScenario(f"segment_dimension must be one of {', '.join(SEGMENT_DIMENSIONS)}")
     if method == "segments" and dimension is None:
         raise InvalidScenario("The segments method needs a segment_dimension")
-    for low, high, field in (
-        (*HORIZON_YEARS, "horizon_years"),
-        (*HORIZON_QUARTERS, "horizon_quarters"),
-    ):
-        if not low <= getattr(scenario, field) <= high:
-            raise InvalidScenario(f"{field} must be between {low} and {high}")
     if method != "volume_price":  # a KPI kept from an earlier method is not used, nor checked
         return
     kpis = {
@@ -335,7 +323,7 @@ def _check_settings(session: Session, company: Company, scenario: Scenario) -> N
 
 def _offset_years(history: ForecastHistory) -> list[int]:
     try:
-        return forecast_years(history, OFFSET_YEARS)
+        return forecast_years(history, FORECAST_HORIZON.years)
     except ForecastUnavailable:  # no opening balance sheet: no forecast years to offset
         return []
 
@@ -387,7 +375,7 @@ def resolve_scenario(
     """The scenario's drivers resolved for its forecast years (docs "Scenarios" → Resolution).
     Raises ForecastUnavailable when the history has no opening."""
     settings = settings_of(scenario)
-    years = forecast_years(history, scenario.horizon_years)
+    years = forecast_years(history, FORECAST_HORIZON.years)
     ids = [scenario.id] if scenario.base_id is None else [scenario.id, scenario.base_id]
     rows = repo.list_rows(session, ids)
     own = [r for r in rows if r.scenario_id == scenario.id]
@@ -460,7 +448,7 @@ def put_drivers(
     scenario = get_scenario(session, company, scenario_id)
     history = load_history(session, company)
     settings = settings_of(scenario)
-    years = forecast_years(history, scenario.horizon_years)
+    years = forecast_years(history, FORECAST_HORIZON.years)
     allowed = {d.code for d in scenario_drivers(history, settings)}
     stamp = _naive_utc(now)
     seen: set[str] = set()
@@ -526,7 +514,7 @@ def import_drivers(
     scenario = get_scenario(session, company, scenario_id)
     history = load_history(session, company)
     settings = settings_of(scenario)
-    years = forecast_years(history, scenario.horizon_years)
+    years = forecast_years(history, FORECAST_HORIZON.years)
     catalog = scenario_drivers(history, settings)
     try:
         plan = parse_driver_file(content, filename, catalog, years, scenario.is_default)

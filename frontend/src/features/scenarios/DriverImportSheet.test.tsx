@@ -1,0 +1,187 @@
+import { QueryClientProvider } from "@tanstack/react-query";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import {
+  getDriversApiV1CompaniesTickerScenariosScenarioIdDriversGet,
+  importDriversApiV1CompaniesTickerScenariosScenarioIdDriversImportPost,
+} from "@/api/generated/sdk.gen";
+import { createQueryClient } from "@/lib/query-client";
+import { errorResult, okResult } from "@/test/responses";
+import { driverGrid, driverImport } from "@/test/scenarios";
+
+import { DriverImportSheet } from "./DriverImportSheet";
+
+vi.mock("@/api/generated/sdk.gen", () => ({
+  getDriversApiV1CompaniesTickerScenariosScenarioIdDriversGet: vi.fn(),
+  importDriversApiV1CompaniesTickerScenariosScenarioIdDriversImportPost: vi.fn(),
+}));
+
+const getDrivers = vi.mocked(getDriversApiV1CompaniesTickerScenariosScenarioIdDriversGet);
+const importDrivers = vi.mocked(
+  importDriversApiV1CompaniesTickerScenariosScenarioIdDriversImportPost,
+);
+
+const file = new File(["driver_code,label,unit,kind,FY2026\n"], "AAPL-Bull-drivers.xlsx");
+
+function renderSheet() {
+  const queryClient = createQueryClient();
+  queryClient.setDefaultOptions({ queries: { retry: false } });
+  const onClose = vi.fn();
+  render(
+    <QueryClientProvider client={queryClient}>
+      <DriverImportSheet ticker="AAPL" scenarioId={2} open scale="M" onClose={onClose} />
+    </QueryClientProvider>,
+  );
+  return { onClose };
+}
+
+async function preview() {
+  await userEvent.upload(screen.getByLabelText("Driver file"), file);
+  await userEvent.click(screen.getByRole("button", { name: "Preview" }));
+}
+
+beforeEach(() => {
+  getDrivers.mockResolvedValue(okResult(driverGrid()) as never);
+});
+
+afterEach(() => vi.clearAllMocks());
+
+describe("DriverImportSheet", () => {
+  it("accepts CSV and Excel files", () => {
+    renderSheet();
+    expect(screen.getByLabelText("Driver file")).toHaveAttribute("accept", ".csv,.xlsx");
+  });
+
+  it("asks for a file before a preview", async () => {
+    renderSheet();
+    await userEvent.click(screen.getByRole("button", { name: "Preview" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Choose a file first");
+    expect(importDrivers).not.toHaveBeenCalled();
+  });
+
+  it("previews the changes with labels, years and values by unit", async () => {
+    importDrivers.mockResolvedValue(okResult(driverImport()) as never);
+    renderSheet();
+    await preview();
+    expect(importDrivers).toHaveBeenCalledWith({
+      path: { ticker: "AAPL", scenario_id: 2 },
+      body: { file, dry_run: true },
+    });
+    const list = await screen.findByRole("list", { name: "Changes" });
+    expect(
+      within(list)
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual(["Revenue growth · FY27: 5.0% → 8.0%", "Gross margin · FY26: 47.0% → cleared"]);
+    expect(screen.getByRole("button", { name: "Apply 2 changes" })).toBeEnabled();
+  });
+
+  it("shows offsets as offsets and a new value from nothing", async () => {
+    importDrivers.mockResolvedValue(
+      okResult(
+        driverImport({
+          changes: [
+            {
+              driver_code: "revenue_growth",
+              fiscal_year: 2026,
+              old: "0.03",
+              new: "0.04",
+              old_kind: "offset",
+              new_kind: "offset",
+            },
+            {
+              driver_code: "buybacks",
+              fiscal_year: 2027,
+              old: null,
+              new: "90000000000",
+              old_kind: null,
+              new_kind: "value",
+            },
+          ],
+        }),
+      ) as never,
+    );
+    renderSheet();
+    await preview();
+    const items = within(await screen.findByRole("list", { name: "Changes" })).getAllByRole(
+      "listitem",
+    );
+    expect(items.map((item) => item.textContent)).toEqual([
+      "Revenue growth · FY26: +3.0 pts → +4.0 pts",
+      "Buybacks · FY27: — → 90,000",
+    ]);
+    expect(screen.getByRole("button", { name: "Apply 2 changes" })).toBeInTheDocument();
+  });
+
+  it("says 'Nothing to change' for a file equal to the scenario", async () => {
+    importDrivers.mockResolvedValue(okResult(driverImport({ changes: [] })) as never);
+    renderSheet();
+    await preview();
+    expect(await screen.findByText("Nothing to change")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Apply/ })).not.toBeInTheDocument();
+  });
+
+  it("lists every error of a refused file, located by row and column", async () => {
+    importDrivers.mockResolvedValue(
+      errorResult(422, {
+        detail: "The file has errors",
+        errors: [
+          { row: 3, column: "F", message: "'abc' is not a number" },
+          { row: 4, column: null, message: "Unknown driver code 'foo'" },
+          { row: null, column: null, message: "The file is empty" },
+        ],
+      }) as never,
+    );
+    renderSheet();
+    await preview();
+    const errors = await screen.findByRole("list", { name: "Errors" });
+    expect(
+      within(errors)
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual([
+      "row 3, column F: 'abc' is not a number",
+      "row 4: Unknown driver code 'foo'",
+      "The file is empty",
+    ]);
+    expect(screen.queryByRole("button", { name: /^Apply/ })).not.toBeInTheDocument();
+  });
+
+  it("shows a plain 422 reason", async () => {
+    importDrivers.mockResolvedValue(
+      errorResult(422, { detail: "The file is larger than 1 MB" }) as never,
+    );
+    renderSheet();
+    await preview();
+    expect(await screen.findByRole("alert")).toHaveTextContent("The file is larger than 1 MB");
+  });
+
+  it("applies the changes with the same file", async () => {
+    importDrivers.mockResolvedValueOnce(okResult(driverImport()) as never);
+    importDrivers.mockResolvedValueOnce(
+      okResult(driverImport({ dry_run: false, grid: driverGrid() })) as never,
+    );
+    renderSheet();
+    await preview();
+    await userEvent.click(await screen.findByRole("button", { name: "Apply 2 changes" }));
+    expect(importDrivers).toHaveBeenLastCalledWith({
+      path: { ticker: "AAPL", scenario_id: 2 },
+      body: { file, dry_run: false },
+    });
+    expect(await screen.findByRole("status")).toHaveTextContent("Applied 2 changes.");
+    expect(screen.queryByRole("list", { name: "Changes" })).not.toBeInTheDocument();
+  });
+
+  it("drops the preview when another file is chosen", async () => {
+    importDrivers.mockResolvedValue(okResult(driverImport()) as never);
+    renderSheet();
+    await preview();
+    await screen.findByRole("list", { name: "Changes" });
+    await userEvent.upload(screen.getByLabelText("Driver file"), new File(["x"], "other.csv"));
+    await waitFor(() =>
+      expect(screen.queryByRole("list", { name: "Changes" })).not.toBeInTheDocument(),
+    );
+  });
+});

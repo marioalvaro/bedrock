@@ -21,8 +21,6 @@ RevenueMethod = Literal["growth", "segments", "volume_price"]
 REVENUE_METHODS: tuple[str, ...] = get_args(RevenueMethod)
 SegmentDimension = Literal["business", "geo"]
 SEGMENT_DIMENSIONS: tuple[str, ...] = get_args(SegmentDimension)
-HORIZON_YEARS = (5, 10)  # inclusive range
-HORIZON_QUARTERS = (4, 8)
 
 
 class Scenario(Base):
@@ -47,8 +45,6 @@ class Scenario(Base):
             "revenue_method IN ('growth', 'segments', 'volume_price')", name="revenue_method"
         ),
         CheckConstraint("segment_dimension IN ('business', 'geo')", name="segment_dimension"),
-        CheckConstraint("horizon_years BETWEEN 5 AND 10", name="horizon_years"),
-        CheckConstraint("horizon_quarters BETWEEN 4 AND 8", name="horizon_quarters"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -67,8 +63,6 @@ class Scenario(Base):
     # KPI codes (segment_series.metric of a `kpi` series); required for `volume_price`
     volume_kpi: Mapped[str | None] = mapped_column(String, nullable=True)
     price_kpi: Mapped[str | None] = mapped_column(String, nullable=True)
-    horizon_years: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
-    horizon_quarters: Mapped[int] = mapped_column(Integer, nullable=False, default=4)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=utc_now, onupdate=utc_now

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Fragment, type ReactNode } from "react";
 import { RefreshCw } from "lucide-react";
-import { NavLink, useParams } from "react-router";
+import { NavLink, useParams, useSearchParams } from "react-router";
 
 import { companyErrorMessage, companyQueryOptions, useRefreshCompany } from "@/api/companies";
 import { ApiError } from "@/api/errors";
@@ -15,6 +15,8 @@ import { NotesView } from "@/features/notes/NotesView";
 import { Overview } from "@/features/overview/Overview";
 import { QualityView } from "@/features/quality/QualityView";
 import { RatiosView } from "@/features/ratios/RatiosView";
+import { ScenariosView } from "@/features/scenarios/ScenariosView";
+import { SCENARIO_PARAM } from "@/features/scenarios/useScenarioParam";
 import { SegmentsView } from "@/features/segments/SegmentsView";
 import { StatementView } from "@/features/statements/StatementView";
 import { formatCompact, formatPrice, formatRelative } from "@/lib/format";
@@ -35,11 +37,26 @@ const TABS: { slug: string; label: string; render: (company: CompanyListItem) =>
   { slug: "segments", label: "Segments", render: (c) => <SegmentsView ticker={c.ticker} /> },
   { slug: "comps", label: "Comps", render: (c) => <CompsView ticker={c.ticker} /> },
   { slug: "guidance", label: "Guidance", render: (c) => <GuidanceView ticker={c.ticker} /> },
+  {
+    slug: "forecast",
+    label: "Forecast",
+    render: () => <p className="text-muted-foreground p-4 text-sm">Coming in S6</p>,
+  },
+  { slug: "scenarios", label: "Scenarios", render: (c) => <ScenariosView ticker={c.ticker} /> },
   { slug: "notes", label: "Notes", render: (c) => <NotesView ticker={c.ticker} /> },
 ];
 
-const tabPath = (ticker: string, slug: string) =>
-  slug === "overview" ? `/c/${ticker}` : `/c/${ticker}/${slug}`;
+// The tabs that share the picked scenario (`?scenario`), so moving between them keeps it.
+const SCENARIO_TABS = new Set(["forecast", "scenarios"]);
+
+function tabPath(ticker: string, slug: string, scenario: string | null): string {
+  if (slug === "overview") return `/c/${ticker}`;
+  const query =
+    scenario && SCENARIO_TABS.has(slug)
+      ? `?${new URLSearchParams({ [SCENARIO_PARAM]: scenario })}`
+      : "";
+  return `/c/${ticker}/${slug}${query}`;
+}
 
 const tabClassName = ({ isActive }: { isActive: boolean }) =>
   isActive
@@ -50,6 +67,7 @@ export function Company() {
   const { ticker = "", tab = "overview" } = useParams<{ ticker: string; tab?: string }>();
   const { data: company, isPending, error } = useQuery(companyQueryOptions(ticker));
   const refresh = useRefreshCompany(ticker);
+  const [params] = useSearchParams();
   const now = useNow();
 
   if (isPending) return null;
@@ -102,7 +120,12 @@ export function Company() {
       </div>
       <nav className="border-border flex gap-4 overflow-x-auto border-b px-4 text-sm">
         {TABS.map(({ slug, label }) => (
-          <NavLink key={slug} to={tabPath(company.ticker, slug)} end className={tabClassName}>
+          <NavLink
+            key={slug}
+            to={tabPath(company.ticker, slug, params.get(SCENARIO_PARAM))}
+            end
+            className={tabClassName}
+          >
             {label}
           </NavLink>
         ))}

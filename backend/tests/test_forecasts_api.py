@@ -234,20 +234,15 @@ def test_compare_gives_every_scenario_on_the_default_codes(aapl_client: TestClie
     assert [D(v) for v in base["values"]["revenue"]] == _forecast_values(forecast, "revenue")
 
 
-def test_compare_spans_the_union_of_horizons_with_nulls_where_a_scenario_stops(
+def test_compare_spans_the_five_forecast_years_of_every_scenario(
     aapl_client: TestClient,
 ) -> None:
-    ids = _ids(aapl_client)
-    put = aapl_client.put(f"{_scenarios_url('AAPL')}/{ids['Bull']}", json={"horizon_years": 7})
-    assert put.status_code == 200
-
     body = _ok(_compare(aapl_client, freq="annual", codes="revenue,cash"))
 
-    assert len(body["periods"]) == 7
+    assert len(body["periods"]) == 5
     assert [c["code"] for c in body["codes"]] == ["revenue", "cash"]
-    by_name = {s["name"]: s for s in body["scenarios"]}
-    assert all(v is not None for v in by_name["Bull"]["values"]["revenue"])
-    assert by_name["Base"]["values"]["revenue"][5:] == [None, None]
+    for scenario in body["scenarios"]:
+        assert all(v is not None for v in scenario["values"]["revenue"])
 
 
 def test_compare_quarterly_has_the_forecast_quarters(aapl_client: TestClient) -> None:
@@ -280,22 +275,19 @@ def test_compare_refuses_an_unknown_code_and_ttm(aapl_client: TestClient) -> Non
     assert _compare(aapl_client, freq="ttm").status_code == 422
 
 
-def test_a_ten_year_eight_quarter_horizon_extends_the_forecast_columns(
+def test_the_horizon_is_fixed_at_five_years_and_eight_quarters(
     aapl_client: TestClient,
 ) -> None:
+    """User decision 2026-10-31: no scenario setting; every forecast has 5 years and 8 quarters."""
     base = _ids(aapl_client)["Base"]
-    put = aapl_client.put(
-        f"{_scenarios_url('AAPL')}/{base}", json={"horizon_years": 10, "horizon_quarters": 8}
-    )
-    assert put.status_code == 200, put.text
 
     annual = _ok(_forecast(aapl_client, base, "IS", "annual"))
     quarterly = _ok(_forecast(aapl_client, base, "BS", "quarterly"))
 
     years = [p for p in annual["periods"] if p["is_forecast"]]
-    assert len(years) == 10
+    assert len(years) == 5
     assert [p["fiscal_year"] for p in years] == list(
-        range(years[0]["fiscal_year"], years[0]["fiscal_year"] + 10)
+        range(years[0]["fiscal_year"], years[0]["fiscal_year"] + 5)
     )
     quarters = [p for p in quarterly["periods"] if p["is_forecast"]]
     # 8 quarters after the opening, extended to the end of that fiscal year

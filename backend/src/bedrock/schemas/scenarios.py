@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from bedrock.forecast.drivers import DriverKind, RevenueMethod, Unit
 from bedrock.forecast.resolve import Source
@@ -16,15 +16,16 @@ from bedrock.services.scenarios import (
 
 
 class ScenarioSettingsIn(BaseModel):
-    """A PUT: every field optional, an absent one is left as it is."""
+    """A PUT: every field optional, an absent one is left as it is. An unknown field is a 422,
+    so a client still sending the removed horizon fields learns it at once."""
+
+    model_config = ConfigDict(extra="forbid")
 
     name: str | None = None
     revenue_method: RevenueMethod | None = None
     segment_dimension: Literal["business", "geo"] | None = None
     volume_kpi: str | None = None  # a KPI code of unit count
     price_kpi: str | None = None  # a KPI code of unit USD_per_unit
-    horizon_years: int | None = None  # 5-10
-    horizon_quarters: int | None = None  # 4-8
 
     def to_input(self) -> SettingsInput:
         return SettingsInput(**self.model_dump())
@@ -45,8 +46,6 @@ class ScenarioOut(BaseModel):
     segment_dimension: Literal["business", "geo"] | None
     volume_kpi: str | None
     price_kpi: str | None
-    horizon_years: int
-    horizon_quarters: int
     created_at: datetime
     updated_at: datetime
 

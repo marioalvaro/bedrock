@@ -9,7 +9,7 @@ from typing import Literal
 
 from sqlalchemy.orm import Session
 
-from bedrock.forecast.engines.driver import DriverModel, ForecastStatements, Horizon
+from bedrock.forecast.engines.driver import FORECAST_HORIZON, DriverModel, ForecastStatements
 from bedrock.forecast.errors import ForecastUnavailable
 from bedrock.forecast.history import ForecastHistory
 from bedrock.forecast.integrity import IntegrityCheck
@@ -147,7 +147,7 @@ def _run(
     statements = DriverModel().run(
         history,
         drivers.resolved,
-        Horizon(scenario.horizon_years, scenario.horizon_quarters),
+        FORECAST_HORIZON,
         drivers.settings,
     )
     return statements, [*drivers.resolved.warnings, *statements.warnings]

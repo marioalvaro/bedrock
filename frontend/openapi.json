@@ -4787,30 +4787,9 @@
         "type": "object"
       },
       "ScenarioIn": {
+        "additionalProperties": false,
         "description": "A POST: the settings not given are Base's.",
         "properties": {
-          "horizon_quarters": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Horizon Quarters"
-          },
-          "horizon_years": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Horizon Years"
-          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -4893,14 +4872,6 @@
             "title": "Created At",
             "type": "string"
           },
-          "horizon_quarters": {
-            "title": "Horizon Quarters",
-            "type": "integer"
-          },
-          "horizon_years": {
-            "title": "Horizon Years",
-            "type": "integer"
-          },
           "id": {
             "title": "Id",
             "type": "integer"
@@ -4974,8 +4945,6 @@
           "segment_dimension",
           "volume_kpi",
           "price_kpi",
-          "horizon_years",
-          "horizon_quarters",
           "created_at",
           "updated_at"
         ],
@@ -4983,30 +4952,9 @@
         "type": "object"
       },
       "ScenarioSettingsIn": {
-        "description": "A PUT: every field optional, an absent one is left as it is.",
+        "additionalProperties": false,
+        "description": "A PUT: every field optional, an absent one is left as it is. An unknown field is a 422,\nso a client still sending the removed horizon fields learns it at once.",
         "properties": {
-          "horizon_quarters": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Horizon Quarters"
-          },
-          "horizon_years": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Horizon Years"
-          },
           "name": {
             "anyOf": [
               {

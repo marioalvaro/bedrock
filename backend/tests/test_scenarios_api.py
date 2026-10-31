@@ -68,8 +68,6 @@ def test_the_first_list_gives_base_bull_and_bear(aapl_client: TestClient) -> Non
         "segment_dimension",
         "volume_kpi",
         "price_kpi",
-        "horizon_years",
-        "horizon_quarters",
         "created_at",
         "updated_at",
     }
@@ -81,14 +79,14 @@ def test_the_first_list_gives_base_bull_and_bear(aapl_client: TestClient) -> Non
 def test_create_update_and_delete_a_scenario(aapl_client: TestClient) -> None:
     _scenarios(aapl_client)
 
-    created = aapl_client.post(SCENARIOS, json={"name": "Mine", "horizon_years": 7})
+    created = aapl_client.post(SCENARIOS, json={"name": "Mine"})
     assert created.status_code == 201, created.text
     mine = created.json()
-    assert (mine["name"], mine["horizon_years"], mine["horizon_quarters"]) == ("Mine", 7, 4)
+    assert mine["name"] == "Mine"
 
     updated = aapl_client.put(f"{SCENARIOS}/{mine['id']}", json={"name": "Ours"})
     assert updated.status_code == 200
-    assert (updated.json()["name"], updated.json()["horizon_years"]) == ("Ours", 7)
+    assert updated.json()["name"] == "Ours"
 
     assert aapl_client.delete(f"{SCENARIOS}/{mine['id']}").status_code == 204
     assert list(_scenarios(aapl_client)) == ["Base", "Bull", "Bear"]
@@ -114,8 +112,9 @@ def test_conflicts_are_409(aapl_client: TestClient) -> None:
     [
         {},
         {"name": ""},
-        {"name": "A", "horizon_years": 4},
-        {"name": "A", "horizon_quarters": 9},
+        # the horizon is fixed (5 years, 8 quarters): a body that sets one is refused
+        {"name": "A", "horizon_years": 5},
+        {"name": "A", "horizon_quarters": 8},
         {"name": "A", "revenue_method": "segments"},
         {"name": "A", "revenue_method": "magic"},
         {"name": "A", "revenue_method": "volume_price", "volume_kpi": "u", "price_kpi": "p"},
