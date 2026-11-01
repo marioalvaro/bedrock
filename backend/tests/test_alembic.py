@@ -937,7 +937,7 @@ def test_0010_drops_the_horizon_columns_and_keeps_every_scenario_and_driver_both
             ]
 
     # The app's engine turns foreign keys on: a rebuild of `scenario` must not cascade (G34).
-    _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "0010"))
     assert not _HORIZON_COLUMNS & _scenario_columns(database_url)
     assert counts() == [2, 2]
 
@@ -954,7 +954,7 @@ def test_0010_drops_the_horizon_columns_and_keeps_every_scenario_and_driver_both
 def test_0010_keeps_the_scenario_keys_and_checks(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0010"))
     inspector = inspect(create_engine(database_url))
     fks = {
         (fk["referred_table"], tuple(fk["constrained_columns"]), fk["options"].get("ondelete"))
@@ -986,3 +986,379 @@ _SCENARIO_NOW = {
     "created_at": _NOW,
     "updated_at": _NOW,
 }
+
+
+# M4 S6b (user, 2026-10-31): a scenario holds exactly three cases; 0011 moves the flat
+# Base/Bull/Bear scenarios into one scenario "Main" with cases (docs/erd/forecasting.md
+# "Scenarios and cases").
+
+
+def _old_scenario(connection: Connection, company_id: int, **cols: object) -> int:
+    return _insert(connection, "scenario", company_id=company_id, **{**_SCENARIO_NOW, **cols})
+
+
+def _old_driver(connection: Connection, scenario_id: int, **cols: object) -> int:
+    return _driver_value(connection, scenario_id, **cols)
+
+
+def _flat_company(connection: Connection, ticker: str) -> dict[str, int]:
+    """A company holding the flat defaults and one user scenario, as the dev DB held them."""
+    owner = _company(connection, ticker)
+    base = _old_scenario(connection, owner, revenue_method="segments", segment_dimension="geo")
+    bull = _old_scenario(
+        connection, owner, name="Bull", is_default=0, base_id=base, revenue_method="growth"
+    )
+    bear = _old_scenario(connection, owner, name="Bear", is_default=0, base_id=base)
+    mine = _old_scenario(connection, owner, name="Mine", is_default=0, base_id=base)
+    _old_driver(connection, base, driver_code="gross_margin", value="0.4")
+    _old_driver(connection, bull, kind="offset", value="0.03")
+    _old_driver(connection, bull, driver_code="gross_margin", kind="offset", value="0.01")
+    _old_driver(connection, bear, kind="offset", value="-0.03")
+    _old_driver(connection, mine, driver_code="tax_rate", value="0.2")
+    _old_driver(connection, mine, kind="offset", value="0.05")  # an offset on the old Base
+    return {"owner": owner, "base": base, "bull": bull, "bear": bear, "mine": mine}
+
+
+def _new_state(database_url: str) -> dict[str, object]:
+    """The scenarios (name -> settings), their cases, and every driver row by
+    (scenario name, case, code, year) -> (kind, value)."""
+    with create_engine(database_url).connect() as connection:
+        scenarios = {
+            (r.company, r.name): (r.is_default, r.revenue_method, r.segment_dimension)
+            for r in connection.execute(
+                text(
+                    "SELECT c.ticker AS company, s.name, s.is_default, s.revenue_method,"
+                    " s.segment_dimension FROM scenario s JOIN company c ON c.id = s.company_id"
+                )
+            )
+        }
+        cases = sorted(
+            (r.company, r.name, r.case_name)
+            for r in connection.execute(
+                text(
+                    'SELECT c.ticker AS company, s.name, k."case" AS case_name'
+                    " FROM scenario_case k JOIN scenario s ON s.id = k.scenario_id"
+                    " JOIN company c ON c.id = s.company_id"
+                )
+            )
+        )
+        rows = {
+            (r.company, r.name, r.case_name, r.driver_code, r.fiscal_year): (
+                r.kind,
+                round(float(r.value), 6),
+            )
+            for r in connection.execute(
+                text(
+                    'SELECT c.ticker AS company, s.name, k."case" AS case_name, d.driver_code,'
+                    " d.fiscal_year, d.kind, d.value FROM driver_value d"
+                    " JOIN scenario_case k ON k.id = d.case_id"
+                    " JOIN scenario s ON s.id = k.scenario_id"
+                    " JOIN company c ON c.id = s.company_id"
+                )
+            )
+        }
+    return {"scenarios": scenarios, "cases": cases, "rows": rows}
+
+
+def _all_cases(company: str, *names: str) -> list[tuple[str, str, str]]:
+    return [(company, n, c) for n in names for c in ("base", "bear", "bull")]
+
+
+def test_0011_moves_the_flat_scenarios_into_main_with_cases(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0010"))
+    with create_engine(database_url).begin() as connection:
+        _flat_company(connection, "AAA")
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "0011"))
+    state = _new_state(database_url)
+
+    assert state["scenarios"] == {
+        ("AAA", "Main"): (1, "segments", "geo"),  # old Base's settings stay; Bull/Bear's drop
+        ("AAA", "Mine"): (0, "growth", None),
+    }
+    assert state["cases"] == _all_cases("AAA", "Main", "Mine")
+    assert state["rows"] == {
+        ("AAA", "Main", "base", "gross_margin", 2027): ("value", 0.4),
+        ("AAA", "Main", "bull", "revenue_growth", 2027): ("offset", 0.03),
+        ("AAA", "Main", "bull", "gross_margin", 2027): ("offset", 0.01),
+        ("AAA", "Main", "bear", "revenue_growth", 2027): ("offset", -0.03),
+        # Mine's value rows go to its base; its offset (on the old Base) is dropped
+        ("AAA", "Mine", "base", "tax_rate", 2027): ("value", 0.2),
+    }
+
+
+def test_0011_downgrade_restores_the_flat_scenarios_and_up_again_is_stable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0010"))
+    with create_engine(database_url).begin() as connection:
+        _flat_company(connection, "AAA")
+        _flat_company(connection, "BBB")
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "0011"))
+    with create_engine(database_url).begin() as connection:
+        # a row on Mine's bull case, added in the new model
+        bull = connection.execute(
+            text(
+                "SELECT k.id FROM scenario_case k JOIN scenario s ON s.id = k.scenario_id"
+                " JOIN company c ON c.id = s.company_id"
+                " WHERE c.ticker = 'AAA' AND s.name = 'Mine' AND k.\"case\" = 'bull'"
+            )
+        ).scalar_one()
+        _insert(
+            connection,
+            "driver_value",
+            case_id=bull,
+            driver_code="gross_margin",
+            fiscal_year=2027,
+            fiscal_period="FY",
+            kind="offset",
+            value="0.02",
+            source="manual",
+            created_at=_NOW,
+            updated_at=_NOW,
+        )
+    up_state = _new_state(database_url)
+
+    _run_alembic(tmp_path, monkeypatch, ("downgrade", "0010"))
+    with create_engine(database_url).connect() as connection:
+        flat = {
+            (r.ticker, r.name): (r.is_default, r.parent, r.revenue_method)
+            for r in connection.execute(
+                text(
+                    "SELECT c.ticker, s.name, s.is_default, p.name AS parent, s.revenue_method"
+                    " FROM scenario s JOIN company c ON c.id = s.company_id"
+                    " LEFT JOIN scenario p ON p.id = s.base_id"
+                )
+            )
+        }
+        rows = sorted(
+            (r.ticker, r.name, r.driver_code, r.kind, round(float(r.value), 6))
+            for r in connection.execute(
+                text(
+                    "SELECT c.ticker, s.name, d.driver_code, d.kind, d.value FROM driver_value d"
+                    " JOIN scenario s ON s.id = d.scenario_id"
+                    " JOIN company c ON c.id = s.company_id WHERE c.ticker = 'AAA'"
+                )
+            )
+        )
+    for ticker in ("AAA", "BBB"):
+        assert flat[(ticker, "Base")] == (1, None, "segments")  # the default is "Base" again
+        assert flat[(ticker, "Bull")] == (0, "Base", "segments")  # the scenario's settings
+        assert flat[(ticker, "Bear")] == (0, "Base", "segments")
+        assert flat[(ticker, "Mine")] == (0, "Base", "growth")
+    assert flat[("AAA", "Mine Bull")] == (0, "Base", "growth")  # lossy: on the default Base
+    assert ("AAA", "Mine Bear") not in flat  # an empty case is not worth a scenario
+    assert rows == sorted(
+        [
+            ("AAA", "Base", "gross_margin", "value", 0.4),
+            ("AAA", "Bull", "revenue_growth", "offset", 0.03),
+            ("AAA", "Bull", "gross_margin", "offset", 0.01),
+            ("AAA", "Bear", "revenue_growth", "offset", -0.03),
+            ("AAA", "Mine", "tax_rate", "value", 0.2),
+            ("AAA", "Mine Bull", "gross_margin", "offset", 0.02),
+        ]
+    )
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "0011"))
+    again = _new_state(database_url)
+    assert again["scenarios"] == {  # "Mine Bull" is its own scenario now, with no rows to keep
+        **up_state["scenarios"],  # type: ignore[dict-item]  # a dict in both
+        ("AAA", "Mine Bull"): (0, "growth", None),
+    }
+    lost = ("AAA", "Mine", "bull", "gross_margin", 2027)  # the offset on Mine's own Base
+    assert again["rows"] == {k: v for k, v in up_state["rows"].items() if k != lost}  # type: ignore[attr-defined]
+
+
+def test_0011_keeps_every_row_with_foreign_keys_on(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Rebuilding `scenario` and `driver_value` must not cascade (G34)."""
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0010"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        _flat_company(connection, "AAA")
+        company = _company(connection, "BBB")
+        _driver_value(connection, _old_scenario(connection, company))
+
+    def counts() -> dict[str, int]:
+        with engine.connect() as connection:
+            return {
+                t: int(connection.execute(text(f"SELECT count(*) FROM {t}")).scalar())
+                for t in ("company", "scenario", "driver_value")
+            }
+
+    before = counts()
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "0011"))
+    after = counts()
+    assert after["company"] == before["company"]
+    assert after["scenario"] == 3  # AAA: Main + Mine, BBB: Main
+    assert after["driver_value"] == before["driver_value"] - 1  # Mine's offset on the old Base
+    _run_alembic(tmp_path, monkeypatch, ("downgrade", "0010"))
+    assert counts()["company"] == before["company"]
+    assert counts()["driver_value"] == before["driver_value"] - 1
+
+
+def test_0011_renames_the_default_to_a_free_name_when_main_is_taken(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0010"))
+    with create_engine(database_url).begin() as connection:
+        owner = _company(connection, "AAA")
+        base = _old_scenario(connection, owner)
+        _old_scenario(connection, owner, name="Main", is_default=0, base_id=base)
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "0011"))
+
+    assert set(_new_state(database_url)["scenarios"]) == {  # type: ignore[call-overload]
+        ("AAA", "Main"),
+        ("AAA", "Main 2"),
+    }
+
+
+def test_0011_with_no_bull_or_bear_still_gives_the_default_its_three_cases(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0010"))
+    with create_engine(database_url).begin() as connection:
+        owner = _company(connection, "AAA")
+        _old_driver(connection, _old_scenario(connection, owner))
+        _company(connection, "BBB")  # no scenario at all: nothing to move
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "0011"))
+    state = _new_state(database_url)
+
+    assert state["cases"] == _all_cases("AAA", "Main")
+    assert list(state["rows"]) == [("AAA", "Main", "base", "revenue_growth", 2027)]  # type: ignore[call-overload]
+
+
+def _case(connection: Connection, scenario_id: int, case: str) -> int:
+    """A `scenario_case` row (`case` is an SQL keyword, so `_insert` cannot write it)."""
+    result = connection.execute(
+        text(
+            'INSERT INTO scenario_case (scenario_id, "case", created_at, updated_at)'
+            " VALUES (:scenario_id, :case, :now, :now)"
+        ),
+        {"scenario_id": scenario_id, "case": case, "now": _NOW},
+    )
+    return int(result.lastrowid)
+
+
+def _scenario11(connection: Connection, company_id: int, **cols: object) -> int:
+    """A scenario as 0011 has it: no `base_id`."""
+    row = {k: v for k, v in _SCENARIO_NOW.items() if k != "base_id"}
+    return _insert(connection, "scenario", company_id=company_id, **{**row, **cols})
+
+
+def test_0011_keys_and_checks_hold_at_the_database_level(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    inspector = inspect(create_engine(database_url))
+    assert "base_id" not in {c["name"] for c in inspector.get_columns("scenario")}
+    assert "scenario_id" not in {c["name"] for c in inspector.get_columns("driver_value")}
+
+    def fks(table: str) -> set[tuple[str, tuple[str, ...], str | None]]:
+        return {
+            (fk["referred_table"], tuple(fk["constrained_columns"]), fk["options"].get("ondelete"))
+            for fk in inspector.get_foreign_keys(table)
+        }
+
+    assert fks("scenario") == {("company", ("company_id",), "CASCADE")}
+    assert fks("scenario_case") == {("scenario", ("scenario_id",), "CASCADE")}
+    assert fks("driver_value") == {("scenario_case", ("case_id",), "CASCADE")}
+    assert ("scenario_id", "case") in {
+        tuple(c["column_names"]) for c in inspector.get_unique_constraints("scenario_case")
+    }
+    assert ("case_id", "driver_code", "fiscal_year", "fiscal_period") in {
+        tuple(c["column_names"]) for c in inspector.get_unique_constraints("driver_value")
+    }
+
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        company_id = _company(connection, "AAA")
+        main = _scenario11(connection, company_id, name="Main")
+        _case(connection, main, "base")
+    for bad in (
+        lambda c: _scenario11(c, company_id, name="Two"),  # a second default
+        lambda c: _scenario11(c, company_id, name="Main", is_default=0),  # the same name
+        lambda c: _scenario11(c, company_id, name="X", is_default=0, revenue_method="dcf"),
+        lambda c: _case(c, main, "base"),  # the same case twice
+        lambda c: _case(c, main, "best"),
+    ):
+        with pytest.raises(IntegrityError), engine.begin() as connection:
+            bad(connection)
+
+
+def test_0011_cases_and_driver_rows_cascade_on_delete(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+        owner = _company(connection, "AAA")
+        extra = _scenario11(connection, owner, name="Extra", is_default=0)
+        main = _scenario11(connection, owner, name="Main")
+        for scenario in (main, extra):
+            for case in ("base", "bull"):
+                case_id = _case(connection, scenario, case)
+                _insert(
+                    connection,
+                    "driver_value",
+                    case_id=case_id,
+                    driver_code="gross_margin",
+                    fiscal_year=2027,
+                    fiscal_period="FY",
+                    kind="value",
+                    value="0.4",
+                    source="manual",
+                    created_at=_NOW,
+                    updated_at=_NOW,
+                )
+
+        def count(table: str) -> int:
+            return int(connection.execute(text(f"SELECT count(*) FROM {table}")).scalar())
+
+        connection.execute(text("DELETE FROM scenario WHERE id = :id"), {"id": extra})
+        assert (count("scenario"), count("scenario_case"), count("driver_value")) == (1, 2, 2)
+        connection.execute(text("DELETE FROM company WHERE id = :id"), {"id": owner})
+        assert (count("scenario"), count("scenario_case"), count("driver_value")) == (0, 0, 0)
+
+
+def test_0011_downgrade_keeps_the_default_s_bull_and_bear_names_when_a_user_scenario_has_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A user scenario named "Bull" must not be mistaken for Main's bull case on the way back up."""
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0011"))
+    with create_engine(database_url).begin() as connection:
+        owner = _company(connection, "AAA")
+        main = _scenario11(connection, owner, name="Main")
+        mine = _scenario11(connection, owner, name="Bull", is_default=0)
+        main_bull = _case(connection, main, "bull")
+        for scenario in (main, mine):
+            _case(connection, scenario, "base")
+        _case(connection, main, "bear")
+        _case(connection, mine, "bull")
+        _case(connection, mine, "bear")
+        _insert(
+            connection,
+            "driver_value",
+            case_id=main_bull,
+            driver_code="revenue_growth",
+            fiscal_year=2027,
+            fiscal_period="FY",
+            kind="offset",
+            value="0.03",
+            source="manual",
+            created_at=_NOW,
+            updated_at=_NOW,
+        )
+    before = _new_state(database_url)["rows"]
+
+    _run_alembic(tmp_path, monkeypatch, ("downgrade", "0010"), ("upgrade", "0011"))
+
+    after = _new_state(database_url)
+    assert after["rows"] == before  # Main's bull offsets are still Main's
+    assert ("AAA", "Main") in after["scenarios"]  # type: ignore[operator]

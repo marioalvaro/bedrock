@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict
 
 from bedrock.forecast.drivers import DriverKind, RevenueMethod, Unit
 from bedrock.forecast.resolve import Source
-from bedrock.models.scenario import Scenario
+from bedrock.models.scenario import Case, Scenario
 from bedrock.services.scenarios import (
     DriverGrid,
     DriverImportResult,
@@ -32,7 +32,7 @@ class ScenarioSettingsIn(BaseModel):
 
 
 class ScenarioIn(ScenarioSettingsIn):
-    """A POST: the settings not given are Base's."""
+    """A POST: the settings not given are the default scenario's."""
 
     name: str
 
@@ -41,7 +41,6 @@ class ScenarioOut(BaseModel):
     id: int
     name: str
     is_default: bool
-    base_id: int | None
     revenue_method: RevenueMethod
     segment_dimension: Literal["business", "geo"] | None
     volume_kpi: str | None
@@ -57,7 +56,7 @@ class ScenarioOut(BaseModel):
 class DriverRowOut(BaseModel):
     """`history` is aligned with the grid's `history_years`; `values`, `sources` and `own` with
     its `forecast_years`. A value held flat is null with source `default`; a required driver
-    nothing sets is null with source null. `own` is the scenario's stored value, or offset when
+    nothing sets is null with source null. `own` is the case's stored value, or offset when
     `kind` is `offset`."""
 
     code: str
@@ -73,6 +72,7 @@ class DriverRowOut(BaseModel):
 
 class DriverGridOut(BaseModel):
     scenario_id: int
+    case: Case
     history_years: list[int]
     forecast_years: list[int]
     rows: list[DriverRowOut]
@@ -82,6 +82,7 @@ class DriverGridOut(BaseModel):
     def from_grid(cls, grid: DriverGrid) -> "DriverGridOut":
         return cls(
             scenario_id=grid.scenario_id,
+            case=grid.case,
             history_years=grid.history_years,
             forecast_years=grid.forecast_years,
             rows=[
@@ -114,7 +115,7 @@ class DriverRowIn(BaseModel):
 
 
 class DriversIn(BaseModel):
-    """Each row replaces every stored row of its driver in the scenario."""
+    """Each row replaces every stored row of its driver in the case."""
 
     rows: list[DriverRowIn]
 

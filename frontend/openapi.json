@@ -166,7 +166,7 @@
         "title": "BalanceCheckOut",
         "type": "object"
       },
-      "Body_import_drivers_api_v1_companies__ticker__scenarios__scenario_id__drivers_import_post": {
+      "Body_import_drivers_api_v1_companies__ticker__scenarios__scenario_id__cases__case__drivers_import_post": {
         "properties": {
           "dry_run": {
             "default": false,
@@ -182,7 +182,7 @@
         "required": [
           "file"
         ],
-        "title": "Body_import_drivers_api_v1_companies__ticker__scenarios__scenario_id__drivers_import_post",
+        "title": "Body_import_drivers_api_v1_companies__ticker__scenarios__scenario_id__cases__case__drivers_import_post",
         "type": "object"
       },
       "Body_import_statements_api_v1_companies__ticker__imports_post": {
@@ -897,6 +897,13 @@
       },
       "CompareOut": {
         "properties": {
+          "cases": {
+            "items": {
+              "$ref": "#/components/schemas/ComparedCaseOut"
+            },
+            "title": "Cases",
+            "type": "array"
+          },
           "codes": {
             "items": {
               "$ref": "#/components/schemas/CompareCodeOut"
@@ -910,21 +917,68 @@
             },
             "title": "Periods",
             "type": "array"
-          },
-          "scenarios": {
-            "items": {
-              "$ref": "#/components/schemas/ComparedScenarioOut"
-            },
-            "title": "Scenarios",
-            "type": "array"
           }
         },
         "required": [
           "periods",
           "codes",
-          "scenarios"
+          "cases"
         ],
         "title": "CompareOut",
+        "type": "object"
+      },
+      "ComparedCaseOut": {
+        "properties": {
+          "case": {
+            "enum": [
+              "base",
+              "bull",
+              "bear"
+            ],
+            "title": "Case",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "values": {
+            "additionalProperties": {
+              "items": {
+                "anyOf": [
+                  {
+                    "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "case",
+          "label",
+          "values",
+          "error"
+        ],
+        "title": "ComparedCaseOut",
         "type": "object"
       },
       "ComparedCompanyOut": {
@@ -968,55 +1022,6 @@
           "ttm_period"
         ],
         "title": "ComparedCompanyOut",
-        "type": "object"
-      },
-      "ComparedScenarioOut": {
-        "properties": {
-          "error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error"
-          },
-          "id": {
-            "title": "Id",
-            "type": "integer"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "values": {
-            "additionalProperties": {
-              "items": {
-                "anyOf": [
-                  {
-                    "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "type": "array"
-            },
-            "title": "Values",
-            "type": "object"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "values",
-          "error"
-        ],
-        "title": "ComparedScenarioOut",
         "type": "object"
       },
       "CompsMemberOut": {
@@ -1580,6 +1585,15 @@
       },
       "DriverGridOut": {
         "properties": {
+          "case": {
+            "enum": [
+              "base",
+              "bull",
+              "bear"
+            ],
+            "title": "Case",
+            "type": "string"
+          },
           "forecast_years": {
             "items": {
               "type": "integer"
@@ -1615,6 +1629,7 @@
         },
         "required": [
           "scenario_id",
+          "case",
           "history_years",
           "forecast_years",
           "rows",
@@ -1687,7 +1702,7 @@
         "type": "object"
       },
       "DriverRowOut": {
-        "description": "`history` is aligned with the grid's `history_years`; `values`, `sources` and `own` with\nits `forecast_years`. A value held flat is null with source `default`; a required driver\nnothing sets is null with source null. `own` is the scenario's stored value, or offset when\n`kind` is `offset`.",
+        "description": "`history` is aligned with the grid's `history_years`; `values`, `sources` and `own` with\nits `forecast_years`. A value held flat is null with source `default`; a required driver\nnothing sets is null with source null. `own` is the case's stored value, or offset when\n`kind` is `offset`.",
         "properties": {
           "code": {
             "title": "Code",
@@ -1835,7 +1850,7 @@
         "type": "object"
       },
       "DriversIn": {
-        "description": "Each row replaces every stored row of its driver in the scenario.",
+        "description": "Each row replaces every stored row of its driver in the case.",
         "properties": {
           "rows": {
             "items": {
@@ -2158,6 +2173,15 @@
             "title": "Basis",
             "type": "string"
           },
+          "case": {
+            "enum": [
+              "base",
+              "bull",
+              "bear"
+            ],
+            "title": "Case",
+            "type": "string"
+          },
           "currency": {
             "title": "Currency",
             "type": "string"
@@ -2227,6 +2251,7 @@
           "rows",
           "balance_check",
           "scenario_id",
+          "case",
           "warnings",
           "integrity"
         ],
@@ -4788,7 +4813,7 @@
       },
       "ScenarioIn": {
         "additionalProperties": false,
-        "description": "A POST: the settings not given are Base's.",
+        "description": "A POST: the settings not given are the default scenario's.",
         "properties": {
           "name": {
             "title": "Name",
@@ -4856,17 +4881,6 @@
       },
       "ScenarioOut": {
         "properties": {
-          "base_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Base Id"
-          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -4940,7 +4954,6 @@
           "id",
           "name",
           "is_default",
-          "base_id",
           "revenue_method",
           "segment_dimension",
           "volume_kpi",
@@ -8124,79 +8137,6 @@
         ]
       }
     },
-    "/api/v1/companies/{ticker}/scenarios/compare": {
-      "get": {
-        "operationId": "compare_scenarios_api_v1_companies__ticker__scenarios_compare_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "ticker",
-            "required": true,
-            "schema": {
-              "title": "Ticker",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "freq",
-            "required": true,
-            "schema": {
-              "enum": [
-                "annual",
-                "quarterly"
-              ],
-              "title": "Freq",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Comma-separated line item codes",
-            "in": "query",
-            "name": "codes",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Comma-separated line item codes",
-              "title": "Codes"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CompareOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Compare Scenarios",
-        "tags": [
-          "forecasts"
-        ]
-      }
-    },
     "/api/v1/companies/{ticker}/scenarios/{scenario_id}": {
       "delete": {
         "operationId": "delete_scenario_api_v1_companies__ticker__scenarios__scenario_id__delete",
@@ -8300,9 +8240,9 @@
         ]
       }
     },
-    "/api/v1/companies/{ticker}/scenarios/{scenario_id}/drivers": {
+    "/api/v1/companies/{ticker}/scenarios/{scenario_id}/cases/{case}/drivers": {
       "get": {
-        "operationId": "get_drivers_api_v1_companies__ticker__scenarios__scenario_id__drivers_get",
+        "operationId": "get_drivers_api_v1_companies__ticker__scenarios__scenario_id__cases__case__drivers_get",
         "parameters": [
           {
             "in": "path",
@@ -8311,6 +8251,20 @@
             "schema": {
               "title": "Scenario Id",
               "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "case",
+            "required": true,
+            "schema": {
+              "enum": [
+                "base",
+                "bull",
+                "bear"
+              ],
+              "title": "Case",
+              "type": "string"
             }
           },
           {
@@ -8351,7 +8305,7 @@
         ]
       },
       "put": {
-        "operationId": "put_drivers_api_v1_companies__ticker__scenarios__scenario_id__drivers_put",
+        "operationId": "put_drivers_api_v1_companies__ticker__scenarios__scenario_id__cases__case__drivers_put",
         "parameters": [
           {
             "in": "path",
@@ -8360,6 +8314,20 @@
             "schema": {
               "title": "Scenario Id",
               "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "case",
+            "required": true,
+            "schema": {
+              "enum": [
+                "base",
+                "bull",
+                "bear"
+              ],
+              "title": "Case",
+              "type": "string"
             }
           },
           {
@@ -8410,9 +8378,9 @@
         ]
       }
     },
-    "/api/v1/companies/{ticker}/scenarios/{scenario_id}/drivers/export": {
+    "/api/v1/companies/{ticker}/scenarios/{scenario_id}/cases/{case}/drivers/export": {
       "get": {
-        "operationId": "export_drivers_api_v1_companies__ticker__scenarios__scenario_id__drivers_export_get",
+        "operationId": "export_drivers_api_v1_companies__ticker__scenarios__scenario_id__cases__case__drivers_export_get",
         "parameters": [
           {
             "in": "path",
@@ -8421,6 +8389,20 @@
             "schema": {
               "title": "Scenario Id",
               "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "case",
+            "required": true,
+            "schema": {
+              "enum": [
+                "base",
+                "bull",
+                "bear"
+              ],
+              "title": "Case",
+              "type": "string"
             }
           },
           {
@@ -8473,9 +8455,9 @@
         ]
       }
     },
-    "/api/v1/companies/{ticker}/scenarios/{scenario_id}/drivers/import": {
+    "/api/v1/companies/{ticker}/scenarios/{scenario_id}/cases/{case}/drivers/import": {
       "post": {
-        "operationId": "import_drivers_api_v1_companies__ticker__scenarios__scenario_id__drivers_import_post",
+        "operationId": "import_drivers_api_v1_companies__ticker__scenarios__scenario_id__cases__case__drivers_import_post",
         "parameters": [
           {
             "in": "path",
@@ -8484,6 +8466,20 @@
             "schema": {
               "title": "Scenario Id",
               "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "case",
+            "required": true,
+            "schema": {
+              "enum": [
+                "base",
+                "bull",
+                "bear"
+              ],
+              "title": "Case",
+              "type": "string"
             }
           },
           {
@@ -8500,7 +8496,7 @@
           "content": {
             "multipart/form-data": {
               "schema": {
-                "$ref": "#/components/schemas/Body_import_drivers_api_v1_companies__ticker__scenarios__scenario_id__drivers_import_post"
+                "$ref": "#/components/schemas/Body_import_drivers_api_v1_companies__ticker__scenarios__scenario_id__cases__case__drivers_import_post"
               }
             }
           },
@@ -8534,9 +8530,9 @@
         ]
       }
     },
-    "/api/v1/companies/{ticker}/scenarios/{scenario_id}/forecast": {
+    "/api/v1/companies/{ticker}/scenarios/{scenario_id}/cases/{case}/forecast": {
       "get": {
-        "operationId": "get_forecast_api_v1_companies__ticker__scenarios__scenario_id__forecast_get",
+        "operationId": "get_forecast_api_v1_companies__ticker__scenarios__scenario_id__cases__case__forecast_get",
         "parameters": [
           {
             "in": "path",
@@ -8545,6 +8541,20 @@
             "schema": {
               "title": "Scenario Id",
               "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "case",
+            "required": true,
+            "schema": {
+              "enum": [
+                "base",
+                "bull",
+                "bear"
+              ],
+              "title": "Case",
+              "type": "string"
             }
           },
           {
@@ -8607,6 +8617,153 @@
           }
         },
         "summary": "Get Forecast",
+        "tags": [
+          "forecasts"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/scenarios/{scenario_id}/cases/{case}/reset": {
+      "post": {
+        "operationId": "reset_case_api_v1_companies__ticker__scenarios__scenario_id__cases__case__reset_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scenario_id",
+            "required": true,
+            "schema": {
+              "title": "Scenario Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "case",
+            "required": true,
+            "schema": {
+              "enum": [
+                "base",
+                "bull",
+                "bear"
+              ],
+              "title": "Case",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriverGridOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reset Case",
+        "tags": [
+          "scenarios"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/scenarios/{scenario_id}/compare": {
+      "get": {
+        "operationId": "compare_cases_api_v1_companies__ticker__scenarios__scenario_id__compare_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scenario_id",
+            "required": true,
+            "schema": {
+              "title": "Scenario Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "freq",
+            "required": true,
+            "schema": {
+              "enum": [
+                "annual",
+                "quarterly"
+              ],
+              "title": "Freq",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated line item codes",
+            "in": "query",
+            "name": "codes",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated line item codes",
+              "title": "Codes"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompareOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Compare Cases",
         "tags": [
           "forecasts"
         ]

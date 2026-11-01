@@ -1,7 +1,7 @@
-"""Scenarios of a followed company and their drivers (FR-FCST-02..04; docs/erd/forecasting.md
-"Scenarios (M4)", "API")."""
+"""Scenarios of a followed company, their three cases and the drivers of each case (FR-FCST-02..05;
+docs/erd/forecasting.md "Scenarios and cases", "API")."""
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -43,7 +43,7 @@ from bedrock.forecast.history import (
 from bedrock.forecast.resolve import DriverRow, ResolvedDrivers, resolve_drivers
 from bedrock.models.company import Company
 from bedrock.models.driver_value import DriverValue
-from bedrock.models.scenario import SEGMENT_DIMENSIONS, Scenario
+from bedrock.models.scenario import CASES, SEGMENT_DIMENSIONS, Scenario, ScenarioCase
 from bedrock.repositories import scenarios as repo
 from bedrock.repositories import segments as segments_repo
 from bedrock.services.errors import (
@@ -68,19 +68,22 @@ __all__ = [
     "driver_grid",
     "ensure_defaults",
     "export_drivers",
+    "get_case",
     "get_scenario",
     "import_drivers",
     "list_scenarios",
     "load_history",
     "put_drivers",
-    "resolve_scenario",
+    "reset_case",
+    "resolve_case",
     "update_scenario",
 ]
 
 NAME_LIMIT = 60
-# The default Bull and Bear: their sign, and their offsets at creation (docs "Scenarios" →
-# Defaults). A segment's growth takes the revenue growth offset.
-DEFAULT_SIGNS = {"Bull": 1, "Bear": -1}
+DEFAULT_NAME = "Main"
+# The sign of a case's default offsets (docs "Scenarios and cases" → Defaults): Bull and Bear
+# override their scenario's Base; Base has no rows.
+CASE_SIGNS = {"bull": 1, "bear": -1}
 DEFAULT_OFFSETS = {"revenue_growth": Decimal("0.03"), "gross_margin": Decimal("0.01")}
 SEGMENT_OFFSET = DEFAULT_OFFSETS["revenue_growth"]
 STATEMENTS = ("IS", "BS", "CF")
@@ -122,7 +125,7 @@ class ScenarioDrivers:
 
     settings: ScenarioSettings
     resolved: ResolvedDrivers
-    own: list[DriverValue]  # the scenario's stored rows, every year
+    own: list[DriverValue]  # the case's stored rows, every year
 
 
 def _naive_utc(moment: datetime) -> datetime:
@@ -153,33 +156,24 @@ def load_history(session: Session, company: Company) -> ForecastHistory:
 
 
 def ensure_defaults(session: Session, company: Company, now: datetime) -> None:
-    """Creates Base, Bull and Bear (with their default offsets) when the company has no scenario;
-    otherwise does nothing. One transaction."""
+    """Creates the default scenario "Main" with its three cases (and their default offsets) when
+    the company has no scenario; otherwise does nothing. One transaction."""
     if repo.list_for(session, company.id):
         return
-    years = _offset_years(load_history(session, company))  # before the first write: no lock held
+    history = load_history(session, company)  # before the first write: no lock held
     stamp = _naive_utc(now)
     try:
-        base = repo.add(
+        main = repo.add(
             session,
             Scenario(
                 company_id=company.id,
-                name="Base",
+                name=DEFAULT_NAME,
                 is_default=True,
                 created_at=stamp,
                 updated_at=stamp,
             ),
         )
-        for name, sign in DEFAULT_SIGNS.items():
-            scenario = repo.add(session, _copy(base, name, stamp))
-            repo.add_rows(
-                session,
-                (
-                    _offset_row(scenario, code, year, sign * offset, stamp)
-                    for code, offset in DEFAULT_OFFSETS.items()
-                    for year in years
-                ),
-            )
+        _add_cases(session, main, history, stamp)
         session.commit()
     except IntegrityError:
         # Another request created the defaults between the check and this write.
@@ -187,7 +181,8 @@ def ensure_defaults(session: Session, company: Company, now: datetime) -> None:
 
 
 def list_scenarios(session: Session, company: Company, now: datetime) -> list[Scenario]:
-    """The company's scenarios, Base first, then by id; creates the defaults on the first call."""
+    """The company's scenarios, the default first, then by id; creates the default on the first
+    call."""
     ensure_defaults(session, company, now)
     return repo.list_for(session, company.id)
 
@@ -200,19 +195,36 @@ def get_scenario(session: Session, company: Company, scenario_id: int) -> Scenar
     return stored
 
 
+def get_case(
+    session: Session, company: Company, scenario_id: int, case: str
+) -> tuple[Scenario, ScenarioCase]:
+    """The scenario and one of its cases. Raises ScenarioNotFound, and InvalidScenario for a case
+    other than base, bull or bear."""
+    scenario = get_scenario(session, company, scenario_id)
+    if case not in CASES:
+        raise InvalidScenario(f"case must be one of {', '.join(CASES)}")
+    kase = repo.cases_of(session, scenario.id).get(case)
+    if kase is None:  # the scenario was deleted after the lookup
+        raise ScenarioNotFound(str(scenario_id))
+    return scenario, kase
+
+
 def create_scenario(
     session: Session, company: Company, data: SettingsInput, now: datetime
 ) -> Scenario:
-    """A new scenario on Base; the settings it does not give are Base's. Raises InvalidScenario
+    """A new scenario with three cases holding their default offsets (no copy of another
+    scenario); the settings it does not give are the default scenario's. Raises InvalidScenario
     (name, settings) and ScenarioConflict (a duplicate name)."""
     ensure_defaults(session, company, now)
-    base = _base(session, company)
+    default = _default_scenario(session, company)
     name = _check_name(session, company, data.name or "", None)
     stamp = _naive_utc(now)
-    scenario = _copy(base, name, stamp)
+    scenario = _copy(default, name, stamp)
     _apply(scenario, data)
     _check_settings(session, company, scenario)
+    history = load_history(session, company)  # before the first write: no lock held
     repo.add(session, scenario)
+    _add_cases(session, scenario, history, stamp)
     session.commit()
     return scenario
 
@@ -221,9 +233,9 @@ def update_scenario(
     session: Session, company: Company, scenario_id: int, data: SettingsInput, now: datetime
 ) -> Scenario:
     """Renames the scenario and changes the settings `data` gives, under the rules of
-    `create_scenario`. A default Bull or Bear that moves to `segments`, or to another dimension,
-    gets its offset on each segment series of the dimension without own rows. Raises
-    ScenarioNotFound."""
+    `create_scenario`; the settings apply to all three cases. A switch to `segments`, or to
+    another dimension, gives Bull and Bear their offset on each segment series of the dimension
+    without own rows. Raises ScenarioNotFound."""
     scenario = get_scenario(session, company, scenario_id)
     before = (scenario.revenue_method, scenario.segment_dimension)
     if data.name is not None:
@@ -244,29 +256,47 @@ def update_scenario(
 
 
 def delete_scenario(session: Session, company: Company, scenario_id: int) -> None:
-    """Deletes the scenario and its driver rows. Raises ScenarioNotFound, and ScenarioConflict
-    for Base."""
+    """Deletes the scenario, its cases and their driver rows. Raises ScenarioNotFound, and
+    ScenarioConflict for the default scenario."""
     scenario = get_scenario(session, company, scenario_id)
     if scenario.is_default:
-        raise ScenarioConflict("Base cannot be deleted")
+        raise ScenarioConflict("The default scenario cannot be deleted")
     repo.delete_scenario(session, scenario)
     session.commit()
 
 
-def _base(session: Session, company: Company) -> Scenario:
+def reset_case(
+    session: Session, company: Company, scenario_id: int, case: str, now: datetime
+) -> DriverGrid:
+    """Deletes every row of the case, then writes its defaults (`base`: none, so every driver
+    goes back to its default), and returns the case's grid. Raises ScenarioNotFound,
+    InvalidScenario (case) and ForecastUnavailable (no opening; nothing is written)."""
+    scenario, kase = get_case(session, company, scenario_id, case)
+    history = load_history(session, company)
+    forecast_years(history, FORECAST_HORIZON.years)
+    stamp = _naive_utc(now)
+    repo.delete_all_rows(session, kase.id)
+    repo.add_rows(
+        session, _case_rows(kase, _default_rows(case, settings_of(scenario), history), stamp)
+    )
+    kase.updated_at = scenario.updated_at = stamp
+    session.commit()
+    return _grid(session, scenario, case, history)
+
+
+def _default_scenario(session: Session, company: Company) -> Scenario:
     return next(s for s in repo.list_for(session, company.id) if s.is_default)
 
 
-def _copy(base: Scenario, name: str, stamp: datetime) -> Scenario:
+def _copy(default: Scenario, name: str, stamp: datetime) -> Scenario:
     return Scenario(
-        company_id=base.company_id,
+        company_id=default.company_id,
         name=name,
         is_default=False,
-        base_id=base.id,
-        revenue_method=base.revenue_method,
-        segment_dimension=base.segment_dimension,
-        volume_kpi=base.volume_kpi,
-        price_kpi=base.price_kpi,
+        revenue_method=default.revenue_method,
+        segment_dimension=default.segment_dimension,
+        volume_kpi=default.volume_kpi,
+        price_kpi=default.price_kpi,
         created_at=stamp,
         updated_at=stamp,
     )
@@ -328,64 +358,103 @@ def _offset_years(history: ForecastHistory) -> list[int]:
         return []
 
 
-def _segment_offsets(
-    session: Session, company: Company, scenario: Scenario, stamp: datetime
+def _add_cases(
+    session: Session, scenario: Scenario, history: ForecastHistory, stamp: datetime
 ) -> None:
-    sign = DEFAULT_SIGNS.get(scenario.name)
-    if scenario.is_default or sign is None:
-        return
-    history = load_history(session, company)
-    owned = {r.driver_code for r in repo.list_rows(session, [scenario.id])}
+    """Gives the scenario its three cases, each with its default rows."""
+    settings = settings_of(scenario)
+    for case, kase in repo.add_cases(session, scenario, stamp).items():
+        repo.add_rows(session, _case_rows(kase, _default_rows(case, settings, history), stamp))
+
+
+def _default_rows(
+    case: str, settings: ScenarioSettings, history: ForecastHistory
+) -> list[tuple[str, int, Decimal]]:
+    """The (driver code, fiscal year, offset) rows a case starts with: `base` none; `bull` and
+    `bear` the revenue growth and gross margin offsets for the forecast years and, on `segments`,
+    the revenue growth offset on each segment series of the dimension. The sign comes from the
+    case."""
+    sign = CASE_SIGNS.get(case)
+    if sign is None:
+        return []
+    years = _offset_years(history)
+    rows = [
+        (code, year, sign * offset) for code, offset in DEFAULT_OFFSETS.items() for year in years
+    ]
+    if settings.revenue_method == "segments":
+        rows += _segment_rows(sign, settings.segment_dimension, history, years, ())
+    return rows
+
+
+def _segment_rows(
+    sign: int,
+    dimension: str | None,
+    history: ForecastHistory,
+    years: Sequence[int],
+    owned: Collection[str],
+) -> list[tuple[str, int, Decimal]]:
+    """The offset on each revenue series of `dimension` not in `owned`, for `years`."""
     codes = [
         segment_code(s.id)
         for s in history.segment_series
-        if s.dimension == scenario.segment_dimension and s.metric == "revenue"
+        if s.dimension == dimension and s.metric == "revenue"
     ]
+    return [(c, y, sign * SEGMENT_OFFSET) for c in codes if c not in owned for y in years]
+
+
+def _case_rows(
+    case: ScenarioCase, rows: Sequence[tuple[str, int, Decimal]], stamp: datetime
+) -> list[DriverValue]:
+    return [
+        DriverValue(
+            case_id=case.id,
+            driver_code=code,
+            fiscal_year=year,
+            fiscal_period="FY",
+            kind="offset",
+            value=value,
+            source="manual",
+            created_at=stamp,
+            updated_at=stamp,
+        )
+        for code, year, value in rows
+    ]
+
+
+def _segment_offsets(
+    session: Session, company: Company, scenario: Scenario, stamp: datetime
+) -> None:
+    """Gives Bull and Bear their offset on each segment series of the scenario's dimension that
+    the case holds no rows for."""
+    history = load_history(session, company)
     years = _offset_years(history)
-    repo.add_rows(
-        session,
-        (
-            _offset_row(scenario, code, year, sign * SEGMENT_OFFSET, stamp)
-            for code in codes
-            if code not in owned
-            for year in years
-        ),
-    )
+    cases = repo.cases_of(session, scenario.id)
+    stored = repo.list_rows(session, [cases[case].id for case in CASE_SIGNS])
+    for case, sign in CASE_SIGNS.items():
+        owned = {r.driver_code for r in stored if r.case_id == cases[case].id}
+        rows = _segment_rows(sign, scenario.segment_dimension, history, years, owned)
+        repo.add_rows(session, _case_rows(cases[case], rows, stamp))
 
 
-def _offset_row(
-    scenario: Scenario, code: str, year: int, value: Decimal, stamp: datetime
-) -> DriverValue:
-    return DriverValue(
-        scenario_id=scenario.id,
-        driver_code=code,
-        fiscal_year=year,
-        fiscal_period="FY",
-        kind="offset",
-        value=value,
-        source="manual",
-        created_at=stamp,
-        updated_at=stamp,
-    )
-
-
-def resolve_scenario(
-    session: Session, scenario: Scenario, history: ForecastHistory
+def resolve_case(
+    session: Session, scenario: Scenario, case: str, history: ForecastHistory
 ) -> ScenarioDrivers:
-    """The scenario's drivers resolved for its forecast years (docs "Scenarios" → Resolution).
-    Raises ForecastUnavailable when the history has no opening."""
+    """The case's drivers resolved for its scenario's forecast years (docs "Scenarios (M4)" →
+    Resolution, with the scenario's `base` case as Base). Raises ForecastUnavailable when the
+    history has no opening."""
     settings = settings_of(scenario)
     years = forecast_years(history, FORECAST_HORIZON.years)
-    ids = [scenario.id] if scenario.base_id is None else [scenario.id, scenario.base_id]
-    rows = repo.list_rows(session, ids)
-    own = [r for r in rows if r.scenario_id == scenario.id]
-    base = [r for r in rows if r.scenario_id == scenario.base_id]
+    cases = repo.cases_of(session, scenario.id)
+    is_base = case == "base"
+    rows = repo.list_rows(session, [cases[case].id, cases["base"].id])
+    own = [r for r in rows if r.case_id == cases[case].id]
+    base = [] if is_base else [r for r in rows if r.case_id == cases["base"].id]
     resolved = resolve_drivers(
         [_driver_row(r) for r in base],
         [_driver_row(r) for r in own],
         default_drivers(history, settings),
         years,
-        scenario.is_default,
+        is_base,
     )
     return ScenarioDrivers(settings, resolved, own)
 
@@ -397,17 +466,18 @@ def settings_of(scenario: Scenario) -> ScenarioSettings:
     )
 
 
-def driver_grid(session: Session, company: Company, scenario_id: int) -> DriverGrid:
+def driver_grid(session: Session, company: Company, scenario_id: int, case: str) -> DriverGrid:
     """The drivers of the scenario's revenue method in catalog order, each with its last
-    HISTORY_YEARS actual values and its resolved value and source per forecast year. Raises
-    ScenarioNotFound, and ForecastUnavailable when the company has no opening balance sheet."""
-    scenario = get_scenario(session, company, scenario_id)
-    return _grid(session, scenario, load_history(session, company))
+    HISTORY_YEARS actual values and its resolved value and source per forecast year in the case.
+    Raises ScenarioNotFound, InvalidScenario (case), and ForecastUnavailable when the company has
+    no opening balance sheet."""
+    scenario, _ = get_case(session, company, scenario_id, case)
+    return _grid(session, scenario, case, load_history(session, company))
 
 
-def _grid(session: Session, scenario: Scenario, history: ForecastHistory) -> DriverGrid:
+def _grid(session: Session, scenario: Scenario, case: str, history: ForecastHistory) -> DriverGrid:
     """`driver_grid` on an already built history (a driver write does not change it)."""
-    drivers = resolve_scenario(session, scenario, history)
+    drivers = resolve_case(session, scenario, case, history)
     past = history_years(history)
     actual = historical_drivers(history, drivers.settings)
     years = list(drivers.resolved.years)
@@ -436,20 +506,22 @@ def _grid(session: Session, scenario: Scenario, history: ForecastHistory) -> Dri
         r.driver_code == "revenue_growth" and r.kind == "offset" for r in drivers.own
     ):
         warnings.append(f"Offsets on revenue_growth are not used by the {method} method")
-    return DriverGrid(scenario.id, past, years, rows, warnings)
+    return DriverGrid(scenario.id, case, past, years, rows, warnings)
 
 
 def put_drivers(
     session: Session,
     company: Company,
     scenario_id: int,
+    case: str,
     rows: Sequence[DriverRowInput],
     now: datetime,
 ) -> DriverGrid:
-    """Each row replaces every stored row of its driver in the scenario (every year, stale ones
+    """Each row replaces every stored row of its driver in the case (every year, stale ones
     included); its None values are not stored. All rows are checked before anything is written.
-    Raises ScenarioNotFound, InvalidDrivers and ForecastUnavailable (no opening)."""
-    scenario = get_scenario(session, company, scenario_id)
+    Raises ScenarioNotFound, InvalidScenario (case), InvalidDrivers and ForecastUnavailable (no
+    opening)."""
+    scenario, kase = get_case(session, company, scenario_id, case)
     history = load_history(session, company)
     settings = settings_of(scenario)
     years = forecast_years(history, FORECAST_HORIZON.years)
@@ -458,10 +530,10 @@ def put_drivers(
     seen: set[str] = set()
     new: list[DriverValue] = []
     for row in rows:
-        _check_row(row, scenario, settings, allowed, years, seen)
+        _check_row(row, case, settings, allowed, years, seen)
         new.extend(
             DriverValue(
-                scenario_id=scenario.id,
+                case_id=kase.id,
                 driver_code=row.driver_code,
                 fiscal_year=year,
                 fiscal_period="FY",
@@ -474,57 +546,61 @@ def put_drivers(
             for year, value in row.values
             if value is not None
         )
-    _replace_rows(session, scenario, seen, new, stamp)
-    return _grid(session, scenario, history)
+    _replace_rows(session, scenario, kase, seen, new, stamp)
+    return _grid(session, scenario, case, history)
 
 
 def _replace_rows(
     session: Session,
     scenario: Scenario,
+    kase: ScenarioCase,
     codes: set[str],
     rows: list[DriverValue],
     stamp: datetime,
 ) -> None:
-    """Deletes every stored row of `codes` in the scenario and adds `rows`; one transaction."""
-    repo.delete_rows(session, scenario.id, codes)
+    """Deletes every stored row of `codes` in the case and adds `rows`; one transaction."""
+    repo.delete_rows(session, kase.id, codes)
     repo.add_rows(session, rows)
-    scenario.updated_at = stamp
+    kase.updated_at = scenario.updated_at = stamp
     session.commit()
 
 
 def export_drivers(
-    session: Session, company: Company, scenario_id: int, fmt: Literal["csv", "xlsx"]
+    session: Session, company: Company, scenario_id: int, case: str, fmt: Literal["csv", "xlsx"]
 ) -> tuple[bytes, str]:
-    """The scenario's driver file and its name `<TICKER>-<scenario name>-drivers.<fmt>`. Raises
-    ScenarioNotFound, and ForecastUnavailable when the company has no opening balance sheet."""
-    scenario = get_scenario(session, company, scenario_id)
-    grid = driver_grid(session, company, scenario_id)
+    """The case's driver file and its name `<TICKER>-<scenario name>-<Case>-drivers.<fmt>`.
+    Raises ScenarioNotFound, InvalidScenario (case), and ForecastUnavailable when the company has
+    no opening balance sheet."""
+    scenario, _ = get_case(session, company, scenario_id, case)
+    grid = driver_grid(session, company, scenario_id, case)
     content = export_csv(grid) if fmt == "csv" else export_xlsx(grid)
-    return content, f"{company.ticker}-{scenario.name}-drivers.{fmt}"
+    return content, f"{company.ticker}-{scenario.name}-{case.capitalize()}-drivers.{fmt}"
 
 
 def import_drivers(
     session: Session,
     company: Company,
     scenario_id: int,
+    case: str,
     content: bytes,
     filename: str,
     dry_run: bool,
     now: datetime,
 ) -> DriverImportResult:
-    """The changes a driver file makes to the scenario's own rows (`forecast/driver_io.py::
+    """The changes a driver file makes to the case's own rows (`forecast/driver_io.py::
     plan_import`); unless `dry_run`, writes them in one transaction and returns the new grid.
-    Raises ScenarioNotFound, InvalidDriverFile and ForecastUnavailable (no opening)."""
-    scenario = get_scenario(session, company, scenario_id)
+    Raises ScenarioNotFound, InvalidScenario (case), InvalidDriverFile and ForecastUnavailable
+    (no opening)."""
+    scenario, kase = get_case(session, company, scenario_id, case)
     history = load_history(session, company)
     settings = settings_of(scenario)
     years = forecast_years(history, FORECAST_HORIZON.years)
     catalog = scenario_drivers(history, settings)
     try:
-        plan = parse_driver_file(content, filename, catalog, years, scenario.is_default)
+        plan = parse_driver_file(content, filename, catalog, years, case == "base")
     except DriverFileError as error:
         raise InvalidDriverFile(error.issues) from error
-    own = repo.list_rows(session, [scenario.id])
+    own = repo.list_rows(session, [kase.id])
     result = plan_import(plan, [_driver_row(r) for r in own])
     if dry_run:
         return DriverImportResult(result.changes, None)
@@ -532,7 +608,7 @@ def import_drivers(
         stamp = _naive_utc(now)
         new = [
             DriverValue(
-                scenario_id=scenario.id,
+                case_id=kase.id,
                 driver_code=r.code,
                 fiscal_year=r.fiscal_year,
                 fiscal_period="FY",
@@ -545,13 +621,13 @@ def import_drivers(
             for rows in result.rows.values()
             for r in rows
         ]
-        _replace_rows(session, scenario, set(result.rows), new, stamp)
-    return DriverImportResult(result.changes, _grid(session, scenario, history))
+        _replace_rows(session, scenario, kase, set(result.rows), new, stamp)
+    return DriverImportResult(result.changes, _grid(session, scenario, case, history))
 
 
 def _check_row(
     row: DriverRowInput,
-    scenario: Scenario,
+    case: str,
     settings: ScenarioSettings,
     allowed: set[str],
     years: list[int],
@@ -569,7 +645,7 @@ def _check_row(
     seen.add(code)
     if row.kind not in ("value", "offset"):
         raise InvalidDrivers("kind must be value or offset")
-    if row.kind == "offset" and scenario.is_default:
+    if row.kind == "offset" and case == "base":
         raise InvalidDrivers("Base cannot hold offsets")
     given: set[int] = set()
     for year, value in row.values:

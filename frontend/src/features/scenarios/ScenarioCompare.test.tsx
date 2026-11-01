@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import type { EChartsOption, LineSeriesOption } from "echarts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { compareScenariosApiV1CompaniesTickerScenariosCompareGet } from "@/api/generated/sdk.gen";
+import { compareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGet } from "@/api/generated/sdk.gen";
 import { createQueryClient } from "@/lib/query-client";
 import { setScale } from "@/lib/scale";
 import { errorResult, okResult } from "@/test/responses";
@@ -13,7 +13,7 @@ import { comparison } from "@/test/scenarios";
 import { ScenarioCompare } from "./ScenarioCompare";
 
 vi.mock("@/api/generated/sdk.gen", () => ({
-  compareScenariosApiV1CompaniesTickerScenariosCompareGet: vi.fn(),
+  compareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGet: vi.fn(),
 }));
 
 // jsdom cannot draw a canvas: the tests read the `option` handed to ECharts.
@@ -21,7 +21,7 @@ vi.mock("echarts-for-react/esm/core", () => ({ default: vi.fn(() => null) }));
 const { default: EChartsCore } = await import("echarts-for-react/esm/core");
 const echarts = vi.mocked(EChartsCore);
 
-const compare = vi.mocked(compareScenariosApiV1CompaniesTickerScenariosCompareGet);
+const compare = vi.mocked(compareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGet);
 
 const lastOption = () => {
   const props = echarts.mock.lastCall?.[0] as unknown as { option: EChartsOption };
@@ -34,12 +34,12 @@ function renderCompare() {
   queryClient.setDefaultOptions({ queries: { retry: false } });
   render(
     <QueryClientProvider client={queryClient}>
-      <ScenarioCompare ticker="AAPL" />
+      <ScenarioCompare ticker="AAPL" scenarioId={2} />
     </QueryClientProvider>,
   );
 }
 
-const table = () => screen.getByRole("table", { name: "Scenario comparison" });
+const table = () => screen.getByRole("table", { name: "Case comparison" });
 
 beforeEach(() => {
   setScale("M");
@@ -52,31 +52,31 @@ afterEach(() => {
 });
 
 describe("ScenarioCompare chart", () => {
-  it("draws one line per scenario, on Revenue by default", async () => {
+  it("draws one line per case, on Revenue by default", async () => {
     renderCompare();
-    await screen.findByRole("table", { name: "Scenario comparison" });
+    await screen.findByRole("table", { name: "Case comparison" });
     expect(screen.getByLabelText("Metric")).toHaveValue("revenue");
-    // A scenario that cannot run keeps its (empty) series, so every scenario keeps its color.
+    // A case that cannot run keeps its (empty) series, so every case keeps its color.
     expect(lastSeries().map((series) => series.name)).toEqual(["Base", "Bull", "Bear"]);
     expect(lastSeries()[2]).toMatchObject({ data: [] });
     expect(lastSeries()[0]).toMatchObject({ type: "line", data: [425000, 435000] });
     expect(lastOption().xAxis).toMatchObject({ type: "category", data: ["FY26E", "FY27E"] });
-    expect(screen.getByRole("img", { name: "Revenue by scenario" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Revenue by case" })).toBeInTheDocument();
   });
 
   it("follows the metric select and the page scale", async () => {
     setScale("B");
     renderCompare();
-    await screen.findByRole("table", { name: "Scenario comparison" });
+    await screen.findByRole("table", { name: "Case comparison" });
     expect(lastSeries()[1]).toMatchObject({ data: [437, 460] });
     await userEvent.selectOptions(screen.getByLabelText("Metric"), "eps_diluted");
     expect(lastSeries()[1]).toMatchObject({ name: "Bull", data: [7.52, 8.1] });
-    expect(screen.getByRole("img", { name: "EPS (diluted) by scenario" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "EPS (diluted) by case" })).toBeInTheDocument();
   });
 
   it("shows 1 decimal in the tooltip and axis, 2 for EPS", async () => {
     renderCompare();
-    await screen.findByRole("table", { name: "Scenario comparison" });
+    await screen.findByRole("table", { name: "Case comparison" });
     type Formatter = (value: number) => string;
     const tooltip = () => (lastOption().tooltip as { valueFormatter: Formatter }).valueFormatter;
     const axis = () =>
@@ -89,13 +89,22 @@ describe("ScenarioCompare chart", () => {
     expect(axis()(8)).toBe("8.00");
   });
 
+  it("compares the scenario it is given", async () => {
+    renderCompare();
+    await screen.findByRole("table", { name: "Case comparison" });
+    expect(compare).toHaveBeenCalledWith({
+      path: { ticker: "AAPL", scenario_id: 2 },
+      query: { freq: "annual" },
+    });
+  });
+
   it("asks for the quarterly comparison", async () => {
     renderCompare();
-    await screen.findByRole("table", { name: "Scenario comparison" });
+    await screen.findByRole("table", { name: "Case comparison" });
     await userEvent.click(screen.getByRole("radio", { name: "Quarterly" }));
     await waitFor(() =>
       expect(compare).toHaveBeenLastCalledWith({
-        path: { ticker: "AAPL" },
+        path: { ticker: "AAPL", scenario_id: 2 },
         query: { freq: "quarterly" },
       }),
     );
@@ -103,9 +112,9 @@ describe("ScenarioCompare chart", () => {
 });
 
 describe("ScenarioCompare table", () => {
-  it("heads each metric and lists a row per scenario, values by unit", async () => {
+  it("heads each metric and lists a row per case, values by unit", async () => {
     renderCompare();
-    const rows = within(await screen.findByRole("table", { name: "Scenario comparison" }))
+    const rows = within(await screen.findByRole("table", { name: "Case comparison" }))
       .getAllByRole("row")
       .map((row) => row.textContent);
     expect(rows).toEqual([
@@ -121,12 +130,12 @@ describe("ScenarioCompare table", () => {
     ]);
   });
 
-  it("shows a dash where a scenario's horizon stops", async () => {
+  it("shows a dash where a case's horizon stops", async () => {
     const data = comparison();
-    data.scenarios[1]!.values.revenue = ["437000000000", null];
+    data.cases[1]!.values.revenue = ["437000000000", null];
     compare.mockResolvedValue(okResult(data) as never);
     renderCompare();
-    await screen.findByRole("table", { name: "Scenario comparison" });
+    await screen.findByRole("table", { name: "Case comparison" });
     expect(within(table()).getAllByRole("row")[3]).toHaveTextContent("Bull437,000—");
   });
 });
@@ -144,16 +153,16 @@ describe("ScenarioCompare states", () => {
     expect(await screen.findByText("Could not load the comparison.")).toBeInTheDocument();
   });
 
-  it("lists each scenario's reason when none can run", async () => {
+  it("lists each case's reason when none can run", async () => {
     const data = comparison({ periods: [] });
-    data.scenarios = data.scenarios.map((scenario) => ({
-      ...scenario,
+    data.cases = data.cases.map((item) => ({
+      ...item,
       values: {},
-      error: scenario.name === "Bear" ? "No quarterly history" : "Set these drivers: gross_margin",
+      error: item.case === "bear" ? "No quarterly history" : "Set these drivers: gross_margin",
     }));
     compare.mockResolvedValue(okResult(data) as never);
     renderCompare();
-    const list = await screen.findByRole("list", { name: "Scenarios that cannot run" });
+    const list = await screen.findByRole("list", { name: "Cases that cannot run" });
     expect(
       within(list)
         .getAllByRole("listitem")

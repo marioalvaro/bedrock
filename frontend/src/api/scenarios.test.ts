@@ -6,16 +6,18 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { companyKey } from "@/api/companies";
 import { ApiError } from "@/api/errors";
 import {
-  compareScenariosApiV1CompaniesTickerScenariosCompareGet,
+  compareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGet,
   createScenarioApiV1CompaniesTickerScenariosPost,
   deleteScenarioApiV1CompaniesTickerScenariosScenarioIdDelete,
-  getDriversApiV1CompaniesTickerScenariosScenarioIdDriversGet,
-  getForecastApiV1CompaniesTickerScenariosScenarioIdForecastGet,
-  importDriversApiV1CompaniesTickerScenariosScenarioIdDriversImportPost,
+  getDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversGet,
+  getForecastApiV1CompaniesTickerScenariosScenarioIdCasesCaseForecastGet,
+  importDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversImportPost,
   listScenariosApiV1CompaniesTickerScenariosGet,
-  putDriversApiV1CompaniesTickerScenariosScenarioIdDriversPut,
+  putDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversPut,
+  resetCaseApiV1CompaniesTickerScenariosScenarioIdCasesCaseResetPost,
   updateScenarioApiV1CompaniesTickerScenariosScenarioIdPut,
 } from "@/api/generated/sdk.gen";
+import type { DriverGridOut } from "@/api/generated/types.gen";
 import {
   DriverFileFailed,
   ForecastUnavailable,
@@ -30,6 +32,7 @@ import {
   useDeleteScenario,
   usePreviewDriverImport,
   usePutDrivers,
+  useResetCase,
   withDriverRows,
   useUpdateScenario,
 } from "@/api/scenarios";
@@ -48,24 +51,28 @@ vi.mock("@/api/generated/sdk.gen", () => ({
   createScenarioApiV1CompaniesTickerScenariosPost: vi.fn(),
   updateScenarioApiV1CompaniesTickerScenariosScenarioIdPut: vi.fn(),
   deleteScenarioApiV1CompaniesTickerScenariosScenarioIdDelete: vi.fn(),
-  getDriversApiV1CompaniesTickerScenariosScenarioIdDriversGet: vi.fn(),
-  putDriversApiV1CompaniesTickerScenariosScenarioIdDriversPut: vi.fn(),
-  importDriversApiV1CompaniesTickerScenariosScenarioIdDriversImportPost: vi.fn(),
-  getForecastApiV1CompaniesTickerScenariosScenarioIdForecastGet: vi.fn(),
-  compareScenariosApiV1CompaniesTickerScenariosCompareGet: vi.fn(),
+  getDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversGet: vi.fn(),
+  putDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversPut: vi.fn(),
+  resetCaseApiV1CompaniesTickerScenariosScenarioIdCasesCaseResetPost: vi.fn(),
+  importDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversImportPost: vi.fn(),
+  getForecastApiV1CompaniesTickerScenariosScenarioIdCasesCaseForecastGet: vi.fn(),
+  compareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGet: vi.fn(),
 }));
 
 const list = vi.mocked(listScenariosApiV1CompaniesTickerScenariosGet);
 const create = vi.mocked(createScenarioApiV1CompaniesTickerScenariosPost);
 const update = vi.mocked(updateScenarioApiV1CompaniesTickerScenariosScenarioIdPut);
 const remove = vi.mocked(deleteScenarioApiV1CompaniesTickerScenariosScenarioIdDelete);
-const getDrivers = vi.mocked(getDriversApiV1CompaniesTickerScenariosScenarioIdDriversGet);
-const putDrivers = vi.mocked(putDriversApiV1CompaniesTickerScenariosScenarioIdDriversPut);
+const getDrivers = vi.mocked(getDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversGet);
+const putDrivers = vi.mocked(putDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversPut);
 const importDrivers = vi.mocked(
-  importDriversApiV1CompaniesTickerScenariosScenarioIdDriversImportPost,
+  importDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversImportPost,
 );
-const getForecast = vi.mocked(getForecastApiV1CompaniesTickerScenariosScenarioIdForecastGet);
-const compare = vi.mocked(compareScenariosApiV1CompaniesTickerScenariosCompareGet);
+const getForecast = vi.mocked(
+  getForecastApiV1CompaniesTickerScenariosScenarioIdCasesCaseForecastGet,
+);
+const resetCase = vi.mocked(resetCaseApiV1CompaniesTickerScenariosScenarioIdCasesCaseResetPost);
+const compare = vi.mocked(compareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGet);
 
 afterEach(() => vi.clearAllMocks());
 
@@ -81,15 +88,15 @@ function setup() {
 // A 200 with the Vite fallback's HTML shell, as the client hands it back (Gotcha G2).
 const html = () => okResult("<!doctype html><html></html>") as never;
 
-const file = new File(["driver_code,label,unit,kind,FY2026\n"], "AAPL-Bull-drivers.csv");
+const file = new File(["driver_code,label,unit,kind,FY2026\n"], "AAPL-Main-Bull-drivers.csv");
 
 // Keys a scenario or driver write moves, and keys it leaves alone.
 const aapl = companyKey("AAPL");
 const moved = [
   scenariosKey("AAPL"),
-  [...aapl, "scenarios", 2, "drivers"],
-  [...aapl, "scenarios", 2, "forecast", "BS", "quarterly"],
-  [...aapl, "scenarios", "compare", "annual"],
+  [...aapl, "scenarios", 2, "bull", "drivers"],
+  [...aapl, "scenarios", 2, "bear", "forecast", "BS", "quarterly"],
+  [...aapl, "scenarios", 2, "compare", "annual"],
 ];
 const untouched = [
   [...aapl, "statements", "IS", "annual", "total", "reported"],
@@ -113,31 +120,46 @@ function expectInvalidated(queryClient: QueryClient, invalidated: boolean) {
 describe("keys", () => {
   it("nests every scenario query under [company, 'scenarios']", () => {
     expect(scenariosQueryOptions("AAPL").queryKey).toEqual([...aapl, "scenarios"]);
-    expect(driversQueryOptions("AAPL", 2).queryKey).toEqual([...aapl, "scenarios", 2, "drivers"]);
-    expect(forecastQueryOptions("AAPL", 2, "BS", "quarterly").queryKey).toEqual([
+    expect(driversQueryOptions("AAPL", 2, "bull").queryKey).toEqual([
       ...aapl,
       "scenarios",
       2,
+      "bull",
+      "drivers",
+    ]);
+    expect(forecastQueryOptions("AAPL", 2, "bear", "BS", "quarterly").queryKey).toEqual([
+      ...aapl,
+      "scenarios",
+      2,
+      "bear",
       "forecast",
       "BS",
       "quarterly",
     ]);
-    expect(compareQueryOptions("AAPL", "annual").queryKey).toEqual([
+    expect(compareQueryOptions("AAPL", 2, "annual").queryKey).toEqual([
       ...aapl,
       "scenarios",
+      2,
       "compare",
       "annual",
     ]);
   });
+
+  it("keeps the cases of a scenario apart", () => {
+    const keys = (["base", "bull", "bear"] as const).map((c) =>
+      JSON.stringify(driversQueryOptions("AAPL", 2, c).queryKey),
+    );
+    expect(new Set(keys).size).toBe(3);
+  });
 });
 
 describe("driverExportUrl", () => {
-  it("names the scenario and the format", () => {
-    expect(driverExportUrl("AAPL", 2, "xlsx")).toBe(
-      "/api/v1/companies/AAPL/scenarios/2/drivers/export?format=xlsx",
+  it("names the scenario, the case and the format", () => {
+    expect(driverExportUrl("AAPL", 2, "bull", "xlsx")).toBe(
+      "/api/v1/companies/AAPL/scenarios/2/cases/bull/drivers/export?format=xlsx",
     );
-    expect(driverExportUrl("BRK/B", 7, "csv")).toBe(
-      "/api/v1/companies/BRK%2FB/scenarios/7/drivers/export?format=csv",
+    expect(driverExportUrl("BRK/B", 7, "base", "csv")).toBe(
+      "/api/v1/companies/BRK%2FB/scenarios/7/cases/base/drivers/export?format=csv",
     );
   });
 });
@@ -147,7 +169,7 @@ describe("scenariosQueryOptions", () => {
     list.mockResolvedValue(okResult(scenarios()) as never);
     const { queryClient } = setup();
     const result = await queryClient.fetchQuery(scenariosQueryOptions("AAPL"));
-    expect(result.map((s) => s.name)).toEqual(["Base", "Bull", "Bear"]);
+    expect(result.map((s) => s.name)).toEqual(["Main", "Cycle"]);
     expect(list).toHaveBeenCalledWith({ path: { ticker: "AAPL" } });
   });
 
@@ -164,17 +186,19 @@ describe("driversQueryOptions", () => {
   it("returns the grid", async () => {
     getDrivers.mockResolvedValue(okResult(driverGrid()) as never);
     const { queryClient } = setup();
-    const grid = await queryClient.fetchQuery(driversQueryOptions("AAPL", 1));
+    const grid = await queryClient.fetchQuery(driversQueryOptions("AAPL", 1, "bear"));
     expect(grid.forecast_years).toEqual([2026, 2027]);
-    expect(getDrivers).toHaveBeenCalledWith({ path: { ticker: "AAPL", scenario_id: 1 } });
+    expect(getDrivers).toHaveBeenCalledWith({
+      path: { ticker: "AAPL", scenario_id: 1, case: "bear" },
+    });
   });
 
   it("rejects a 200 without rows and years", async () => {
     getDrivers.mockResolvedValue(html());
     const { queryClient } = setup();
-    await expect(queryClient.fetchQuery(driversQueryOptions("AAPL", 1))).rejects.toBeInstanceOf(
-      ApiError,
-    );
+    await expect(
+      queryClient.fetchQuery(driversQueryOptions("AAPL", 1, "base")),
+    ).rejects.toBeInstanceOf(ApiError);
   });
 
   it("keeps the API's 422 reason (no opening balance sheet)", async () => {
@@ -182,7 +206,9 @@ describe("driversQueryOptions", () => {
       errorResult(422, { detail: "No fiscal year to start from" }) as never,
     );
     const { queryClient } = setup();
-    await expect(queryClient.fetchQuery(driversQueryOptions("AAPL", 1))).rejects.toMatchObject({
+    await expect(
+      queryClient.fetchQuery(driversQueryOptions("AAPL", 1, "base")),
+    ).rejects.toMatchObject({
       status: 422,
       detail: "No fiscal year to start from",
     });
@@ -193,10 +219,12 @@ describe("forecastQueryOptions", () => {
   it("asks for the statement and frequency", async () => {
     getForecast.mockResolvedValue(okResult(forecast()) as never);
     const { queryClient } = setup();
-    const result = await queryClient.fetchQuery(forecastQueryOptions("AAPL", 1, "IS", "annual"));
+    const result = await queryClient.fetchQuery(
+      forecastQueryOptions("AAPL", 1, "bull", "IS", "annual"),
+    );
     expect(result.integrity).toHaveLength(1);
     expect(getForecast).toHaveBeenCalledWith({
-      path: { ticker: "AAPL", scenario_id: 1 },
+      path: { ticker: "AAPL", scenario_id: 1, case: "bull" },
       query: { type: "IS", freq: "annual" },
     });
   });
@@ -207,7 +235,7 @@ describe("forecastQueryOptions", () => {
     );
     const { queryClient } = setup();
     const error = await queryClient
-      .fetchQuery(forecastQueryOptions("DE", 1, "IS", "annual"))
+      .fetchQuery(forecastQueryOptions("DE", 1, "base", "IS", "annual"))
       .catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ForecastUnavailable);
     expect(error).toMatchObject({ status: 422, detail: "Set these drivers: gross_margin" });
@@ -217,7 +245,7 @@ describe("forecastQueryOptions", () => {
     getForecast.mockResolvedValue(errorResult(500) as never);
     const { queryClient } = setup();
     const error = await queryClient
-      .fetchQuery(forecastQueryOptions("AAPL", 1, "IS", "annual"))
+      .fetchQuery(forecastQueryOptions("AAPL", 1, "base", "IS", "annual"))
       .catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ApiError);
     expect(error).not.toBeInstanceOf(ForecastUnavailable);
@@ -227,28 +255,28 @@ describe("forecastQueryOptions", () => {
     getForecast.mockResolvedValue(html());
     const { queryClient } = setup();
     await expect(
-      queryClient.fetchQuery(forecastQueryOptions("AAPL", 1, "IS", "annual")),
+      queryClient.fetchQuery(forecastQueryOptions("AAPL", 1, "base", "IS", "annual")),
     ).rejects.toMatchObject({ status: 200 });
   });
 });
 
 describe("compareQueryOptions", () => {
-  it("asks for the frequency with the API's default codes", async () => {
+  it("asks for the scenario's frequency with the API's default codes", async () => {
     compare.mockResolvedValue(okResult(comparison()) as never);
     const { queryClient } = setup();
-    const result = await queryClient.fetchQuery(compareQueryOptions("AAPL", "quarterly"));
-    expect(result.scenarios).toHaveLength(3);
+    const result = await queryClient.fetchQuery(compareQueryOptions("AAPL", 2, "quarterly"));
+    expect(result.cases.map((c) => c.label)).toEqual(["Base", "Bull", "Bear"]);
     expect(compare).toHaveBeenCalledWith({
-      path: { ticker: "AAPL" },
+      path: { ticker: "AAPL", scenario_id: 2 },
       query: { freq: "quarterly" },
     });
   });
 
-  it("rejects a 200 without periods, codes and scenarios", async () => {
+  it("rejects a 200 without periods, codes and cases", async () => {
     compare.mockResolvedValue(html());
     const { queryClient } = setup();
     await expect(
-      queryClient.fetchQuery(compareQueryOptions("AAPL", "annual")),
+      queryClient.fetchQuery(compareQueryOptions("AAPL", 1, "annual")),
     ).rejects.toMatchObject({ status: 200 });
   });
 });
@@ -307,13 +335,18 @@ describe("mutations", () => {
   });
 
   it("a failed delete keeps the API's reason and invalidates nothing", async () => {
-    remove.mockResolvedValue(errorResult(409, { detail: "Base cannot be deleted" }) as never);
+    remove.mockResolvedValue(
+      errorResult(409, { detail: "The default scenario cannot be deleted" }) as never,
+    );
     const { queryClient, wrapper } = setup();
     seed(queryClient);
     const { result } = renderHook(() => useDeleteScenario("AAPL"), { wrapper });
     result.current.mutate(1);
     await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(result.current.error).toMatchObject({ status: 409, detail: "Base cannot be deleted" });
+    expect(result.current.error).toMatchObject({
+      status: 409,
+      detail: "The default scenario cannot be deleted",
+    });
     expectInvalidated(queryClient, false);
   });
 
@@ -329,14 +362,14 @@ describe("mutations", () => {
         values: [{ fiscal_year: 2026, value: "0.04" }],
       },
     ];
-    result.current.mutate({ id: 2, rows });
+    result.current.mutate({ id: 2, case: "bull", rows });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(putDrivers).toHaveBeenCalledWith({
-      path: { ticker: "AAPL", scenario_id: 2 },
+      path: { ticker: "AAPL", scenario_id: 2, case: "bull" },
       body: { rows },
     });
-    // The edited scenario's drivers take the reply (no refetch); every other view is refreshed.
-    const edited = [...aapl, "scenarios", 2, "drivers"];
+    // The edited case's drivers take the reply (no refetch); every other view is refreshed.
+    const edited = [...aapl, "scenarios", 2, "bull", "drivers"];
     expect(queryClient.getQueryData(edited)).toEqual(driverGrid());
     expect(queryClient.getQueryState(edited)?.isInvalidated).toBe(false);
     for (const key of moved.filter((key) => JSON.stringify(key) !== JSON.stringify(edited))) {
@@ -348,7 +381,7 @@ describe("mutations", () => {
   });
 
   describe("usePutDrivers with saves in flight", () => {
-    const edited = [...aapl, "scenarios", 2, "drivers"];
+    const edited = [...aapl, "scenarios", 2, "bull", "drivers"];
     const row = (value: string) => [
       {
         driver_code: "gross_margin",
@@ -376,7 +409,7 @@ describe("mutations", () => {
     it("reloads the drivers when a save fails", async () => {
       const settle = controlled();
       const { queryClient, result } = start();
-      result.current.mutate({ id: 2, rows: row("0.5") });
+      result.current.mutate({ id: 2, case: "bull", rows: row("0.5") });
       await waitFor(() => expect(settle).toHaveLength(1));
 
       settle[0]!(errorResult(422, { detail: "out of bounds" }));
@@ -389,8 +422,8 @@ describe("mutations", () => {
     it("reloads the drivers when a held-back reply is followed by a failed save", async () => {
       const settle = controlled();
       const { queryClient, result } = start();
-      result.current.mutate({ id: 2, rows: row("0.5") });
-      result.current.mutate({ id: 2, rows: row("0.6") });
+      result.current.mutate({ id: 2, case: "bull", rows: row("0.5") });
+      result.current.mutate({ id: 2, case: "bull", rows: row("0.6") });
       await waitFor(() => expect(settle).toHaveLength(2));
 
       settle[0]!(okResult(driverGrid()));
@@ -404,8 +437,8 @@ describe("mutations", () => {
       const settle = controlled();
       const { queryClient, result } = start();
       const older = driverGrid({ warnings: ["older"] });
-      result.current.mutate({ id: 2, rows: row("0.5") });
-      result.current.mutate({ id: 2, rows: row("0.6") });
+      result.current.mutate({ id: 2, case: "bull", rows: row("0.5") });
+      result.current.mutate({ id: 2, case: "bull", rows: row("0.6") });
       await waitFor(() => expect(settle).toHaveLength(2));
 
       settle[1]!(okResult(driverGrid({ warnings: ["newer"] })));
@@ -415,6 +448,104 @@ describe("mutations", () => {
       await waitFor(() => expect(queryClient.isMutating()).toBe(0));
       expect(queryClient.getQueryData(edited)).not.toEqual(older);
       expect(queryClient.getQueryState(edited)?.isInvalidated).toBe(true);
+    });
+  });
+
+  it("usePutDrivers shows the edit in its own case only", async () => {
+    let settle: (result: unknown) => void = () => {};
+    putDrivers.mockImplementation((() => new Promise((resolve) => (settle = resolve))) as never);
+    const { queryClient, wrapper } = setup();
+    const bull = [...aapl, "scenarios", 2, "bull", "drivers"];
+    const bear = [...aapl, "scenarios", 2, "bear", "drivers"];
+    queryClient.setQueryData(bull, driverGrid({ case: "bull" }));
+    queryClient.setQueryData(bear, driverGrid({ case: "bear" }));
+    const { result } = renderHook(() => usePutDrivers("AAPL"), { wrapper });
+
+    result.current.mutate({
+      id: 2,
+      case: "bull",
+      rows: [
+        {
+          driver_code: "revenue_growth",
+          kind: "value",
+          values: [{ fiscal_year: 2027, value: "0.08" }],
+        },
+      ],
+    });
+
+    await waitFor(() =>
+      expect(queryClient.getQueryData<DriverGridOut>(bull)?.rows[0]?.own).toEqual([null, "0.08"]),
+    );
+    expect(queryClient.getQueryData<DriverGridOut>(bear)?.rows[0]?.own).toEqual([null, null]);
+    settle(okResult(driverGrid({ case: "bull" })));
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  });
+
+  describe("useResetCase", () => {
+    const edited = [...aapl, "scenarios", 2, "bear", "drivers"];
+
+    it("posts the reset of the case and takes its reply as the case's drivers", async () => {
+      const reset = driverGrid({ case: "bear", warnings: ["reset"] });
+      resetCase.mockResolvedValue(okResult(reset) as never);
+      const { queryClient, wrapper } = setup();
+      seed(queryClient);
+      queryClient.setQueryData(edited, driverGrid({ case: "bear" }));
+      const { result } = renderHook(() => useResetCase("AAPL"), { wrapper });
+
+      result.current.mutate({ id: 2, case: "bear" });
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+      expect(resetCase).toHaveBeenCalledWith({
+        path: { ticker: "AAPL", scenario_id: 2, case: "bear" },
+      });
+      expect(queryClient.getQueryData(edited)).toEqual(reset);
+      expect(queryClient.getQueryState(edited)?.isInvalidated).toBe(false);
+      // The rest of the scenario views (the other cases, forecasts, the comparison) are stale.
+      for (const key of moved) {
+        expect(queryClient.getQueryState(key)?.isInvalidated, JSON.stringify(key)).toBe(true);
+      }
+      for (const key of untouched) {
+        expect(queryClient.getQueryState(key)?.isInvalidated, JSON.stringify(key)).toBe(false);
+      }
+    });
+
+    it("keeps the API's reason when the case cannot be reset", async () => {
+      resetCase.mockResolvedValue(
+        errorResult(422, { detail: "No fiscal year to start from" }) as never,
+      );
+      const { queryClient, wrapper } = setup();
+      queryClient.setQueryData(edited, driverGrid({ case: "bear" }));
+      const { result } = renderHook(() => useResetCase("AAPL"), { wrapper });
+
+      result.current.mutate({ id: 2, case: "bear" });
+      await waitFor(() => expect(result.current.isError).toBe(true));
+
+      expect(result.current.error).toMatchObject({
+        status: 422,
+        detail: "No fiscal year to start from",
+      });
+      expect(queryClient.getQueryData(edited)).toEqual(driverGrid({ case: "bear" }));
+    });
+
+    it("does not apply its reply while a driver save runs: it reloads the grid instead", async () => {
+      const settle: ((result: unknown) => void)[] = [];
+      putDrivers.mockImplementation(
+        (() => new Promise((resolve) => settle.push(resolve))) as never,
+      );
+      resetCase.mockResolvedValue(okResult(driverGrid({ case: "bear" })) as never);
+      const { queryClient, wrapper } = setup();
+      queryClient.setQueryData(edited, driverGrid({ case: "bear" }));
+      const { result: put } = renderHook(() => usePutDrivers("AAPL"), { wrapper });
+      const { result } = renderHook(() => useResetCase("AAPL"), { wrapper });
+      put.current.mutate({ id: 2, case: "bear", rows: [] });
+      await waitFor(() => expect(settle).toHaveLength(1));
+
+      result.current.mutate({ id: 2, case: "bear" });
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+      expect(queryClient.getQueryState(edited)?.isInvalidated).toBe(true);
+      settle[0]!(okResult(driverGrid({ case: "bear" })));
+      await waitFor(() => expect(queryClient.isMutating()).toBe(0));
     });
   });
 
@@ -468,10 +599,10 @@ describe("mutations", () => {
     const { queryClient, wrapper } = setup();
     seed(queryClient);
     const { result } = renderHook(() => usePreviewDriverImport("AAPL"), { wrapper });
-    result.current.mutate({ id: 2, file });
+    result.current.mutate({ id: 2, case: "bull", file });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(importDrivers).toHaveBeenCalledWith({
-      path: { ticker: "AAPL", scenario_id: 2 },
+      path: { ticker: "AAPL", scenario_id: 2, case: "bull" },
       body: { file, dry_run: true },
     });
     expect(result.current.data?.changes).toHaveLength(2);
@@ -485,10 +616,10 @@ describe("mutations", () => {
     const { queryClient, wrapper } = setup();
     seed(queryClient);
     const { result } = renderHook(() => useConfirmDriverImport("AAPL"), { wrapper });
-    result.current.mutate({ id: 2, file });
+    result.current.mutate({ id: 2, case: "bull", file });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(importDrivers).toHaveBeenCalledWith({
-      path: { ticker: "AAPL", scenario_id: 2 },
+      path: { ticker: "AAPL", scenario_id: 2, case: "bull" },
       body: { file, dry_run: false },
     });
     expectInvalidated(queryClient, true);
@@ -504,7 +635,7 @@ describe("mutations", () => {
     );
     const { wrapper } = setup();
     const { result } = renderHook(() => usePreviewDriverImport("AAPL"), { wrapper });
-    result.current.mutate({ id: 2, file });
+    result.current.mutate({ id: 2, case: "bull", file });
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(result.current.error).toBeInstanceOf(DriverFileFailed);
     expect((result.current.error as DriverFileFailed).issues).toEqual(errors);
@@ -516,7 +647,7 @@ describe("mutations", () => {
     );
     const { wrapper } = setup();
     const { result } = renderHook(() => usePreviewDriverImport("AAPL"), { wrapper });
-    result.current.mutate({ id: 2, file });
+    result.current.mutate({ id: 2, case: "bull", file });
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(result.current.error).not.toBeInstanceOf(DriverFileFailed);
     expect(result.current.error).toMatchObject({

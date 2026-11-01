@@ -17,6 +17,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 from bedrock.models.adjustment import utc_now
 from bedrock.models.base import Base
 
+Case = Literal["base", "bull", "bear"]
+CASES: tuple[str, ...] = get_args(Case)
 RevenueMethod = Literal["growth", "segments", "volume_price"]
 REVENUE_METHODS: tuple[str, ...] = get_args(RevenueMethod)
 SegmentDimension = Literal["business", "geo"]
@@ -24,22 +26,19 @@ SEGMENT_DIMENSIONS: tuple[str, ...] = get_args(SegmentDimension)
 
 
 class Scenario(Base):
-    """A named driver set of a company (FR-FCST-04). Base (`is_default`, no `base_id`) is the one
-    every other scenario of the company overrides (docs/erd/forecasting.md "Scenarios")."""
+    """A named set of drivers of a company with one revenue build and exactly three cases
+    (FR-FCST-04; docs/erd/forecasting.md "Scenarios and cases"). One scenario per company is the
+    default."""
 
     __tablename__ = "scenario"
     __table_args__ = (
         UniqueConstraint("company_id", "name"),
-        # one Base per company
+        # one default scenario per company
         Index(
             "uq_scenario_default",
             "company_id",
             unique=True,
             sqlite_where=text("is_default = 1"),
-        ),
-        CheckConstraint(
-            "(is_default = 1 AND base_id IS NULL) OR (is_default = 0 AND base_id IS NOT NULL)",
-            name="base",
         ),
         CheckConstraint(
             "revenue_method IN ('growth', 'segments', 'volume_price')", name="revenue_method"
@@ -53,9 +52,6 @@ class Scenario(Base):
     )
     name: Mapped[str] = mapped_column(String, nullable=False)
     is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    base_id: Mapped[int | None] = mapped_column(
-        ForeignKey("scenario.id", ondelete="CASCADE"), nullable=True
-    )
     # one of REVENUE_METHODS
     revenue_method: Mapped[str] = mapped_column(String, nullable=False, default="growth")
     # one of SEGMENT_DIMENSIONS; required for `segments`
@@ -63,6 +59,28 @@ class Scenario(Base):
     # KPI codes (segment_series.metric of a `kpi` series); required for `volume_price`
     volume_kpi: Mapped[str | None] = mapped_column(String, nullable=True)
     price_kpi: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=utc_now, onupdate=utc_now
+    )
+
+
+class ScenarioCase(Base):
+    """One of a scenario's three cases. `base` holds the scenario's own values; `bull` and `bear`
+    hold overrides on its `base` (docs/erd/forecasting.md "Scenarios and cases")."""
+
+    __tablename__ = "scenario_case"
+    __table_args__ = (
+        UniqueConstraint("scenario_id", "case"),
+        CheckConstraint("\"case\" IN ('base', 'bull', 'bear')", name="case"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    scenario_id: Mapped[int] = mapped_column(
+        ForeignKey("scenario.id", ondelete="CASCADE"), nullable=False
+    )
+    # one of CASES
+    case: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=utc_now, onupdate=utc_now

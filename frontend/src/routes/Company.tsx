@@ -17,7 +17,7 @@ import { Overview } from "@/features/overview/Overview";
 import { QualityView } from "@/features/quality/QualityView";
 import { RatiosView } from "@/features/ratios/RatiosView";
 import { ScenariosView } from "@/features/scenarios/ScenariosView";
-import { SCENARIO_PARAM } from "@/features/scenarios/useScenarioParam";
+import { CASE_PARAM, SCENARIO_PARAM } from "@/features/scenarios/useScenarioParam";
 import { SegmentsView } from "@/features/segments/SegmentsView";
 import { StatementView } from "@/features/statements/StatementView";
 import { formatCompact, formatPrice, formatRelative } from "@/lib/format";
@@ -47,15 +47,20 @@ const TABS: { slug: string; label: string; render: (company: CompanyListItem) =>
   { slug: "notes", label: "Notes", render: (c) => <NotesView ticker={c.ticker} /> },
 ];
 
-// The tabs that share the picked scenario (`?scenario`), so moving between them keeps it.
+// The tabs that share the picked scenario and case (`?scenario`, `?case`), so moving between them
+// keeps both.
 const SCENARIO_TABS = new Set(["forecast", "scenarios"]);
 
-function tabPath(ticker: string, slug: string, scenario: string | null): string {
+function tabPath(ticker: string, slug: string, params: URLSearchParams): string {
   if (slug === "overview") return `/c/${ticker}`;
-  const query =
-    scenario && SCENARIO_TABS.has(slug)
-      ? `?${new URLSearchParams({ [SCENARIO_PARAM]: scenario })}`
-      : "";
+  const shared = new URLSearchParams();
+  if (SCENARIO_TABS.has(slug)) {
+    for (const name of [SCENARIO_PARAM, CASE_PARAM]) {
+      const value = params.get(name);
+      if (value) shared.set(name, value);
+    }
+  }
+  const query = shared.size > 0 ? `?${shared}` : "";
   return `/c/${ticker}/${slug}${query}`;
 }
 
@@ -123,7 +128,7 @@ export function Company() {
         {TABS.map(({ slug, label }) => (
           <NavLink
             key={slug}
-            to={tabPath(company.ticker, slug, params.get(SCENARIO_PARAM))}
+            to={tabPath(company.ticker, slug, params)}
             end
             className={tabClassName}
           >

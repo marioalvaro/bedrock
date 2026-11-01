@@ -73,7 +73,7 @@ def _grid() -> DriverGrid:
         ),
     }
     ordered = [rows.get(d.code) or _row(d.code, [None] * 3, None) for d in CATALOG]
-    return DriverGrid(1, [2023, 2024, 2025], YEARS, ordered, [])
+    return DriverGrid(1, "base", [2023, 2024, 2025], YEARS, ordered, [])
 
 
 def _csv_rows(content: bytes) -> list[list[str]]:
@@ -130,7 +130,7 @@ def test_csv_numbers_are_plain_decimals_never_exponents() -> None:
     grid = _grid()
     big = [r for r in grid.rows if r.code != "buybacks"]
     big.append(_row("buybacks", [D("1E+14"), D("1E-10"), None], "value"))
-    rows = {r[0]: r for r in _csv_rows(export_csv(DriverGrid(1, [], YEARS, big, [])))}
+    rows = {r[0]: r for r in _csv_rows(export_csv(DriverGrid(1, "base", [], YEARS, big, [])))}
 
     assert rows["buybacks"][4:] == ["100000000000000", "0.0000000001", ""]
 
@@ -539,7 +539,7 @@ def _random_grid(rng: random.Random) -> tuple[DriverGrid, list[DriverRow]]:
                     own_rows.append(DriverRow(d.code, year, kind, own[i]))  # type: ignore[arg-type]
         stored = kind if any(v is not None for v in own) else None
         rows.append(_row(d.code, own, stored))
-    return DriverGrid(1, [2023, 2024, 2025], YEARS, rows, []), own_rows
+    return DriverGrid(1, "base", [2023, 2024, 2025], YEARS, rows, []), own_rows
 
 
 def _random_value(rng: random.Random, unit: str, kind: str) -> Decimal:

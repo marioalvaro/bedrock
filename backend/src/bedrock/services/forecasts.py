@@ -1,9 +1,8 @@
-"""A scenario's forecast as a statement table, and the scenario comparison (FR-FCST-01, -02, -04,
--06; docs/erd/forecasting.md "API")."""
+"""A scenario case's forecast as a statement table, and the comparison of a scenario's three cases
+(FR-FCST-01, -02, -04, -06; docs/erd/forecasting.md "Scenarios and cases", "API")."""
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -14,9 +13,9 @@ from bedrock.forecast.errors import ForecastUnavailable
 from bedrock.forecast.history import ForecastHistory
 from bedrock.forecast.integrity import IntegrityCheck
 from bedrock.models.company import Company
-from bedrock.models.scenario import Scenario
+from bedrock.models.scenario import CASES, Scenario
 from bedrock.services.errors import UnknownLineItem
-from bedrock.services.scenarios import get_scenario, list_scenarios, load_history, resolve_scenario
+from bedrock.services.scenarios import get_case, get_scenario, load_history, resolve_case
 from bedrock.services.statements import canonical_items
 from bedrock.statements.build import StatementTable, extend_table
 from bedrock.statements.periods import Period
@@ -24,7 +23,7 @@ from bedrock.statements.view import select_periods, trim_periods
 
 __all__ = [
     "Comparison",
-    "ComparedScenario",
+    "ComparedCase",
     "Forecast",
     "ForecastFreq",
     "LineItem",
@@ -64,29 +63,33 @@ class LineItem:
 
 
 @dataclass(frozen=True)
-class ComparedScenario:
-    id: int
-    name: str
+class ComparedCase:
+    case: str  # base | bull | bear
     values: dict[str, list[Decimal | None]]  # aligned with the comparison's periods
     error: str | None  # the forecast's 422 detail; then `values` is empty
 
 
 @dataclass(frozen=True)
 class Comparison:
-    periods: list[Period]  # forecast periods only: the union of the scenarios' horizons
+    periods: list[Period]  # forecast periods only: the union of the cases' horizons
     codes: list[LineItem]
-    scenarios: list[ComparedScenario]
+    cases: list[ComparedCase]  # base, bull, bear
 
 
 def forecast_table(
-    session: Session, company: Company, scenario_id: int, statement: str, freq: ForecastFreq
+    session: Session,
+    company: Company,
+    scenario_id: int,
+    case: str,
+    statement: str,
+    freq: ForecastFreq,
 ) -> Forecast:
-    """The last SHOWN_ACTUALS actual periods of the normalized statement, then the scenario's
+    """The last SHOWN_ACTUALS actual periods of the normalized statement, then the case's
     forecast periods of `freq`. YoY, common size and the balance check run over the combined
-    columns. Raises ScenarioNotFound and ForecastUnavailable."""
-    scenario = get_scenario(session, company, scenario_id)
+    columns. Raises ScenarioNotFound, InvalidScenario (case) and ForecastUnavailable."""
+    scenario, _ = get_case(session, company, scenario_id, case)
     history = load_history(session, company)
-    statements, warnings = _run(session, scenario, history)
+    statements, warnings = _run(session, scenario, case, history)
     periods = statements.annual() if freq == "annual" else statements.quarterly()
     first = (periods[0].fiscal_year, periods[0].fiscal_period)
     tables = history.annual if freq == "annual" else history.quarterly
@@ -105,30 +108,30 @@ def forecast_table(
 def compare(
     session: Session,
     company: Company,
+    scenario_id: int,
     freq: ForecastFreq,
     codes: Sequence[str] | None,
-    now: datetime,
 ) -> Comparison:
-    """Every scenario of the company (creating the defaults on the first call) on `codes`
-    (default COMPARE_CODES) over the union of their forecast periods of `freq`; a scenario that
-    cannot run has its detail as `error`. Raises UnknownLineItem."""
+    """The scenario's three cases on `codes` (default COMPARE_CODES) over the union of their
+    forecast periods of `freq`; a case that cannot run has its detail as `error`. Raises
+    ScenarioNotFound and UnknownLineItem."""
     items = _line_items(codes or COMPARE_CODES)
-    scenarios = list_scenarios(session, company, now)
+    scenario = get_scenario(session, company, scenario_id)
     history = load_history(session, company)
-    runs: list[tuple[Scenario, ForecastStatements | None, str | None]] = []
+    runs: list[tuple[str, ForecastStatements | None, str | None]] = []
     periods: dict[str, Period] = {}
-    for scenario in scenarios:
+    for case in CASES:
         try:
-            statements, _ = _run(session, scenario, history)
+            statements, _ = _run(session, scenario, case, history)
             shown = statements.annual() if freq == "annual" else statements.quarterly()
         except ForecastUnavailable as error:
-            runs.append((scenario, None, error.detail))
+            runs.append((case, None, error.detail))
             continue
         periods.update((p.key, p) for p in shown)
-        runs.append((scenario, statements, None))
+        runs.append((case, statements, None))
     ordered = sorted(periods.values(), key=lambda p: p.end)
     compared = []
-    for scenario, run, failure in runs:
+    for case, run, failure in runs:
         values: dict[str, list[Decimal | None]] = {}
         if run is not None:
             keys = {p.key for p in run.periods}
@@ -136,14 +139,14 @@ def compare(
                 item.code: [run.get(item.code, p.key) if p.key in keys else None for p in ordered]
                 for item in items
             }
-        compared.append(ComparedScenario(scenario.id, scenario.name, values, failure))
+        compared.append(ComparedCase(case, values, failure))
     return Comparison(ordered, items, compared)
 
 
 def _run(
-    session: Session, scenario: Scenario, history: ForecastHistory
+    session: Session, scenario: Scenario, case: str, history: ForecastHistory
 ) -> tuple[ForecastStatements, list[str]]:
-    drivers = resolve_scenario(session, scenario, history)
+    drivers = resolve_case(session, scenario, case, history)
     statements = DriverModel().run(
         history,
         drivers.resolved,

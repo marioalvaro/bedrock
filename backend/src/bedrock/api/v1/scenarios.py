@@ -10,6 +10,7 @@ from bedrock.api.deps import get_clock, get_session
 from bedrock.api.v1.statements import followed_company
 from bedrock.forecast.driver_io import DriverFileIssue
 from bedrock.models.company import Company
+from bedrock.models.scenario import Case
 from bedrock.schemas.scenarios import (
     DriverFileErrorsOut,
     DriverGridOut,
@@ -72,46 +73,61 @@ def delete_scenario(
     service.delete_scenario(session, company, scenario_id)
 
 
-@router.get("/companies/{ticker}/scenarios/{scenario_id}/drivers")
+@router.get("/companies/{ticker}/scenarios/{scenario_id}/cases/{case}/drivers")
 def get_drivers(
     scenario_id: int,
+    case: Case,
     company: Company = Depends(followed_company),
     session: Session = Depends(get_session),
 ) -> DriverGridOut:
-    return DriverGridOut.from_grid(service.driver_grid(session, company, scenario_id))
+    return DriverGridOut.from_grid(service.driver_grid(session, company, scenario_id, case))
 
 
-@router.put("/companies/{ticker}/scenarios/{scenario_id}/drivers")
+@router.put("/companies/{ticker}/scenarios/{scenario_id}/cases/{case}/drivers")
 def put_drivers(
     scenario_id: int,
+    case: Case,
     body: DriversIn,
     company: Company = Depends(followed_company),
     session: Session = Depends(get_session),
     now: datetime = Depends(get_clock),
 ) -> DriverGridOut:
-    grid = service.put_drivers(session, company, scenario_id, body.to_input(), now)
+    grid = service.put_drivers(session, company, scenario_id, case, body.to_input(), now)
     return DriverGridOut.from_grid(grid)
 
 
-@router.get("/companies/{ticker}/scenarios/{scenario_id}/drivers/export")
+@router.post("/companies/{ticker}/scenarios/{scenario_id}/cases/{case}/reset")
+def reset_case(
+    scenario_id: int,
+    case: Case,
+    company: Company = Depends(followed_company),
+    session: Session = Depends(get_session),
+    now: datetime = Depends(get_clock),
+) -> DriverGridOut:
+    return DriverGridOut.from_grid(service.reset_case(session, company, scenario_id, case, now))
+
+
+@router.get("/companies/{ticker}/scenarios/{scenario_id}/cases/{case}/drivers/export")
 def export_drivers(
     scenario_id: int,
+    case: Case,
     format: Literal["csv", "xlsx"] = "csv",
     company: Company = Depends(followed_company),
     session: Session = Depends(get_session),
 ) -> Response:
-    content, name = service.export_drivers(session, company, scenario_id, format)
+    content, name = service.export_drivers(session, company, scenario_id, case, format)
     return Response(
         content, media_type=_MEDIA[format], headers={"Content-Disposition": _attachment(name)}
     )
 
 
 @router.post(
-    "/companies/{ticker}/scenarios/{scenario_id}/drivers/import",
+    "/companies/{ticker}/scenarios/{scenario_id}/cases/{case}/drivers/import",
     responses={422: {"model": DriverFileErrorsOut}},
 )
 def import_drivers(
     scenario_id: int,
+    case: Case,
     file: UploadFile = File(),
     dry_run: bool = Form(False),
     company: Company = Depends(followed_company),
@@ -122,7 +138,7 @@ def import_drivers(
     if len(content) > MAX_BYTES:
         raise InvalidDriverFile([DriverFileIssue(None, None, "The file is larger than 1 MB")])
     result = service.import_drivers(
-        session, company, scenario_id, content, file.filename or "drivers", dry_run, now
+        session, company, scenario_id, case, content, file.filename or "drivers", dry_run, now
     )
     return DriverImportOut.from_result(result, dry_run)
 

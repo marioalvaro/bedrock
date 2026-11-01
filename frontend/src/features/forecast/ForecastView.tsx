@@ -6,10 +6,12 @@ import { Link } from "react-router";
 import { companyErrorMessage } from "@/api/companies";
 import type { ForecastOut } from "@/api/generated/types.gen";
 import {
+  CASES,
   ForecastUnavailable,
   forecastQueryOptions,
   scenariosQueryOptions,
   type ForecastFreq,
+  type ScenarioCase,
 } from "@/api/scenarios";
 import type { StatementType } from "@/api/statements";
 import { DataGrid } from "@/components/DataGrid";
@@ -17,7 +19,11 @@ import { ProvenanceLegend } from "@/components/ProvenanceLegend";
 import { UnitToggle } from "@/components/UnitToggle";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { useScenarioParam, SCENARIO_PARAM } from "@/features/scenarios/useScenarioParam";
+import {
+  CASE_PARAM,
+  SCENARIO_PARAM,
+  useScenarioParam,
+} from "@/features/scenarios/useScenarioParam";
 import {
   cellText,
   expandableCodes,
@@ -95,18 +101,23 @@ function columnDefs(payload: ForecastOut, scale: Scale): ColDef<GridRow>[] {
 interface ForecastBodyProps {
   ticker: string;
   scenarioId: number;
+  scenarioCase: ScenarioCase;
   type: StatementType;
   freq: ForecastFreq;
 }
 
-function ForecastBody({ ticker, scenarioId, type, freq }: ForecastBodyProps) {
+function ForecastBody({ ticker, scenarioId, scenarioCase, type, freq }: ForecastBodyProps) {
   const scale = useScale();
   const { data, isPending, isPlaceholderData, error } = useQuery({
-    ...forecastQueryOptions(ticker, scenarioId, type, freq),
-    // While the other frequency loads, keep the same scenario's statement on screen, so the grid
-    // is not unmounted and rebuilt (Gotcha G32).
+    ...forecastQueryOptions(ticker, scenarioId, scenarioCase, type, freq),
+    // While the other frequency loads, keep the same case's statement on screen, so the grid is
+    // not unmounted and rebuilt (Gotcha G32). Another case's numbers are never shown in its place.
     placeholderData: (previous) =>
-      previous?.statement === type && previous.scenario_id === scenarioId ? previous : undefined,
+      previous?.statement === type &&
+      previous.scenario_id === scenarioId &&
+      previous.case === scenarioCase
+        ? previous
+        : undefined,
   });
 
   // Every line is shown with its breakdown: the forecast is read whole, nothing is adjusted here.
@@ -132,7 +143,7 @@ function ForecastBody({ ticker, scenarioId, type, freq }: ForecastBodyProps) {
           {error.detail?.startsWith(MISSING_DRIVERS) && (
             <Button asChild size="sm" variant="outline">
               <Link
-                to={`/c/${ticker}/scenarios?${new URLSearchParams({ [SCENARIO_PARAM]: String(scenarioId) })}`}
+                to={`/c/${ticker}/scenarios?${new URLSearchParams({ [SCENARIO_PARAM]: String(scenarioId), [CASE_PARAM]: scenarioCase })}`}
               >
                 Open Scenarios
               </Link>
@@ -167,12 +178,12 @@ interface ForecastViewProps {
 }
 
 /**
- * The Forecast tab: a scenario's IS/BS/CF forecast after the recent actuals, annual or quarterly,
- * with the forecast's integrity checks. Read only: drivers are set in the Scenarios tab.
+ * The Forecast tab: a scenario case's IS/BS/CF forecast after the recent actuals, annual or
+ * quarterly, with the forecast's integrity checks. Read only: drivers are set in the Scenarios tab.
  */
 export function ForecastView({ ticker }: ForecastViewProps) {
   const { data: list, isPending, error } = useQuery(scenariosQueryOptions(ticker));
-  const { selected, select } = useScenarioParam(list);
+  const { selected, select, scenarioCase, selectCase } = useScenarioParam(list);
   const [type, setType] = useState<StatementType>("IS");
   const [freq, setFreq] = useState<ForecastFreq>("annual");
 
@@ -202,6 +213,21 @@ export function ForecastView({ ticker }: ForecastViewProps) {
             </option>
           ))}
         </select>
+        <ToggleGroup
+          type="single"
+          variant="outline"
+          size="sm"
+          spacing={0}
+          aria-label="Case"
+          value={scenarioCase}
+          onValueChange={(value) => value && selectCase(value as ScenarioCase)}
+        >
+          {CASES.map(({ value, label }) => (
+            <ToggleGroupItem key={value} value={value}>
+              {label}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
         <ToggleGroup
           type="single"
           variant="outline"
@@ -237,7 +263,13 @@ export function ForecastView({ ticker }: ForecastViewProps) {
       <div className="px-4 py-1">
         <ProvenanceLegend forecast />
       </div>
-      <ForecastBody ticker={ticker} scenarioId={selected.id} type={type} freq={freq} />
+      <ForecastBody
+        ticker={ticker}
+        scenarioId={selected.id}
+        scenarioCase={scenarioCase}
+        type={type}
+        freq={freq}
+      />
     </div>
   );
 }

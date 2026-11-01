@@ -112,9 +112,9 @@ export type BalanceCheckOut = {
 };
 
 /**
- * Body_import_drivers_api_v1_companies__ticker__scenarios__scenario_id__drivers_import_post
+ * Body_import_drivers_api_v1_companies__ticker__scenarios__scenario_id__cases__case__drivers_import_post
  */
-export type BodyImportDriversApiV1CompaniesTickerScenariosScenarioIdDriversImportPost = {
+export type BodyImportDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversImportPost = {
     /**
      * Dry Run
      */
@@ -505,6 +505,10 @@ export type CompareCodeOut = {
  */
 export type CompareOut = {
     /**
+     * Cases
+     */
+    cases: Array<ComparedCaseOut>;
+    /**
      * Codes
      */
     codes: Array<CompareCodeOut>;
@@ -512,10 +516,30 @@ export type CompareOut = {
      * Periods
      */
     periods: Array<PeriodOut>;
+};
+
+/**
+ * ComparedCaseOut
+ */
+export type ComparedCaseOut = {
     /**
-     * Scenarios
+     * Case
      */
-    scenarios: Array<ComparedScenarioOut>;
+    case: 'base' | 'bull' | 'bear';
+    /**
+     * Error
+     */
+    error: string | null;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Values
+     */
+    values: {
+        [key: string]: Array<string | null>;
+    };
 };
 
 /**
@@ -538,30 +562,6 @@ export type ComparedCompanyOut = {
      * Ttm Period
      */
     ttm_period: string | null;
-};
-
-/**
- * ComparedScenarioOut
- */
-export type ComparedScenarioOut = {
-    /**
-     * Error
-     */
-    error: string | null;
-    /**
-     * Id
-     */
-    id: number;
-    /**
-     * Name
-     */
-    name: string;
-    /**
-     * Values
-     */
-    values: {
-        [key: string]: Array<string | null>;
-    };
 };
 
 /**
@@ -877,6 +877,10 @@ export type DriverFileIssueOut = {
  */
 export type DriverGridOut = {
     /**
+     * Case
+     */
+    case: 'base' | 'bull' | 'bear';
+    /**
      * Forecast Years
      */
     forecast_years: Array<number>;
@@ -939,7 +943,7 @@ export type DriverRowIn = {
  *
  * `history` is aligned with the grid's `history_years`; `values`, `sources` and `own` with
  * its `forecast_years`. A value held flat is null with source `default`; a required driver
- * nothing sets is null with source null. `own` is the scenario's stored value, or offset when
+ * nothing sets is null with source null. `own` is the case's stored value, or offset when
  * `kind` is `offset`.
  */
 export type DriverRowOut = {
@@ -998,7 +1002,7 @@ export type DriverYearIn = {
 /**
  * DriversIn
  *
- * Each row replaces every stored row of its driver in the scenario.
+ * Each row replaces every stored row of its driver in the case.
  */
 export type DriversIn = {
     /**
@@ -1166,6 +1170,10 @@ export type ForecastOut = {
      * Basis
      */
     basis: 'reported' | 'normalized';
+    /**
+     * Case
+     */
+    case: 'base' | 'bull' | 'bear';
     /**
      * Currency
      */
@@ -2558,7 +2566,7 @@ export type RuleWarningOut = {
 /**
  * ScenarioIn
  *
- * A POST: the settings not given are Base's.
+ * A POST: the settings not given are the default scenario's.
  */
 export type ScenarioIn = {
     /**
@@ -2587,10 +2595,6 @@ export type ScenarioIn = {
  * ScenarioOut
  */
 export type ScenarioOut = {
-    /**
-     * Base Id
-     */
-    base_id: number | null;
     /**
      * Created At
      */
@@ -4595,47 +4599,6 @@ export type CreateScenarioApiV1CompaniesTickerScenariosPostResponses = {
 
 export type CreateScenarioApiV1CompaniesTickerScenariosPostResponse = CreateScenarioApiV1CompaniesTickerScenariosPostResponses[keyof CreateScenarioApiV1CompaniesTickerScenariosPostResponses];
 
-export type CompareScenariosApiV1CompaniesTickerScenariosCompareGetData = {
-    body?: never;
-    path: {
-        /**
-         * Ticker
-         */
-        ticker: string;
-    };
-    query: {
-        /**
-         * Freq
-         */
-        freq: 'annual' | 'quarterly';
-        /**
-         * Codes
-         *
-         * Comma-separated line item codes
-         */
-        codes?: string | null;
-    };
-    url: '/api/v1/companies/{ticker}/scenarios/compare';
-};
-
-export type CompareScenariosApiV1CompaniesTickerScenariosCompareGetErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type CompareScenariosApiV1CompaniesTickerScenariosCompareGetError = CompareScenariosApiV1CompaniesTickerScenariosCompareGetErrors[keyof CompareScenariosApiV1CompaniesTickerScenariosCompareGetErrors];
-
-export type CompareScenariosApiV1CompaniesTickerScenariosCompareGetResponses = {
-    /**
-     * Successful Response
-     */
-    200: CompareOut;
-};
-
-export type CompareScenariosApiV1CompaniesTickerScenariosCompareGetResponse = CompareScenariosApiV1CompaniesTickerScenariosCompareGetResponses[keyof CompareScenariosApiV1CompaniesTickerScenariosCompareGetResponses];
-
 export type DeleteScenarioApiV1CompaniesTickerScenariosScenarioIdDeleteData = {
     body?: never;
     path: {
@@ -4704,7 +4667,7 @@ export type UpdateScenarioApiV1CompaniesTickerScenariosScenarioIdPutResponses = 
 
 export type UpdateScenarioApiV1CompaniesTickerScenariosScenarioIdPutResponse = UpdateScenarioApiV1CompaniesTickerScenariosScenarioIdPutResponses[keyof UpdateScenarioApiV1CompaniesTickerScenariosScenarioIdPutResponses];
 
-export type GetDriversApiV1CompaniesTickerScenariosScenarioIdDriversGetData = {
+export type GetDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversGetData = {
     body?: never;
     path: {
         /**
@@ -4712,33 +4675,37 @@ export type GetDriversApiV1CompaniesTickerScenariosScenarioIdDriversGetData = {
          */
         scenario_id: number;
         /**
+         * Case
+         */
+        case: 'base' | 'bull' | 'bear';
+        /**
          * Ticker
          */
         ticker: string;
     };
     query?: never;
-    url: '/api/v1/companies/{ticker}/scenarios/{scenario_id}/drivers';
+    url: '/api/v1/companies/{ticker}/scenarios/{scenario_id}/cases/{case}/drivers';
 };
 
-export type GetDriversApiV1CompaniesTickerScenariosScenarioIdDriversGetErrors = {
+export type GetDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversGetErrors = {
     /**
      * Validation Error
      */
     422: HttpValidationError;
 };
 
-export type GetDriversApiV1CompaniesTickerScenariosScenarioIdDriversGetError = GetDriversApiV1CompaniesTickerScenariosScenarioIdDriversGetErrors[keyof GetDriversApiV1CompaniesTickerScenariosScenarioIdDriversGetErrors];
+export type GetDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversGetError = GetDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversGetErrors[keyof GetDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversGetErrors];
 
-export type GetDriversApiV1CompaniesTickerScenariosScenarioIdDriversGetResponses = {
+export type GetDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversGetResponses = {
     /**
      * Successful Response
      */
     200: DriverGridOut;
 };
 
-export type GetDriversApiV1CompaniesTickerScenariosScenarioIdDriversGetResponse = GetDriversApiV1CompaniesTickerScenariosScenarioIdDriversGetResponses[keyof GetDriversApiV1CompaniesTickerScenariosScenarioIdDriversGetResponses];
+export type GetDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversGetResponse = GetDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversGetResponses[keyof GetDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversGetResponses];
 
-export type PutDriversApiV1CompaniesTickerScenariosScenarioIdDriversPutData = {
+export type PutDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversPutData = {
     body: DriversIn;
     path: {
         /**
@@ -4746,39 +4713,47 @@ export type PutDriversApiV1CompaniesTickerScenariosScenarioIdDriversPutData = {
          */
         scenario_id: number;
         /**
+         * Case
+         */
+        case: 'base' | 'bull' | 'bear';
+        /**
          * Ticker
          */
         ticker: string;
     };
     query?: never;
-    url: '/api/v1/companies/{ticker}/scenarios/{scenario_id}/drivers';
+    url: '/api/v1/companies/{ticker}/scenarios/{scenario_id}/cases/{case}/drivers';
 };
 
-export type PutDriversApiV1CompaniesTickerScenariosScenarioIdDriversPutErrors = {
+export type PutDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversPutErrors = {
     /**
      * Validation Error
      */
     422: HttpValidationError;
 };
 
-export type PutDriversApiV1CompaniesTickerScenariosScenarioIdDriversPutError = PutDriversApiV1CompaniesTickerScenariosScenarioIdDriversPutErrors[keyof PutDriversApiV1CompaniesTickerScenariosScenarioIdDriversPutErrors];
+export type PutDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversPutError = PutDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversPutErrors[keyof PutDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversPutErrors];
 
-export type PutDriversApiV1CompaniesTickerScenariosScenarioIdDriversPutResponses = {
+export type PutDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversPutResponses = {
     /**
      * Successful Response
      */
     200: DriverGridOut;
 };
 
-export type PutDriversApiV1CompaniesTickerScenariosScenarioIdDriversPutResponse = PutDriversApiV1CompaniesTickerScenariosScenarioIdDriversPutResponses[keyof PutDriversApiV1CompaniesTickerScenariosScenarioIdDriversPutResponses];
+export type PutDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversPutResponse = PutDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversPutResponses[keyof PutDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversPutResponses];
 
-export type ExportDriversApiV1CompaniesTickerScenariosScenarioIdDriversExportGetData = {
+export type ExportDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversExportGetData = {
     body?: never;
     path: {
         /**
          * Scenario Id
          */
         scenario_id: number;
+        /**
+         * Case
+         */
+        case: 'base' | 'bull' | 'bear';
         /**
          * Ticker
          */
@@ -4790,66 +4765,74 @@ export type ExportDriversApiV1CompaniesTickerScenariosScenarioIdDriversExportGet
          */
         format?: 'csv' | 'xlsx';
     };
-    url: '/api/v1/companies/{ticker}/scenarios/{scenario_id}/drivers/export';
+    url: '/api/v1/companies/{ticker}/scenarios/{scenario_id}/cases/{case}/drivers/export';
 };
 
-export type ExportDriversApiV1CompaniesTickerScenariosScenarioIdDriversExportGetErrors = {
+export type ExportDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversExportGetErrors = {
     /**
      * Validation Error
      */
     422: HttpValidationError;
 };
 
-export type ExportDriversApiV1CompaniesTickerScenariosScenarioIdDriversExportGetError = ExportDriversApiV1CompaniesTickerScenariosScenarioIdDriversExportGetErrors[keyof ExportDriversApiV1CompaniesTickerScenariosScenarioIdDriversExportGetErrors];
+export type ExportDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversExportGetError = ExportDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversExportGetErrors[keyof ExportDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversExportGetErrors];
 
-export type ExportDriversApiV1CompaniesTickerScenariosScenarioIdDriversExportGetResponses = {
+export type ExportDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversExportGetResponses = {
     /**
      * Successful Response
      */
     200: unknown;
 };
 
-export type ImportDriversApiV1CompaniesTickerScenariosScenarioIdDriversImportPostData = {
-    body: BodyImportDriversApiV1CompaniesTickerScenariosScenarioIdDriversImportPost;
+export type ImportDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversImportPostData = {
+    body: BodyImportDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversImportPost;
     path: {
         /**
          * Scenario Id
          */
         scenario_id: number;
+        /**
+         * Case
+         */
+        case: 'base' | 'bull' | 'bear';
         /**
          * Ticker
          */
         ticker: string;
     };
     query?: never;
-    url: '/api/v1/companies/{ticker}/scenarios/{scenario_id}/drivers/import';
+    url: '/api/v1/companies/{ticker}/scenarios/{scenario_id}/cases/{case}/drivers/import';
 };
 
-export type ImportDriversApiV1CompaniesTickerScenariosScenarioIdDriversImportPostErrors = {
+export type ImportDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversImportPostErrors = {
     /**
      * Unprocessable Entity
      */
     422: DriverFileErrorsOut;
 };
 
-export type ImportDriversApiV1CompaniesTickerScenariosScenarioIdDriversImportPostError = ImportDriversApiV1CompaniesTickerScenariosScenarioIdDriversImportPostErrors[keyof ImportDriversApiV1CompaniesTickerScenariosScenarioIdDriversImportPostErrors];
+export type ImportDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversImportPostError = ImportDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversImportPostErrors[keyof ImportDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversImportPostErrors];
 
-export type ImportDriversApiV1CompaniesTickerScenariosScenarioIdDriversImportPostResponses = {
+export type ImportDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversImportPostResponses = {
     /**
      * Successful Response
      */
     200: DriverImportOut;
 };
 
-export type ImportDriversApiV1CompaniesTickerScenariosScenarioIdDriversImportPostResponse = ImportDriversApiV1CompaniesTickerScenariosScenarioIdDriversImportPostResponses[keyof ImportDriversApiV1CompaniesTickerScenariosScenarioIdDriversImportPostResponses];
+export type ImportDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversImportPostResponse = ImportDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversImportPostResponses[keyof ImportDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversImportPostResponses];
 
-export type GetForecastApiV1CompaniesTickerScenariosScenarioIdForecastGetData = {
+export type GetForecastApiV1CompaniesTickerScenariosScenarioIdCasesCaseForecastGetData = {
     body?: never;
     path: {
         /**
          * Scenario Id
          */
         scenario_id: number;
+        /**
+         * Case
+         */
+        case: 'base' | 'bull' | 'bear';
         /**
          * Ticker
          */
@@ -4865,26 +4848,109 @@ export type GetForecastApiV1CompaniesTickerScenariosScenarioIdForecastGetData = 
          */
         freq: 'annual' | 'quarterly';
     };
-    url: '/api/v1/companies/{ticker}/scenarios/{scenario_id}/forecast';
+    url: '/api/v1/companies/{ticker}/scenarios/{scenario_id}/cases/{case}/forecast';
 };
 
-export type GetForecastApiV1CompaniesTickerScenariosScenarioIdForecastGetErrors = {
+export type GetForecastApiV1CompaniesTickerScenariosScenarioIdCasesCaseForecastGetErrors = {
     /**
      * Validation Error
      */
     422: HttpValidationError;
 };
 
-export type GetForecastApiV1CompaniesTickerScenariosScenarioIdForecastGetError = GetForecastApiV1CompaniesTickerScenariosScenarioIdForecastGetErrors[keyof GetForecastApiV1CompaniesTickerScenariosScenarioIdForecastGetErrors];
+export type GetForecastApiV1CompaniesTickerScenariosScenarioIdCasesCaseForecastGetError = GetForecastApiV1CompaniesTickerScenariosScenarioIdCasesCaseForecastGetErrors[keyof GetForecastApiV1CompaniesTickerScenariosScenarioIdCasesCaseForecastGetErrors];
 
-export type GetForecastApiV1CompaniesTickerScenariosScenarioIdForecastGetResponses = {
+export type GetForecastApiV1CompaniesTickerScenariosScenarioIdCasesCaseForecastGetResponses = {
     /**
      * Successful Response
      */
     200: ForecastOut;
 };
 
-export type GetForecastApiV1CompaniesTickerScenariosScenarioIdForecastGetResponse = GetForecastApiV1CompaniesTickerScenariosScenarioIdForecastGetResponses[keyof GetForecastApiV1CompaniesTickerScenariosScenarioIdForecastGetResponses];
+export type GetForecastApiV1CompaniesTickerScenariosScenarioIdCasesCaseForecastGetResponse = GetForecastApiV1CompaniesTickerScenariosScenarioIdCasesCaseForecastGetResponses[keyof GetForecastApiV1CompaniesTickerScenariosScenarioIdCasesCaseForecastGetResponses];
+
+export type ResetCaseApiV1CompaniesTickerScenariosScenarioIdCasesCaseResetPostData = {
+    body?: never;
+    path: {
+        /**
+         * Scenario Id
+         */
+        scenario_id: number;
+        /**
+         * Case
+         */
+        case: 'base' | 'bull' | 'bear';
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/scenarios/{scenario_id}/cases/{case}/reset';
+};
+
+export type ResetCaseApiV1CompaniesTickerScenariosScenarioIdCasesCaseResetPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ResetCaseApiV1CompaniesTickerScenariosScenarioIdCasesCaseResetPostError = ResetCaseApiV1CompaniesTickerScenariosScenarioIdCasesCaseResetPostErrors[keyof ResetCaseApiV1CompaniesTickerScenariosScenarioIdCasesCaseResetPostErrors];
+
+export type ResetCaseApiV1CompaniesTickerScenariosScenarioIdCasesCaseResetPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: DriverGridOut;
+};
+
+export type ResetCaseApiV1CompaniesTickerScenariosScenarioIdCasesCaseResetPostResponse = ResetCaseApiV1CompaniesTickerScenariosScenarioIdCasesCaseResetPostResponses[keyof ResetCaseApiV1CompaniesTickerScenariosScenarioIdCasesCaseResetPostResponses];
+
+export type CompareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGetData = {
+    body?: never;
+    path: {
+        /**
+         * Scenario Id
+         */
+        scenario_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query: {
+        /**
+         * Freq
+         */
+        freq: 'annual' | 'quarterly';
+        /**
+         * Codes
+         *
+         * Comma-separated line item codes
+         */
+        codes?: string | null;
+    };
+    url: '/api/v1/companies/{ticker}/scenarios/{scenario_id}/compare';
+};
+
+export type CompareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CompareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGetError = CompareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGetErrors[keyof CompareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGetErrors];
+
+export type CompareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: CompareOut;
+};
+
+export type CompareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGetResponse = CompareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGetResponses[keyof CompareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGetResponses];
 
 export type CreateSeriesApiV1CompaniesTickerSegmentSeriesPostData = {
     body: SegmentSeriesIn;

@@ -51,7 +51,10 @@ interface ScenarioSettingsProps {
   scenario: ScenarioOut; // the form is keyed by the scenario, so it re-fills after a save
 }
 
-/** The scenario's revenue build (the horizon is fixed); Save is disabled while nothing changed. */
+/**
+ * The scenario's revenue build (the horizon is fixed), shared by its three cases; Save is disabled
+ * while nothing changed.
+ */
 export function ScenarioSettings({ ticker, scenario }: ScenarioSettingsProps) {
   const update = useUpdateScenario(ticker);
   const [draft, setDraft] = useState<Settings>(() => settingsOf(scenario));
@@ -147,6 +150,7 @@ export function ScenarioSettings({ ticker, scenario }: ScenarioSettingsProps) {
       >
         Save settings
       </Button>
+      <p className="text-muted-foreground self-center text-xs">Applies to Base, Bull and Bear</p>
       {error && (
         <p role="alert" className="text-destructive basis-full text-xs">
           {error}

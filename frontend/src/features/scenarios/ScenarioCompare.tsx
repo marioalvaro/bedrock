@@ -18,12 +18,12 @@ const FREQS: { value: ForecastFreq; label: string }[] = [
   { value: "quarterly", label: "Quarterly" },
 ];
 
-// One line per scenario, x = the forecast periods. A scenario that cannot run keeps an empty
-// series, so each scenario keeps its color (colors go by series position).
+// One line per case (Base, Bull, Bear), x = the forecast periods. A case that cannot run keeps an
+// empty series, so each case keeps its color (colors go by series position).
 function chartOption(table: CompareOut, code: string, unit: string, scale: Scale): EChartsOption {
   return {
     grid: { left: 8, right: 16, top: 32, bottom: 8, containLabel: true },
-    legend: { data: table.scenarios.map((scenario) => scenario.name), top: 0 },
+    legend: { data: table.cases.map((item) => item.label), top: 0 },
     tooltip: {
       trigger: "axis",
       valueFormatter: (value) => formatChartNumber(typeof value === "number" ? value : null, unit),
@@ -34,23 +34,25 @@ function chartOption(table: CompareOut, code: string, unit: string, scale: Scale
       scale: true,
       axisLabel: { formatter: (value: number) => formatChartNumber(value, unit) },
     },
-    series: table.scenarios.map((scenario) => ({
+    series: table.cases.map((item) => ({
       type: "line",
-      name: scenario.name,
-      data: (scenario.values[code] ?? []).map((value) => scaledNumber(value, unit, scale)),
+      name: item.label,
+      data: (item.values[code] ?? []).map((value) => scaledNumber(value, unit, scale)),
     })),
   };
 }
 
 interface ScenarioCompareProps {
   ticker: string;
+  scenarioId: number; // the view keys this component by it, so the previous data is its own
 }
 
 /**
- * Every scenario side by side over the forecast periods: a line chart of one metric and a table
- * of every compared metric. A scenario that cannot run shows its reason instead of values.
+ * The scenario's Base, Bull and Bear side by side over the forecast periods: a line chart of one
+ * metric and a table of every compared metric. A case that cannot run shows its reason instead of
+ * values.
  */
-export function ScenarioCompare({ ticker }: ScenarioCompareProps) {
+export function ScenarioCompare({ ticker, scenarioId }: ScenarioCompareProps) {
   const scale = useScale();
   const [freq, setFreq] = useState<ForecastFreq>("annual");
   const [picked, setPicked] = useState(DEFAULT_METRIC);
@@ -59,7 +61,7 @@ export function ScenarioCompare({ ticker }: ScenarioCompareProps) {
     isPending,
     isError,
   } = useQuery({
-    ...compareQueryOptions(ticker, freq),
+    ...compareQueryOptions(ticker, scenarioId, freq),
     placeholderData: keepPreviousData, // the chart stays mounted while the other frequency loads
   });
 
@@ -73,7 +75,7 @@ export function ScenarioCompare({ ticker }: ScenarioCompareProps) {
   );
 
   return (
-    <section aria-label="Compare scenarios" className="border-border border-t">
+    <section aria-label="Compare cases" className="border-border border-t">
       <div className="flex flex-wrap items-center gap-2 px-4 py-2">
         <h2 className="mr-2 text-sm font-medium">Compare</h2>
         <ToggleGroup
@@ -117,12 +119,12 @@ export function ScenarioCompare({ ticker }: ScenarioCompareProps) {
       )}
       {table && table.periods.length === 0 && (
         <ul
-          aria-label="Scenarios that cannot run"
+          aria-label="Cases that cannot run"
           className="text-muted-foreground space-y-0.5 px-4 pb-4 text-sm"
         >
-          {table.scenarios.map((scenario) => (
-            <li key={scenario.id}>
-              {scenario.name}: {scenario.error ?? "no forecast periods"}
+          {table.cases.map((item) => (
+            <li key={item.case}>
+              {item.label}: {item.error ?? "no forecast periods"}
             </li>
           ))}
         </ul>
@@ -131,11 +133,11 @@ export function ScenarioCompare({ ticker }: ScenarioCompareProps) {
         <>
           {option && metric && (
             <div className="px-4">
-              <Chart option={option} ariaLabel={`${metric.label} by scenario`} />
+              <Chart option={option} ariaLabel={`${metric.label} by case`} />
             </div>
           )}
           <div className="overflow-x-auto px-4 pb-4">
-            <table aria-label="Scenario comparison" className="w-full text-sm">
+            <table aria-label="Case comparison" className="w-full text-sm">
               <thead className="text-muted-foreground text-xs">
                 <tr>
                   <th className="py-1 pr-3 text-left font-normal" />
@@ -157,21 +159,21 @@ export function ScenarioCompare({ ticker }: ScenarioCompareProps) {
                         {code.label} · {scaleLabel(code.unit, scale)}
                       </th>
                     </tr>
-                    {table.scenarios.map((scenario) => (
-                      <tr key={scenario.id}>
-                        <td className="py-0.5 pr-3 pl-3 whitespace-nowrap">{scenario.name}</td>
-                        {scenario.error !== null ? (
+                    {table.cases.map((item) => (
+                      <tr key={item.case}>
+                        <td className="py-0.5 pr-3 pl-3 whitespace-nowrap">{item.label}</td>
+                        {item.error !== null ? (
                           <td
                             colSpan={table.periods.length}
                             className="text-muted-foreground py-0.5 pl-3 text-xs"
                           >
-                            {scenario.error}
+                            {item.error}
                           </td>
                         ) : (
                           table.periods.map((period, index) => (
                             <td key={period.key} className="num py-0.5 pl-3 text-right">
                               {formatValue(
-                                scenario.values[code.code]?.[index] ?? null,
+                                item.values[code.code]?.[index] ?? null,
                                 code.unit,
                                 scale,
                               )}

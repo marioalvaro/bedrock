@@ -43,7 +43,6 @@ protected.include_router(comps.router)
 protected.include_router(guidance.router)
 protected.include_router(notes.router)
 protected.include_router(imports.router)
-# forecasts before scenarios: /scenarios/compare must match before /scenarios/{scenario_id}
 protected.include_router(forecasts.router)
 protected.include_router(scenarios.router)
 

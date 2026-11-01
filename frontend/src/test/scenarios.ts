@@ -15,9 +15,8 @@ const STAMP = "2026-10-31T09:00:00Z";
 export function scenario(overrides: Partial<ScenarioOut> = {}): ScenarioOut {
   return {
     id: 1,
-    name: "Base",
+    name: "Main",
     is_default: true,
-    base_id: null,
     revenue_method: "growth",
     segment_dimension: null,
     volume_kpi: null,
@@ -28,13 +27,9 @@ export function scenario(overrides: Partial<ScenarioOut> = {}): ScenarioOut {
   };
 }
 
-/** GET …/scenarios: the defaults, Base first. */
+/** GET …/scenarios: the default scenario "Main" first, then a user scenario "Cycle". */
 export function scenarios(): ScenarioOut[] {
-  return [
-    scenario(),
-    scenario({ id: 2, name: "Bull", is_default: false, base_id: 1 }),
-    scenario({ id: 3, name: "Bear", is_default: false, base_id: 1 }),
-  ];
+  return [scenario(), scenario({ id: 2, name: "Cycle", is_default: false })];
 }
 
 export function driverRow(overrides: Partial<DriverRowOut> = {}): DriverRowOut {
@@ -60,6 +55,7 @@ export function driverRow(overrides: Partial<DriverRowOut> = {}): DriverRowOut {
 export function driverGrid(overrides: Partial<DriverGridOut> = {}): DriverGridOut {
   return {
     scenario_id: 1,
+    case: "base",
     history_years: [2023, 2024, 2025],
     forecast_years: [2026, 2027],
     rows: [
@@ -106,12 +102,12 @@ export function driverGrid(overrides: Partial<DriverGridOut> = {}): DriverGridOu
   };
 }
 
-/** GET …/drivers of Bull: revenue growth held as an offset on Base (+3 pts each year). */
+/** GET …/cases/bull/drivers of "Main": revenue growth held as an offset on Base (+3 pts each year). */
 export function bullGrid(): DriverGridOut {
   const base = driverGrid();
   return {
     ...base,
-    scenario_id: 2,
+    case: "bull",
     rows: [
       driverRow({
         values: ["0.0534", "0.0534"],
@@ -174,7 +170,7 @@ function forecastPeriod(year: number, quarter?: number): PeriodOut {
   };
 }
 
-/** GET …/scenarios/compare (annual): revenue and EPS for the three defaults; Bear cannot run. */
+/** GET …/scenarios/1/compare (annual): revenue and EPS for Base, Bull and Bear; Bear cannot run. */
 export function comparison(overrides: Partial<CompareOut> = {}): CompareOut {
   return {
     periods: [forecastPeriod(2026), forecastPeriod(2027)],
@@ -182,22 +178,22 @@ export function comparison(overrides: Partial<CompareOut> = {}): CompareOut {
       { code: "revenue", label: "Revenue", unit: "USD" },
       { code: "eps_diluted", label: "EPS (diluted)", unit: "USD/shares" },
     ],
-    scenarios: [
+    cases: [
       {
-        id: 1,
-        name: "Base",
+        case: "base",
+        label: "Base",
         values: { revenue: ["425000000000", "435000000000"], eps_diluted: ["7.1", "7.45"] },
         error: null,
       },
       {
-        id: 2,
-        name: "Bull",
+        case: "bull",
+        label: "Bull",
         values: { revenue: ["437000000000", "460000000000"], eps_diluted: ["7.52", "8.1"] },
         error: null,
       },
       {
-        id: 3,
-        name: "Bear",
+        case: "bear",
+        label: "Bear",
         values: {},
         error: "Set these drivers: tax_rate",
       },
@@ -206,7 +202,7 @@ export function comparison(overrides: Partial<CompareOut> = {}): CompareOut {
   };
 }
 
-/** GET …/scenarios/{id}/forecast?type=IS&freq=annual, trimmed to revenue. */
+/** GET …/scenarios/{id}/cases/base/forecast?type=IS&freq=annual, trimmed to revenue. */
 export function forecast(overrides: Partial<ForecastOut> = {}): ForecastOut {
   return {
     ticker: "AAPL",
@@ -215,6 +211,7 @@ export function forecast(overrides: Partial<ForecastOut> = {}): ForecastOut {
     basis: "normalized",
     currency: "USD",
     scenario_id: 1,
+    case: "base",
     periods: [forecastPeriod(2026)],
     rows: [],
     balance_check: null,
@@ -246,7 +243,7 @@ function actualPeriod(year: number): PeriodOut {
 }
 
 /**
- * GET …/scenarios/1/forecast?type=IS&freq=annual: FY2024–FY2025 actuals (normalized), then
+ * GET …/scenarios/1/cases/base/forecast?type=IS&freq=annual: FY2024–FY2025 actuals (normalized), then
  * FY2026E–FY2027E. Rows: revenue with gross profit under it, and net income.
  */
 export function forecastIncome(overrides: Partial<ForecastOut> = {}): ForecastOut {

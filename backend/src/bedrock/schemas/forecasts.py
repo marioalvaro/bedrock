@@ -3,6 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+from bedrock.models.scenario import Case
 from bedrock.schemas.statements import PeriodOut, StatementOut
 from bedrock.services.forecasts import Comparison, Forecast
 
@@ -22,6 +23,7 @@ class ForecastOut(StatementOut):
     """The statement payload with the actual periods then the forecast ones (`is_forecast`)."""
 
     scenario_id: int
+    case: Case
     warnings: list[str]
     integrity: list[IntegrityOut]
 
@@ -35,6 +37,7 @@ class ForecastOut(StatementOut):
         freq: Literal["annual", "quarterly"],
         currency: str,
         scenario_id: int,
+        case: Case,
     ) -> "ForecastOut":
         base = StatementOut.from_table(
             forecast.table,
@@ -48,6 +51,7 @@ class ForecastOut(StatementOut):
         return cls(
             **dict(base),
             scenario_id=scenario_id,
+            case=case,
             warnings=forecast.warnings,
             integrity=[
                 IntegrityOut(
@@ -69,17 +73,17 @@ class CompareCodeOut(BaseModel):
     unit: str
 
 
-class ComparedScenarioOut(BaseModel):
-    id: int
-    name: str
+class ComparedCaseOut(BaseModel):
+    case: Case
+    label: str  # Base | Bull | Bear
     values: dict[str, list[Decimal | None]]  # by code, aligned with `periods`; empty on error
-    error: str | None  # why the scenario's forecast cannot run
+    error: str | None  # why the case's forecast cannot run
 
 
 class CompareOut(BaseModel):
     periods: list[PeriodOut]  # forecast periods only
     codes: list[CompareCodeOut]
-    scenarios: list[ComparedScenarioOut]
+    cases: list[ComparedCaseOut]  # base, bull, bear
 
     @classmethod
     def from_comparison(cls, comparison: Comparison) -> "CompareOut":
@@ -88,8 +92,13 @@ class CompareOut(BaseModel):
             codes=[
                 CompareCodeOut(code=c.code, label=c.label, unit=c.unit) for c in comparison.codes
             ],
-            scenarios=[
-                ComparedScenarioOut(id=s.id, name=s.name, values=s.values, error=s.error)
-                for s in comparison.scenarios
+            cases=[
+                ComparedCaseOut(
+                    case=c.case,
+                    label=c.case.capitalize(),
+                    values=c.values,
+                    error=c.error,
+                )
+                for c in comparison.cases
             ],
         )

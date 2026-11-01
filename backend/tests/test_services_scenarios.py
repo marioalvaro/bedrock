@@ -1,5 +1,6 @@
-"""Scenarios of a followed company (docs/erd/forecasting.md "Scenarios (M4)"), on the recorded AAPL
-fixtures: the default Base/Bull/Bear, CRUD, settings validation, the driver grid and its PUT."""
+"""Scenarios of a followed company and their cases (docs/erd/forecasting.md "Scenarios and
+cases"), on the recorded AAPL fixtures: the default "Main", CRUD, settings validation, reset, the
+driver grid and its PUT per case."""
 
 from collections.abc import Iterator
 from datetime import UTC, datetime
@@ -19,7 +20,7 @@ from bedrock.forecast.history import (
 )
 from bedrock.models.company import Company
 from bedrock.models.driver_value import DriverValue
-from bedrock.models.scenario import Scenario
+from bedrock.models.scenario import Scenario, ScenarioCase
 from bedrock.models.segment_series import SegmentSeries
 from bedrock.models.segment_value import SegmentValue
 from bedrock.repositories import scenarios as scenarios_repo
@@ -45,6 +46,7 @@ from bedrock.services.scenarios import (
     list_scenarios,
     load_history,
     put_drivers,
+    reset_case,
     update_scenario,
 )
 
@@ -68,16 +70,26 @@ def empty(db_session: Session) -> Company:
     return follow(db_session, fake_sources().edgar, "MSFT")
 
 
-def _rows(session: Session, scenario: Scenario) -> dict[tuple[str, int], tuple[str, Decimal]]:
-    stmt = select(DriverValue).where(DriverValue.scenario_id == scenario.id)
+def _rows(
+    session: Session, scenario: Scenario, case: str = "base"
+) -> dict[tuple[str, int], tuple[str, Decimal]]:
+    stmt = (
+        select(DriverValue)
+        .join(ScenarioCase, ScenarioCase.id == DriverValue.case_id)
+        .where(ScenarioCase.scenario_id == scenario.id, ScenarioCase.case == case)
+    )
     return {
         (r.driver_code, r.fiscal_year): (r.kind, Decimal(str(r.value)).normalize())
         for r in session.execute(stmt).scalars()
     }
 
 
-def _named(session: Session, company: Company) -> dict[str, Scenario]:
-    return {s.name: s for s in list_scenarios(session, company, NOW)}
+def _main(session: Session, company: Company) -> Scenario:
+    return list_scenarios(session, company, NOW)[0]
+
+
+def _case_names(session: Session, scenario: Scenario) -> set[str]:
+    return set(scenarios_repo.cases_of(session, scenario.id))
 
 
 def _series(
@@ -110,91 +122,114 @@ def _series(
 # --- defaults -------------------------------------------------------------------------------
 
 
-def test_the_first_list_creates_base_bull_and_bear_once(db_session: Session, aapl: Company) -> None:
+def test_the_first_list_creates_main_with_three_cases_once(
+    db_session: Session, aapl: Company
+) -> None:
     first = list_scenarios(db_session, aapl, NOW)
     ensure_defaults(db_session, aapl, NOW)
     second = list_scenarios(db_session, aapl, NOW)
 
-    assert [s.name for s in first] == ["Base", "Bull", "Bear"]
+    assert [s.name for s in first] == ["Main"]
     assert [s.id for s in second] == [s.id for s in first]
-    base, bull, bear = first
-    assert (base.is_default, base.base_id) == (True, None)
-    assert (bull.is_default, bull.base_id, bear.base_id) == (False, base.id, base.id)
-    for s in first:
-        assert s.revenue_method == "growth"
-        assert s.created_at == datetime(2026, 10, 31, 9, 0)  # naive UTC from the clock
+    (main,) = first
+    assert (main.is_default, main.revenue_method) == (True, "growth")
+    assert main.created_at == datetime(2026, 10, 31, 9, 0)  # naive UTC from the clock
+    assert _case_names(db_session, main) == {"base", "bull", "bear"}
+    assert db_session.query(ScenarioCase).count() == 3
 
 
 def test_bull_and_bear_hold_offsets_for_the_five_forecast_years_and_base_holds_none(
     db_session: Session, aapl: Company
 ) -> None:
     """The horizon is fixed at 5 years (user, 2026-10-31): no offset lies beyond it."""
-    scenarios = _named(db_session, aapl)
+    main = _main(db_session, aapl)
     years = forecast_years(load_history(db_session, aapl), 5)
 
-    assert _rows(db_session, scenarios["Base"]) == {}
-    assert _rows(db_session, scenarios["Bull"]) == {
+    assert _rows(db_session, main, "base") == {}
+    assert _rows(db_session, main, "bull") == {
         **{("revenue_growth", y): ("offset", D("0.03")) for y in years},
         **{("gross_margin", y): ("offset", D("0.01")) for y in years},
     }
-    assert _rows(db_session, scenarios["Bear"]) == {
+    assert _rows(db_session, main, "bear") == {
         **{("revenue_growth", y): ("offset", D("-0.03")) for y in years},
         **{("gross_margin", y): ("offset", D("-0.01")) for y in years},
     }
 
 
-def test_a_company_without_an_opening_gets_scenarios_without_offsets(
+def test_a_company_without_an_opening_gets_main_without_offsets(
     db_session: Session, empty: Company
 ) -> None:
-    scenarios = list_scenarios(db_session, empty, NOW)
+    (main,) = list_scenarios(db_session, empty, NOW)
 
-    assert [s.name for s in scenarios] == ["Base", "Bull", "Bear"]
-    assert all(_rows(db_session, s) == {} for s in scenarios)
+    assert _case_names(db_session, main) == {"base", "bull", "bear"}
+    assert all(_rows(db_session, main, c) == {} for c in ("base", "bull", "bear"))
 
 
-def test_scenarios_are_listed_base_first_then_by_id(db_session: Session, aapl: Company) -> None:
+def test_scenarios_are_listed_default_first_then_by_id(db_session: Session, aapl: Company) -> None:
     list_scenarios(db_session, aapl, NOW)
     create_scenario(db_session, aapl, SettingsInput(name="Aardvark"), NOW)
+    create_scenario(db_session, aapl, SettingsInput(name="Zebra"), NOW)
 
-    assert [s.name for s in list_scenarios(db_session, aapl, NOW)] == [
-        "Base",
-        "Bull",
-        "Bear",
-        "Aardvark",
-    ]
+    assert [s.name for s in list_scenarios(db_session, aapl, NOW)] == ["Main", "Aardvark", "Zebra"]
 
 
 # --- create, update, delete -----------------------------------------------------------------
 
 
-def test_a_new_scenario_copies_base_settings_and_inherits_base(
+def test_a_new_scenario_takes_the_default_s_settings_and_fresh_default_cases(
     db_session: Session, aapl: Company
 ) -> None:
-    base = _named(db_session, aapl)["Base"]
+    main = _main(db_session, aapl)
     _series(db_session, aapl, "Americas", dimension="geo")
     geo = SettingsInput(revenue_method="segments", segment_dimension="geo")
-    update_scenario(db_session, aapl, base.id, geo, NOW)
+    update_scenario(db_session, aapl, main.id, geo, NOW)
+    years = forecast_years(load_history(db_session, aapl), 5)
+    y = years[0]
+    _put(db_session, aapl, main, "base", DriverRowInput("tax_rate", "value", [(y, D("0.2"))]))
 
     created = create_scenario(db_session, aapl, SettingsInput(name="  Mine  "), NOW)
 
     assert created.name == "Mine"
-    assert (created.is_default, created.base_id) == (False, base.id)
+    assert created.is_default is False
     assert (created.revenue_method, created.segment_dimension) == ("segments", "geo")
-    assert _rows(db_session, created) == {}
+    assert _case_names(db_session, created) == {"base", "bull", "bear"}
+    assert _rows(db_session, created, "base") == {}  # no copy of Main's edits
+    assert _rows(db_session, created, "bull")[("revenue_growth", y)] == ("offset", D("0.03"))
+    assert _rows(db_session, created, "bear")[("gross_margin", y)] == ("offset", D("-0.01"))
+
+
+def test_a_scenario_created_on_segments_has_segment_offsets_by_case(
+    db_session: Session, aapl: Company
+) -> None:
+    iphone = _series(db_session, aapl, "iPhone", fy_values={2024: 200})
+    years = forecast_years(load_history(db_session, aapl), 5)
+    segments = SettingsInput(name="Seg", revenue_method="segments", segment_dimension="business")
+
+    created = create_scenario(db_session, aapl, segments, NOW)
+
+    code = f"segment_growth:{iphone.id}"
+    assert _rows(db_session, created, "base") == {}
+    assert {k: v for k, v in _rows(db_session, created, "bull").items() if k[0] == code} == {
+        (code, y): ("offset", D("0.03")) for y in years
+    }
+    assert {k: v for k, v in _rows(db_session, created, "bear").items() if k[0] == code} == {
+        (code, y): ("offset", D("-0.03")) for y in years
+    }
 
 
 def test_a_duplicate_name_is_a_conflict_on_create_and_update(
     db_session: Session, aapl: Company
 ) -> None:
-    bull = _named(db_session, aapl)["Bull"]
+    main = _main(db_session, aapl)
+    other = create_scenario(db_session, aapl, SettingsInput(name="Other"), NOW)
 
-    with pytest.raises(ScenarioConflict, match="already has a scenario named 'Bear'"):
-        create_scenario(db_session, aapl, SettingsInput(name="Bear"), NOW)
+    with pytest.raises(ScenarioConflict, match="already has a scenario named 'Other'"):
+        create_scenario(db_session, aapl, SettingsInput(name="Other"), NOW)
     with pytest.raises(ScenarioConflict):
-        update_scenario(db_session, aapl, bull.id, SettingsInput(name=" Bear "), NOW)
+        update_scenario(db_session, aapl, main.id, SettingsInput(name=" Other "), NOW)
     # its own name is not a duplicate
-    assert (
-        update_scenario(db_session, aapl, bull.id, SettingsInput(name="Bull"), NOW).name == "Bull"
+    assert update_scenario(db_session, aapl, other.id, SettingsInput(name="Other"), NOW).name == (
+        "Other"
     )
 
 
@@ -220,7 +255,9 @@ def test_invalid_settings_are_refused_and_nothing_is_stored(
 
     with pytest.raises(InvalidScenario, match=message):
         create_scenario(db_session, aapl, data, NOW)
-    assert len(list_scenarios(db_session, aapl, NOW)) == 3
+    assert len(list_scenarios(db_session, aapl, NOW)) == 1
+    assert db_session.query(ScenarioCase).count() == 3
+    assert db_session.query(DriverValue).filter_by(case_id=None).count() == 0
 
 
 def test_a_sixty_character_name_is_accepted(db_session: Session, aapl: Company) -> None:
@@ -264,34 +301,45 @@ def test_volume_and_price_must_be_kpis_of_the_company_with_their_units(
 
 
 def test_an_update_keeps_the_settings_it_does_not_name(db_session: Session, aapl: Company) -> None:
-    bull = _named(db_session, aapl)["Bull"]
+    main = _main(db_session, aapl)
 
     updated = update_scenario(
         db_session,
         aapl,
-        bull.id,
+        main.id,
         SettingsInput(revenue_method="segments", segment_dimension="geo"),
         NOW,
     )
     assert (updated.name, updated.revenue_method, updated.segment_dimension) == (
-        "Bull",
+        "Main",
         "segments",
         "geo",
     )
-    again = update_scenario(db_session, aapl, bull.id, SettingsInput(name="Bullish"), NOW)
+    again = update_scenario(db_session, aapl, main.id, SettingsInput(name="Core"), NOW)
 
     assert (again.revenue_method, again.segment_dimension, again.name) == (
         "segments",
         "geo",
-        "Bullish",
+        "Core",
     )
     assert again.updated_at == datetime(2026, 10, 31, 9, 0)
+
+
+def test_renaming_a_scenario_keeps_the_offsets_of_its_cases(
+    db_session: Session, aapl: Company
+) -> None:
+    main = _main(db_session, aapl)
+    before = {c: _rows(db_session, main, c) for c in ("base", "bull", "bear")}
+
+    update_scenario(db_session, aapl, main.id, SettingsInput(name="Core"), NOW)
+
+    assert {c: _rows(db_session, main, c) for c in ("base", "bull", "bear")} == before
 
 
 def test_another_company_s_scenario_is_not_found(
     db_session: Session, aapl: Company, empty: Company
 ) -> None:
-    other = list_scenarios(db_session, empty, NOW)[1]
+    other = _main(db_session, empty)
     list_scenarios(db_session, aapl, NOW)
 
     with pytest.raises(ScenarioNotFound):
@@ -300,23 +348,35 @@ def test_another_company_s_scenario_is_not_found(
         delete_scenario(db_session, aapl, other.id)
     with pytest.raises(ScenarioNotFound):
         delete_scenario(db_session, aapl, 999_999)
+    with pytest.raises(ScenarioNotFound):
+        reset_case(db_session, aapl, other.id, "bull", NOW)
 
 
-def test_base_cannot_be_deleted(db_session: Session, aapl: Company) -> None:
-    base = _named(db_session, aapl)["Base"]
+def test_the_default_scenario_cannot_be_deleted(db_session: Session, aapl: Company) -> None:
+    main = _main(db_session, aapl)
 
-    with pytest.raises(ScenarioConflict, match="Base cannot be deleted"):
-        delete_scenario(db_session, aapl, base.id)
+    with pytest.raises(ScenarioConflict, match="The default scenario cannot be deleted"):
+        delete_scenario(db_session, aapl, main.id)
 
 
-def test_deleting_a_scenario_deletes_its_driver_rows(db_session: Session, aapl: Company) -> None:
-    bull = _named(db_session, aapl)["Bull"]
+def test_deleting_a_scenario_deletes_its_cases_and_driver_rows(
+    db_session: Session, aapl: Company
+) -> None:
+    main = _main(db_session, aapl)
+    extra = create_scenario(db_session, aapl, SettingsInput(name="Extra"), NOW)
+    kept = (
+        db_session.query(DriverValue).count()
+        - len(_rows(db_session, extra, "bull"))
+        - len(_rows(db_session, extra, "bear"))
+    )
 
-    delete_scenario(db_session, aapl, bull.id)
+    delete_scenario(db_session, aapl, extra.id)
 
-    assert [s.name for s in list_scenarios(db_session, aapl, NOW)] == ["Base", "Bear"]
-    stmt = select(DriverValue).where(DriverValue.scenario_id == bull.id)
-    assert db_session.execute(stmt).first() is None
+    assert [s.name for s in list_scenarios(db_session, aapl, NOW)] == ["Main"]
+    assert _case_names(db_session, extra) == set()
+    assert db_session.query(ScenarioCase).count() == 3
+    assert db_session.query(DriverValue).count() == kept
+    assert _rows(db_session, main, "bull")  # Main's cases are untouched
 
 
 # --- segments: default offsets ----------------------------------------------------------------
@@ -329,35 +389,42 @@ def test_bull_and_bear_switched_to_segments_get_an_offset_on_each_segment(
     mac = _series(db_session, aapl, "Mac", fy_values={2024: 30})
     geo = _series(db_session, aapl, "Americas", dimension="geo")
     income = _series(db_session, aapl, "iPhone OI", metric="operating_income")
-    scenarios = _named(db_session, aapl)
+    main = _main(db_session, aapl)
     years = forecast_years(load_history(db_session, aapl), 5)
-    segments = SettingsInput(revenue_method="segments", segment_dimension="business")
+    before = {c: _rows(db_session, main, c) for c in ("base", "bull", "bear")}
 
-    for name, sign in (("Bull", ""), ("Bear", "-")):
-        before = _rows(db_session, scenarios[name])
-        update_scenario(db_session, aapl, scenarios[name].id, segments, NOW)
-        after = _rows(db_session, scenarios[name])
+    update_scenario(
+        db_session,
+        aapl,
+        main.id,
+        SettingsInput(revenue_method="segments", segment_dimension="business"),
+        NOW,
+    )
 
-        added = {k: v for k, v in after.items() if k not in before}
+    assert _rows(db_session, main, "base") == {}
+    for case, sign in (("bull", ""), ("bear", "-")):
+        after = _rows(db_session, main, case)
+        added = {k: v for k, v in after.items() if k not in before[case]}
         assert added == {
             (f"segment_growth:{s.id}", y): ("offset", D(f"{sign}0.03"))
             for s in (iphone, mac)
             for y in years
         }
         # the revenue_growth offsets stay, for a switch back to growth
-        assert {k: v for k, v in after.items() if k in before} == before
-    assert not any(code.endswith((str(geo.id), str(income.id))) for code, _ in added)
+        assert {k: v for k, v in after.items() if k in before[case]} == before[case]
+        assert not any(code.endswith((str(geo.id), str(income.id))) for code, _ in added)
 
 
 def test_a_segment_with_own_rows_keeps_them_and_a_later_segment_gets_none(
     db_session: Session, aapl: Company
 ) -> None:
     iphone = _series(db_session, aapl, "iPhone")
-    bull = _named(db_session, aapl)["Bull"]
+    main = _main(db_session, aapl)
+    bull = scenarios_repo.cases_of(db_session, main.id)["bull"]
     first_year = forecast_years(load_history(db_session, aapl), 5)[0]
     db_session.add(
         DriverValue(
-            scenario_id=bull.id,
+            case_id=bull.id,
             driver_code=f"segment_growth:{iphone.id}",
             fiscal_year=first_year,
             kind="value",
@@ -370,14 +437,14 @@ def test_a_segment_with_own_rows_keeps_them_and_a_later_segment_gets_none(
     update_scenario(
         db_session,
         aapl,
-        bull.id,
+        main.id,
         SettingsInput(revenue_method="segments", segment_dimension="business"),
         NOW,
     )
     later = _series(db_session, aapl, "Services")
-    update_scenario(db_session, aapl, bull.id, SettingsInput(name="Bull 2"), NOW)
+    update_scenario(db_session, aapl, main.id, SettingsInput(name="Core"), NOW)
 
-    rows = _rows(db_session, bull)
+    rows = _rows(db_session, main, "bull")
     assert {k: v for k, v in rows.items() if k[0] == f"segment_growth:{iphone.id}"} == {
         (f"segment_growth:{iphone.id}", first_year): ("value", D("0.2"))
     }
@@ -390,32 +457,166 @@ def test_changing_the_dimension_writes_the_offsets_of_the_new_dimension(
 ) -> None:
     _series(db_session, aapl, "iPhone")
     americas = _series(db_session, aapl, "Americas", dimension="geo")
-    bear = _named(db_session, aapl)["Bear"]
+    main = _main(db_session, aapl)
     to = SettingsInput(revenue_method="segments", segment_dimension="business")
-    update_scenario(db_session, aapl, bear.id, to, NOW)
+    update_scenario(db_session, aapl, main.id, to, NOW)
 
-    update_scenario(db_session, aapl, bear.id, SettingsInput(segment_dimension="geo"), NOW)
+    update_scenario(db_session, aapl, main.id, SettingsInput(segment_dimension="geo"), NOW)
 
-    rows = _rows(db_session, bear)
+    rows = _rows(db_session, main, "bear")
     assert sum(1 for code, _ in rows if code == f"segment_growth:{americas.id}") == 5
     assert all(
         v == ("offset", D("-0.03")) for (c, _), v in rows.items() if c.endswith(f":{americas.id}")
     )
 
 
-def test_a_scenario_that_is_not_a_default_bull_or_bear_gets_no_segment_offsets(
+def test_a_settings_change_applies_to_all_three_cases(db_session: Session, aapl: Company) -> None:
+    iphone = _series(db_session, aapl, "iPhone", fy_values={2024: 200, 2025: 210})
+    main = _main(db_session, aapl)
+    update_scenario(
+        db_session,
+        aapl,
+        main.id,
+        SettingsInput(revenue_method="segments", segment_dimension="business"),
+        NOW,
+    )
+
+    for case in ("base", "bull", "bear"):
+        codes = [r.code for r in driver_grid(db_session, aapl, main.id, case).rows]
+        assert f"segment_growth:{iphone.id}" in codes
+        assert "revenue_growth" not in codes
+
+
+def test_a_scenario_s_cases_are_independent_of_another_scenario(
     db_session: Session, aapl: Company
 ) -> None:
-    _series(db_session, aapl, "iPhone")
-    mine = create_scenario(db_session, aapl, SettingsInput(name="Mine"), NOW)
-    base = _named(db_session, aapl)["Base"]
-    segments = SettingsInput(revenue_method="segments", segment_dimension="business")
+    main = _main(db_session, aapl)
+    other = create_scenario(db_session, aapl, SettingsInput(name="Other"), NOW)
+    y = driver_grid(db_session, aapl, main.id, "base").forecast_years[0]
 
-    update_scenario(db_session, aapl, mine.id, segments, NOW)
-    update_scenario(db_session, aapl, base.id, segments, NOW)
+    _put(db_session, aapl, main, "base", DriverRowInput("gross_margin", "value", [(y, D("0.4"))]))
 
-    assert _rows(db_session, mine) == {}
-    assert _rows(db_session, base) == {}
+    main_bull = _row(driver_grid(db_session, aapl, main.id, "bull"), "gross_margin")
+    other_bull = _row(driver_grid(db_session, aapl, other.id, "bull"), "gross_margin")
+    assert main_bull.values[0] == D("0.41")
+    assert other_bull.values[0] != D("0.41")
+
+
+# --- reset ------------------------------------------------------------------------------------
+
+
+def test_reset_of_base_drops_its_rows_and_returns_the_grid(
+    db_session: Session, aapl: Company
+) -> None:
+    main = _main(db_session, aapl)
+    y = driver_grid(db_session, aapl, main.id, "base").forecast_years[0]
+    _put(db_session, aapl, main, "base", DriverRowInput("tax_rate", "value", [(y, D("0.2"))]))
+    bull_before = _rows(db_session, main, "bull")
+
+    grid = reset_case(db_session, aapl, main.id, "base", NOW)
+
+    assert _rows(db_session, main, "base") == {}
+    assert _rows(db_session, main, "bull") == bull_before  # the other cases are untouched
+    assert (grid.scenario_id, grid.case) == (main.id, "base")
+    assert _row(grid, "tax_rate").sources == ["default"] * 5
+
+
+@pytest.mark.parametrize("case", ["bull", "bear"])
+def test_reset_of_bull_or_bear_restores_exactly_the_defaults(
+    db_session: Session, aapl: Company, case: str
+) -> None:
+    main = _main(db_session, aapl)
+    defaults = _rows(db_session, main, case)
+    y = driver_grid(db_session, aapl, main.id, case).forecast_years[0]
+    _put(
+        db_session,
+        aapl,
+        main,
+        case,
+        DriverRowInput("gross_margin", "value", [(y, D("0.5"))]),
+        DriverRowInput("tax_rate", "offset", [(y, D("0.01"))]),
+    )
+    assert _rows(db_session, main, case) != defaults
+
+    grid = reset_case(db_session, aapl, main.id, case, NOW)
+
+    assert _rows(db_session, main, case) == defaults
+    assert _row(grid, "gross_margin").kind == "offset"
+
+
+def test_reset_after_a_revenue_build_switch_restores_the_segment_offsets(
+    db_session: Session, aapl: Company
+) -> None:
+    iphone = _series(db_session, aapl, "iPhone", fy_values={2024: 200})
+    main = _main(db_session, aapl)
+    update_scenario(
+        db_session,
+        aapl,
+        main.id,
+        SettingsInput(revenue_method="segments", segment_dimension="business"),
+        NOW,
+    )
+    years = forecast_years(load_history(db_session, aapl), 5)
+    expected = _rows(db_session, main, "bear")
+    _put(
+        db_session, aapl, main, "bear", DriverRowInput("gross_margin", "value", [(years[0], D(1))])
+    )
+
+    reset_case(db_session, aapl, main.id, "bear", NOW)
+
+    rows = _rows(db_session, main, "bear")
+    assert rows == expected
+    assert rows[(f"segment_growth:{iphone.id}", years[0])] == ("offset", D("-0.03"))
+
+
+def test_reset_adds_the_segment_offsets_a_switch_left_out(
+    db_session: Session, aapl: Company
+) -> None:
+    """A series added after the switch has no offset until the case is reset."""
+    main = _main(db_session, aapl)
+    update_scenario(
+        db_session,
+        aapl,
+        main.id,
+        SettingsInput(revenue_method="segments", segment_dimension="business"),
+        NOW,
+    )
+    later = _series(db_session, aapl, "Services")
+    assert not any(c == f"segment_growth:{later.id}" for c, _ in _rows(db_session, main, "bull"))
+
+    reset_case(db_session, aapl, main.id, "bull", NOW)
+
+    assert any(c == f"segment_growth:{later.id}" for c, _ in _rows(db_session, main, "bull"))
+
+
+def test_reset_without_an_opening_balance_sheet_is_unavailable(
+    db_session: Session, empty: Company
+) -> None:
+    main = _main(db_session, empty)
+
+    with pytest.raises(ForecastUnavailable, match="No complete balance sheet"):
+        reset_case(db_session, empty, main.id, "bull", NOW)
+
+
+def test_a_scenario_deleted_between_the_lookup_and_its_cases_is_not_found(
+    db_session: Session, aapl: Company
+) -> None:
+    main = _main(db_session, aapl)
+    db_session.query(DriverValue).delete()
+    db_session.query(ScenarioCase).delete()
+    db_session.commit()
+
+    with pytest.raises(ScenarioNotFound):
+        driver_grid(db_session, aapl, main.id, "bull")
+
+
+def test_an_unknown_case_is_refused(db_session: Session, aapl: Company) -> None:
+    main = _main(db_session, aapl)
+
+    with pytest.raises(InvalidScenario, match="case must be one of base, bull, bear"):
+        driver_grid(db_session, aapl, main.id, "worst")
+    with pytest.raises(InvalidScenario):
+        reset_case(db_session, aapl, main.id, "worst", NOW)
 
 
 # --- history ----------------------------------------------------------------------------------
@@ -463,12 +664,12 @@ def _row(grid: DriverGrid, code: str) -> GridRow:
 def test_base_s_grid_shows_five_history_years_and_the_defaults(
     db_session: Session, aapl: Company
 ) -> None:
-    base = _named(db_session, aapl)["Base"]
+    main = _main(db_session, aapl)
     history = load_history(db_session, aapl)
 
-    grid = driver_grid(db_session, aapl, base.id)
+    grid = driver_grid(db_session, aapl, main.id, "base")
 
-    assert grid.scenario_id == base.id
+    assert (grid.scenario_id, grid.case) == (main.id, "base")
     assert grid.history_years == history_years(history)
     assert len(grid.history_years) == 5
     assert grid.forecast_years == forecast_years(history, 5)
@@ -493,11 +694,12 @@ def test_base_s_grid_shows_five_history_years_and_the_defaults(
 
 
 def test_bull_s_grid_shows_base_plus_its_offsets(db_session: Session, aapl: Company) -> None:
-    scenarios = _named(db_session, aapl)
-    base = driver_grid(db_session, aapl, scenarios["Base"].id)
+    main = _main(db_session, aapl)
+    base = driver_grid(db_session, aapl, main.id, "base")
 
-    bull = driver_grid(db_session, aapl, scenarios["Bull"].id)
+    bull = driver_grid(db_session, aapl, main.id, "bull")
 
+    assert bull.case == "bull"
     growth = _row(bull, "revenue_growth")
     assert growth.kind == "offset"
     assert growth.sources == ["offset"] * 5
@@ -510,16 +712,16 @@ def test_the_grid_warns_that_revenue_growth_offsets_are_unused_by_segments(
     db_session: Session, aapl: Company
 ) -> None:
     iphone = _series(db_session, aapl, "iPhone", fy_values={2024: 200, 2025: 210})
-    bull = _named(db_session, aapl)["Bull"]
+    main = _main(db_session, aapl)
     update_scenario(
         db_session,
         aapl,
-        bull.id,
+        main.id,
         SettingsInput(revenue_method="segments", segment_dimension="business"),
         NOW,
     )
 
-    grid = driver_grid(db_session, aapl, bull.id)
+    grid = driver_grid(db_session, aapl, main.id, "bull")
 
     assert grid.warnings == ["Offsets on revenue_growth are not used by the segments method"]
     codes = [r.code for r in grid.rows]
@@ -530,29 +732,30 @@ def test_the_grid_warns_that_revenue_growth_offsets_are_unused_by_segments(
 
 
 def test_a_company_without_an_opening_has_no_grid(db_session: Session, empty: Company) -> None:
-    base = list_scenarios(db_session, empty, NOW)[0]
+    main = _main(db_session, empty)
 
     with pytest.raises(ForecastUnavailable, match="No complete balance sheet"):
-        driver_grid(db_session, empty, base.id)
+        driver_grid(db_session, empty, main.id, "base")
 
 
 # --- driver PUT -------------------------------------------------------------------------------
 
 
 def _put(
-    session: Session, company: Company, scenario: Scenario, *rows: DriverRowInput
+    session: Session, company: Company, scenario: Scenario, case: str, *rows: DriverRowInput
 ) -> DriverGrid:
-    return put_drivers(session, company, scenario.id, rows, NOW)
+    return put_drivers(session, company, scenario.id, case, rows, NOW)
 
 
 def test_a_put_stores_a_row_and_drops_its_nulls(db_session: Session, aapl: Company) -> None:
-    base = _named(db_session, aapl)["Base"]
-    y = driver_grid(db_session, aapl, base.id).forecast_years
+    main = _main(db_session, aapl)
+    y = driver_grid(db_session, aapl, main.id, "base").forecast_years
 
     grid = _put(
         db_session,
         aapl,
-        base,
+        main,
+        "base",
         DriverRowInput("revenue_growth", "value", [(y[0], D("0.08")), (y[1], None)]),
     )
 
@@ -563,39 +766,43 @@ def test_a_put_stores_a_row_and_drops_its_nulls(db_session: Session, aapl: Compa
         ["own", "default"],
     )
     assert growth.values[0] == D("0.08")
-    assert _rows(db_session, base) == {("revenue_growth", y[0]): ("value", D("0.08"))}
+    assert _rows(db_session, main, "base") == {("revenue_growth", y[0]): ("value", D("0.08"))}
 
 
 def test_a_put_replaces_every_row_of_the_driver_including_stale_years(
     db_session: Session, aapl: Company
 ) -> None:
-    base = _named(db_session, aapl)["Base"]
-    y = driver_grid(db_session, aapl, base.id).forecast_years
+    main = _main(db_session, aapl)
+    y = driver_grid(db_session, aapl, main.id, "base").forecast_years
     _put(
         db_session,
         aapl,
-        base,
+        main,
+        "base",
         DriverRowInput("tax_rate", "value", [(y[0], D("0.2")), (y[1], D("0.2"))]),
     )
+    base_case = scenarios_repo.cases_of(db_session, main.id)["base"]
     db_session.add(
         DriverValue(
-            scenario_id=base.id, driver_code="tax_rate", fiscal_year=2001, kind="value", value=1
+            case_id=base_case.id, driver_code="tax_rate", fiscal_year=2001, kind="value", value=1
         )
     )
     db_session.commit()
 
-    _put(db_session, aapl, base, DriverRowInput("tax_rate", "value", [(y[2], D("0.25"))]))
+    _put(db_session, aapl, main, "base", DriverRowInput("tax_rate", "value", [(y[2], D("0.25"))]))
 
-    assert _rows(db_session, base) == {("tax_rate", y[2]): ("value", D("0.25"))}
+    assert _rows(db_session, main, "base") == {("tax_rate", y[2]): ("value", D("0.25"))}
 
 
 def test_a_value_row_on_bull_replaces_its_offsets(db_session: Session, aapl: Company) -> None:
-    bull = _named(db_session, aapl)["Bull"]
-    y = driver_grid(db_session, aapl, bull.id).forecast_years
+    main = _main(db_session, aapl)
+    y = driver_grid(db_session, aapl, main.id, "bull").forecast_years
 
-    grid = _put(db_session, aapl, bull, DriverRowInput("gross_margin", "value", [(y[0], D("0.5"))]))
+    grid = _put(
+        db_session, aapl, main, "bull", DriverRowInput("gross_margin", "value", [(y[0], D("0.5"))])
+    )
 
-    rows = _rows(db_session, bull)
+    rows = _rows(db_session, main, "bull")
     assert {k: v for k, v in rows.items() if k[0] == "gross_margin"} == {
         ("gross_margin", y[0]): ("value", D("0.5"))
     }
@@ -603,21 +810,32 @@ def test_a_value_row_on_bull_replaces_its_offsets(db_session: Session, aapl: Com
     assert margin.sources[:2] == ["own", "default"]
 
 
+def test_a_put_on_bull_leaves_base_and_bear_alone(db_session: Session, aapl: Company) -> None:
+    main = _main(db_session, aapl)
+    y = driver_grid(db_session, aapl, main.id, "bull").forecast_years
+    before = {c: _rows(db_session, main, c) for c in ("base", "bear")}
+
+    _put(db_session, aapl, main, "bull", DriverRowInput("tax_rate", "offset", [(y[0], D("0.01"))]))
+
+    assert {c: _rows(db_session, main, c) for c in ("base", "bear")} == before
+
+
 def test_a_base_edit_moves_bull_s_inherited_and_offset_values(
     db_session: Session, aapl: Company
 ) -> None:
-    scenarios = _named(db_session, aapl)
-    y = driver_grid(db_session, aapl, scenarios["Base"].id).forecast_years
+    main = _main(db_session, aapl)
+    y = driver_grid(db_session, aapl, main.id, "base").forecast_years
 
     _put(
         db_session,
         aapl,
-        scenarios["Base"],
+        main,
+        "base",
         DriverRowInput("gross_margin", "value", [(y[0], D("0.4"))]),
         DriverRowInput("sga_pct_revenue", "value", [(y[0], D("0.07"))]),
     )
 
-    bull = driver_grid(db_session, aapl, scenarios["Bull"].id)
+    bull = driver_grid(db_session, aapl, main.id, "bull")
     assert (_row(bull, "gross_margin").values[0], _row(bull, "gross_margin").sources[0]) == (
         D("0.41"),
         "offset",
@@ -663,44 +881,52 @@ def test_a_base_edit_moves_bull_s_inherited_and_offset_values(
 def test_an_invalid_put_on_base_is_refused_and_stores_nothing(
     db_session: Session, aapl: Company, row: DriverRowInput, message: str
 ) -> None:
-    base = _named(db_session, aapl)["Base"]
-    first = driver_grid(db_session, aapl, base.id).forecast_years[0]
+    main = _main(db_session, aapl)
+    first = driver_grid(db_session, aapl, main.id, "base").forecast_years[0]
     # year 0 stands for the first forecast year
     row = DriverRowInput(row.driver_code, row.kind, [(y or first, v) for y, v in row.values])
     valid = DriverRowInput("sga_pct_revenue", "value", [(first, D("0.1"))])
 
     with pytest.raises(InvalidDrivers, match=message):
-        _put(db_session, aapl, base, valid, row)
-    assert _rows(db_session, base) == {}
+        _put(db_session, aapl, main, "base", valid, row)
+    assert _rows(db_session, main, "base") == {}
 
 
 def test_a_driver_given_twice_is_refused(db_session: Session, aapl: Company) -> None:
-    base = _named(db_session, aapl)["Base"]
+    main = _main(db_session, aapl)
     row = DriverRowInput("tax_rate", "value", [])
 
     with pytest.raises(InvalidDrivers, match="tax_rate is given twice"):
-        _put(db_session, aapl, base, row, row)
+        _put(db_session, aapl, main, "base", row, row)
 
 
 def test_an_offset_beyond_its_bound_is_refused(db_session: Session, aapl: Company) -> None:
-    bull = _named(db_session, aapl)["Bull"]
-    first = driver_grid(db_session, aapl, bull.id).forecast_years[0]
+    main = _main(db_session, aapl)
+    first = driver_grid(db_session, aapl, main.id, "bull").forecast_years[0]
 
     with pytest.raises(InvalidDrivers, match="receivable_days offset must be in \\[-730, 730\\]"):
-        _put(db_session, aapl, bull, DriverRowInput("receivable_days", "offset", [(first, D(731))]))
-    _put(db_session, aapl, bull, DriverRowInput("tax_rate", "offset", [(first, D("-0.05"))]))
-    assert _rows(db_session, bull)[("tax_rate", first)] == ("offset", D("-0.05"))
+        _put(
+            db_session,
+            aapl,
+            main,
+            "bull",
+            DriverRowInput("receivable_days", "offset", [(first, D(731))]),
+        )
+    _put(
+        db_session, aapl, main, "bull", DriverRowInput("tax_rate", "offset", [(first, D("-0.05"))])
+    )
+    assert _rows(db_session, main, "bull")[("tax_rate", first)] == ("offset", D("-0.05"))
 
 
 def test_another_company_s_scenario_has_no_grid(
     db_session: Session, aapl: Company, empty: Company
 ) -> None:
-    other = list_scenarios(db_session, empty, NOW)[0]
+    other = _main(db_session, empty)
 
     with pytest.raises(ScenarioNotFound):
-        driver_grid(db_session, aapl, other.id)
+        driver_grid(db_session, aapl, other.id, "base")
     with pytest.raises(ScenarioNotFound):
-        put_drivers(db_session, aapl, other.id, [], NOW)
+        put_drivers(db_session, aapl, other.id, "base", [], NOW)
 
 
 # --- review fixes -------------------------------------------------------------------------------
@@ -711,22 +937,22 @@ def test_a_stale_kpi_off_volume_price_does_not_block_later_writes(
 ) -> None:
     units = _series(db_session, aapl, "Units", dimension="kpi", metric="units", unit="count")
     asp = _series(db_session, aapl, "ASP", dimension="kpi", metric="asp", unit="USD_per_unit")
-    base = _named(db_session, aapl)["Base"]
+    main = _main(db_session, aapl)
     vp = SettingsInput(revenue_method="volume_price", volume_kpi="units", price_kpi="asp")
-    update_scenario(db_session, aapl, base.id, vp, NOW)
-    update_scenario(db_session, aapl, base.id, SettingsInput(revenue_method="growth"), NOW)
+    update_scenario(db_session, aapl, main.id, vp, NOW)
+    update_scenario(db_session, aapl, main.id, SettingsInput(revenue_method="growth"), NOW)
     for series in (units, asp):
         db_session.delete(series)
     db_session.commit()
 
-    renamed = update_scenario(db_session, aapl, base.id, SettingsInput(name="Base 2"), NOW)
+    renamed = update_scenario(db_session, aapl, main.id, SettingsInput(name="Main 2"), NOW)
     created = create_scenario(db_session, aapl, SettingsInput(name="New"), NOW)
 
-    assert renamed.name == "Base 2"
+    assert renamed.name == "Main 2"
     assert created.revenue_method == "growth"
     with pytest.raises(InvalidScenario, match="volume_kpi 'units' is not a KPI"):
         update_scenario(
-            db_session, aapl, base.id, SettingsInput(revenue_method="volume_price"), NOW
+            db_session, aapl, main.id, SettingsInput(revenue_method="volume_price"), NOW
         )
 
 
@@ -749,6 +975,7 @@ def test_defaults_created_by_a_concurrent_request_are_not_an_error(
     ensure_defaults(db_session, aapl, NOW)
 
     assert [s.id for s in list_scenarios(db_session, aapl, NOW)] == [s.id for s in created]
+    assert db_session.query(ScenarioCase).count() == 3
 
 
 def _count_history_loads(monkeypatch: pytest.MonkeyPatch) -> list[int]:
@@ -764,18 +991,21 @@ def _count_history_loads(monkeypatch: pytest.MonkeyPatch) -> list[int]:
     return calls
 
 
+@pytest.mark.parametrize("case", ["base", "bull", "bear"])
 def test_a_driver_put_builds_the_history_once(
-    db_session: Session, aapl: Company, monkeypatch: pytest.MonkeyPatch
+    db_session: Session, aapl: Company, monkeypatch: pytest.MonkeyPatch, case: str
 ) -> None:
-    bull = _named(db_session, aapl)["Bull"]
-    years = driver_grid(db_session, aapl, bull.id).forecast_years
+    main = _main(db_session, aapl)
+    years = driver_grid(db_session, aapl, main.id, case).forecast_years
     calls = _count_history_loads(monkeypatch)
+    kind = "value" if case == "base" else "offset"
 
     grid = put_drivers(
         db_session,
         aapl,
-        bull.id,
-        [DriverRowInput("gross_margin", "offset", [(y, Decimal("0.02")) for y in years])],
+        main.id,
+        case,
+        [DriverRowInput("gross_margin", kind, [(y, Decimal("0.02")) for y in years])],
         NOW,
     )
 
@@ -784,14 +1014,31 @@ def test_a_driver_put_builds_the_history_once(
     assert row.own == [Decimal("0.02")] * len(years)  # the returned grid holds the write
 
 
-def test_a_confirmed_driver_import_builds_the_history_once(
-    db_session: Session, aapl: Company, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("case", ["base", "bull", "bear"])
+def test_a_reset_and_a_confirmed_driver_import_build_the_history_once(
+    db_session: Session, aapl: Company, monkeypatch: pytest.MonkeyPatch, case: str
 ) -> None:
-    bull = _named(db_session, aapl)["Bull"]
-    content, name = export_drivers(db_session, aapl, bull.id, "csv")
+    main = _main(db_session, aapl)
+    content, name = export_drivers(db_session, aapl, main.id, case, "csv")
     calls = _count_history_loads(monkeypatch)
 
-    result = import_drivers(db_session, aapl, bull.id, content, name, False, NOW)
+    result = import_drivers(db_session, aapl, main.id, case, content, name, False, NOW)
+    imported = len(calls)
+    reset_case(db_session, aapl, main.id, case, NOW)
 
-    assert len(calls) == 1
+    assert imported == 1
+    assert len(calls) == 2
     assert result.grid is not None
+
+
+def test_the_export_file_name_carries_the_scenario_and_the_case(
+    db_session: Session, aapl: Company
+) -> None:
+    main = _main(db_session, aapl)
+
+    names = [export_drivers(db_session, aapl, main.id, c, "csv")[1] for c in ("base", "bull")]
+
+    assert names == ["AAPL-Main-Base-drivers.csv", "AAPL-Main-Bull-drivers.csv"]
+    assert export_drivers(db_session, aapl, main.id, "bear", "xlsx")[1] == (
+        "AAPL-Main-Bear-drivers.xlsx"
+    )

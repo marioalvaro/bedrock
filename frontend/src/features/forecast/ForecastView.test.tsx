@@ -1,12 +1,12 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useEffect } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  getForecastApiV1CompaniesTickerScenariosScenarioIdForecastGet,
+  getForecastApiV1CompaniesTickerScenariosScenarioIdCasesCaseForecastGet,
   listScenariosApiV1CompaniesTickerScenariosGet,
 } from "@/api/generated/sdk.gen";
 import type { ForecastOut } from "@/api/generated/types.gen";
@@ -19,11 +19,13 @@ import { ForecastView } from "./ForecastView";
 
 vi.mock("@/api/generated/sdk.gen", () => ({
   listScenariosApiV1CompaniesTickerScenariosGet: vi.fn(),
-  getForecastApiV1CompaniesTickerScenariosScenarioIdForecastGet: vi.fn(),
+  getForecastApiV1CompaniesTickerScenariosScenarioIdCasesCaseForecastGet: vi.fn(),
 }));
 
 const list = vi.mocked(listScenariosApiV1CompaniesTickerScenariosGet);
-const getForecast = vi.mocked(getForecastApiV1CompaniesTickerScenariosScenarioIdForecastGet);
+const getForecast = vi.mocked(
+  getForecastApiV1CompaniesTickerScenariosScenarioIdCasesCaseForecastGet,
+);
 
 const seen = { path: "", search: "" };
 
@@ -139,29 +141,78 @@ describe("ForecastView", () => {
     expect(cell("revenue", "FY2026")).not.toHaveClass("cursor-pointer");
   });
 
-  it("forecasts Base by default, as an annual income statement", async () => {
+  it("forecasts the default scenario's Base by default, as an annual income statement", async () => {
     renderView();
 
     await loaded();
     expect(lastQuery()).toMatchObject({
-      path: { ticker: "AAPL", scenario_id: 1 },
+      path: { ticker: "AAPL", scenario_id: 1, case: "base" },
       query: { type: "IS", freq: "annual" },
     });
     expect(picker().value).toBe("1");
   });
 
-  it("shares the picked scenario with the Scenarios tab through ?scenario", async () => {
+  it("shares the picked scenario with the Scenarios tab through ?scenario, keeping ?case", async () => {
     const user = userEvent.setup();
-    renderView("/c/AAPL/forecast?scenario=3");
+    renderView("/c/AAPL/forecast?scenario=2&case=bear");
 
     await loaded();
-    expect(picker().value).toBe("3");
-    expect(lastQuery()?.path).toMatchObject({ scenario_id: 3 });
+    expect(picker().value).toBe("2");
+    expect(lastQuery()?.path).toMatchObject({ scenario_id: 2, case: "bear" });
 
-    await user.selectOptions(picker(), "2");
+    await user.selectOptions(picker(), "1");
 
-    await waitFor(() => expect(lastQuery()?.path).toMatchObject({ scenario_id: 2 }));
-    expect(seen.search).toBe("?scenario=2");
+    await waitFor(() => expect(lastQuery()?.path).toMatchObject({ scenario_id: 1, case: "bear" }));
+    expect(new URLSearchParams(seen.search).get("scenario")).toBe("1");
+    expect(new URLSearchParams(seen.search).get("case")).toBe("bear");
+  });
+
+  describe("case toggle", () => {
+    const group = () => screen.getByRole("radiogroup", { name: "Case" });
+
+    it("offers Base, Bull and Bear beside the scenario picker, Base picked by default", async () => {
+      renderView();
+      await loaded();
+      expect(
+        within(group())
+          .getAllByRole("radio")
+          .map((radio) => radio.textContent),
+      ).toEqual(["Base", "Bull", "Bear"]);
+      expect(within(group()).getByRole("radio", { name: "Base" })).toBeChecked();
+    });
+
+    it("takes the case of ?case", async () => {
+      renderView("/c/AAPL/forecast?case=bull");
+      await loaded();
+      expect(within(group()).getByRole("radio", { name: "Bull" })).toBeChecked();
+      expect(lastQuery()?.path).toMatchObject({ case: "bull" });
+    });
+
+    it("asks for that case's forecast and writes ?case, keeping ?scenario", async () => {
+      const user = userEvent.setup();
+      renderView("/c/AAPL/forecast?scenario=2");
+      await loaded();
+
+      await user.click(within(group()).getByRole("radio", { name: "Bull" }));
+
+      await waitFor(() =>
+        expect(lastQuery()?.path).toEqual({ ticker: "AAPL", scenario_id: 2, case: "bull" }),
+      );
+      expect(new URLSearchParams(seen.search).get("case")).toBe("bull");
+      expect(new URLSearchParams(seen.search).get("scenario")).toBe("2");
+    });
+
+    it("does not show another case's forecast while the picked one loads", async () => {
+      const user = userEvent.setup();
+      renderView();
+      await loaded();
+      getForecast.mockReturnValue(new Promise(() => {}) as never);
+
+      await user.click(within(group()).getByRole("radio", { name: "Bear" }));
+
+      expect(await screen.findByText("Loading…")).toBeInTheDocument();
+      expect(cell("revenue", "FY2026")).toBeNull();
+    });
   });
 
   it("asks for the picked statement and frequency", async () => {
@@ -218,18 +269,18 @@ describe("ForecastView", () => {
     ).toBeInTheDocument();
   });
 
-  it("explains a missing driver and opens Scenarios on the same scenario", async () => {
+  it("explains a missing driver and opens Scenarios on the same scenario and case", async () => {
     const user = userEvent.setup();
     getForecast.mockResolvedValue(
       errorResult(422, { detail: "Set these drivers: gross_margin" }) as never,
     );
-    renderView("/c/AAPL/forecast?scenario=3");
+    renderView("/c/AAPL/forecast?scenario=2&case=bull");
 
     expect(await screen.findByText("Set these drivers: gross_margin")).toBeInTheDocument();
     await user.click(screen.getByRole("link", { name: "Open Scenarios" }));
 
     expect(seen.path).toBe("/c/AAPL/scenarios");
-    expect(seen.search).toBe("?scenario=3");
+    expect(seen.search).toBe("?scenario=2&case=bull");
   });
 
   it("shows any other unavailable forecast without the Scenarios link", async () => {

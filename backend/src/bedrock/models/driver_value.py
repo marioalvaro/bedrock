@@ -21,20 +21,21 @@ DRIVER_KINDS: tuple[str, ...] = get_args(DriverKind)
 
 
 class DriverValue(Base):
-    """One stored driver of a scenario for a fiscal year: a `value`, or an `offset` on Base's
-    resolved value (docs/erd/forecasting.md "Scenarios"). `pct` drivers are fractions."""
+    """One stored driver of a scenario case for a fiscal year: a `value`, or an `offset` on its
+    scenario's `base` case (docs/erd/forecasting.md "Scenarios and cases"). `pct` drivers are
+    fractions."""
 
     __tablename__ = "driver_value"
     __table_args__ = (
-        UniqueConstraint("scenario_id", "driver_code", "fiscal_year", "fiscal_period"),
+        UniqueConstraint("case_id", "driver_code", "fiscal_year", "fiscal_period"),
         CheckConstraint("fiscal_period = 'FY'", name="fiscal_period"),
         CheckConstraint("kind IN ('value', 'offset')", name="kind"),
         CheckConstraint("source IN ('manual', 'engine')", name="source"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    scenario_id: Mapped[int] = mapped_column(
-        ForeignKey("scenario.id", ondelete="CASCADE"), nullable=False
+    case_id: Mapped[int] = mapped_column(
+        ForeignKey("scenario_case.id", ondelete="CASCADE"), nullable=False
     )
     # a `forecast/drivers.py` code; `segment_growth:<series id>` for a segment
     driver_code: Mapped[str] = mapped_column(String, nullable=False)

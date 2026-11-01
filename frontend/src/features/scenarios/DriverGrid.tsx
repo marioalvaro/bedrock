@@ -10,7 +10,7 @@ import type {
   DriverRowOut,
   ScenarioOut,
 } from "@/api/generated/types.gen";
-import { driversQueryOptions, usePutDrivers } from "@/api/scenarios";
+import { driversQueryOptions, usePutDrivers, type ScenarioCase } from "@/api/scenarios";
 import { DataGrid } from "@/components/DataGrid";
 import {
   AlertDialog,
@@ -84,7 +84,7 @@ function columnDefs(
               type="button"
               className="text-muted-foreground hover:text-foreground ml-auto shrink-0 cursor-pointer p-0.5"
               aria-label={`Reset ${driver.label}`}
-              title="Drop this scenario's own values"
+              title="Drop this case's own values"
               onClick={() => onReset(driver)}
             >
               <RotateCcw className="size-3.5" />
@@ -179,16 +179,21 @@ function columnDefs(
 interface DriverGridProps {
   ticker: string;
   scenario: ScenarioOut;
+  scenarioCase: ScenarioCase; // the view keys this component by scenario and case
   scale: Scale;
 }
 
 /**
- * The scenario's drivers: the last actual years (read-only) beside the editable forecast years.
- * Each edit sends that driver's whole row; a non-base scenario edits a row as values or as
- * offsets on Base (vs Base), and switching a row's mode clears its own values after a confirm.
+ * One case's drivers: the last actual years (read-only) beside the editable forecast years. Each
+ * edit sends that driver's whole row; Bull and Bear edit a row as values or as offsets on their
+ * scenario's Base (vs Base), and switching a row's mode clears its own values after a confirm.
  */
-export function DriverGrid({ ticker, scenario, scale }: DriverGridProps) {
-  const { data: grid, isPending, error } = useQuery(driversQueryOptions(ticker, scenario.id));
+export function DriverGrid({ ticker, scenario, scenarioCase, scale }: DriverGridProps) {
+  const {
+    data: grid,
+    isPending,
+    error,
+  } = useQuery(driversQueryOptions(ticker, scenario.id, scenarioCase));
   const { mutate: putRows } = usePutDrivers(ticker);
   const [message, setMessage] = useState<string | null>(null);
   // The mode picked for a row with no own values (a row with own values has its stored kind).
@@ -197,17 +202,17 @@ export function DriverGrid({ ticker, scenario, scale }: DriverGridProps) {
     null,
   );
 
-  const isBase = scenario.is_default;
+  const isBase = scenarioCase === "base";
 
   const send = useCallback(
     (row: DriverRowIn) => {
       setMessage(null);
       putRows(
-        { id: scenario.id, rows: [row] },
+        { id: scenario.id, case: scenarioCase, rows: [row] },
         { onError: (e) => setMessage(companyErrorMessage(e, "Could not save the driver.")) },
       );
     },
-    [putRows, scenario.id],
+    [putRows, scenario.id, scenarioCase],
   );
 
   const handlers = useMemo<Handlers>(() => {
@@ -296,7 +301,7 @@ export function DriverGrid({ ticker, scenario, scale }: DriverGridProps) {
               Switch {switching?.driver.label} to {switching && MODE_LABELS[switching.mode]}?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Its own values in this scenario are cleared, and it follows{" "}
+              Its own values in this case are cleared, and it follows{" "}
               {switching?.mode === "offset" ? "Base" : "Base or its default"} until you set new
               ones.
             </AlertDialogDescription>

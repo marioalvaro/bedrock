@@ -4,8 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  getDriversApiV1CompaniesTickerScenariosScenarioIdDriversGet,
-  importDriversApiV1CompaniesTickerScenariosScenarioIdDriversImportPost,
+  getDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversGet,
+  importDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversImportPost,
 } from "@/api/generated/sdk.gen";
 import { createQueryClient } from "@/lib/query-client";
 import { errorResult, okResult } from "@/test/responses";
@@ -14,13 +14,13 @@ import { driverGrid, driverImport } from "@/test/scenarios";
 import { DriverImportSheet } from "./DriverImportSheet";
 
 vi.mock("@/api/generated/sdk.gen", () => ({
-  getDriversApiV1CompaniesTickerScenariosScenarioIdDriversGet: vi.fn(),
-  importDriversApiV1CompaniesTickerScenariosScenarioIdDriversImportPost: vi.fn(),
+  getDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversGet: vi.fn(),
+  importDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversImportPost: vi.fn(),
 }));
 
-const getDrivers = vi.mocked(getDriversApiV1CompaniesTickerScenariosScenarioIdDriversGet);
+const getDrivers = vi.mocked(getDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversGet);
 const importDrivers = vi.mocked(
-  importDriversApiV1CompaniesTickerScenariosScenarioIdDriversImportPost,
+  importDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversImportPost,
 );
 
 const file = new File(["driver_code,label,unit,kind,FY2026\n"], "AAPL-Bull-drivers.xlsx");
@@ -31,7 +31,14 @@ function renderSheet() {
   const onClose = vi.fn();
   render(
     <QueryClientProvider client={queryClient}>
-      <DriverImportSheet ticker="AAPL" scenarioId={2} open scale="M" onClose={onClose} />
+      <DriverImportSheet
+        ticker="AAPL"
+        scenarioId={2}
+        scenarioCase="bull"
+        open
+        scale="M"
+        onClose={onClose}
+      />
     </QueryClientProvider>,
   );
   return { onClose };
@@ -54,6 +61,13 @@ describe("DriverImportSheet", () => {
     expect(screen.getByLabelText("Driver file")).toHaveAttribute("accept", ".csv,.xlsx");
   });
 
+  it("labels the changes from the case's own driver grid", () => {
+    renderSheet();
+    expect(getDrivers).toHaveBeenCalledWith({
+      path: { ticker: "AAPL", scenario_id: 2, case: "bull" },
+    });
+  });
+
   it("asks for a file before a preview", async () => {
     renderSheet();
     await userEvent.click(screen.getByRole("button", { name: "Preview" }));
@@ -66,7 +80,7 @@ describe("DriverImportSheet", () => {
     renderSheet();
     await preview();
     expect(importDrivers).toHaveBeenCalledWith({
-      path: { ticker: "AAPL", scenario_id: 2 },
+      path: { ticker: "AAPL", scenario_id: 2, case: "bull" },
       body: { file, dry_run: true },
     });
     const list = await screen.findByRole("list", { name: "Changes" });
@@ -115,7 +129,7 @@ describe("DriverImportSheet", () => {
     expect(screen.getByRole("button", { name: "Apply 2 changes" })).toBeInTheDocument();
   });
 
-  it("says 'Nothing to change' for a file equal to the scenario", async () => {
+  it("says 'Nothing to change' for a file equal to the case", async () => {
     importDrivers.mockResolvedValue(okResult(driverImport({ changes: [] })) as never);
     renderSheet();
     await preview();
@@ -167,7 +181,7 @@ describe("DriverImportSheet", () => {
     await preview();
     await userEvent.click(await screen.findByRole("button", { name: "Apply 2 changes" }));
     expect(importDrivers).toHaveBeenLastCalledWith({
-      path: { ticker: "AAPL", scenario_id: 2 },
+      path: { ticker: "AAPL", scenario_id: 2, case: "bull" },
       body: { file, dry_run: false },
     });
     expect(await screen.findByRole("status")).toHaveTextContent("Applied 2 changes.");

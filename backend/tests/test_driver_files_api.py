@@ -25,22 +25,27 @@ def aapl_client(authed_client: TestClient) -> TestClient:
     return authed_client
 
 
-def _ids(client: TestClient) -> dict[str, int]:
+def _main(client: TestClient) -> int:
+    """The id of the company's default scenario "Main"."""
     response = client.get(SCENARIOS)
     assert response.status_code == 200, response.text
-    return {s["name"]: s["id"] for s in response.json()}
+    return int(next(s["id"] for s in response.json() if s["name"] == "Main"))
 
 
-def _export(client: TestClient, scenario_id: int, fmt: str) -> bytes:
-    response = client.get(f"{SCENARIOS}/{scenario_id}/drivers/export", params={"format": fmt})
+def _export(client: TestClient, scenario_id: int, case: str, fmt: str) -> bytes:
+    response = client.get(
+        f"{SCENARIOS}/{scenario_id}/cases/{case}/drivers/export", params={"format": fmt}
+    )
     assert response.status_code == 200, response.text
     return response.content
 
 
-def _import(client: TestClient, scenario_id: int, content: bytes, fmt: str, dry_run: bool) -> Any:
+def _import(
+    client: TestClient, scenario_id: int, case: str, content: bytes, fmt: str, dry_run: bool
+) -> Any:
     media = XLSX if fmt == "xlsx" else "text/csv"
     return client.post(
-        f"{SCENARIOS}/{scenario_id}/drivers/import",
+        f"{SCENARIOS}/{scenario_id}/cases/{case}/drivers/import",
         files={"file": (f"drivers.{fmt}", content, media)},
         data={"dry_run": str(dry_run).lower()},
     )
@@ -52,13 +57,16 @@ def _ok(response: Any) -> dict[str, Any]:
     return body
 
 
-def _grid(client: TestClient, scenario_id: int) -> dict[str, Any]:
-    return _ok(client.get(f"{SCENARIOS}/{scenario_id}/drivers"))
+def _grid(client: TestClient, scenario_id: int, case: str) -> dict[str, Any]:
+    return _ok(client.get(f"{SCENARIOS}/{scenario_id}/cases/{case}/drivers"))
 
 
-def _forecast(client: TestClient, scenario_id: int, type_: str) -> dict[str, Any]:
+def _forecast(client: TestClient, scenario_id: int, case: str, type_: str) -> dict[str, Any]:
     body = _ok(
-        client.get(f"{SCENARIOS}/{scenario_id}/forecast", params={"type": type_, "freq": "annual"})
+        client.get(
+            f"{SCENARIOS}/{scenario_id}/cases/{case}/forecast",
+            params={"type": type_, "freq": "annual"},
+        )
     )
     body.pop("scenario_id")
     return body
@@ -83,9 +91,9 @@ def _edit_xlsx(content: bytes, code: str, column: int, value: float) -> bytes:
 
 
 def test_driver_file_routes_require_a_session(client: TestClient) -> None:
-    assert client.get(f"{SCENARIOS}/1/drivers/export").status_code == 401
+    assert client.get(f"{SCENARIOS}/1/cases/bull/drivers/export").status_code == 401
     response = client.post(
-        f"{SCENARIOS}/1/drivers/import", files={"file": ("d.csv", b"x", "text/csv")}
+        f"{SCENARIOS}/1/cases/bull/drivers/import", files={"file": ("d.csv", b"x", "text/csv")}
     )
     assert response.status_code == 401
 
@@ -96,23 +104,25 @@ def test_the_upload_runs_in_the_threadpool_not_on_the_event_loop() -> None:
 
 
 def test_export_csv_and_xlsx_with_the_file_name(aapl_client: TestClient) -> None:
-    bull = _ids(aapl_client)["Bull"]
-    grid = _grid(aapl_client, bull)
+    main = _main(aapl_client)
+    grid = _grid(aapl_client, main, "bull")
 
     for fmt, media in (("csv", "text/csv"), ("xlsx", XLSX)):
-        response = aapl_client.get(f"{SCENARIOS}/{bull}/drivers/export", params={"format": fmt})
+        response = aapl_client.get(
+            f"{SCENARIOS}/{main}/cases/bull/drivers/export", params={"format": fmt}
+        )
         assert response.status_code == 200, response.text
         assert response.headers["content-type"].startswith(media)
-        assert f'filename="AAPL-Bull-drivers.{fmt}"' in response.headers["content-disposition"]
+        assert f'filename="AAPL-Main-Bull-drivers.{fmt}"' in response.headers["content-disposition"]
 
-    rows = list(csv.reader(io.StringIO(_export(aapl_client, bull, "csv").decode())))
+    rows = list(csv.reader(io.StringIO(_export(aapl_client, main, "bull", "csv").decode())))
     assert rows[0] == ["driver_code", "label", "unit", "kind"] + [
         f"FY{y}" for y in grid["forecast_years"]
     ]
     assert [r[0] for r in rows[1:]] == [r["code"] for r in grid["rows"]]
     growth = next(r for r in rows if r[0] == "revenue_growth")
     assert growth[3:] == ["offset"] + ["0.03"] * len(grid["forecast_years"])
-    book = load_workbook(io.BytesIO(_export(aapl_client, bull, "xlsx")))
+    book = load_workbook(io.BytesIO(_export(aapl_client, main, "bull", "xlsx")))
     assert book.sheetnames == ["Drivers", "Resolved"]
 
 
@@ -120,17 +130,19 @@ def test_the_file_name_keeps_only_safe_characters(aapl_client: TestClient) -> No
     created = aapl_client.post(SCENARIOS, json={"name": 'Café "Q"/x'})
     assert created.status_code == 201, created.text
 
-    response = aapl_client.get(f"{SCENARIOS}/{created.json()['id']}/drivers/export")
+    response = aapl_client.get(f"{SCENARIOS}/{created.json()['id']}/cases/base/drivers/export")
 
     disposition = response.headers["content-disposition"]
-    assert 'filename="AAPL-Caf_ _Q__x-drivers.csv"' in disposition
-    assert "filename*=UTF-8''AAPL-Caf%C3%A9%20%22Q%22%2Fx-drivers.csv" in disposition
+    assert 'filename="AAPL-Caf_ _Q__x-Base-drivers.csv"' in disposition
+    assert "filename*=UTF-8''AAPL-Caf%C3%A9%20%22Q%22%2Fx-Base-drivers.csv" in disposition
 
 
 def test_export_rejects_an_unknown_format(aapl_client: TestClient) -> None:
-    bull = _ids(aapl_client)["Bull"]
+    main = _main(aapl_client)
 
-    response = aapl_client.get(f"{SCENARIOS}/{bull}/drivers/export", params={"format": "pdf"})
+    response = aapl_client.get(
+        f"{SCENARIOS}/{main}/cases/bull/drivers/export", params={"format": "pdf"}
+    )
 
     assert response.status_code == 422
 
@@ -139,26 +151,26 @@ def test_export_rejects_an_unknown_format(aapl_client: TestClient) -> None:
 def test_an_unchanged_export_imports_as_nothing_to_change(
     aapl_client: TestClient, fmt: str
 ) -> None:
-    bull = _ids(aapl_client)["Bull"]
-    content = _export(aapl_client, bull, fmt)
+    main = _main(aapl_client)
+    content = _export(aapl_client, main, "bull", fmt)
 
-    assert _ok(_import(aapl_client, bull, content, fmt, dry_run=True)) == {
+    assert _ok(_import(aapl_client, main, "bull", content, fmt, dry_run=True)) == {
         "dry_run": True,
         "changes": [],
         "grid": None,
     }
-    confirmed = _ok(_import(aapl_client, bull, content, fmt, dry_run=False))
+    confirmed = _ok(_import(aapl_client, main, "bull", content, fmt, dry_run=False))
     assert confirmed["changes"] == []
-    assert confirmed["grid"] == _grid(aapl_client, bull)
+    assert confirmed["grid"] == _grid(aapl_client, main, "bull")
 
 
 @pytest.mark.parametrize("fmt", ["csv", "xlsx"])
 def test_one_edited_cell_imports_as_exactly_that_change(aapl_client: TestClient, fmt: str) -> None:
-    bull = _ids(aapl_client)["Bull"]
-    before_grid = _grid(aapl_client, bull)
-    before_is = _forecast(aapl_client, bull, "IS")
+    main = _main(aapl_client)
+    before_grid = _grid(aapl_client, main, "bull")
+    before_is = _forecast(aapl_client, main, "bull", "IS")
     year = before_grid["forecast_years"][1]
-    content = _export(aapl_client, bull, fmt)
+    content = _export(aapl_client, main, "bull", fmt)
     edited = (
         _edit_csv(content, "gross_margin", 5, "0.02")
         if fmt == "csv"
@@ -173,51 +185,58 @@ def test_one_edited_cell_imports_as_exactly_that_change(aapl_client: TestClient,
         "new_kind": "offset",
     }
 
-    dry = _ok(_import(aapl_client, bull, edited, fmt, dry_run=True))
+    dry = _ok(_import(aapl_client, main, "bull", edited, fmt, dry_run=True))
     assert dry["changes"] == [change]
-    assert _grid(aapl_client, bull) == before_grid  # a dry run writes nothing
+    assert _grid(aapl_client, main, "bull") == before_grid  # a dry run writes nothing
 
-    confirmed = _ok(_import(aapl_client, bull, edited, fmt, dry_run=False))
+    confirmed = _ok(_import(aapl_client, main, "bull", edited, fmt, dry_run=False))
     assert (confirmed["dry_run"], confirmed["changes"]) == (False, [change])
     margin = next(r for r in confirmed["grid"]["rows"] if r["code"] == "gross_margin")
     assert margin["own"][1] == "0.02"
-    assert confirmed["grid"] == _grid(aapl_client, bull)
-    after_is = _forecast(aapl_client, bull, "IS")
+    assert confirmed["grid"] == _grid(aapl_client, main, "bull")
+    after_is = _forecast(aapl_client, main, "bull", "IS")
     assert after_is != before_is
-    assert _ok(_import(aapl_client, bull, edited, fmt, dry_run=True))["changes"] == []
+    assert _ok(_import(aapl_client, main, "bull", edited, fmt, dry_run=True))["changes"] == []
 
 
 def test_the_default_offsets_fill_the_forecast_years_so_a_round_trip_keeps_them_all(
     aapl_client: TestClient,
 ) -> None:
     """The horizon is fixed at 5 years: Bull's default offsets are exactly the file's 5 years."""
-    bull = _ids(aapl_client)["Bull"]
-    content = _export(aapl_client, bull, "csv")
-    assert _ok(_import(aapl_client, bull, content, "csv", dry_run=False))["changes"] == []
+    main = _main(aapl_client)
+    content = _export(aapl_client, main, "bull", "csv")
+    assert _ok(_import(aapl_client, main, "bull", content, "csv", dry_run=False))["changes"] == []
 
-    growth = next(r for r in _grid(aapl_client, bull)["rows"] if r["code"] == "revenue_growth")
+    growth = next(
+        r for r in _grid(aapl_client, main, "bull")["rows"] if r["code"] == "revenue_growth"
+    )
     assert growth["own"] == ["0.03"] * 5
 
 
 def test_bull_exported_into_a_new_scenario_gives_the_same_forecast(
     aapl_client: TestClient,
 ) -> None:
-    bull = _ids(aapl_client)["Bull"]
+    main = _main(aapl_client)
     created = aapl_client.post(SCENARIOS, json={"name": "Copy"})
     assert created.status_code == 201, created.text
     copy = created.json()["id"]
+    content = _export(aapl_client, main, "bull", "xlsx")
 
-    _ok(_import(aapl_client, copy, _export(aapl_client, bull, "xlsx"), "xlsx", dry_run=False))
+    _ok(_import(aapl_client, copy, "bull", content, "xlsx", dry_run=False))
 
     for statement in ("IS", "BS", "CF"):
-        assert _forecast(aapl_client, copy, statement) == _forecast(aapl_client, bull, statement)
+        assert _forecast(aapl_client, copy, "bull", statement) == _forecast(
+            aapl_client, main, "bull", statement
+        )
 
 
 def test_an_invalid_file_is_a_422_listing_each_error(aapl_client: TestClient) -> None:
-    base = _ids(aapl_client)["Base"]
-    content = _export(aapl_client, _ids(aapl_client)["Bull"], "csv")
+    main = _main(aapl_client)
+    content = _export(aapl_client, main, "bull", "csv")
 
-    response = _import(aapl_client, base, _edit_csv(content, "tax_rate", 4, "1e5"), "csv", True)
+    response = _import(
+        aapl_client, main, "base", _edit_csv(content, "tax_rate", 4, "1e5"), "csv", True
+    )
 
     assert response.status_code == 422
     body = response.json()
@@ -229,9 +248,9 @@ def test_an_invalid_file_is_a_422_listing_each_error(aapl_client: TestClient) ->
 
 
 def test_a_file_over_one_megabyte_is_a_422(aapl_client: TestClient) -> None:
-    bull = _ids(aapl_client)["Bull"]
+    main = _main(aapl_client)
 
-    response = _import(aapl_client, bull, b"x" * (1024 * 1024 + 1), "csv", True)
+    response = _import(aapl_client, main, "bull", b"x" * (1024 * 1024 + 1), "csv", True)
 
     assert response.status_code == 422
     assert response.json()["errors"] == [
@@ -240,13 +259,36 @@ def test_a_file_over_one_megabyte_is_a_422(aapl_client: TestClient) -> None:
 
 
 def test_another_company_s_scenario_is_a_404(aapl_client: TestClient) -> None:
-    bull = _ids(aapl_client)["Bull"]
+    main = _main(aapl_client)
     assert aapl_client.post("/api/v1/companies", json={"ticker": "MSFT"}).status_code == 201
     msft = "/api/v1/companies/MSFT/scenarios"
     aapl_client.get(msft)
 
-    assert aapl_client.get(f"{msft}/{bull}/drivers/export").status_code == 404
+    assert aapl_client.get(f"{msft}/{main}/cases/bull/drivers/export").status_code == 404
     response = aapl_client.post(
-        f"{msft}/{bull}/drivers/import", files={"file": ("d.csv", b"x", "text/csv")}
+        f"{msft}/{main}/cases/bull/drivers/import", files={"file": ("d.csv", b"x", "text/csv")}
     )
     assert response.status_code == 404
+
+
+@pytest.mark.parametrize("case", ["base", "bull", "bear"])
+@pytest.mark.parametrize("fmt", ["csv", "xlsx"])
+def test_every_case_exports_and_imports_its_own_file(
+    aapl_client: TestClient, case: str, fmt: str
+) -> None:
+    main = _main(aapl_client)
+    content = _export(aapl_client, main, case, fmt)
+
+    dry = _ok(_import(aapl_client, main, case, content, fmt, dry_run=True))
+    confirmed = _ok(_import(aapl_client, main, case, content, fmt, dry_run=False))
+
+    assert dry["changes"] == confirmed["changes"] == []
+    assert confirmed["grid"]["case"] == case
+
+
+def test_an_unknown_case_is_422_on_import(aapl_client: TestClient) -> None:
+    main = _main(aapl_client)
+
+    response = _import(aapl_client, main, "worst", b"x", "csv", dry_run=True)
+
+    assert response.status_code == 422

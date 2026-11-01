@@ -6,13 +6,14 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  compareScenariosApiV1CompaniesTickerScenariosCompareGet,
+  compareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGet,
   createScenarioApiV1CompaniesTickerScenariosPost,
   deleteScenarioApiV1CompaniesTickerScenariosScenarioIdDelete,
-  getDriversApiV1CompaniesTickerScenariosScenarioIdDriversGet,
+  getDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversGet,
   getSegmentsApiV1CompaniesTickerSegmentsGet,
   listScenariosApiV1CompaniesTickerScenariosGet,
-  putDriversApiV1CompaniesTickerScenariosScenarioIdDriversPut,
+  putDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversPut,
+  resetCaseApiV1CompaniesTickerScenariosScenarioIdCasesCaseResetPost,
   updateScenarioApiV1CompaniesTickerScenariosScenarioIdPut,
 } from "@/api/generated/sdk.gen";
 import { createQueryClient } from "@/lib/query-client";
@@ -28,10 +29,11 @@ vi.mock("@/api/generated/sdk.gen", () => ({
   createScenarioApiV1CompaniesTickerScenariosPost: vi.fn(),
   updateScenarioApiV1CompaniesTickerScenariosScenarioIdPut: vi.fn(),
   deleteScenarioApiV1CompaniesTickerScenariosScenarioIdDelete: vi.fn(),
-  getDriversApiV1CompaniesTickerScenariosScenarioIdDriversGet: vi.fn(),
-  putDriversApiV1CompaniesTickerScenariosScenarioIdDriversPut: vi.fn(),
-  importDriversApiV1CompaniesTickerScenariosScenarioIdDriversImportPost: vi.fn(),
-  compareScenariosApiV1CompaniesTickerScenariosCompareGet: vi.fn(),
+  getDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversGet: vi.fn(),
+  putDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversPut: vi.fn(),
+  resetCaseApiV1CompaniesTickerScenariosScenarioIdCasesCaseResetPost: vi.fn(),
+  importDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversImportPost: vi.fn(),
+  compareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGet: vi.fn(),
   getSegmentsApiV1CompaniesTickerSegmentsGet: vi.fn(),
 }));
 
@@ -42,9 +44,10 @@ const list = vi.mocked(listScenariosApiV1CompaniesTickerScenariosGet);
 const create = vi.mocked(createScenarioApiV1CompaniesTickerScenariosPost);
 const update = vi.mocked(updateScenarioApiV1CompaniesTickerScenariosScenarioIdPut);
 const remove = vi.mocked(deleteScenarioApiV1CompaniesTickerScenariosScenarioIdDelete);
-const getDrivers = vi.mocked(getDriversApiV1CompaniesTickerScenariosScenarioIdDriversGet);
-const putDrivers = vi.mocked(putDriversApiV1CompaniesTickerScenariosScenarioIdDriversPut);
-const compare = vi.mocked(compareScenariosApiV1CompaniesTickerScenariosCompareGet);
+const getDrivers = vi.mocked(getDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversGet);
+const putDrivers = vi.mocked(putDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversPut);
+const resetCase = vi.mocked(resetCaseApiV1CompaniesTickerScenariosScenarioIdCasesCaseResetPost);
+const compare = vi.mocked(compareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGet);
 const getSegments = vi.mocked(getSegmentsApiV1CompaniesTickerSegmentsGet);
 
 // The URL's query, as the view last left it.
@@ -145,13 +148,15 @@ function kpiSegments() {
 beforeEach(() => {
   setScale("M");
   list.mockResolvedValue(okResult(scenarios()) as never);
-  getDrivers.mockImplementation(((options: { path: { scenario_id: number } }) =>
+  getDrivers.mockImplementation(((options: {
+    path: { scenario_id: number; case: "base" | "bull" | "bear" };
+  }) =>
     Promise.resolve(
-      okResult(
-        options.path.scenario_id === 1
-          ? driverGrid()
-          : { ...bullGrid(), scenario_id: options.path.scenario_id },
-      ),
+      okResult({
+        ...(options.path.case === "base" ? driverGrid() : bullGrid()),
+        scenario_id: options.path.scenario_id,
+        case: options.path.case,
+      }),
     )) as never);
   putDrivers.mockResolvedValue(okResult(driverGrid()) as never);
   compare.mockReturnValue(new Promise(() => {}) as never);
@@ -164,36 +169,41 @@ afterEach(() => {
 });
 
 describe("picker", () => {
-  it("lists the scenarios, Base first and picked by default", async () => {
+  it("lists the scenarios, the default first and picked by default", async () => {
     await renderLoaded();
     expect(
       within(picker())
         .getAllByRole("option")
         .map((o) => o.textContent),
-    ).toEqual(["Base", "Bull", "Bear"]);
+    ).toEqual(["Main", "Cycle"]);
     expect(picker().value).toBe("1");
-    expect(getDrivers).toHaveBeenCalledWith({ path: { ticker: "AAPL", scenario_id: 1 } });
+    expect(getDrivers).toHaveBeenCalledWith({
+      path: { ticker: "AAPL", scenario_id: 1, case: "base" },
+    });
   });
 
-  it("picks the scenario of ?scenario and writes the choice back", async () => {
-    await renderLoaded("/c/AAPL/scenarios?scenario=3");
-    expect(picker().value).toBe("3");
-    await userEvent.selectOptions(picker(), "2");
-    expect(new URLSearchParams(seen.search).get("scenario")).toBe("2");
+  it("picks the scenario of ?scenario and writes the choice back, keeping the case", async () => {
+    await renderLoaded("/c/AAPL/scenarios?scenario=2&case=bull");
+    expect(picker().value).toBe("2");
+    await userEvent.selectOptions(picker(), "1");
+    expect(new URLSearchParams(seen.search).get("scenario")).toBe("1");
+    expect(new URLSearchParams(seen.search).get("case")).toBe("bull");
     await waitFor(() =>
-      expect(getDrivers).toHaveBeenLastCalledWith({ path: { ticker: "AAPL", scenario_id: 2 } }),
+      expect(getDrivers).toHaveBeenLastCalledWith({
+        path: { ticker: "AAPL", scenario_id: 1, case: "bull" },
+      }),
     );
   });
 
   it("creates a scenario and picks it", async () => {
     create.mockResolvedValue(
-      okResult(scenario({ id: 4, name: "Recession", is_default: false, base_id: 1 }), 201) as never,
+      okResult(scenario({ id: 4, name: "Recession", is_default: false }), 201) as never,
     );
     await renderLoaded();
     list.mockResolvedValue(
       okResult([
         ...scenarios(),
-        scenario({ id: 4, name: "Recession", is_default: false, base_id: 1 }),
+        scenario({ id: 4, name: "Recession", is_default: false }),
       ]) as never,
     );
     await userEvent.click(screen.getByRole("button", { name: "New" }));
@@ -212,72 +222,79 @@ describe("picker", () => {
   });
 
   it("shows the API's reason for a duplicate name", async () => {
-    create.mockResolvedValue(errorResult(409, { detail: "A scenario named Bull exists" }) as never);
+    create.mockResolvedValue(
+      errorResult(409, { detail: "A scenario named Cycle exists" }) as never,
+    );
     await renderLoaded();
     await userEvent.click(screen.getByRole("button", { name: "New" }));
-    await userEvent.type(screen.getByLabelText("Name"), "Bull");
+    await userEvent.type(screen.getByLabelText("Name"), "Cycle");
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("A scenario named Bull exists");
+    expect(await screen.findByRole("alert")).toHaveTextContent("A scenario named Cycle exists");
   });
 
   it("renames the picked scenario", async () => {
-    update.mockResolvedValue(okResult(scenario({ id: 2, name: "Bullish" })) as never);
+    update.mockResolvedValue(okResult(scenario({ id: 2, name: "Cyclical" })) as never);
     await renderLoaded("/c/AAPL/scenarios?scenario=2");
     await userEvent.click(screen.getByRole("button", { name: "Rename" }));
     const name = screen.getByLabelText("Name");
-    expect(name).toHaveValue("Bull");
+    expect(name).toHaveValue("Cycle");
     await userEvent.clear(name);
-    await userEvent.type(name, "Bullish");
+    await userEvent.type(name, "Cyclical");
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(update).toHaveBeenCalledWith({
       path: { ticker: "AAPL", scenario_id: 2 },
-      body: { name: "Bullish" },
+      body: { name: "Cyclical" },
     });
   });
 
-  it("offers no Delete for Base", async () => {
+  it("offers no Delete for the default scenario", async () => {
     await renderLoaded();
     expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
   });
 
-  it("deletes a scenario after a confirmation and goes back to Base", async () => {
+  it("deletes a scenario after a confirmation and goes back to the default", async () => {
     remove.mockResolvedValue(okResult(null, 204) as never);
-    await renderLoaded("/c/AAPL/scenarios?scenario=3");
+    await renderLoaded("/c/AAPL/scenarios?scenario=2");
     await userEvent.click(screen.getByRole("button", { name: "Delete" }));
     const dialog = await screen.findByRole("alertdialog");
-    expect(dialog).toHaveTextContent("Delete Bear?");
-    list.mockResolvedValue(okResult(scenarios().slice(0, 2)) as never);
+    expect(dialog).toHaveTextContent("Delete Cycle?");
+    expect(dialog).toHaveTextContent("its Base, Bull and Bear cases");
+    list.mockResolvedValue(okResult(scenarios().slice(0, 1)) as never);
     await userEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
-    expect(remove).toHaveBeenCalledWith({ path: { ticker: "AAPL", scenario_id: 3 } });
+    expect(remove).toHaveBeenCalledWith({ path: { ticker: "AAPL", scenario_id: 2 } });
     await waitFor(() => expect(picker().value).toBe("1"));
   });
 
   it("shows the reason when a delete fails", async () => {
-    remove.mockResolvedValue(errorResult(409, { detail: "Base cannot be deleted" }) as never);
-    await renderLoaded("/c/AAPL/scenarios?scenario=3");
+    remove.mockResolvedValue(
+      errorResult(409, { detail: "The default scenario cannot be deleted" }) as never,
+    );
+    await renderLoaded("/c/AAPL/scenarios?scenario=2");
     await userEvent.click(screen.getByRole("button", { name: "Delete" }));
     await userEvent.click(
       within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Delete" }),
     );
-    expect(await screen.findByRole("alert")).toHaveTextContent("Base cannot be deleted");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The default scenario cannot be deleted",
+    );
   });
 
-  it("links the driver files of the picked scenario", async () => {
-    await renderLoaded("/c/AAPL/scenarios?scenario=2");
+  it("links the driver files of the picked case", async () => {
+    await renderLoaded("/c/AAPL/scenarios?scenario=2&case=bull");
     expect(screen.getByRole("link", { name: "Export CSV" })).toHaveAttribute(
       "href",
-      "/api/v1/companies/AAPL/scenarios/2/drivers/export?format=csv",
+      "/api/v1/companies/AAPL/scenarios/2/cases/bull/drivers/export?format=csv",
     );
     expect(screen.getByRole("link", { name: "Export Excel" })).toHaveAttribute(
       "href",
-      "/api/v1/companies/AAPL/scenarios/2/drivers/export?format=xlsx",
+      "/api/v1/companies/AAPL/scenarios/2/cases/bull/drivers/export?format=xlsx",
     );
   });
 });
 
 describe("import", () => {
-  it("opens the driver import sheet for the picked scenario", async () => {
-    await renderLoaded("/c/AAPL/scenarios?scenario=2");
+  it("opens the driver import sheet for the picked case", async () => {
+    await renderLoaded("/c/AAPL/scenarios?scenario=2&case=bear");
     await userEvent.click(screen.getByRole("button", { name: "Import" }));
     const sheet = await screen.findByRole("dialog", { name: "Import drivers" });
     expect(within(sheet).getByLabelText("Driver file")).toBeInTheDocument();
@@ -285,10 +302,13 @@ describe("import", () => {
 });
 
 describe("compare", () => {
-  it("compares every scenario under the grid", async () => {
-    await renderLoaded();
-    expect(screen.getByRole("region", { name: "Compare scenarios" })).toBeInTheDocument();
-    expect(compare).toHaveBeenCalledWith({ path: { ticker: "AAPL" }, query: { freq: "annual" } });
+  it("compares the picked scenario's three cases under the grid", async () => {
+    await renderLoaded("/c/AAPL/scenarios?scenario=2&case=bull");
+    expect(screen.getByRole("region", { name: "Compare cases" })).toBeInTheDocument();
+    expect(compare).toHaveBeenCalledWith({
+      path: { ticker: "AAPL", scenario_id: 2 },
+      query: { freq: "annual" },
+    });
   });
 });
 
@@ -333,6 +353,15 @@ describe("states", () => {
 });
 
 describe("settings", () => {
+  it("says the settings apply to the three cases, and keeps them across a case switch", async () => {
+    await renderLoaded();
+    const form = screen.getByRole("form", { name: "Scenario settings" });
+    expect(form).toHaveTextContent("Applies to Base, Bull and Bear");
+    await userEvent.selectOptions(screen.getByLabelText("Revenue build"), "segments");
+    await userEvent.click(screen.getByRole("radio", { name: "Bull" }));
+    expect(screen.getByLabelText("Revenue build")).toHaveValue("segments"); // the draft stays
+  });
+
   it("shows the picked scenario's settings with Save disabled until a change", async () => {
     await renderLoaded();
     expect(screen.getByLabelText("Revenue build")).toHaveValue("growth");
@@ -458,9 +487,24 @@ describe("driver grid", () => {
     expect(cell("driver:receivable_days", "f:2027")).toHaveTextContent("Flat");
   });
 
-  it("has no Mode column on Base", async () => {
+  it("has no Mode column on Base, in any scenario", async () => {
     await renderLoaded();
     expect(screen.queryByRole("combobox", { name: /^Mode of/ })).not.toBeInTheDocument();
+    await userEvent.selectOptions(picker(), "2");
+    await screen.findByText("Gross margin");
+    expect(screen.queryByRole("combobox", { name: /^Mode of/ })).not.toBeInTheDocument();
+  });
+
+  it("has a Mode column on Bull and Bear, also in the default scenario", async () => {
+    await renderLoaded("/c/AAPL/scenarios?scenario=1&case=bull");
+    expect(screen.getByRole("combobox", { name: "Mode of Gross margin" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("radio", { name: "Bear" }));
+    await waitFor(() =>
+      expect(getDrivers).toHaveBeenLastCalledWith({
+        path: { ticker: "AAPL", scenario_id: 1, case: "bear" },
+      }),
+    );
+    expect(await screen.findByRole("combobox", { name: "Mode of Gross margin" })).toBeVisible();
   });
 
   it("sends one PUT with the whole row on an edit", async () => {
@@ -468,7 +512,7 @@ describe("driver grid", () => {
     await edit("driver:gross_margin", "f:2027", "50");
     await waitFor(() => expect(putDrivers).toHaveBeenCalledTimes(1));
     expect(putDrivers).toHaveBeenCalledWith({
-      path: { ticker: "AAPL", scenario_id: 1 },
+      path: { ticker: "AAPL", scenario_id: 1, case: "base" },
       body: {
         rows: [
           {
@@ -530,7 +574,7 @@ describe("driver grid", () => {
     expect(screen.queryByRole("button", { name: "Reset Revenue growth" })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Reset Gross margin" }));
     expect(putDrivers).toHaveBeenCalledWith({
-      path: { ticker: "AAPL", scenario_id: 1 },
+      path: { ticker: "AAPL", scenario_id: 1, case: "base" },
       body: { rows: [{ driver_code: "gross_margin", kind: "value", values: [] }] },
     });
   });
@@ -538,14 +582,14 @@ describe("driver grid", () => {
 
 describe("vs Base mode", () => {
   it("shows and edits the offset", async () => {
-    await renderLoaded("/c/AAPL/scenarios?scenario=2");
+    await renderLoaded("/c/AAPL/scenarios?case=bull");
     expect(screen.getByRole("combobox", { name: "Mode of Revenue growth" })).toHaveValue("offset");
     expect(cell("driver:revenue_growth", "f:2026")).toHaveTextContent("+3.0 pts");
     expect(cell("driver:gross_margin", "f:2026")).toHaveTextContent("47.0%");
     await edit("driver:revenue_growth", "f:2026", "-5");
     await waitFor(() => expect(putDrivers).toHaveBeenCalledTimes(1));
     expect(putDrivers).toHaveBeenCalledWith({
-      path: { ticker: "AAPL", scenario_id: 2 },
+      path: { ticker: "AAPL", scenario_id: 1, case: "bull" },
       body: {
         rows: [
           {
@@ -562,22 +606,23 @@ describe("vs Base mode", () => {
   });
 
   it("clears the row's own values when the mode switches, after a confirm", async () => {
-    await renderLoaded("/c/AAPL/scenarios?scenario=2");
+    await renderLoaded("/c/AAPL/scenarios?case=bull");
     await userEvent.selectOptions(
       screen.getByRole("combobox", { name: "Mode of Revenue growth" }),
       "value",
     );
     const dialog = await screen.findByRole("alertdialog");
     expect(dialog).toHaveTextContent("Switch Revenue growth to Value?");
+    expect(dialog).toHaveTextContent("Its own values in this case are cleared");
     await userEvent.click(within(dialog).getByRole("button", { name: "Switch" }));
     expect(putDrivers).toHaveBeenCalledWith({
-      path: { ticker: "AAPL", scenario_id: 2 },
+      path: { ticker: "AAPL", scenario_id: 1, case: "bull" },
       body: { rows: [{ driver_code: "revenue_growth", kind: "value", values: [] }] },
     });
   });
 
   it("keeps the values when the switch is cancelled", async () => {
-    await renderLoaded("/c/AAPL/scenarios?scenario=2");
+    await renderLoaded("/c/AAPL/scenarios?case=bull");
     await userEvent.selectOptions(
       screen.getByRole("combobox", { name: "Mode of Revenue growth" }),
       "value",
@@ -590,7 +635,7 @@ describe("vs Base mode", () => {
   });
 
   it("keeps a reset vs Base row in vs Base mode", async () => {
-    await renderLoaded("/c/AAPL/scenarios?scenario=2");
+    await renderLoaded("/c/AAPL/scenarios?case=bull");
     const reset = bullGrid();
     reset.rows[0] = { ...reset.rows[0]!, own: [null, null], kind: null, sources: ["base", "base"] };
     putDrivers.mockResolvedValue(okResult(reset) as never); // the PUT replies with the saved grid
@@ -604,7 +649,7 @@ describe("vs Base mode", () => {
   });
 
   it("switches a row with no own values at once, and its edits are offsets", async () => {
-    await renderLoaded("/c/AAPL/scenarios?scenario=2");
+    await renderLoaded("/c/AAPL/scenarios?case=bull");
     const mode = screen.getByRole("combobox", { name: "Mode of Gross margin" });
     expect(mode).toHaveValue("value");
     await userEvent.selectOptions(mode, "offset");
@@ -637,7 +682,7 @@ describe("saving an edit", () => {
 
   it("shows a typed offset at once in vs Base mode", async () => {
     putDrivers.mockReturnValue(new Promise(() => {}) as never);
-    await renderLoaded("/c/AAPL/scenarios?scenario=2");
+    await renderLoaded("/c/AAPL/scenarios?case=bull");
 
     await edit("driver:revenue_growth", "f:2026", "-5");
 
@@ -680,5 +725,181 @@ describe("saving an edit", () => {
     await waitFor(() => expect(cell("driver:gross_margin", "f:2027")).toHaveTextContent("52.0%"));
     await waitFor(() => expect(compare.mock.calls.length).toBeGreaterThan(compares));
     expect(driverCalls(1)).toBe(loads);
+  });
+});
+
+describe("new scenario", () => {
+  async function openNew() {
+    create.mockResolvedValue(
+      okResult(scenario({ id: 4, name: "Recession", is_default: false }), 201) as never,
+    );
+    await renderLoaded();
+    await userEvent.click(screen.getByRole("button", { name: "New" }));
+    await userEvent.type(screen.getByLabelText("Name"), "Recession");
+  }
+
+  it("offers the revenue build, starting from the default scenario's", async () => {
+    await openNew();
+    const build = screen.getByLabelText("New scenario revenue build");
+    expect(build).toHaveValue("");
+    expect(
+      within(build)
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["Same as Main", "Growth", "Segments"]);
+  });
+
+  it("builds on Growth when picked", async () => {
+    await openNew();
+    await userEvent.selectOptions(screen.getByLabelText("New scenario revenue build"), "growth");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(create).toHaveBeenCalledWith({
+      path: { ticker: "AAPL" },
+      body: { name: "Recession", revenue_method: "growth" },
+    });
+  });
+
+  it("builds on the business segments when Segments is picked", async () => {
+    await openNew();
+    await userEvent.selectOptions(screen.getByLabelText("New scenario revenue build"), "segments");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(create).toHaveBeenCalledWith({
+      path: { ticker: "AAPL" },
+      body: { name: "Recession", revenue_method: "segments", segment_dimension: "business" },
+    });
+  });
+
+  it("has no revenue build when renaming", async () => {
+    await renderLoaded();
+    await userEvent.click(screen.getByRole("button", { name: "Rename" }));
+    expect(screen.queryByLabelText("New scenario revenue build")).not.toBeInTheDocument();
+  });
+});
+
+describe("case toggle", () => {
+  const radio = (name: string) => screen.getByRole("radio", { name });
+
+  it("offers Base, Bull and Bear, Base picked by default", async () => {
+    await renderLoaded();
+    const group = screen.getByRole("radiogroup", { name: "Case" });
+    expect(
+      within(group)
+        .getAllByRole("radio")
+        .map((r) => r.textContent),
+    ).toEqual(["Base", "Bull", "Bear"]);
+    expect(radio("Base")).toBeChecked();
+  });
+
+  it("picks the case of ?case", async () => {
+    await renderLoaded("/c/AAPL/scenarios?case=bear");
+    expect(radio("Bear")).toBeChecked();
+    expect(getDrivers).toHaveBeenCalledWith({
+      path: { ticker: "AAPL", scenario_id: 1, case: "bear" },
+    });
+  });
+
+  it("falls back to Base for an unknown case", async () => {
+    await renderLoaded("/c/AAPL/scenarios?case=sideways");
+    expect(radio("Base")).toBeChecked();
+  });
+
+  it("asks for that case's drivers and writes ?case, keeping ?scenario", async () => {
+    await renderLoaded("/c/AAPL/scenarios?scenario=2");
+    await userEvent.click(radio("Bull"));
+    expect(new URLSearchParams(seen.search).get("case")).toBe("bull");
+    expect(new URLSearchParams(seen.search).get("scenario")).toBe("2");
+    await waitFor(() =>
+      expect(getDrivers).toHaveBeenLastCalledWith({
+        path: { ticker: "AAPL", scenario_id: 2, case: "bull" },
+      }),
+    );
+    await waitFor(() =>
+      expect(cell("driver:revenue_growth", "f:2026")).toHaveTextContent("+3.0 pts"),
+    );
+  });
+
+  it("edits go to the picked case", async () => {
+    await renderLoaded("/c/AAPL/scenarios?case=bull");
+    await edit("driver:gross_margin", "f:2027", "+1");
+    await waitFor(() => expect(putDrivers).toHaveBeenCalledTimes(1));
+    expect(putDrivers.mock.lastCall?.[0].path).toEqual({
+      ticker: "AAPL",
+      scenario_id: 1,
+      case: "bull",
+    });
+  });
+});
+
+describe("reset a case", () => {
+  const resetButton = (case_: string) => screen.getByRole("button", { name: `Reset ${case_}` });
+
+  it("asks first, with Base's text", async () => {
+    await renderLoaded();
+    await userEvent.click(resetButton("Base"));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent("Reset Base?");
+    expect(dialog).toHaveTextContent("Every driver of Base goes back to its default.");
+    expect(resetCase).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["bull", "Bull"],
+    ["bear", "Bear"],
+  ])("asks first, with the default offsets' text on %s", async (slug, name) => {
+    await renderLoaded(`/c/AAPL/scenarios?case=${slug}`);
+    await userEvent.click(resetButton(name));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent(`Reset ${name}?`);
+    expect(dialog).toHaveTextContent(
+      "Its own values are removed and the default offsets come back (+3 pts revenue growth, +1 pt gross margin; each segment's growth on Segments).",
+    );
+    expect(resetCase).not.toHaveBeenCalled();
+  });
+
+  it("sends nothing on Cancel", async () => {
+    await renderLoaded("/c/AAPL/scenarios?case=bull");
+    await userEvent.click(resetButton("Bull"));
+    await userEvent.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Cancel" }),
+    );
+    expect(resetCase).not.toHaveBeenCalled();
+  });
+
+  it("posts the reset of the picked case on OK and shows the reply", async () => {
+    const reset = bullGrid();
+    reset.rows[0] = {
+      ...reset.rows[0]!,
+      values: ["0.0534", "0.0534"],
+      sources: ["offset", "offset"],
+    };
+    reset.rows[1] = {
+      ...reset.rows[1]!,
+      values: ["0.47", "0.4573"],
+      own: [null, null],
+      kind: null,
+      sources: ["base", "default"],
+    };
+    resetCase.mockResolvedValue(okResult(reset) as never);
+    await renderLoaded("/c/AAPL/scenarios?scenario=2&case=bull");
+    await userEvent.click(resetButton("Bull"));
+    await userEvent.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Reset" }),
+    );
+    expect(resetCase).toHaveBeenCalledWith({
+      path: { ticker: "AAPL", scenario_id: 2, case: "bull" },
+    });
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+  });
+
+  it("shows the API's reason when the reset is refused", async () => {
+    resetCase.mockResolvedValue(
+      errorResult(422, { detail: "No fiscal year to start from" }) as never,
+    );
+    await renderLoaded();
+    await userEvent.click(resetButton("Base"));
+    await userEvent.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Reset" }),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent("No fiscal year to start from");
   });
 });

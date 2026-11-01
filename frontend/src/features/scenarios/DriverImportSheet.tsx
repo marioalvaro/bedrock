@@ -13,6 +13,7 @@ import {
   driversQueryOptions,
   useConfirmDriverImport,
   usePreviewDriverImport,
+  type ScenarioCase,
 } from "@/api/scenarios";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -63,23 +64,25 @@ function changeText(change: DriverChangeOut, driver: DriverRowOut | undefined, s
 interface DriverImportSheetProps {
   ticker: string;
   scenarioId: number;
+  scenarioCase: ScenarioCase;
   open: boolean;
   scale: Scale; // the page scale, used to show USD values
   onClose: () => void;
 }
 
 /**
- * Import a scenario's drivers from a CSV or Excel file (the export's layout): preview what would
+ * Import a case's drivers from a CSV or Excel file (the export's layout): preview what would
  * change, then apply it. A driver absent from the file is untouched.
  */
 export function DriverImportSheet({
   ticker,
   scenarioId,
+  scenarioCase,
   open,
   scale,
   onClose,
 }: DriverImportSheetProps) {
-  const { data: grid } = useQuery(driversQueryOptions(ticker, scenarioId));
+  const { data: grid } = useQuery(driversQueryOptions(ticker, scenarioId, scenarioCase));
   const previewImport = usePreviewDriverImport(ticker);
   const confirmImport = useConfirmDriverImport(ticker);
   const [file, setFile] = useState<File | null>(null);
@@ -108,7 +111,7 @@ export function DriverImportSheet({
     reset();
     if (!file) return setError("Choose a file first");
     previewImport.mutate(
-      { id: scenarioId, file },
+      { id: scenarioId, case: scenarioCase, file },
       { onSuccess: setResult, onError: (e) => failed(e, "Could not read the file.") },
     );
   }
@@ -117,7 +120,7 @@ export function DriverImportSheet({
     if (!file) return;
     setError(null);
     confirmImport.mutate(
-      { id: scenarioId, file },
+      { id: scenarioId, case: scenarioCase, file },
       {
         onSuccess: (done) => {
           reset();

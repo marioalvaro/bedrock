@@ -1,4 +1,4 @@
-"""The driver grid of a scenario: each driver's history and its resolved and own values per
+"""The driver grid of a scenario case: each driver's history and its resolved and own values per
 forecast year (docs/erd/forecasting.md "API" -> DriverGridOut). Pure data."""
 
 from dataclasses import dataclass
@@ -29,6 +29,7 @@ class GridRow:
 @dataclass(frozen=True)
 class DriverGrid:
     scenario_id: int
+    case: str
     history_years: list[int]
     forecast_years: list[int]
     rows: list[GridRow]

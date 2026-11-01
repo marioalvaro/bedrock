@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  getForecastApiV1CompaniesTickerScenariosScenarioIdForecastGet,
+  getForecastApiV1CompaniesTickerScenariosScenarioIdCasesCaseForecastGet,
   getCapitalAllocationApiV1CompaniesTickerCapitalAllocationGet,
   getCompanyApiV1CompaniesTickerGet,
   getFlagsApiV1CompaniesTickerFlagsGet,
@@ -45,9 +45,13 @@ vi.mock("@/api/generated/sdk.gen", () => ({
   listMetricsApiV1CompaniesTickerGuidanceMetricsGet: vi.fn(),
   refreshApiV1CompaniesTickerRefreshPost: vi.fn(),
   listScenariosApiV1CompaniesTickerScenariosGet: vi.fn(),
-  getDriversApiV1CompaniesTickerScenariosScenarioIdDriversGet: vi.fn(() => new Promise(() => {})),
-  compareScenariosApiV1CompaniesTickerScenariosCompareGet: vi.fn(() => new Promise(() => {})),
-  getForecastApiV1CompaniesTickerScenariosScenarioIdForecastGet: vi.fn(() => new Promise(() => {})),
+  getDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversGet: vi.fn(
+    () => new Promise(() => {}),
+  ),
+  compareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGet: vi.fn(() => new Promise(() => {})),
+  getForecastApiV1CompaniesTickerScenariosScenarioIdCasesCaseForecastGet: vi.fn(
+    () => new Promise(() => {}),
+  ),
 }));
 
 function renderAt(path: string) {
@@ -287,13 +291,15 @@ describe("tabs", () => {
     expect(screen.getByRole("link", { name: "Notes" })).toHaveAttribute("href", "/c/AAPL/notes");
   });
 
-  it("routes /forecast to the picked scenario's forecast and marks the tab", async () => {
-    renderAt("/c/AAPL/forecast?scenario=2");
+  it("routes /forecast to the picked scenario and case's forecast and marks the tab", async () => {
+    renderAt("/c/AAPL/forecast?scenario=2&case=bear");
 
     await waitFor(() =>
-      expect(getForecastApiV1CompaniesTickerScenariosScenarioIdForecastGet).toHaveBeenCalledWith(
+      expect(
+        getForecastApiV1CompaniesTickerScenariosScenarioIdCasesCaseForecastGet,
+      ).toHaveBeenCalledWith(
         expect.objectContaining({
-          path: { ticker: "AAPL", scenario_id: 2 },
+          path: { ticker: "AAPL", scenario_id: 2, case: "bear" },
           query: { type: "IS", freq: "annual" },
         }),
       ),
@@ -301,18 +307,27 @@ describe("tabs", () => {
     expect(screen.getByRole("link", { name: "Forecast" })).toHaveAttribute("aria-current", "page");
   });
 
-  it("keeps the picked scenario on the Forecast and Scenarios links only", async () => {
-    renderAt("/c/AAPL/scenarios?scenario=2");
+  it("keeps the picked scenario and case on the Forecast and Scenarios links only", async () => {
+    renderAt("/c/AAPL/scenarios?scenario=2&case=bull");
     await screen.findByRole("heading", { name: "AAPL" });
     expect(screen.getByRole("link", { name: "Forecast" })).toHaveAttribute(
       "href",
-      "/c/AAPL/forecast?scenario=2",
+      "/c/AAPL/forecast?scenario=2&case=bull",
     );
     expect(screen.getByRole("link", { name: "Scenarios" })).toHaveAttribute(
       "href",
-      "/c/AAPL/scenarios?scenario=2",
+      "/c/AAPL/scenarios?scenario=2&case=bull",
     );
     expect(screen.getByRole("link", { name: "Notes" })).toHaveAttribute("href", "/c/AAPL/notes");
+  });
+
+  it("carries a lone ?case without adding a ?scenario", async () => {
+    renderAt("/c/AAPL/scenarios?case=bear");
+    await screen.findByRole("heading", { name: "AAPL" });
+    expect(screen.getByRole("link", { name: "Forecast" })).toHaveAttribute(
+      "href",
+      "/c/AAPL/forecast?case=bear",
+    );
   });
 
   it.each([
