@@ -11,6 +11,7 @@ from bedrock.services.scenarios import (
     DriverGrid,
     DriverImportResult,
     DriverRowInput,
+    GridPeriod,
     SettingsInput,
 )
 
@@ -70,11 +71,31 @@ class DriverRowOut(BaseModel):
     kind: DriverKind | None
 
 
+class GridPeriodOut(BaseModel):
+    """A column of the grid: a fiscal year (`FY`) or a quarter (`Q1`..`Q4`) with its label."""
+
+    fiscal_year: int
+    fiscal_period: Literal["FY", "Q1", "Q2", "Q3", "Q4"]
+    label: str
+
+    @classmethod
+    def from_period(cls, period: GridPeriod) -> "GridPeriodOut":
+        return cls.model_validate(period, from_attributes=True)
+
+
 class DriverGridOut(BaseModel):
+    """`history_years` / `forecast_years` are the annual years in both frequencies; the rows'
+    `history` is aligned with `history_periods` and `values` / `sources` / `own` with
+    `forecast_periods` (the years for `annual`, the actual and the span's quarters for
+    `quarterly`)."""
+
     scenario_id: int
     case: Case
+    freq: Literal["annual", "quarterly"]
     history_years: list[int]
     forecast_years: list[int]
+    history_periods: list[GridPeriodOut]
+    forecast_periods: list[GridPeriodOut]
     rows: list[DriverRowOut]
     warnings: list[str]
 
@@ -83,8 +104,11 @@ class DriverGridOut(BaseModel):
         return cls(
             scenario_id=grid.scenario_id,
             case=grid.case,
+            freq=grid.freq,
             history_years=grid.history_years,
             forecast_years=grid.forecast_years,
+            history_periods=[GridPeriodOut.from_period(p) for p in grid.history_periods],
+            forecast_periods=[GridPeriodOut.from_period(p) for p in grid.forecast_periods],
             rows=[
                 DriverRowOut(
                     code=r.code,
@@ -105,23 +129,36 @@ class DriverGridOut(BaseModel):
 
 class DriverYearIn(BaseModel):
     fiscal_year: int
-    value: Decimal | None  # null: no stored value for the year
+    # FY in an annual row, Q1..Q4 in a quarterly one (anything else is a 422)
+    fiscal_period: Literal["FY", "Q1", "Q2", "Q3", "Q4"] = "FY"
+    value: Decimal | None  # null: no stored value for the period
 
 
 class DriverRowIn(BaseModel):
     driver_code: str
     kind: DriverKind
+    freq: Literal["annual", "quarterly"] = "annual"
     values: list[DriverYearIn]
 
 
 class DriversIn(BaseModel):
-    """Each row replaces every stored row of its driver in the case."""
+    """Each row replaces the stored rows of its driver of its frequency in the case."""
 
     rows: list[DriverRowIn]
 
     def to_input(self) -> list[DriverRowInput]:
         return [
-            DriverRowInput(r.driver_code, r.kind, [(v.fiscal_year, v.value) for v in r.values])
+            DriverRowInput(
+                r.driver_code,
+                r.kind,
+                [(v.fiscal_year, v.value) for v in r.values if v.fiscal_period == "FY"],
+                r.freq,
+                [
+                    (v.fiscal_year, v.fiscal_period, v.value)
+                    for v in r.values
+                    if v.fiscal_period != "FY"
+                ],
+            )
             for r in self.rows
         ]
 
@@ -131,6 +168,7 @@ class DriverChangeOut(BaseModel):
 
     driver_code: str
     fiscal_year: int
+    fiscal_period: Literal["FY", "Q1", "Q2", "Q3", "Q4"]
     old: Decimal | None
     new: Decimal | None
     old_kind: DriverKind | None
@@ -153,6 +191,7 @@ class DriverImportOut(BaseModel):
                 DriverChangeOut(
                     driver_code=c.driver_code,
                     fiscal_year=c.fiscal_year,
+                    fiscal_period=c.fiscal_period,
                     old=c.old,
                     new=c.new,
                     old_kind=c.old_kind,

@@ -1453,6 +1453,17 @@
             "title": "Driver Code",
             "type": "string"
           },
+          "fiscal_period": {
+            "enum": [
+              "FY",
+              "Q1",
+              "Q2",
+              "Q3",
+              "Q4"
+            ],
+            "title": "Fiscal Period",
+            "type": "string"
+          },
           "fiscal_year": {
             "title": "Fiscal Year",
             "type": "integer"
@@ -1515,6 +1526,7 @@
         "required": [
           "driver_code",
           "fiscal_year",
+          "fiscal_period",
           "old",
           "new",
           "old_kind",
@@ -1584,6 +1596,7 @@
         "type": "object"
       },
       "DriverGridOut": {
+        "description": "`history_years` / `forecast_years` are the annual years in both frequencies; the rows'\n`history` is aligned with `history_periods` and `values` / `sources` / `own` with\n`forecast_periods` (the years for `annual`, the actual and the span's quarters for\n`quarterly`).",
         "properties": {
           "case": {
             "enum": [
@@ -1594,11 +1607,33 @@
             "title": "Case",
             "type": "string"
           },
+          "forecast_periods": {
+            "items": {
+              "$ref": "#/components/schemas/GridPeriodOut"
+            },
+            "title": "Forecast Periods",
+            "type": "array"
+          },
           "forecast_years": {
             "items": {
               "type": "integer"
             },
             "title": "Forecast Years",
+            "type": "array"
+          },
+          "freq": {
+            "enum": [
+              "annual",
+              "quarterly"
+            ],
+            "title": "Freq",
+            "type": "string"
+          },
+          "history_periods": {
+            "items": {
+              "$ref": "#/components/schemas/GridPeriodOut"
+            },
+            "title": "History Periods",
             "type": "array"
           },
           "history_years": {
@@ -1630,8 +1665,11 @@
         "required": [
           "scenario_id",
           "case",
+          "freq",
           "history_years",
           "forecast_years",
+          "history_periods",
+          "forecast_periods",
           "rows",
           "warnings"
         ],
@@ -1675,6 +1713,15 @@
         "properties": {
           "driver_code": {
             "title": "Driver Code",
+            "type": "string"
+          },
+          "freq": {
+            "default": "annual",
+            "enum": [
+              "annual",
+              "quarterly"
+            ],
+            "title": "Freq",
             "type": "string"
           },
           "kind": {
@@ -1769,7 +1816,8 @@
                     "own",
                     "offset",
                     "base",
-                    "default"
+                    "default",
+                    "year"
                   ],
                   "type": "string"
                 },
@@ -1822,6 +1870,18 @@
       },
       "DriverYearIn": {
         "properties": {
+          "fiscal_period": {
+            "default": "FY",
+            "enum": [
+              "FY",
+              "Q1",
+              "Q2",
+              "Q3",
+              "Q4"
+            ],
+            "title": "Fiscal Period",
+            "type": "string"
+          },
           "fiscal_year": {
             "title": "Fiscal Year",
             "type": "integer"
@@ -1850,7 +1910,7 @@
         "type": "object"
       },
       "DriversIn": {
-        "description": "Each row replaces every stored row of its driver in the case.",
+        "description": "Each row replaces the stored rows of its driver of its frequency in the case.",
         "properties": {
           "rows": {
             "items": {
@@ -2256,6 +2316,37 @@
           "integrity"
         ],
         "title": "ForecastOut",
+        "type": "object"
+      },
+      "GridPeriodOut": {
+        "description": "A column of the grid: a fiscal year (`FY`) or a quarter (`Q1`..`Q4`) with its label.",
+        "properties": {
+          "fiscal_period": {
+            "enum": [
+              "FY",
+              "Q1",
+              "Q2",
+              "Q3",
+              "Q4"
+            ],
+            "title": "Fiscal Period",
+            "type": "string"
+          },
+          "fiscal_year": {
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fiscal_year",
+          "fiscal_period",
+          "label"
+        ],
+        "title": "GridPeriodOut",
         "type": "object"
       },
       "GuidanceEntryOut": {
@@ -8273,6 +8364,20 @@
             "required": true,
             "schema": {
               "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "freq",
+            "required": false,
+            "schema": {
+              "default": "annual",
+              "enum": [
+                "annual",
+                "quarterly"
+              ],
+              "title": "Freq",
               "type": "string"
             }
           }

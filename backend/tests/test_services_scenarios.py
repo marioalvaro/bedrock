@@ -3,6 +3,7 @@ cases"), on the recorded AAPL fixtures: the default "Main", CRUD, settings valid
 driver grid and its PUT per case."""
 
 from collections.abc import Iterator
+from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -13,6 +14,7 @@ from sqlalchemy.orm import Session
 from bedrock.forecast.drivers import drivers_for
 from bedrock.forecast.errors import ForecastUnavailable
 from bedrock.forecast.history import (
+    ForecastHistory,
     ScenarioSettings,
     default_drivers,
     forecast_years,
@@ -645,6 +647,7 @@ def test_the_history_holds_the_statements_and_the_fy_values_of_each_series(
     )
     assert dict(series.fy_values) == {2023: D(200), 2024: D(201)}
     assert str(series.fy_values[2024]) == "201"  # plain, no Numeric padding (G15)
+    assert dict(series.quarter_values) == {(2024, "Q1"): D(60)}  # as entered, apart from the FYs
 
 
 def test_a_company_without_data_has_an_empty_history(db_session: Session, empty: Company) -> None:
@@ -1042,3 +1045,122 @@ def test_the_export_file_name_carries_the_scenario_and_the_case(
     assert export_drivers(db_session, aapl, main.id, "bear", "xlsx")[1] == (
         "AAPL-Main-Bear-drivers.xlsx"
     )
+
+
+# --- quarterly drivers ----------------------------------------------------------------------
+
+
+def _annual_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Makes `load_history` return the company's history without its quarterly statements."""
+    real = scenarios_service.load_history
+
+    def annual_only(session: Session, company: Company) -> ForecastHistory:
+        history = real(session, company)
+        empty = {
+            code: replace(table, periods=[], rows=[]) for code, table in history.quarterly.items()
+        }
+        return replace(history, quarterly=empty)
+
+    monkeypatch.setattr(scenarios_service, "load_history", annual_only)
+
+
+def test_an_annual_only_company_has_no_quarterly_grid_and_no_quarterly_put(
+    db_session: Session, aapl: Company, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    main = list_scenarios(db_session, aapl, NOW)[0]
+    _annual_only(monkeypatch)
+
+    with pytest.raises(ForecastUnavailable, match="^No quarterly history$"):
+        driver_grid(db_session, aapl, main.id, "bull", "quarterly")
+    row = DriverRowInput("tax_rate", "value", freq="quarterly", quarters=[(2027, "Q1", D("0.2"))])
+    with pytest.raises(ForecastUnavailable, match="^No quarterly history$"):
+        put_drivers(db_session, aapl, main.id, "bull", [row], NOW)
+    assert driver_grid(db_session, aapl, main.id, "bull").freq == "annual"  # annual works
+
+
+def test_a_company_without_data_has_no_quarterly_grid(db_session: Session, empty: Company) -> None:
+    main = list_scenarios(db_session, empty, NOW)[0]
+
+    with pytest.raises(ForecastUnavailable):
+        driver_grid(db_session, empty, main.id, "base", "quarterly")
+
+
+def test_a_quarterly_row_with_year_values_or_an_annual_row_with_quarters_is_refused(
+    db_session: Session, aapl: Company
+) -> None:
+    main = list_scenarios(db_session, aapl, NOW)[0]
+    first = driver_grid(db_session, aapl, main.id, "bull", "quarterly").forecast_periods[0]
+    quarter = (first.fiscal_year, first.fiscal_period, D("0.2"))
+
+    with pytest.raises(InvalidDrivers, match="FY value in a quarterly row"):
+        put_drivers(
+            db_session,
+            aapl,
+            main.id,
+            "bull",
+            [DriverRowInput("tax_rate", "value", [(first.fiscal_year, D("0.2"))], "quarterly")],
+            NOW,
+        )
+    with pytest.raises(InvalidDrivers, match="quarter value in an annual row"):
+        put_drivers(
+            db_session,
+            aapl,
+            main.id,
+            "bull",
+            [DriverRowInput("tax_rate", "value", quarters=[quarter])],
+            NOW,
+        )
+    with pytest.raises(InvalidDrivers, match="is given twice for tax_rate"):
+        put_drivers(
+            db_session,
+            aapl,
+            main.id,
+            "bull",
+            [DriverRowInput("tax_rate", "value", freq="quarterly", quarters=[quarter, quarter])],
+            NOW,
+        )
+
+
+def test_a_row_that_stores_no_value_keeps_the_other_frequency_s_rows(
+    db_session: Session, aapl: Company
+) -> None:
+    main = list_scenarios(db_session, aapl, NOW)[0]
+    first = driver_grid(db_session, aapl, main.id, "bull", "quarterly").forecast_periods[0]
+    quarterly = DriverRowInput(
+        "gross_margin",
+        "value",
+        freq="quarterly",
+        quarters=[(first.fiscal_year, first.fiscal_period, D("0.5"))],
+    )
+    grid = put_drivers(db_session, aapl, main.id, "bull", [quarterly], NOW)
+    assert _row(grid, "gross_margin").own[0] == D("0.5")
+
+    # an annual row of another kind that stores nothing clears the years, not the quarter
+    cleared = DriverRowInput("gross_margin", "offset", [(first.fiscal_year, None)])
+    put_drivers(db_session, aapl, main.id, "bull", [cleared], NOW)
+
+    kept = driver_grid(db_session, aapl, main.id, "bull", "quarterly")
+    assert _row(kept, "gross_margin").own[0] == D("0.5")
+
+
+def test_one_put_can_hold_an_annual_and_a_quarterly_row_of_the_same_driver(
+    db_session: Session, aapl: Company
+) -> None:
+    main = list_scenarios(db_session, aapl, NOW)[0]
+    first = driver_grid(db_session, aapl, main.id, "bull", "quarterly").forecast_periods[0]
+    annual = DriverRowInput("tax_rate", "value", [(first.fiscal_year, D("0.25"))])
+    quarterly = DriverRowInput(
+        "tax_rate",
+        "value",
+        freq="quarterly",
+        quarters=[(first.fiscal_year, first.fiscal_period, D("0.3"))],
+    )
+
+    put_drivers(db_session, aapl, main.id, "bull", [annual, quarterly], NOW)
+
+    assert _row(driver_grid(db_session, aapl, main.id, "bull"), "tax_rate").own[0] == D("0.25")
+    quarter = driver_grid(db_session, aapl, main.id, "bull", "quarterly")
+    assert _row(quarter, "tax_rate").own[0] == D("0.3")
+    twice = DriverRowInput("tax_rate", "value", [(first.fiscal_year, D("0.2"))])
+    with pytest.raises(InvalidDrivers, match="tax_rate is given twice"):
+        put_drivers(db_session, aapl, main.id, "bull", [annual, twice], NOW)

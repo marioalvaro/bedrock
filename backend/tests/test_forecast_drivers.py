@@ -5,7 +5,14 @@ from typing import get_args
 
 import pytest
 
-from bedrock.forecast.drivers import DRIVERS, UnknownDriver, check_bounds, driver_def, drivers_for
+from bedrock.forecast.drivers import (
+    DRIVERS,
+    UnknownDriver,
+    check_bounds,
+    driver_def,
+    drivers_for,
+    quarter_share,
+)
 from bedrock.statements.cell_types import Provenance
 
 # The ERD table, in its order.
@@ -154,3 +161,28 @@ def test_offset_bounds_at_every_edge(code: str, inside: list[str], outside: list
 def test_a_non_finite_value_is_out_of_bounds(value: str) -> None:
     for kind in ("value", "offset"):
         assert check_bounds("gross_margin", kind, Decimal(value)) is not None
+
+
+def test_every_driver_can_be_set_per_quarter_including_the_revenue_drivers_of_every_method() -> (
+    None
+):
+    # user decision 2026-10-31: revenue is quarterly for every method
+    assert all(d.quarterly for d in DRIVERS)
+    expanded = drivers_for("segments", [(7, "Cloud"), (8, "Devices")])
+    assert [d.code for d in expanded if d.group == "Revenue"] == [
+        "segment_growth:7",
+        "segment_growth:8",
+    ]
+    assert all(d.quarterly for d in expanded)
+    assert all(d.quarterly for d in drivers_for("volume_price"))
+
+
+def test_a_quarter_takes_a_quarter_of_a_years_flow_amounts_only() -> None:
+    assert [d.code for d in DRIVERS if quarter_share(d.code) != 1] == [
+        "debt_issued",
+        "debt_repaid",
+        "buybacks",
+    ]
+    assert quarter_share("buybacks") == Decimal("0.25")
+    assert quarter_share("min_cash") == 1  # a floor at the quarter's end, not a flow
+    assert quarter_share("segment_growth:7") == 1

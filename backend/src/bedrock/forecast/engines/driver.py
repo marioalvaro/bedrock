@@ -7,18 +7,19 @@ from dataclasses import dataclass, field, replace
 from decimal import Decimal
 
 from bedrock.forecast import integrity
-from bedrock.forecast.drivers import segment_code
+from bedrock.forecast.drivers import FLOW_AMOUNTS, quarter_share, segment_code, segment_id
 from bedrock.forecast.errors import ForecastIntegrityError, ForecastUnavailable
 from bedrock.forecast.history import (
     ForecastHistory,
     ScenarioSettings,
+    SeriesHistory,
     StatementValues,
     days,
     forecast_years,
     opening_period,
 )
 from bedrock.forecast.integrity import IntegrityCheck
-from bedrock.forecast.resolve import ResolvedDrivers
+from bedrock.forecast.resolve import ResolvedDrivers, Value
 from bedrock.statements.fiscal_grid import period_dates
 from bedrock.statements.periods import Period
 from bedrock.statements.rules import BALANCE_FLOOR, BALANCE_RELATIVE
@@ -78,6 +79,8 @@ ZERO_CF = (
 )
 ZERO = Decimal(0)
 YEAR_DAYS = Decimal(365)
+REVENUE_DRIVERS = frozenset({"revenue_growth", "volume_growth", "price_growth"})
+SAME = Decimal("1E-9")  # two quarter values this close are the same number (Decimal rounding)
 
 Values = dict[str, Decimal | None]
 
@@ -167,9 +170,13 @@ def _check_drivers(drivers: ResolvedDrivers) -> None:
     missing = drivers.missing_required()
     if missing:
         raise ForecastUnavailable(f"Set these drivers: {', '.join(missing)}")
-    out = drivers.out_of_bounds()
-    if out:
-        raise ForecastUnavailable("; ".join(f"{message} (FY{year})" for _, year, message in out))
+    found = [f"{message} (FY{year})" for _, year, message in drivers.out_of_bounds()]
+    found += [
+        f"{message} ({period} FY{year})"
+        for _, year, period, message in drivers.out_of_bounds_quarters()
+    ]
+    if found:
+        raise ForecastUnavailable("; ".join(found))
 
 
 @dataclass
@@ -201,16 +208,18 @@ class _Run:
         span = _span(start, quarters)
         if not {y for y, _ in span} <= set(years):
             raise ValueError("The quarter span runs past the forecast years")
+        self.span = frozenset(span)
         state = _State(dict(opening.balance))
         for year in years:
             in_span = [q for y, q in span if y == year]
             if not in_span:
-                state = self._step(self._period(year, "FY"), self._annual_revenue(year), state, 1)
+                state = self._step(self._period(year, "FY"), self._annual_revenue(year), state)
                 continue
             for quarter in in_span:
                 revenue = self._quarter_revenue(year, quarter)
-                state = self._step(self._period(year, quarter), revenue, state, 4)
+                state = self._step(self._period(year, quarter), revenue, state)
             self._year_from_quarters(year)
+            self._warn_quarter_drivers(year, in_span)
         return ForecastStatements(
             tuple(self.periods),
             dict(self.out),
@@ -282,8 +291,8 @@ class _Run:
             return self.out[(code, key)]
         return (self.quarterly if "Q" in key else self.annual).get(code, key)
 
-    def _driver(self, code: str, year: int) -> Decimal:
-        value = self.drivers.get(code, year).value
+    def _driver(self, code: str, year: int, period: str = "FY") -> Decimal:
+        value = self.drivers.get(code, year, period).value
         if not isinstance(value, Decimal):
             raise ValueError(f"{code} FY{year} has no value")
         return value
@@ -337,12 +346,75 @@ class _Run:
         return factors
 
     def _quarter_revenue(self, year: int, quarter: str) -> Decimal:
-        """The same quarter one year earlier × the year's implied growth."""
+        """The same quarter one year earlier × the quarter's growth factor."""
         key = f"FY{year - 1}{quarter}"
         previous = self._value("revenue", key)
         if previous is None:
             raise ForecastUnavailable(f"No quarterly history for {_label(key)}")
-        return previous * self.factors[year]
+        return previous * self._quarter_factor(year, quarter)
+
+    def _quarter_factor(self, year: int, quarter: str) -> Decimal:
+        """R_q / R_{q, y-1} under the scenario's method from the quarter's own drivers (which are
+        the year's when the quarter has none of its own)."""
+        method = self.settings.revenue_method
+        if method == "growth":
+            return 1 + self._driver("revenue_growth", year, quarter)
+        if method == "volume_price":
+            volume = 1 + self._driver("volume_growth", year, quarter)
+            return volume * (1 + self._driver("price_growth", year, quarter))
+        return self._segment_quarter_factor(year, quarter)
+
+    def _segment_quarter_factor(self, year: int, quarter: str) -> Decimal:
+        """With no segment growth of its own the quarter takes the year's implied growth; else
+        sum(S_q × (1 + g)) / sum(S_q) over the dimension's series, S_q the segment's value in the
+        same quarter one year earlier."""
+        series = [
+            s
+            for s in self.history.segment_series
+            if s.dimension == self.settings.segment_dimension and s.metric == "revenue"
+        ]
+        growth = {s.id: self._driver(segment_code(s.id), year, quarter) for s in series}
+        if all(g == self._driver(segment_code(i), year) for i, g in growth.items()):
+            return self.factors[year]
+        before = {s.id: self._segment_quarter(s, year - 1, quarter) for s in series}
+        total = sum(before.values(), ZERO)
+        if total == 0:
+            raise ForecastUnavailable(
+                f"The {self.settings.segment_dimension} segments have no "
+                f"{_label(f'FY{year - 1}{quarter}')} revenue"
+            )
+        return sum((before[i] * (1 + growth[i]) for i in before), ZERO) / total
+
+    def _segment_quarter(self, series: SeriesHistory, year: int, quarter: str) -> Decimal:
+        """A segment's value in a quarter: the actual one, or, in a forecast quarter, the same
+        quarter one year earlier × (1 + the quarter's segment growth)."""
+        if (year, quarter) in self.span:
+            before = self._segment_quarter(series, year - 1, quarter)
+            return before * (1 + self._driver(segment_code(series.id), year, quarter))
+        value = series.quarter_values.get((year, quarter))
+        if value is None:
+            raise ForecastUnavailable(
+                f"Segment {series.name} has no {_label(f'FY{year}{quarter}')} value"
+            )
+        return value
+
+    def _warn_quarter_drivers(self, year: int, quarters: list[str]) -> None:
+        """A year built from quarters takes its revenue and its USD flows from the quarters: say
+        so when a quarter's value differs from what the year's driver implies."""
+        for code in self.drivers.codes:
+            revenue = code in REVENUE_DRIVERS or segment_id(code) is not None
+            if not revenue and code not in FLOW_AMOUNTS:
+                continue
+            annual = self.drivers.get(code, year).value
+            if not isinstance(annual, Decimal):
+                continue
+            implied = annual * quarter_share(code)
+            if any(_differs(self.drivers.get(code, year, q).value, implied) for q in quarters):
+                noun = "revenue" if revenue else "amount"
+                self.warnings.append(
+                    f"FY{year} is built from its quarters: its quarter drivers, not the annual "
+                    f"{code}, set its {noun}"
+                )
 
     def _year_from_quarters(self, year: int) -> None:
         """Flows are Q1 + ... + Q4 (actual quarters included), instants Q4's, average shares the
@@ -373,13 +445,13 @@ class _Run:
 
     # -- one period --------------------------------------------------------------------------
 
-    def _step(self, period: Period, revenue: Decimal, opening: _State, share: int) -> _State:
-        """Forecast one period from the opening state; `share` is the number of periods the
-        year's amounts (debt, buybacks) are split over."""
+    def _step(self, period: Period, revenue: Decimal, opening: _State) -> _State:
+        """Forecast one period from the opening state. A quarter's drivers are its own where it
+        has them, else its year's (a USD flow: a quarter of the year's amount)."""
         year = period.fiscal_year
 
         def driver(code: str) -> Decimal:
-            return self._driver(code, year)
+            return self._driver(code, year, period.fiscal_period)
 
         period_days = Decimal(days(period))
         lines = dict(opening.lines)
@@ -398,24 +470,24 @@ class _Run:
         net_nci = net * driver("nci_share")
         net_common = net - net_nci
 
-        lines["receivables"] = self._days("receivable_days", year, revenue, period_days, lines)
-        lines["inventory"] = self._days("inventory_days", year, cost, period_days, lines)
-        lines["accounts_payable"] = self._days("payable_days", year, cost, period_days, lines)
+        lines["receivables"] = self._days("receivable_days", period, revenue, period_days, lines)
+        lines["inventory"] = self._days("inventory_days", period, cost, period_days, lines)
+        lines["accounts_payable"] = self._days("payable_days", period, cost, period_days, lines)
 
         capex = revenue * driver("capex_pct_revenue")
         d_and_a = revenue * driver("d_and_a_pct_revenue")
         sbc = revenue * driver("sbc_pct_revenue")
         lines["ppe_net"] += capex - d_and_a
 
-        issued = driver("debt_issued") / share
-        repaid = driver("debt_repaid") / share
+        issued = driver("debt_issued")
+        repaid = driver("debt_repaid")
         if repaid > max(lines["long_term_debt"], ZERO):
             repaid = max(lines["long_term_debt"], ZERO)
             self.warnings.append(
                 f"{period.label}: debt_repaid is capped at the opening long-term debt"
             )
         lines["long_term_debt"] += issued - repaid
-        buybacks = driver("buybacks") / share
+        buybacks = driver("buybacks")
         dividends = driver("dividend_payout") * max(net_common, ZERO)
 
         lines["common_stock_apic"] += sbc
@@ -485,12 +557,17 @@ class _Run:
         return state
 
     def _days(
-        self, code: str, year: int, base: Decimal, period_days: Decimal, lines: dict[str, Decimal]
+        self,
+        code: str,
+        period: Period,
+        base: Decimal,
+        period_days: Decimal,
+        lines: dict[str, Decimal],
     ) -> Decimal:
         line = {"receivable_days": "receivables", "inventory_days": "inventory"}.get(
             code, "accounts_payable"
         )
-        value = self.drivers.get(code, year).value
+        value = self.drivers.get(code, period.fiscal_year, period.fiscal_period).value
         if not isinstance(value, Decimal):  # flat: held at its opening value
             return lines[line]
         return base * value / period_days
@@ -503,7 +580,9 @@ class _Run:
         if base is None:
             base = self._latest(code, period.fiscal_period == "FY")
         return (
-            None if base is None else base * (1 + self._driver("share_change", period.fiscal_year))
+            None
+            if base is None
+            else base * (1 + self._driver("share_change", period.fiscal_year, period.fiscal_period))
         )
 
     def _latest(self, code: str, annual: bool) -> Decimal | None:
@@ -521,6 +600,14 @@ class _Run:
             self.out[(code, period.key)] = value
 
 
+def forecast_quarters(
+    history: ForecastHistory, horizon: Horizon = FORECAST_HORIZON
+) -> list[tuple[int, str]]:
+    """The (fiscal year, quarter) pairs a forecast of `horizon` runs quarter by quarter: none for
+    an annual-only company. Raises ForecastUnavailable (no opening)."""
+    return _span(opening_period(history), horizon.quarters)
+
+
 def _span(opening: Period, quarters: int) -> list[tuple[int, str]]:
     """The `quarters` quarters after the opening, extended to the end of that fiscal year; none
     after an annual opening."""
@@ -532,6 +619,14 @@ def _span(opening: Period, quarters: int) -> list[tuple[int, str]]:
         year, number = (year + 1, 1) if number == 4 else (year, number + 1)
         span.append((year, f"Q{number}"))
     return span
+
+
+def _differs(value: Value, expected: Decimal) -> bool:
+    """A quarter value that is not `expected` (Decimal rounding aside); a missing or flat one
+    counts as the same, it has no number to compare."""
+    return isinstance(value, Decimal) and abs(value - expected) > SAME * max(
+        abs(expected), Decimal(1)
+    )
 
 
 def _sum(values: Iterable[Decimal | None]) -> Decimal | None:

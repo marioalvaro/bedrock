@@ -1,8 +1,11 @@
 """Driver history, defaults, the opening period and forecast years (docs/erd/forecasting.md
 "Drivers (M4)", "Start and periods") on synthetic tables, every value hand-computed."""
 
+from collections.abc import Mapping
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 import pytest
 
@@ -10,11 +13,14 @@ from bedrock.forecast.drivers import Follows
 from bedrock.forecast.errors import ForecastUnavailable
 from bedrock.forecast.history import (
     FLAT,
+    ForecastHistory,
     ScenarioSettings,
     SeriesHistory,
     default_drivers,
     forecast_years,
     historical_drivers,
+    historical_quarter_drivers,
+    history_quarters,
     history_years,
     opening_period,
 )
@@ -292,3 +298,164 @@ def test_an_annual_only_company_opens_on_its_latest_complete_year() -> None:
 def test_no_statements_is_unavailable() -> None:
     with pytest.raises(ForecastUnavailable, match="No complete balance sheet"):
         opening_period(make_history({}))
+
+
+# --- quarterly history (docs/erd/forecasting.md "Quarterly drivers" -> History) -----------------
+
+# Q2 FY2025 (2025-04-01..2025-06-30, 91 days) with every driver input; its year-ago quarter and the
+# quarter before it (Q1 FY2025) give the prior values.
+Q2_2025 = {
+    "revenue": 50,
+    "gross_profit": 20,
+    "cost_of_revenue": 30,
+    "rnd": 5,
+    "sga": 10,
+    "other_operating_expenses": -1,
+    "d_and_a": "2.5",
+    "sbc": "1.5",
+    "other_nonoperating_income": "0.5",
+    "interest_expense": 3,
+    "total_debt": 140,
+    "pretax_income": 25,
+    "income_tax": "5.25",
+    "net_income": 20,
+    "net_income_nci": 1,
+    "net_income_common": 19,
+    "receivables": 10,
+    "inventory": 12,
+    "accounts_payable": 6,
+    "capex": -4,
+    "debt_issued": 10,
+    "debt_repaid": -5,
+    "buybacks": -8,
+    "dividends_paid": "-3.8",
+    "shares_diluted": 98,
+}
+Q2_2024 = {"revenue": 40, "shares_diluted": 100}
+Q1_2025 = {"revenue": 45, "total_debt": 100}
+
+
+def quarterly_history(**extra: Mapping[str, Any]) -> ForecastHistory:
+    quarters: dict[str, Mapping[str, Any]] = {
+        "FY2024Q2": Q2_2024,
+        "FY2025Q1": Q1_2025,
+        "FY2025Q2": Q2_2025,
+    }
+    return make_history(
+        {2024: {"revenue": 1}, 2025: {"revenue": 1}}, quarterly={**quarters, **extra}
+    )
+
+
+def test_every_quarterly_history_formula_on_one_quarter() -> None:
+    history = quarterly_history(FY2025Q2={**Q2_2025, **complete_sheet(50)})
+    got = historical_quarter_drivers(history, GROWTH)
+    quarter = {code: v for (code, key), v in got.items() if key == "FY2025Q2"}
+    interest = quarter.pop("interest_rate")
+    assert interest is not None
+    # 3 / mean(100, 140) annualised over the quarter's 91 days
+    assert abs(interest - D(3) / D(120) * D(365) / D(91)) < D("1e-15")
+    assert quarter == {
+        "revenue_growth": D("0.25"),  # 50 / 40 - 1, the same quarter a year earlier
+        "gross_margin": D("0.4"),
+        "rnd_pct_revenue": D("0.1"),
+        "sga_pct_revenue": D("0.2"),
+        "other_opex_pct_revenue": D("-0.02"),
+        "d_and_a_pct_revenue": D("0.05"),
+        "sbc_pct_revenue": D("0.03"),
+        "other_nonoperating_pct_revenue": D("0.01"),
+        "tax_rate": D("0.21"),  # 5.25 / 25
+        "nci_share": D("0.05"),  # 1 / 20
+        "receivable_days": D("18.2"),  # 10 / 50 × 91
+        "inventory_days": D("36.4"),  # 12 / 30 × 91
+        "payable_days": D("18.2"),  # 6 / 30 × 91
+        "capex_pct_revenue": D("0.08"),
+        "debt_issued": D("10"),  # the quarter's amount
+        "debt_repaid": D("5"),
+        "min_cash": None,
+        "buybacks": D("8"),
+        "dividend_payout": D("0.2"),  # 3.8 / 19
+        "share_change": D("-0.02"),  # 98 / 100 - 1
+    }
+
+
+def test_the_history_is_the_last_eight_actual_quarters() -> None:
+    quarters = {
+        f"FY{y}Q{q}": {"revenue": 10 + i}
+        for i, (y, q) in enumerate((y, q) for y in (2023, 2024, 2025) for q in (1, 2, 3, 4))
+    }
+    quarters["FY2025Q4"] = {**quarters["FY2025Q4"], **complete_sheet(21)}
+    history = make_history({2025: {"revenue": 1}}, quarterly=quarters)
+    shown = history_quarters(history)
+    assert [p.key for p in shown] == [f"FY{y}Q{q}" for y in (2024, 2025) for q in (1, 2, 3, 4)]
+    assert {key for (_, key) in historical_quarter_drivers(history, GROWTH)} == {
+        p.key for p in shown
+    }
+    # Q4 is a period like any other; its year-ago quarter is Q4 of the year before.
+    got = historical_quarter_drivers(history, GROWTH)
+    assert got[("revenue_growth", "FY2025Q4")] == D(21) / D(17) - 1
+
+
+def test_quarters_after_the_opening_are_not_history() -> None:
+    quarters = {
+        "FY2025Q1": {"revenue": 10, **complete_sheet(10)},
+        "FY2025Q2": {"revenue": 11},  # no balance sheet: not an opening candidate
+    }
+    history = make_history({2025: {"revenue": 1}}, quarterly=quarters)
+    assert [p.key for p in history_quarters(history)] == ["FY2025Q1"]
+
+
+def test_a_missing_year_ago_quarter_or_previous_quarter_gives_null() -> None:
+    history = quarterly_history(FY2025Q2={**Q2_2025, **complete_sheet(50)})
+    got = historical_quarter_drivers(history, GROWTH)
+    assert got[("revenue_growth", "FY2025Q1")] is None  # no Q1 FY2024
+    assert got[("interest_rate", "FY2025Q1")] is None  # no quarter before Q1 FY2025
+    assert got[("share_change", "FY2025Q1")] is None
+    # the rule needs total_debt in both quarters
+    without = make_history(
+        {2024: {"revenue": 1}, 2025: {"revenue": 1}},
+        quarterly={"FY2025Q1": {"revenue": 45}, "FY2025Q2": {**Q2_2025, **complete_sheet(50)}},
+    )
+    assert historical_quarter_drivers(without, GROWTH)[("interest_rate", "FY2025Q2")] is None
+
+
+def test_quarterly_days_use_the_length_of_the_quarter() -> None:
+    # a 14-week quarter: 2024-07-01..2024-10-05 is 97 days
+    history = make_history(
+        {2024: {"revenue": 1}},
+        quarterly={"FY2024Q4": {**Q2_2025, **complete_sheet(50)}},
+        dates={"FY2024Q4": (date(2024, 7, 1), date(2024, 10, 5))},
+    )
+    got = historical_quarter_drivers(history, GROWTH)
+    assert got[("receivable_days", "FY2024Q4")] == D("19.4")  # 10 / 50 × 97
+
+
+def test_segment_and_kpi_growth_read_the_quarterly_series() -> None:
+    cloud = SeriesHistory(
+        7, "business", "Cloud", "revenue", "USD", {}, {(2024, "Q2"): D(100), (2025, "Q2"): D(130)}
+    )
+    history = quarterly_history(FY2025Q2={**Q2_2025, **complete_sheet(50)})
+    history = replace(history, segment_series=(cloud,))
+    settings = ScenarioSettings("segments", "business")
+    got = historical_quarter_drivers(history, settings)
+    assert got[("segment_growth:7", "FY2025Q2")] == D("0.3")
+    assert ("revenue_growth", "FY2025Q2") not in got  # not a driver of the segments method
+
+
+def test_an_annual_only_company_has_no_quarterly_history() -> None:
+    history = make_history({2025: {"revenue": 1}})
+    assert history_quarters(history) == []
+    assert historical_quarter_drivers(history, GROWTH) == {}
+
+
+def test_a_missing_quarter_between_two_gives_no_interest_rate() -> None:
+    # Q2 FY2025 is absent: the mean debt of Q1 and Q3 spans two quarters, so no rate (annualising
+    # it by Q3's days alone would double it).
+    history = make_history(
+        {2024: {"revenue": 1}, 2025: {"revenue": 1}},
+        quarterly={
+            "FY2025Q1": {"revenue": 45, "total_debt": 100},
+            "FY2025Q3": {**Q2_2025, **complete_sheet(50)},
+        },
+    )
+    got = historical_quarter_drivers(history, GROWTH)
+    assert got[("interest_rate", "FY2025Q3")] is None

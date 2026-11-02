@@ -16,6 +16,7 @@ from bedrock.forecast.engines.driver import (
 from bedrock.forecast.history import (
     ForecastHistory,
     ScenarioSettings,
+    StatementValues,
     default_drivers,
     forecast_years,
     opening_period,
@@ -108,3 +109,37 @@ def test_the_forecast_starts_after_the_latest_fixture_quarter(ticker: str) -> No
     )
     assert out.annual()[0].fiscal_year == latest.fiscal_year + (number == 4)
     assert out.opening.period == latest
+
+
+@pytest.mark.parametrize("ticker", TICKERS)
+def test_quarter_drivers_change_only_their_quarter_and_stay_balanced(ticker: str) -> None:
+    h = history(ticker)
+    years = forecast_years(h, FORECAST_HORIZON.years)
+    base_rows = (
+        [DriverRow("gross_margin", y, "value", Decimal("0.25")) for y in years]
+        if ticker == "DE"
+        else []
+    )
+    plain, _ = forecast(ticker, "base", FORECAST_HORIZON)
+    first = plain.quarterly()[0]
+    rows = [
+        *base_rows,
+        DriverRow(
+            "revenue_growth", first.fiscal_year, "value", Decimal("0.5"), first.fiscal_period
+        ),
+        DriverRow("buybacks", first.fiscal_year, "value", Decimal("1000000"), first.fiscal_period),
+    ]
+    drivers = resolve_drivers(rows, rows, default_drivers(h, GROWTH), years, is_base=True)
+    out = DriverModel().run(h, drivers, FORECAST_HORIZON, GROWTH)
+    assert all(c.ok for c in out.integrity), [c for c in out.integrity if not c.ok]
+    revenue_before = plain.get("revenue", first.key)
+    assert revenue_before is not None
+    previous = StatementValues(h.quarterly).get(
+        "revenue", f"FY{first.fiscal_year - 1}{first.fiscal_period}"
+    )
+    assert previous is not None
+    assert out.get("revenue", first.key) == previous * Decimal("1.5")
+    assert out.get("buybacks", first.key) == Decimal("-1000000")
+    # a quarter with no row of its own is as it was
+    second = plain.quarterly()[1]
+    assert out.get("revenue", second.key) == plain.get("revenue", second.key)

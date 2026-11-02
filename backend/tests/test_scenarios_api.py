@@ -231,11 +231,19 @@ def test_the_grid_has_the_documented_shape(aapl_client: TestClient) -> None:
     assert set(grid) == {
         "scenario_id",
         "case",
+        "freq",
         "history_years",
         "forecast_years",
+        "history_periods",
+        "forecast_periods",
         "rows",
         "warnings",
     }
+    assert grid["freq"] == "annual"
+    # the periods mirror the years
+    assert [p["fiscal_year"] for p in grid["history_periods"]] == grid["history_years"]
+    assert [p["fiscal_year"] for p in grid["forecast_periods"]] == grid["forecast_years"]
+    assert {p["fiscal_period"] for p in grid["forecast_periods"]} == {"FY"}
     assert (grid["scenario_id"], grid["case"]) == (main["id"], "bull")
     assert len(grid["history_years"]) == 5
     assert len(grid["forecast_years"]) == 5
@@ -392,3 +400,218 @@ def test_a_json_number_too_large_for_a_double_is_422(aapl_client: TestClient) ->
 
     assert response.status_code == 422, response.text
     assert _row(_grid(aapl_client, base["id"]), "buybacks")["own"] == [None] * 5
+
+
+# --- quarterly drivers (docs/erd/forecasting.md "Quarterly drivers" -> API) ---------------------
+
+
+def _qgrid(client: TestClient, scenario_id: int, case: str = "base") -> dict[str, Any]:
+    response = client.get(
+        f"{SCENARIOS}/{scenario_id}/cases/{case}/drivers", params={"freq": "quarterly"}
+    )
+    assert response.status_code == 200, response.text
+    body: dict[str, Any] = response.json()
+    return body
+
+
+def _quarter(grid: dict[str, Any], index: int = 0) -> dict[str, Any]:
+    return grid["forecast_periods"][index]
+
+
+def _qrow(code: str, kind: str, *values: tuple[int, str, str | None]) -> dict[str, Any]:
+    return {
+        "driver_code": code,
+        "kind": kind,
+        "freq": "quarterly",
+        "values": [{"fiscal_year": y, "fiscal_period": q, "value": v} for y, q, v in values],
+    }
+
+
+def test_the_quarterly_grid_has_the_history_quarters_and_the_span(aapl_client: TestClient) -> None:
+    main = _scenarios(aapl_client)["Main"]
+
+    annual = _grid(aapl_client, main["id"], "bull")
+    grid = _qgrid(aapl_client, main["id"], "bull")
+
+    assert grid["freq"] == "quarterly"
+    assert (grid["scenario_id"], grid["case"]) == (main["id"], "bull")
+    assert len(grid["history_periods"]) == 8
+    assert all(p["label"].endswith("A") for p in grid["history_periods"])
+    assert 8 <= len(grid["forecast_periods"]) <= 11  # the fixed 8 quarters to the fiscal year end
+    assert grid["forecast_periods"][-1]["fiscal_period"] == "Q4"
+    assert all(p["label"].endswith("E") for p in grid["forecast_periods"])
+    assert set(grid["forecast_periods"][0]) == {"fiscal_year", "fiscal_period", "label"}
+    assert grid["history_years"] == annual["history_years"]  # the annual years stay
+    n_forecast = len(grid["forecast_periods"])
+    for row in grid["rows"]:
+        assert len(row["history"]) == 8
+        assert len(row["values"]) == len(row["sources"]) == len(row["own"]) == n_forecast
+    assert [r["code"] for r in grid["rows"]] == [r["code"] for r in annual["rows"]]
+    # Bull's annual offsets give every quarter Base's quarter plus the offset
+    growth = _row(grid, "revenue_growth")
+    assert set(growth["sources"]) == {"offset"}
+    assert growth["own"] == [None] * n_forecast  # no quarter row of its own
+    assert _row(grid, "tax_rate")["sources"] == ["year"] * n_forecast
+    assert _row(annual, "tax_rate")["sources"] != ["year"] * 5  # the annual payload is as before
+
+
+def test_the_annual_grid_is_unchanged_by_quarter_rows(aapl_client: TestClient) -> None:
+    main = _scenarios(aapl_client)["Main"]
+    before = _grid(aapl_client, main["id"], "bull")
+    first = _quarter(_qgrid(aapl_client, main["id"], "bull"))
+
+    put = _put(
+        aapl_client,
+        main["id"],
+        "bull",
+        _qrow("gross_margin", "offset", (first["fiscal_year"], first["fiscal_period"], "0.02")),
+    )
+    assert put.status_code == 200, put.text
+
+    after = _grid(aapl_client, main["id"], "bull")
+    assert after["rows"] == before["rows"]
+
+
+def test_a_quarter_put_sets_that_quarter_only_and_replies_with_the_quarterly_grid(
+    aapl_client: TestClient,
+) -> None:
+    main = _scenarios(aapl_client)["Main"]
+    first = _quarter(_qgrid(aapl_client, main["id"], "bull"))
+    year, quarter = first["fiscal_year"], first["fiscal_period"]
+
+    put = _put(aapl_client, main["id"], "bull", _qrow("tax_rate", "value", (year, quarter, "0.30")))
+
+    assert put.status_code == 200, put.text
+    reply = put.json()
+    assert reply["freq"] == "quarterly"
+    tax = _row(reply, "tax_rate")
+    assert tax["own"][0] == "0.3" and tax["values"][0] == "0.3" and tax["sources"][0] == "own"
+    assert tax["sources"][1:] == ["year"] * (len(tax["sources"]) - 1)
+    assert tax["kind"] == "value"
+    assert reply == _qgrid(aapl_client, main["id"], "bull")
+    forecast = aapl_client.get(
+        f"{SCENARIOS}/{main['id']}/cases/bull/forecast", params={"type": "IS", "freq": "quarterly"}
+    ).json()
+    assert all(c["ok"] for c in forecast["integrity"])
+
+
+def test_a_quarter_put_replaces_only_the_quarterly_rows_of_that_driver(
+    aapl_client: TestClient,
+) -> None:
+    main = _scenarios(aapl_client)["Main"]
+    grid = _qgrid(aapl_client, main["id"], "bull")
+    (y1, q1), (y2, q2) = (
+        (p["fiscal_year"], p["fiscal_period"]) for p in grid["forecast_periods"][:2]
+    )
+    first = _put(aapl_client, main["id"], "bull", _qrow("tax_rate", "value", (y1, q1, "0.30")))
+    assert first.status_code == 200
+    annual = _put(
+        aapl_client,
+        main["id"],
+        "bull",
+        {
+            "driver_code": "tax_rate",
+            "kind": "value",
+            "values": [{"fiscal_year": y1, "value": "0.25"}],
+        },
+    )
+    assert annual.status_code == 200
+    assert _row(annual.json(), "tax_rate")["own"][0] == "0.25"  # the annual row
+    assert _row(_qgrid(aapl_client, main["id"], "bull"), "tax_rate")["own"][0] == "0.3"  # kept
+
+    second = _put(aapl_client, main["id"], "bull", _qrow("tax_rate", "value", (y2, q2, "0.31")))
+    own = _row(second.json(), "tax_rate")["own"]
+    assert own[0] is None and own[1] == "0.31"  # the earlier quarter row was replaced
+    assert _row(_grid(aapl_client, main["id"], "bull"), "tax_rate")["own"][0] == "0.25"  # kept
+
+
+def test_a_kind_change_drops_the_other_frequency_s_rows(aapl_client: TestClient) -> None:
+    main = _scenarios(aapl_client)["Main"]
+    first = _quarter(_qgrid(aapl_client, main["id"], "bull"))
+    assert _row(_grid(aapl_client, main["id"], "bull"), "gross_margin")["kind"] == "offset"
+
+    put = _put(
+        aapl_client,
+        main["id"],
+        "bull",
+        _qrow("gross_margin", "value", (first["fiscal_year"], first["fiscal_period"], "0.5")),
+    )
+
+    assert put.status_code == 200, put.text
+    annual = _row(_grid(aapl_client, main["id"], "bull"), "gross_margin")
+    assert annual["kind"] == "value" and annual["own"] == [None] * 5  # the annual offsets went
+
+
+@pytest.mark.parametrize(
+    ("row", "message"),
+    [
+        (_qrow("tax_rate", "value", (1999, "Q1", "0.2")), "Q1 FY1999 is not a forecast quarter"),
+        (_qrow("tax_rate", "value", (2030, "FY", "0.2")), "FY"),
+        (_qrow("nope", "value", (2027, "Q1", "0.2")), "nope"),
+        (_qrow("tax_rate", "value", (2027, "Q1", "1.5")), "tax_rate must be in [0, 1]"),
+    ],
+)
+def test_an_invalid_quarterly_put_is_422_and_stores_nothing(
+    aapl_client: TestClient, row: dict[str, Any], message: str
+) -> None:
+    main = _scenarios(aapl_client)["Main"]
+    before = _qgrid(aapl_client, main["id"], "bull")
+    if row["values"][0]["fiscal_year"] == 2027:  # a real span year: use the first quarter
+        first = _quarter(before)
+        row["values"][0].update(
+            fiscal_year=first["fiscal_year"], fiscal_period=first["fiscal_period"]
+        )
+
+    response = _put(aapl_client, main["id"], "bull", row)
+
+    assert response.status_code == 422, response.text
+    assert message in str(response.json()["detail"])
+    assert _qgrid(aapl_client, main["id"], "bull") == before
+
+
+def test_year_and_quarter_values_cannot_be_mixed_in_a_row(aapl_client: TestClient) -> None:
+    main = _scenarios(aapl_client)["Main"]
+    first = _quarter(_qgrid(aapl_client, main["id"], "bull"))
+    year_in_quarterly = {
+        "driver_code": "tax_rate",
+        "kind": "value",
+        "freq": "quarterly",
+        "values": [{"fiscal_year": first["fiscal_year"], "value": "0.2"}],
+    }
+    quarter_in_annual = {
+        "driver_code": "tax_rate",
+        "kind": "value",
+        "values": [{"fiscal_year": first["fiscal_year"], "fiscal_period": "Q1", "value": "0.2"}],
+    }
+
+    a = _put(aapl_client, main["id"], "bull", year_in_quarterly)
+    b = _put(aapl_client, main["id"], "bull", quarter_in_annual)
+
+    assert (a.status_code, b.status_code) == (422, 422)
+    assert "quarterly row" in a.json()["detail"] and "annual row" in b.json()["detail"]
+
+
+def test_a_quarter_offset_on_base_is_422_and_an_unknown_freq_too(aapl_client: TestClient) -> None:
+    main = _scenarios(aapl_client)["Main"]
+    first = _quarter(_qgrid(aapl_client, main["id"], "base"))
+    row = _qrow("tax_rate", "offset", (first["fiscal_year"], first["fiscal_period"], "0.01"))
+
+    base = _put(aapl_client, main["id"], "base", row)
+    freq = aapl_client.get(
+        f"{SCENARIOS}/{main['id']}/cases/base/drivers", params={"freq": "monthly"}
+    )
+
+    assert base.status_code == 422 and "Base cannot hold offsets" in base.json()["detail"]
+    assert freq.status_code == 422
+
+
+def test_a_quarter_row_of_base_reaches_bull_as_base_s_quarter(aapl_client: TestClient) -> None:
+    main = _scenarios(aapl_client)["Main"]
+    first = _quarter(_qgrid(aapl_client, main["id"], "base"))
+    year, quarter = first["fiscal_year"], first["fiscal_period"]
+    put = _put(aapl_client, main["id"], "base", _qrow("tax_rate", "value", (year, quarter, "0.4")))
+    assert put.status_code == 200
+
+    bull = _row(_qgrid(aapl_client, main["id"], "bull"), "tax_rate")
+
+    assert (bull["values"][0], bull["sources"][0], bull["own"][0]) == ("0.4", "base", None)

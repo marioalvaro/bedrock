@@ -5,6 +5,7 @@ import csv
 import io
 import random
 import zipfile
+from dataclasses import replace
 from decimal import Decimal
 
 import pytest
@@ -21,7 +22,7 @@ from bedrock.forecast.driver_io import (
     plan_import,
 )
 from bedrock.forecast.drivers import DriverDef, drivers_for
-from bedrock.forecast.grid import DriverGrid, GridRow
+from bedrock.forecast.grid import DriverGrid, GridPeriod, GridRow
 from bedrock.forecast.resolve import DriverRow
 
 D = Decimal
@@ -565,3 +566,258 @@ def test_export_then_import_changes_nothing(seed: int, fmt: str) -> None:
     assert plan_import(plan, []).rows == {
         code: rows for code in {r.code for r in own} if (rows := [r for r in own if r.code == code])
     }
+
+
+# Quarter columns (docs/erd/forecasting.md "Quarterly drivers" -> Driver files) -------------------
+
+QUARTERS = [(2026, "Q3"), (2026, "Q4"), (2027, "Q1")]
+QHEADER = [*HEADER, "FY2026Q3", "FY2026Q4", "FY2027Q1"]
+
+
+def _qgrid_rows(quarter_own: dict[str, list[Decimal | None]]) -> DriverGrid:
+    """The quarterly grid beside `_grid()`: a row per driver, history of 2 quarters."""
+    rows = [
+        GridRow(
+            code=d.code,
+            label=d.label,
+            group=d.group,
+            unit=d.unit,
+            history=[D("0.1"), None],
+            values=[D("0.07")] * 3,
+            sources=["year", "year", "year"],
+            own=quarter_own.get(d.code, [None] * 3),
+            kind="value" if d.code in quarter_own else None,
+        )
+        for d in CATALOG
+    ]
+    return DriverGrid(
+        1,
+        "base",
+        [2023, 2024, 2025],
+        YEARS,
+        rows,
+        [],
+        "quarterly",
+        [GridPeriod(2025, "Q3", "Q3 FY25A"), GridPeriod(2025, "Q4", "Q4 FY25A")],
+        [GridPeriod(y, q, f"{q} FY{y % 100}E") for y, q in QUARTERS],
+    )
+
+
+QUARTER_OWN = {
+    "gross_margin": [D("0.45"), None, D("0.5")],
+    "buybacks": [D("250000"), None, None],
+}
+
+
+def _with_quarters() -> tuple[DriverGrid, DriverGrid]:
+    """The annual grid and the quarterly one of a case whose gross margin has only quarter rows
+    (the kind of a driver is the same in both grids)."""
+    grid = _grid()
+    rows = [replace(r, kind="value") if r.code == "gross_margin" else r for r in grid.rows]
+    return replace(grid, rows=rows), _qgrid_rows(QUARTER_OWN)
+
+
+def _qparse(content: bytes, is_base: bool = False, name: str = "f.csv") -> DriverFilePlan:
+    return parse_driver_file(content, name, CATALOG, YEARS, is_base, QUARTERS)
+
+
+def _qerrors(
+    content: bytes, is_base: bool = False, catalog: list[DriverDef] | None = None
+) -> list[tuple[int | None, str | None, str]]:
+    with pytest.raises(DriverFileError) as caught:
+        parse_driver_file(content, "f.csv", catalog or CATALOG, YEARS, is_base, QUARTERS)
+    return [(i.row, i.column, i.message) for i in caught.value.issues]
+
+
+def test_the_csv_adds_a_column_per_span_quarter_after_the_years() -> None:
+    annual, quarterly = _with_quarters()
+
+    rows = {r[0]: r for r in _csv_rows(export_csv(annual, quarterly))}
+
+    assert rows["driver_code"] == QHEADER
+    assert rows["gross_margin"][2:] == ["pct", "value", "", "", "", "0.45", "", "0.5"]
+    assert rows["buybacks"][2:] == ["USD", "value", "1000000", "2000000.5", "", "250000", "", ""]
+    assert rows["revenue_growth"][4:] == ["0.03", "0.03", "", "", "", ""]  # annual cells as before
+
+
+def test_without_a_quarterly_grid_the_file_is_the_years_only_file() -> None:
+    assert export_csv(_grid(), None) == export_csv(_grid())
+    assert _csv_rows(export_csv(_grid(), None))[0] == HEADER
+
+
+def test_the_xlsx_quarter_cells_follow_the_unit_formats() -> None:
+    annual, quarterly = _with_quarters()
+    sheet = load_workbook(io.BytesIO(export_xlsx(annual, quarterly)))["Drivers"]
+    rows = [list(r) for r in sheet.iter_rows(values_only=True)]
+
+    assert rows[0] == QHEADER
+    number, gross = next((n, r) for n, r in enumerate(rows, start=1) if r[0] == "gross_margin")
+    assert gross[7:] == [0.45, None, 0.5]
+    assert "%" in sheet.cell(row=number, column=8).number_format
+
+
+def test_the_resolved_sheet_adds_the_quarters_history_values_and_sources() -> None:
+    annual, quarterly = _with_quarters()
+    sheet = load_workbook(io.BytesIO(export_xlsx(annual, quarterly)))["Resolved"]
+    rows = [list(r) for r in sheet.iter_rows(values_only=True)]
+
+    assert rows[0][12:] == [
+        "FY2025Q3",
+        "FY2025Q4",
+        "FY2026Q3E",
+        "FY2026Q4E",
+        "FY2027Q1E",
+        "FY2026Q3E source",
+        "FY2026Q4E source",
+        "FY2027Q1E source",
+    ]
+    gross = next(r for r in rows[1:] if r[0] == "gross_margin")
+    assert gross[12:] == [0.1, None, 0.07, 0.07, 0.07, "year", "year", "year"]
+
+
+def test_an_exported_file_with_quarters_parses_back_to_the_own_cells() -> None:
+    annual, quarterly = _with_quarters()
+    plan = _qparse(export_csv(annual, quarterly))
+
+    assert plan.years == (2026, 2027, 2028)
+    assert plan.quarters == tuple(QUARTERS)
+    rows = {r.code: r for r in plan.rows}
+    assert rows["gross_margin"].quarter_values == {
+        (2026, "Q3"): D("0.45"),
+        (2026, "Q4"): None,
+        (2027, "Q1"): D("0.5"),
+    }
+    assert rows["gross_margin"].kind == "value"
+    assert rows["buybacks"].quarter_values[(2026, "Q3")] == D("250000")
+
+
+def test_a_file_may_omit_the_quarter_columns_and_an_old_file_parses_as_before() -> None:
+    plan = _qparse(export_csv(_grid()))
+
+    assert plan.quarters == ()
+    assert plan.rows[0].quarter_values == {}
+
+
+def test_a_quarter_column_that_is_not_in_the_span_is_an_error_at_its_header() -> None:
+    header = [*HEADER, "FY2099Q1", "FY2026Q5", "FY2026Q3", "FY2026Q3"]
+
+    errors = _qerrors(_csv([header, ["gross_margin", "", "", "value", "", "", "", "0.4"]]))
+
+    span = "FY2026Q3-FY2027Q1"
+    assert (1, "H", f"Column 'FY2099Q1' is not a forecast quarter ({span})") in errors
+    assert any(e[:2] == (1, "I") for e in errors)  # FY2026Q5 is neither a year nor a quarter
+    assert (1, "K", "FY2026Q3 is given twice") in errors
+
+
+def test_a_quarter_cell_is_checked_like_a_year_cell() -> None:
+    rows = [
+        QHEADER,
+        ["gross_margin", "", "", "value", "", "", "", "1.5", "1e5", "0,4"],
+        ["tax_rate", "", "", "offset", "", "", "", "0.01"],
+    ]
+
+    errors = _qerrors(_csv(rows), is_base=True)
+
+    assert (2, "H", "gross_margin must be in [-1, 1]") in errors
+    assert (2, "I", "'1e5' is not a number") in errors
+    assert (2, "J", "'0,4' is not a number (use a dot for decimals)") in errors
+    assert (3, "D", "Base cannot hold offsets") in errors
+
+
+def test_a_value_under_a_quarter_column_of_a_driver_that_cannot_be_set_per_quarter() -> None:
+    annual_only = [replace(d, quarterly=False) if d.code == "tax_rate" else d for d in CATALOG]
+    rows = [QHEADER, ["tax_rate", "", "", "value", "", "", "", "0.2"]]
+
+    assert _qerrors(_csv(rows), catalog=annual_only) == [
+        (2, "H", "tax_rate cannot be set per quarter")
+    ]
+
+
+def test_a_quarter_row_replaces_the_quarters_in_the_file_and_keeps_the_others() -> None:
+    own = [
+        DriverRow("gross_margin", 2026, "value", D("0.4")),
+        DriverRow("gross_margin", 2026, "value", D("0.41"), "Q3"),
+        DriverRow("gross_margin", 2026, "value", D("0.42"), "Q4"),
+        DriverRow("gross_margin", 2028, "value", D("0.43"), "Q1"),  # a quarter outside the file
+    ]
+    file = FileRow(
+        "gross_margin",
+        "value",
+        {2026: D("0.4")},
+        {(2026, "Q3"): D("0.5"), (2026, "Q4"): None, (2027, "Q1"): D("0.6")},
+    )
+    plan = DriverFilePlan((2026,), (file,), tuple(QUARTERS))
+
+    result = plan_import(plan, own)
+
+    assert result.changes == [
+        DriverChange("gross_margin", 2026, D("0.41"), D("0.5"), "value", "value", "Q3"),
+        DriverChange("gross_margin", 2026, D("0.42"), None, "value", None, "Q4"),
+        DriverChange("gross_margin", 2027, None, D("0.6"), None, "value", "Q1"),
+    ]
+    assert sorted((r.fiscal_year, r.fiscal_period) for r in result.rows["gross_margin"]) == [
+        (2026, "FY"),
+        (2026, "Q3"),
+        (2027, "Q1"),
+        (2028, "Q1"),
+    ]
+
+
+def test_a_kind_change_drops_the_quarters_too() -> None:
+    own = [
+        DriverRow("gross_margin", 2026, "offset", D("0.01")),
+        DriverRow("gross_margin", 2028, "offset", D("0.02"), "Q1"),
+    ]
+    file = FileRow("gross_margin", "value", {2026: D("0.4")}, {})
+
+    result = plan_import(DriverFilePlan((2026,), (file,), ()), own)
+
+    assert [(c.fiscal_year, c.fiscal_period, c.new) for c in result.changes] == [
+        (2026, "FY", D("0.4")),
+        (2028, "Q1", None),
+    ]
+    assert [(r.fiscal_year, r.fiscal_period) for r in result.rows["gross_margin"]] == [(2026, "FY")]
+
+
+def test_a_blank_kind_clears_the_quarters_as_well() -> None:
+    own = [DriverRow("gross_margin", 2026, "value", D("0.4"), "Q3")]
+    file = FileRow("gross_margin", None, dict.fromkeys(YEARS), dict.fromkeys(QUARTERS))
+
+    result = plan_import(DriverFilePlan(tuple(YEARS), (file,), tuple(QUARTERS)), own)
+
+    assert [(c.fiscal_period, c.new) for c in result.changes] == [("Q3", None)]
+    assert result.rows == {"gross_margin": []}
+
+
+def _random_quarters(rng: random.Random, rows: list[GridRow]) -> tuple[DriverGrid, list[DriverRow]]:
+    """A quarterly grid whose rows hold random own quarter values of their driver's kind."""
+    quarter_rows: list[GridRow] = []
+    stored: list[DriverRow] = []
+    for row in rows:
+        own: list[Decimal | None] = [None] * len(QUARTERS)
+        if row.kind is not None:
+            for i, (year, quarter) in enumerate(QUARTERS):
+                if rng.random() < 0.5:
+                    own[i] = _random_value(rng, row.unit, row.kind)
+                    stored.append(DriverRow(row.code, year, row.kind, own[i], quarter))  # type: ignore[arg-type]
+        quarter_rows.append(replace(row, history=[None, None], values=[None] * 3, own=own))
+    grid = _qgrid_rows({})
+    return replace(grid, rows=quarter_rows), stored
+
+
+@pytest.mark.parametrize("seed", range(20))
+@pytest.mark.parametrize("fmt", ["csv", "xlsx"])
+def test_export_then_import_with_quarter_values_changes_nothing(seed: int, fmt: str) -> None:
+    rng = random.Random(seed)
+    annual, own = _random_grid(rng)
+    quarterly, quarter_rows = _random_quarters(rng, annual.rows)
+    content = (export_csv if fmt == "csv" else export_xlsx)(annual, quarterly)
+
+    plan = _qparse(content, name=f"f.{fmt}")
+
+    assert plan_import(plan, [*own, *quarter_rows]).changes == []
+    again = plan_import(plan, [])
+    stored_back = [r for rows in again.rows.values() for r in rows if r.fiscal_period != "FY"]
+    assert sorted((r.code, r.fiscal_year, r.fiscal_period) for r in stored_back) == sorted(
+        (r.code, r.fiscal_year, r.fiscal_period) for r in quarter_rows
+    )

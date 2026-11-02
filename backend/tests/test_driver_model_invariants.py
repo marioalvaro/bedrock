@@ -12,9 +12,10 @@ import pytest
 
 from bedrock.forecast import integrity
 from bedrock.forecast.engines.driver import DriverModel, ForecastStatements, Horizon
-from bedrock.forecast.errors import ForecastIntegrityError
+from bedrock.forecast.errors import ForecastIntegrityError, ForecastUnavailable
 from bedrock.forecast.history import FLAT, ScenarioSettings
 from bedrock.forecast.integrity import IntegrityCheck
+from bedrock.forecast.resolve import DriverRow, resolve_drivers
 from tests.forecast_data import resolved
 from tests.test_driver_model import DRIVERS_2026, annual_company, quarterly_company
 
@@ -166,3 +167,79 @@ def test_a_failing_check_raises_an_integrity_error(monkeypatch: pytest.MonkeyPat
             Horizon(1, 4),
             ScenarioSettings("growth"),
         )
+
+
+QUARTER_CODES = [
+    "revenue_growth",
+    "gross_margin",
+    "rnd_pct_revenue",
+    "sga_pct_revenue",
+    "d_and_a_pct_revenue",
+    "interest_rate",
+    "tax_rate",
+    "nci_share",
+    "receivable_days",
+    "capex_pct_revenue",
+    "debt_issued",
+    "debt_repaid",
+    "min_cash",
+    "buybacks",
+    "dividend_payout",
+    "share_change",
+]
+
+
+def random_quarter_rows(rng: random.Random, is_base: bool) -> list[DriverRow]:
+    """Random quarter rows (values, and offsets on a scenario) in the span of `quarterly_company`
+    (Q3-Q4 FY2026 and Q1-Q4 FY2027 for 6 quarters), inside every driver's bounds."""
+    rows = []
+    span = [(2026, "Q3"), (2026, "Q4"), (2027, "Q1"), (2027, "Q2"), (2027, "Q3"), (2027, "Q4")]
+    for year, period in span:
+        for code in QUARTER_CODES:
+            if rng.random() > 0.2:
+                continue
+            kind = "value" if is_base or rng.random() < 0.5 else "offset"
+            draw = random_drivers(rng)[code]
+            value = draw if isinstance(draw, Decimal) else D(30)
+            if kind == "offset":
+                value = value / 10 if code in ("receivable_days", "min_cash") else value / 50
+            rows.append(DriverRow(code, year, kind, value, period))  # type: ignore[arg-type]
+    return rows
+
+
+def test_random_quarter_drivers_keep_every_invariant() -> None:
+    rng = random.Random(20261101)
+    history = quarterly_company()
+    seen = {"quarter_revenue": 0, "quarter_flow": 0, "warned": 0}
+    for _ in range(CASES // 2):
+        is_base = rng.random() < 0.4
+        year_rows = {y: random_drivers(rng) for y in (2026, 2027, 2028)}
+        defaults = {
+            code: value if isinstance(value, Decimal) or value is FLAT else D(value)
+            for code, value in year_rows[2026].items()
+        }
+        own = [
+            DriverRow(code, year, "value", value)
+            for year, drivers in year_rows.items()
+            for code, value in drivers.items()
+            if isinstance(value, Decimal) and rng.random() < 0.5
+        ]
+        quarter_rows = random_quarter_rows(rng, is_base)
+        base = [r for r in own if r.fiscal_period == "FY"]
+        try:
+            drivers = resolve_drivers(
+                base if not is_base else [*own, *quarter_rows],
+                [*own, *quarter_rows] if is_base else [*own, *quarter_rows],
+                defaults,
+                [2026, 2027, 2028],
+                is_base,
+            )
+            out = DriverModel().run(history, drivers, Horizon(3, 6), ScenarioSettings("growth"))
+        except ForecastUnavailable:
+            continue  # a random offset pushed a value out of bounds: the model refuses, by design
+        assert all(c.ok for c in out.integrity)
+        assert_invariants(out)
+        seen["quarter_revenue"] += any(r.code == "revenue_growth" for r in quarter_rows)
+        seen["quarter_flow"] += any(r.code in ("buybacks", "debt_issued") for r in quarter_rows)
+        seen["warned"] += any("built from its quarters" in w for w in out.warnings)
+    assert all(count > 20 for count in seen.values()), seen

@@ -116,12 +116,18 @@ def test_export_csv_and_xlsx_with_the_file_name(aapl_client: TestClient) -> None
         assert f'filename="AAPL-Main-Bull-drivers.{fmt}"' in response.headers["content-disposition"]
 
     rows = list(csv.reader(io.StringIO(_export(aapl_client, main, "bull", "csv").decode())))
-    assert rows[0] == ["driver_code", "label", "unit", "kind"] + [
-        f"FY{y}" for y in grid["forecast_years"]
-    ]
+    # the years, then the forecast quarters (checked in the quarter tests below)
+    assert rows[0][: 4 + len(grid["forecast_years"])] == [
+        "driver_code",
+        "label",
+        "unit",
+        "kind",
+    ] + [f"FY{y}" for y in grid["forecast_years"]]
+    assert all("Q" in c for c in rows[0][4 + len(grid["forecast_years"]) :])
     assert [r[0] for r in rows[1:]] == [r["code"] for r in grid["rows"]]
     growth = next(r for r in rows if r[0] == "revenue_growth")
-    assert growth[3:] == ["offset"] + ["0.03"] * len(grid["forecast_years"])
+    years = len(grid["forecast_years"])
+    assert growth[3 : 4 + years] == ["offset"] + ["0.03"] * years
     book = load_workbook(io.BytesIO(_export(aapl_client, main, "bull", "xlsx")))
     assert book.sheetnames == ["Drivers", "Resolved"]
 
@@ -179,6 +185,7 @@ def test_one_edited_cell_imports_as_exactly_that_change(aapl_client: TestClient,
     change = {
         "driver_code": "gross_margin",
         "fiscal_year": year,
+        "fiscal_period": "FY",
         "old": "0.01",
         "new": "0.02",
         "old_kind": "offset",
@@ -292,3 +299,114 @@ def test_an_unknown_case_is_422_on_import(aapl_client: TestClient) -> None:
     response = _import(aapl_client, main, "worst", b"x", "csv", dry_run=True)
 
     assert response.status_code == 422
+
+
+# --- quarter columns (docs/erd/forecasting.md "Quarterly drivers" -> Driver files) --------------
+
+
+def _qgrid(client: TestClient, scenario_id: int, case: str) -> dict[str, Any]:
+    return _ok(
+        client.get(f"{SCENARIOS}/{scenario_id}/cases/{case}/drivers", params={"freq": "quarterly"})
+    )
+
+
+def _put_quarter(
+    client: TestClient, scenario_id: int, case: str, code: str, kind: str, value: str
+) -> dict[str, Any]:
+    first = _qgrid(client, scenario_id, case)["forecast_periods"][0]
+    response = client.put(
+        f"{SCENARIOS}/{scenario_id}/cases/{case}/drivers",
+        json={
+            "rows": [
+                {
+                    "driver_code": code,
+                    "kind": kind,
+                    "freq": "quarterly",
+                    "values": [
+                        {
+                            "fiscal_year": first["fiscal_year"],
+                            "fiscal_period": first["fiscal_period"],
+                            "value": value,
+                        }
+                    ],
+                }
+            ]
+        },
+    )
+    return _ok(response)
+
+
+def test_the_export_has_a_column_per_forecast_quarter_holding_the_quarter_values(
+    aapl_client: TestClient,
+) -> None:
+    main = _main(aapl_client)
+    _put_quarter(aapl_client, main, "base", "tax_rate", "value", "0.3")
+    quarters = _qgrid(aapl_client, main, "base")["forecast_periods"]
+
+    rows = list(csv.reader(io.StringIO(_export(aapl_client, main, "base", "csv").decode())))
+
+    keys = [f"FY{p['fiscal_year']}{p['fiscal_period']}" for p in quarters]
+    assert rows[0][-len(keys) :] == keys
+    tax = next(r for r in rows if r[0] == "tax_rate")
+    assert tax[3] == "value"
+    assert tax[-len(keys) :] == ["0.3", *[""] * (len(keys) - 1)]
+    book = load_workbook(io.BytesIO(_export(aapl_client, main, "base", "xlsx")))
+    resolved = [r for r in book["Resolved"].iter_rows(values_only=True)]
+    assert any(str(c).endswith("Q4E source") for c in resolved[0] if c)
+
+
+@pytest.mark.parametrize("fmt", ["csv", "xlsx"])
+def test_a_file_with_quarter_values_imports_unchanged_and_one_edit_is_one_change(
+    aapl_client: TestClient, fmt: str
+) -> None:
+    main = _main(aapl_client)
+    _put_quarter(aapl_client, main, "bull", "gross_margin", "value", "0.5")
+    content = _export(aapl_client, main, "bull", fmt)
+
+    unchanged = _ok(_import(aapl_client, main, "bull", content, fmt, dry_run=True))
+    assert unchanged["changes"] == []
+
+    quarters = _qgrid(aapl_client, main, "bull")["forecast_periods"]
+    column = list(csv.reader(io.StringIO(_export(aapl_client, main, "bull", "csv").decode())))[
+        0
+    ].index(f"FY{quarters[1]['fiscal_year']}{quarters[1]['fiscal_period']}")
+    edited = (
+        _edit_csv(content, "gross_margin", column, "0.55")
+        if fmt == "csv"
+        else _edit_xlsx(content, "gross_margin", column, 0.55)
+    )
+    preview = _ok(_import(aapl_client, main, "bull", edited, fmt, dry_run=True))
+    assert preview["changes"] == [
+        {
+            "driver_code": "gross_margin",
+            "fiscal_year": quarters[1]["fiscal_year"],
+            "fiscal_period": quarters[1]["fiscal_period"],
+            "old": None,
+            "new": "0.55",
+            "old_kind": None,
+            "new_kind": "value",
+        }
+    ]
+
+    applied = _ok(_import(aapl_client, main, "bull", edited, fmt, dry_run=False))
+    assert applied["changes"] == preview["changes"]
+    row = next(r for r in _qgrid(aapl_client, main, "bull")["rows"] if r["code"] == "gross_margin")
+    assert row["own"][:2] == ["0.5", "0.55"]
+    again = _ok(_import(aapl_client, main, "bull", edited, fmt, dry_run=True))
+    assert again["changes"] == []
+
+
+def test_a_quarter_column_outside_the_span_is_a_located_error(aapl_client: TestClient) -> None:
+    main = _main(aapl_client)
+    content = _export(aapl_client, main, "bull", "csv")
+    rows = list(csv.reader(io.StringIO(content.decode())))
+    rows[0][-1] = "FY2099Q1"
+    out = io.StringIO()
+    csv.writer(out, lineterminator="\n").writerows(rows)
+
+    response = _import(aapl_client, main, "bull", out.getvalue().encode(), "csv", dry_run=True)
+
+    assert response.status_code == 422
+    (error,) = response.json()["errors"]
+    assert error["row"] == 1
+    assert error["message"].startswith("Column 'FY2099Q1' is not a forecast quarter")

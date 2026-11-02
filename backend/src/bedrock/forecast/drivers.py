@@ -1,7 +1,8 @@
 """The driver catalog (docs/erd/forecasting.md "Drivers (M4)"). Pure.
 
 Each driver has a history rule (how its value is read from an actual fiscal year), a fallback
-(what a forecast year gets when the history gives no default) and bounds. All drivers are annual.
+(what a forecast year gets when the history gives no default) and bounds. A year's driver also
+applies to its quarters, and every driver can be set for a single forecast quarter (M4 S7).
 """
 
 from collections.abc import Sequence
@@ -112,6 +113,10 @@ class DriverDef:
     fallback: Fallback
     bounds: Bounds
     methods: tuple[RevenueMethod, ...] = METHODS  # the revenue methods it applies to
+    # Can be set for a single forecast quarter. True for every driver today (user decision
+    # 2026-10-31: revenue is quarterly for every method); kept as data so the API and the grid ask
+    # the catalog rather than assume.
+    quarterly: bool = True
 
 
 GROWTH = Bounds(Decimal(-1), Decimal(10), low_open=True)
@@ -311,6 +316,16 @@ DRIVERS: tuple[DriverDef, ...] = (
     ),
 )
 _BY_CODE = {d.code: d for d in DRIVERS}
+# USD flows a year spreads over its quarters: a quarter with no value of its own takes a quarter
+# of the year's amount. `min_cash` is a floor at a period's end, not a flow.
+FLOW_AMOUNTS = frozenset({"debt_issued", "debt_repaid", "buybacks"})
+QUARTERS = ("Q1", "Q2", "Q3", "Q4")
+
+
+def quarter_share(code: str) -> Decimal:
+    """The part of a year's value a quarter takes when it has none of its own: 1/4 for a flow
+    amount, else 1."""
+    return Decimal("0.25") if code in FLOW_AMOUNTS else Decimal(1)
 
 
 def segment_code(series_id: int) -> str:

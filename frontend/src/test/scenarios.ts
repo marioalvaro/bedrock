@@ -56,8 +56,19 @@ export function driverGrid(overrides: Partial<DriverGridOut> = {}): DriverGridOu
   return {
     scenario_id: 1,
     case: "base",
+    freq: "annual",
     history_years: [2023, 2024, 2025],
     forecast_years: [2026, 2027],
+    history_periods: [2023, 2024, 2025].map((y) => ({
+      fiscal_year: y,
+      fiscal_period: "FY" as const,
+      label: `FY${y % 100}A`,
+    })),
+    forecast_periods: [2026, 2027].map((y) => ({
+      fiscal_year: y,
+      fiscal_period: "FY" as const,
+      label: `FY${y % 100}E`,
+    })),
     rows: [
       driverRow(),
       driverRow({
@@ -137,6 +148,7 @@ export function driverImport(overrides: Partial<DriverImportOut> = {}): DriverIm
       {
         driver_code: "revenue_growth",
         fiscal_year: 2027,
+        fiscal_period: "FY",
         old: "0.05",
         new: "0.08",
         old_kind: "value",
@@ -145,6 +157,7 @@ export function driverImport(overrides: Partial<DriverImportOut> = {}): DriverIm
       {
         driver_code: "gross_margin",
         fiscal_year: 2026,
+        fiscal_period: "FY",
         old: "0.47",
         new: null,
         old_kind: "value",

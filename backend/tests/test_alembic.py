@@ -1362,3 +1362,82 @@ def test_0011_downgrade_keeps_the_default_s_bull_and_bear_names_when_a_user_scen
     after = _new_state(database_url)
     assert after["rows"] == before  # Main's bull offsets are still Main's
     assert ("AAA", "Main") in after["scenarios"]  # type: ignore[operator]
+
+
+def _driver_row12(connection: Connection, case_id: int, **cols: object) -> int:
+    row = {
+        "case_id": case_id,
+        "driver_code": "gross_margin",
+        "fiscal_year": 2027,
+        "fiscal_period": "FY",
+        "kind": "value",
+        "value": "0.4",
+        "source": "manual",
+        "created_at": _NOW,
+        "updated_at": _NOW,
+        **cols,
+    }
+    return _insert(connection, "driver_value", **row)
+
+
+def _scenario_with_case(connection: Connection, ticker: str) -> int:
+    owner = _company(connection, ticker)
+    main = _scenario11(connection, owner, name="Main")
+    return _case(connection, main, "bull")
+
+
+def test_0012_allows_quarter_rows_and_still_rejects_other_periods(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        case_id = _scenario_with_case(connection, "AAA")
+        for quarter in ("Q1", "Q2", "Q3", "Q4"):
+            _driver_row12(connection, case_id, fiscal_period=quarter)
+    for bad in (
+        lambda c: _driver_row12(c, case_id, fiscal_period="Q5"),
+        lambda c: _driver_row12(c, case_id, fiscal_period="TTM"),
+        lambda c: _driver_row12(c, case_id, fiscal_period="Q1"),  # the same key twice
+    ):
+        with pytest.raises(IntegrityError), engine.begin() as connection:
+            bad(connection)
+
+
+def test_0012_downgrade_deletes_the_quarter_rows_and_keeps_the_year_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        case_id = _scenario_with_case(connection, "AAA")
+        _driver_row12(connection, case_id, fiscal_year=2027)
+        _driver_row12(connection, case_id, fiscal_year=2028)
+        _driver_row12(connection, case_id, fiscal_year=2027, fiscal_period="Q1")
+        _driver_row12(connection, case_id, fiscal_year=2027, fiscal_period="Q3")
+
+    _run_alembic(tmp_path, monkeypatch, ("downgrade", "0011"))
+    with engine.begin() as connection:
+        kept = connection.execute(
+            text("SELECT fiscal_year, fiscal_period FROM driver_value ORDER BY fiscal_year")
+        ).all()
+        assert [tuple(r) for r in kept] == [(2027, "FY"), (2028, "FY")]
+        with pytest.raises(IntegrityError):  # the FY-only check is back
+            _driver_row12(connection, case_id, fiscal_period="Q1")
+
+
+def test_0012_up_again_after_the_downgrade_keeps_the_year_rows_and_the_cascade(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        case_id = _scenario_with_case(connection, "AAA")
+        _driver_row12(connection, case_id)
+    _run_alembic(tmp_path, monkeypatch, ("downgrade", "0011"), ("upgrade", "head"))
+    with engine.begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+        _driver_row12(connection, case_id, fiscal_period="Q2")
+        assert connection.execute(text("SELECT count(*) FROM driver_value")).scalar() == 2
+        connection.execute(text("DELETE FROM scenario_case WHERE id = :id"), {"id": case_id})
+        assert connection.execute(text("SELECT count(*) FROM driver_value")).scalar() == 0

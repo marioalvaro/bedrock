@@ -82,15 +82,19 @@ def add_rows(session: Session, rows: Iterable[DriverValue]) -> None:
     session.flush()
 
 
-def delete_rows(session: Session, case_id: int, codes: Collection[str]) -> None:
-    """Deletes every row of the given drivers of the case, and flushes (no commit)."""
+def delete_rows(
+    session: Session, case_id: int, codes: Collection[str], periods: Collection[str] | None = None
+) -> None:
+    """Deletes the rows of the given drivers of the case, of every fiscal period or only of
+    `periods` (`FY`, `Q1`..), and flushes (no commit)."""
     if not codes:
         return
-    session.execute(
-        delete(DriverValue).where(
-            DriverValue.case_id == case_id, DriverValue.driver_code.in_(codes)
-        )
+    stmt = delete(DriverValue).where(
+        DriverValue.case_id == case_id, DriverValue.driver_code.in_(codes)
     )
+    if periods is not None:
+        stmt = stmt.where(DriverValue.fiscal_period.in_(periods))
+    session.execute(stmt)
     session.flush()
 
 

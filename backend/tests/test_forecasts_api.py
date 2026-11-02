@@ -356,3 +356,60 @@ def test_compare_lists_a_repeated_code_once(aapl_client: TestClient) -> None:
     body = _ok(_compare(aapl_client, freq="annual", codes="revenue,cash,revenue"))
 
     assert [c["code"] for c in body["codes"]] == ["revenue", "cash"]
+
+
+def test_a_quarter_override_changes_that_quarter_and_its_year_only(
+    aapl_client: TestClient,
+) -> None:
+    scenario_id = _main(aapl_client)
+    url = f"{_scenarios_url('AAPL')}/{scenario_id}/cases/bull"
+    plain = _ok(_forecast(aapl_client, scenario_id, "bull", "IS", "quarterly"))
+    quarters = [p for p in plain["periods"] if p["is_forecast"]]
+    first = quarters[0]
+    put = aapl_client.put(
+        f"{url}/drivers",
+        json={
+            "rows": [
+                {
+                    "driver_code": "gross_margin",
+                    "kind": "value",
+                    "freq": "quarterly",
+                    "values": [
+                        {
+                            "fiscal_year": first["fiscal_year"],
+                            "fiscal_period": first["fiscal_period"],
+                            "value": "0.9",
+                        }
+                    ],
+                }
+            ]
+        },
+    )
+    assert put.status_code == 200, put.text
+
+    changed = _ok(_forecast(aapl_client, scenario_id, "bull", "IS", "quarterly"))
+
+    assert all(c["ok"] for c in changed["integrity"])
+    before = dict(
+        zip(
+            (p["key"] for p in plain["periods"]), _row(plain, "gross_profit")["values"], strict=True
+        )
+    )
+    after = dict(
+        zip(
+            (p["key"] for p in changed["periods"]),
+            _row(changed, "gross_profit")["values"],
+            strict=True,
+        )
+    )
+    revenue = dict(
+        zip((p["key"] for p in changed["periods"]), _row(changed, "revenue")["values"], strict=True)
+    )
+    differing = [k for k in after if after[k] != before[k]]
+    assert differing[0] == first["key"]
+    assert D(after[first["key"]]) == D(revenue[first["key"]]) * D("0.9")
+    # the quarters after it are untouched, as the annual model carries no margin forward
+    other_quarters = [p["key"] for p in quarters[1:] if p["fiscal_year"] == first["fiscal_year"]]
+    assert all(after[k] == before[k] for k in other_quarters)
+    annual = _ok(_forecast(aapl_client, scenario_id, "bull", "IS", "annual"))
+    assert all(c["ok"] for c in annual["integrity"])

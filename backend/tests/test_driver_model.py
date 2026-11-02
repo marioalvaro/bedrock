@@ -8,17 +8,18 @@ from typing import Any
 
 import pytest
 
-from bedrock.forecast.drivers import drivers_for
+from bedrock.forecast.drivers import DriverKind, drivers_for
 from bedrock.forecast.engines.driver import DriverModel, ForecastStatements, Horizon
 from bedrock.forecast.errors import ForecastUnavailable
 from bedrock.forecast.history import (
     FLAT,
+    Default,
     ForecastHistory,
     ScenarioSettings,
     SeriesHistory,
     scenario_drivers,
 )
-from bedrock.forecast.resolve import Resolved
+from bedrock.forecast.resolve import DriverRow, Resolved, resolve_drivers
 from tests.forecast_data import make_history, resolved
 
 D = Decimal
@@ -547,3 +548,192 @@ def test_quarters_without_a_fiscal_year_are_unavailable() -> None:
     history = make_history({}, {"FY2026Q1": {**OPENING_IS, **OPENING_BS}})
     with pytest.raises(ForecastUnavailable, match="^No fiscal year to start from$"):
         DriverModel().run(history, resolved({2026: DRIVERS_2026}), Horizon(1, 4), GROWTH)
+
+
+# --- quarter drivers (docs/erd/forecasting.md "Quarterly drivers" -> Model) ---------------------
+
+
+def quarter_run(
+    own: list[DriverRow],
+    base: list[DriverRow] | None = None,
+    history: ForecastHistory | None = None,
+    settings: ScenarioSettings = GROWTH,
+    extra: Mapping[str, str] | None = None,
+    is_base: bool = True,
+) -> ForecastStatements:
+    """FY2026 Q3-Q4 (the opening is Q2 FY2026) and FY2027 on the DRIVERS_2026 defaults, with the
+    given quarter rows (and `extra` default drivers)."""
+    history = history or quarterly_company()
+    defaults: dict[str, Default] = {
+        code: D(str(value)) for code, value in {**DRIVERS_2026, **(extra or {})}.items()
+    }
+    if settings.revenue_method != "growth":
+        defaults = {d.code: defaults[d.code] for d in scenario_drivers(history, settings)}
+    years = [2026, 2027]
+    drivers = resolve_drivers(base or [], own, defaults, years, is_base)
+    return DriverModel().run(history, drivers, Horizon(2, 2), settings)
+
+
+NEAR = D("1E-20")  # Decimal division rounds at 28 digits
+
+
+def near(value: Decimal | None, expected: Decimal) -> bool:
+    return value is not None and abs(value - expected) < NEAR
+
+
+def qrow(
+    code: str, period: str, value: str, year: int = 2026, kind: DriverKind = "value"
+) -> DriverRow:
+    return DriverRow(code, year, kind, D(value), period)
+
+
+def test_quarter_rows_absent_gives_the_same_statements_as_before() -> None:
+    explicit = run(quarterly_company(), {2026: DRIVERS_2026, 2027: DRIVERS_2026}, quarters=2)
+    assert quarter_run([]).values == explicit.values
+
+
+def test_a_quarter_revenue_growth_grows_the_same_quarter_last_year_by_it() -> None:
+    out = quarter_run([qrow("revenue_growth", "Q3", "0.20")])
+    assert out.get("revenue", "FY2026Q3") == D(300)  # 250 × 1.20
+    assert out.get("revenue", "FY2026Q4") == D(330)  # 300 × 1.10, the year's growth
+    assert out.get("revenue", "FY2026") == D(1120)  # 220 + 270 + 300 + 330
+    assert out.get("revenue", "FY2027") == D(1120) * D("1.10")
+    assert all(c.ok for c in out.integrity)
+    assert (
+        "FY2026 is built from its quarters: its quarter drivers, not the annual revenue_growth, "
+        "set its revenue"
+    ) in out.warnings
+
+
+def test_a_quarter_value_equal_to_its_year_makes_no_warning() -> None:
+    out = quarter_run([qrow("revenue_growth", "Q3", "0.10"), qrow("gross_margin", "Q3", "0.1")])
+    assert not [w for w in out.warnings if "built from its quarters" in w]
+
+
+def test_a_quarter_buyback_replaces_a_quarter_of_the_year_in_that_quarter_only() -> None:
+    out = quarter_run([qrow("buybacks", "Q3", "100")])
+    assert out.get("buybacks", "FY2026Q3") == D(-100)
+    assert out.get("buybacks", "FY2026Q4") == D(-10)  # the year's 40 / 4
+    assert out.get("buybacks", "FY2026") == D(-110)  # the quarters' sum, not the annual driver
+    assert out.get("buybacks", "FY2027") == D(-40)
+    # RE rolls forward with the quarter's amount: Q3 opening RE + NI common - dividends - 100
+    q3 = out.get("retained_earnings", "FY2026Q3")
+    rolled = (
+        D(250)
+        + (out.get("net_income_common", "FY2026Q3") or 0)
+        + (out.get("dividends_paid", "FY2026Q3") or 0)
+        - 100
+    )
+    assert q3 is not None and abs(q3 - rolled) < NEAR
+    assert any("buybacks" in w and "built from its quarters" in w for w in out.warnings)
+    assert all(c.ok for c in out.integrity)
+
+
+def test_a_quarter_gross_margin_moves_that_quarter_only() -> None:
+    out = quarter_run([qrow("gross_margin", "Q4", "0.30")])
+    assert out.get("cost_of_revenue", "FY2026Q3") == D(275) * D("0.60")  # the year's 0.40
+    assert out.get("cost_of_revenue", "FY2026Q4") == D(330) * D("0.70")
+    assert not [w for w in out.warnings if "built from its quarters" in w]  # not a revenue driver
+
+
+def test_a_quarter_share_change_is_over_the_same_quarter_last_year() -> None:
+    out = quarter_run([qrow("share_change", "Q3", "-0.10")])
+    assert out.get("shares_diluted", "FY2026Q3") == D(104) * D("0.90")
+    assert out.get("shares_diluted", "FY2026Q4") == D(106) * D("0.98")
+
+
+def test_a_quarter_tax_rate_and_interest_rate_apply_to_that_quarter() -> None:
+    out = quarter_run([qrow("interest_rate", "Q4", "0.10")])
+    # Q4: 92 days on its opening debt; Q3 keeps the year's 5%
+    q3_debt = out.get("total_debt", "FY2026Q3")
+    assert q3_debt is not None
+    assert out.get("interest_expense", "FY2026Q3") == D("0.05") * 240 * 92 / 365
+    assert out.get("interest_expense", "FY2026Q4") == D("0.10") * q3_debt * 92 / 365
+
+
+def test_an_offset_scenario_with_an_annual_offset_forecasts_as_the_year_did() -> None:
+    base = quarter_run([])
+    bull = quarter_run(
+        [
+            DriverRow("gross_margin", 2026, "offset", D("0.03")),
+            DriverRow("gross_margin", 2027, "offset", D("0.03")),
+        ],
+        is_base=False,
+    )
+    assert bull.get("gross_profit", "FY2026Q3") == D(275) * D("0.43")  # 0.40 + 0.03
+    assert (base.get("revenue", "FY2026Q3"), base.get("revenue", "FY2027")) == (
+        bull.get("revenue", "FY2026Q3"),
+        bull.get("revenue", "FY2027"),
+    )
+
+
+def quarterly_series(q3: tuple[int | None, int | None]) -> list[SeriesHistory]:
+    """S1 600 and S2 300 in FY2025 (u = 0.1), with their Q3 FY2025 values."""
+    values = [(600, q3[0]), (300, q3[1])]
+    return [
+        SeriesHistory(
+            i + 1,
+            "business",
+            f"S{i + 1}",
+            "revenue",
+            "USD",
+            {2025: D(fy)},
+            {} if q is None else {(2025, "Q3"): D(q)},
+        )
+        for i, (fy, q) in enumerate(values)
+    ]
+
+
+def test_a_quarter_segment_growth_grows_the_segment_in_that_quarter() -> None:
+    history = replace(quarterly_company(), segment_series=tuple(quarterly_series((100, 50))))
+    settings = ScenarioSettings("segments", segment_dimension="business")
+    extra = {"segment_growth:1": "0.10", "segment_growth:2": "-0.10"}
+    plain = quarter_run([], history=history, settings=settings, extra=extra)
+    # FY: (600 × 1.10 + 300 × 0.90) / 900 = 930 / 900 for every quarter with no row
+    assert near(plain.get("revenue", "FY2026Q3"), D(250) * D(930) / D(900))
+    out = quarter_run(
+        [qrow("segment_growth:1", "Q3", "0.30")], history=history, settings=settings, extra=extra
+    )
+    # Q3: (100 × 1.30 + 50 × 0.90) / 150 = 175 / 150 on the company's Q3 FY2025 revenue 250
+    assert near(out.get("revenue", "FY2026Q3"), D(250) * D(175) / D(150))
+    assert near(out.get("revenue", "FY2026Q4"), D(300) * D(930) / D(900))
+    assert all(c.ok for c in out.integrity)
+
+
+def test_a_quarter_segment_override_needs_the_segments_quarter_last_year() -> None:
+    history = replace(quarterly_company(), segment_series=tuple(quarterly_series((100, None))))
+    settings = ScenarioSettings("segments", segment_dimension="business")
+    extra = {"segment_growth:1": "0.10", "segment_growth:2": "-0.10"}
+    with pytest.raises(ForecastUnavailable, match="^Segment S2 has no Q3 FY25 value$"):
+        quarter_run(
+            [qrow("segment_growth:1", "Q3", "0.30")],
+            history=history,
+            settings=settings,
+            extra=extra,
+        )
+    # without an override no quarterly segment value is needed
+    out = quarter_run([], history=history, settings=settings, extra=extra)
+    assert near(out.get("revenue", "FY2026Q3"), D(250) * D(930) / D(900))
+
+
+def test_a_quarter_volume_and_price_growth_grow_the_quarter() -> None:
+    kpis = [series(1, "kpi", "units", "count", 40), series(2, "kpi", "asp", "USD_per_unit", 20)]
+    history = replace(quarterly_company(), segment_series=tuple(kpis))
+    settings = ScenarioSettings("volume_price", volume_kpi="units", price_kpi="asp")
+    extra = {"volume_growth": "0.10", "price_growth": "0"}
+    out = quarter_run(
+        [qrow("volume_growth", "Q3", "0.30"), qrow("price_growth", "Q3", "0.05")],
+        history=history,
+        settings=settings,
+        extra=extra,
+    )
+    assert out.get("revenue", "FY2026Q3") == D(250) * D("1.30") * D("1.05")
+    assert out.get("revenue", "FY2026Q4") == D(300) * D("1.10")
+    assert all(c.ok for c in out.integrity)
+
+
+def test_a_quarter_value_out_of_bounds_is_unavailable_and_names_the_quarter() -> None:
+    with pytest.raises(
+        ForecastUnavailable, match=r"gross_margin must be in \[-1, 1\] \(Q3 FY2026\)"
+    ):
+        quarter_run([qrow("gross_margin", "Q3", "1.5")])

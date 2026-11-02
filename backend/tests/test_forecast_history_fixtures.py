@@ -7,8 +7,11 @@ import pytest
 from bedrock.forecast.drivers import DRIVERS, Follows
 from bedrock.forecast.history import (
     ScenarioSettings,
+    StatementValues,
     default_drivers,
     historical_drivers,
+    historical_quarter_drivers,
+    history_quarters,
     history_years,
 )
 from tests.forecast_data import fixture_history
@@ -62,3 +65,26 @@ def test_history_is_the_last_five_fiscal_years(ticker: str) -> None:
         years[-1],
         years[-1] + 1,
     )
+
+
+@pytest.mark.parametrize("ticker", ["AAPL", "COST"])
+def test_quarterly_history_of_the_recorded_companies_follows_the_rules(ticker: str) -> None:
+    history = fixture_history(ticker)
+    quarters = history_quarters(history)
+    assert len(quarters) == 8
+    assert {p.fiscal_period for p in quarters} == {"Q1", "Q2", "Q3", "Q4"}  # derived Q4 included
+    got = historical_quarter_drivers(history, GROWTH)
+    cells = StatementValues(history.quarterly)
+    for period in quarters:
+        key = period.key
+        year_ago = f"FY{period.fiscal_year - 1}{period.fiscal_period}"
+        revenue, before = cells.get("revenue", key), cells.get("revenue", year_ago)
+        assert revenue is not None and before is not None
+        assert got[("revenue_growth", key)] == revenue / before - 1
+        profit = cells.get("gross_profit", key)
+        assert profit is not None
+        assert got[("gross_margin", key)] == profit / revenue
+        interest = got[("interest_rate", key)]
+        assert interest is None or Decimal(0) <= interest < Decimal("0.2")  # an annual rate
+    # nothing is read past the opening quarter
+    assert {key for (_, key) in got} == {p.key for p in quarters}

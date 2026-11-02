@@ -815,6 +815,10 @@ export type DriverChangeOut = {
      */
     driver_code: string;
     /**
+     * Fiscal Period
+     */
+    fiscal_period: 'FY' | 'Q1' | 'Q2' | 'Q3' | 'Q4';
+    /**
      * Fiscal Year
      */
     fiscal_year: number;
@@ -874,6 +878,11 @@ export type DriverFileIssueOut = {
 
 /**
  * DriverGridOut
+ *
+ * `history_years` / `forecast_years` are the annual years in both frequencies; the rows'
+ * `history` is aligned with `history_periods` and `values` / `sources` / `own` with
+ * `forecast_periods` (the years for `annual`, the actual and the span's quarters for
+ * `quarterly`).
  */
 export type DriverGridOut = {
     /**
@@ -881,9 +890,21 @@ export type DriverGridOut = {
      */
     case: 'base' | 'bull' | 'bear';
     /**
+     * Forecast Periods
+     */
+    forecast_periods: Array<GridPeriodOut>;
+    /**
      * Forecast Years
      */
     forecast_years: Array<number>;
+    /**
+     * Freq
+     */
+    freq: 'annual' | 'quarterly';
+    /**
+     * History Periods
+     */
+    history_periods: Array<GridPeriodOut>;
     /**
      * History Years
      */
@@ -928,6 +949,10 @@ export type DriverRowIn = {
      * Driver Code
      */
     driver_code: string;
+    /**
+     * Freq
+     */
+    freq?: 'annual' | 'quarterly';
     /**
      * Kind
      */
@@ -974,7 +999,7 @@ export type DriverRowOut = {
     /**
      * Sources
      */
-    sources: Array<'own' | 'offset' | 'base' | 'default' | null>;
+    sources: Array<'own' | 'offset' | 'base' | 'default' | 'year' | null>;
     /**
      * Unit
      */
@@ -990,6 +1015,10 @@ export type DriverRowOut = {
  */
 export type DriverYearIn = {
     /**
+     * Fiscal Period
+     */
+    fiscal_period?: 'FY' | 'Q1' | 'Q2' | 'Q3' | 'Q4';
+    /**
      * Fiscal Year
      */
     fiscal_year: number;
@@ -1002,7 +1031,7 @@ export type DriverYearIn = {
 /**
  * DriversIn
  *
- * Each row replaces every stored row of its driver in the case.
+ * Each row replaces the stored rows of its driver of its frequency in the case.
  */
 export type DriversIn = {
     /**
@@ -1210,6 +1239,26 @@ export type ForecastOut = {
      * Warnings
      */
     warnings: Array<string>;
+};
+
+/**
+ * GridPeriodOut
+ *
+ * A column of the grid: a fiscal year (`FY`) or a quarter (`Q1`..`Q4`) with its label.
+ */
+export type GridPeriodOut = {
+    /**
+     * Fiscal Period
+     */
+    fiscal_period: 'FY' | 'Q1' | 'Q2' | 'Q3' | 'Q4';
+    /**
+     * Fiscal Year
+     */
+    fiscal_year: number;
+    /**
+     * Label
+     */
+    label: string;
 };
 
 /**
@@ -4683,7 +4732,12 @@ export type GetDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversGet
          */
         ticker: string;
     };
-    query?: never;
+    query?: {
+        /**
+         * Freq
+         */
+        freq?: 'annual' | 'quarterly';
+    };
     url: '/api/v1/companies/{ticker}/scenarios/{scenario_id}/cases/{case}/drivers';
 };
 

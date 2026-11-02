@@ -100,6 +100,7 @@ describe("DriverImportSheet", () => {
             {
               driver_code: "revenue_growth",
               fiscal_year: 2026,
+              fiscal_period: "FY",
               old: "0.03",
               new: "0.04",
               old_kind: "offset",
@@ -108,6 +109,7 @@ describe("DriverImportSheet", () => {
             {
               driver_code: "buybacks",
               fiscal_year: 2027,
+              fiscal_period: "FY",
               old: null,
               new: "90000000000",
               old_kind: null,

@@ -77,10 +77,12 @@ def delete_scenario(
 def get_drivers(
     scenario_id: int,
     case: Case,
+    freq: Literal["annual", "quarterly"] = "annual",
     company: Company = Depends(followed_company),
     session: Session = Depends(get_session),
 ) -> DriverGridOut:
-    return DriverGridOut.from_grid(service.driver_grid(session, company, scenario_id, case))
+    grid = service.driver_grid(session, company, scenario_id, case, freq)
+    return DriverGridOut.from_grid(grid)
 
 
 @router.put("/companies/{ticker}/scenarios/{scenario_id}/cases/{case}/drivers")
