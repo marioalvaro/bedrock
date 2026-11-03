@@ -18,7 +18,23 @@ const FREQS: { value: ForecastFreq; label: string }[] = [
   { value: "quarterly", label: "Quarterly" },
 ];
 
-// One line per case (Base, Bull, Bear), x = the forecast periods. A case that cannot run keeps an
+type CaseKey = CompareOut["cases"][number]["case"];
+
+// Bull, Base, Bear, each in the color it reads as: green up, blue neutral, red down.
+const CASE_STYLE: Record<CaseKey, { color: string; text: string }> = {
+  bull: { color: "--positive", text: "text-positive" },
+  base: { color: "--chart-1", text: "text-chart-1" },
+  bear: { color: "--negative", text: "text-negative" },
+};
+const CASE_ORDER: CaseKey[] = ["bull", "base", "bear"];
+const CASE_COLORS = CASE_ORDER.map((key) => CASE_STYLE[key].color);
+
+function inCaseOrder(table: CompareOut): CompareOut {
+  const cases = CASE_ORDER.flatMap((key) => table.cases.filter((item) => item.case === key));
+  return { ...table, cases };
+}
+
+// One line per case (Bull, Base, Bear), x = the forecast periods. A case that cannot run keeps an
 // empty series, so each case keeps its color (colors go by series position).
 function chartOption(table: CompareOut, code: string, unit: string, scale: Scale): EChartsOption {
   return {
@@ -48,7 +64,7 @@ interface ScenarioCompareProps {
 }
 
 /**
- * The scenario's Base, Bull and Bear side by side over the forecast periods: a line chart of one
+ * The scenario's Bull, Base and Bear side by side over the forecast periods: a line chart of one
  * metric and a table of every compared metric. A case that cannot run shows its reason instead of
  * values.
  */
@@ -57,7 +73,7 @@ export function ScenarioCompare({ ticker, scenarioId }: ScenarioCompareProps) {
   const [freq, setFreq] = useState<ForecastFreq>("annual");
   const [picked, setPicked] = useState(DEFAULT_METRIC);
   const {
-    data: table,
+    data: fetched,
     isPending,
     isError,
   } = useQuery({
@@ -65,6 +81,7 @@ export function ScenarioCompare({ ticker, scenarioId }: ScenarioCompareProps) {
     placeholderData: keepPreviousData, // the chart stays mounted while the other frequency loads
   });
 
+  const table = useMemo(() => (fetched ? inCaseOrder(fetched) : undefined), [fetched]);
   const metric =
     table?.codes.find((code) => code.code === picked) ??
     table?.codes.find((code) => code.code === DEFAULT_METRIC) ??
@@ -133,7 +150,7 @@ export function ScenarioCompare({ ticker, scenarioId }: ScenarioCompareProps) {
         <>
           {option && metric && (
             <div className="px-4">
-              <Chart option={option} ariaLabel={`${metric.label} by case`} />
+              <Chart option={option} ariaLabel={`${metric.label} by case`} colors={CASE_COLORS} />
             </div>
           )}
           <div className="overflow-x-auto px-4 pb-4">
@@ -161,7 +178,11 @@ export function ScenarioCompare({ ticker, scenarioId }: ScenarioCompareProps) {
                     </tr>
                     {table.cases.map((item) => (
                       <tr key={item.case}>
-                        <td className="py-0.5 pr-3 pl-3 whitespace-nowrap">{item.label}</td>
+                        <td
+                          className={`py-0.5 pr-3 pl-3 whitespace-nowrap ${CASE_STYLE[item.case].text}`}
+                        >
+                          {item.label}
+                        </td>
                         {item.error !== null ? (
                           <td
                             colSpan={table.periods.length}

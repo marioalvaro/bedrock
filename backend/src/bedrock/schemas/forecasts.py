@@ -26,6 +26,7 @@ class ForecastOut(StatementOut):
     case: Case
     warnings: list[str]
     integrity: list[IntegrityOut]
+    built_from_quarters: list[int]  # fiscal years the scenario sets by quarter
 
     @classmethod
     def from_forecast(
@@ -53,6 +54,7 @@ class ForecastOut(StatementOut):
             scenario_id=scenario_id,
             case=case,
             warnings=forecast.warnings,
+            built_from_quarters=forecast.built_from_quarters,
             integrity=[
                 IntegrityOut(
                     period_key=c.period_key,
@@ -84,6 +86,7 @@ class CompareOut(BaseModel):
     periods: list[PeriodOut]  # forecast periods only
     codes: list[CompareCodeOut]
     cases: list[ComparedCaseOut]  # base, bull, bear
+    built_from_quarters: list[int]  # fiscal years the scenario sets by quarter
 
     @classmethod
     def from_comparison(cls, comparison: Comparison) -> "CompareOut":
@@ -101,4 +104,5 @@ class CompareOut(BaseModel):
                 )
                 for c in comparison.cases
             ],
+            built_from_quarters=comparison.built_from_quarters,
         )

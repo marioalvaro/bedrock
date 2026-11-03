@@ -28,9 +28,9 @@ from bedrock.forecast.drivers import (
     driver_def,
     segment_code,
 )
-from bedrock.forecast.engines.driver import FORECAST_HORIZON, forecast_quarters
+from bedrock.forecast.engines.driver import FORECAST_HORIZON, DriverModel, forecast_quarters
 from bedrock.forecast.errors import ForecastUnavailable
-from bedrock.forecast.grid import DriverGrid, GridPeriod, GridRow
+from bedrock.forecast.grid import DriverGrid, GridPeriod, GridRow, YearMode
 from bedrock.forecast.history import (
     FLAT,
     ForecastHistory,
@@ -44,10 +44,18 @@ from bedrock.forecast.history import (
     history_years,
     scenario_drivers,
 )
+from bedrock.forecast.modes import fill_quarters
 from bedrock.forecast.resolve import DriverRow, ResolvedDrivers, resolve_drivers
+from bedrock.forecast.rollup import rollup
 from bedrock.models.company import Company
 from bedrock.models.driver_value import DriverValue
-from bedrock.models.scenario import CASES, SEGMENT_DIMENSIONS, Scenario, ScenarioCase
+from bedrock.models.scenario import (
+    CASES,
+    SEGMENT_DIMENSIONS,
+    YEAR_MODES,
+    Scenario,
+    ScenarioCase,
+)
 from bedrock.repositories import scenarios as repo
 from bedrock.repositories import segments as segments_repo
 from bedrock.services.errors import (
@@ -68,6 +76,8 @@ __all__ = [
     "GridRow",
     "ScenarioDrivers",
     "SettingsInput",
+    "YearMode",
+    "built_from_quarters",
     "create_scenario",
     "delete_scenario",
     "driver_grid",
@@ -81,7 +91,9 @@ __all__ = [
     "put_drivers",
     "reset_case",
     "resolve_case",
+    "set_year_mode",
     "update_scenario",
+    "year_modes",
 ]
 
 NAME_LIMIT = 60
@@ -293,9 +305,118 @@ def reset_case(
     repo.add_rows(
         session, _case_rows(kase, _default_rows(case, settings_of(scenario), history), stamp)
     )
+    for year in sorted(repo.quarterly_years(session, scenario.id)):
+        repo.add_rows(session, _fill_year(session, scenario, case, kase, history, year, stamp))
     kase.updated_at = scenario.updated_at = stamp
     session.commit()
     return _grid(session, scenario, case, history)
+
+
+def year_modes(session: Session, company: Company, scenario_id: int) -> list[YearMode]:
+    """How each forecast year of the scenario is set, in year order. Raises ScenarioNotFound and
+    ForecastUnavailable (no opening balance sheet)."""
+    scenario = get_scenario(session, company, scenario_id)
+    return _year_modes(session, scenario, load_history(session, company))
+
+
+def _year_modes(session: Session, scenario: Scenario, history: ForecastHistory) -> list[YearMode]:
+    years = forecast_years(history, FORECAST_HORIZON.years)
+    span = {y for y, _ in forecast_quarters(history)}
+    quarterly = repo.quarterly_years(session, scenario.id)
+    return [
+        YearMode(
+            y,
+            f"FY{y % 100:02d}E",
+            "quarterly" if y in quarterly and y in span else "annual",
+            y in span,
+        )
+        for y in years
+    ]
+
+
+def set_year_mode(
+    session: Session,
+    company: Company,
+    scenario_id: int,
+    fiscal_year: int,
+    mode: str,
+    now: datetime,
+) -> list[YearMode]:
+    """Sets a year of the quarterly span annual or by quarter, for the scenario's three cases at
+    once, and returns the scenario's modes. `quarterly` writes the year's quarter rows from what
+    each case resolves to today (`forecast/modes.py::fill_quarters`), so no forecast number
+    changes; `annual` deletes the year's quarter rows. Both are idempotent. Raises
+    ScenarioNotFound, InvalidScenario (mode, a year outside the forecast years or the span) and
+    ForecastUnavailable (no opening, or no quarterly history)."""
+    scenario = get_scenario(session, company, scenario_id)
+    if mode not in YEAR_MODES:
+        raise InvalidScenario("mode must be annual or quarterly")
+    history = load_history(session, company)
+    years = forecast_years(history, FORECAST_HORIZON.years)
+    if not history_quarters(history):
+        raise ForecastUnavailable("No quarterly history")
+    if fiscal_year not in years:
+        raise InvalidScenario(
+            f"FY{fiscal_year} is not a forecast year (FY{years[0]}-FY{years[-1]})"
+        )
+    if fiscal_year not in {y for y, _ in forecast_quarters(history)}:
+        raise InvalidScenario(f"FY{fiscal_year} is not in the quarterly span")
+    stamp = _naive_utc(now)
+    cases = repo.cases_of(session, scenario.id)
+    if mode == "quarterly":
+        # every case is resolved before the first write: the fills read the rows as they are now
+        fills = {
+            case: _fill_year(session, scenario, case, kase, history, fiscal_year, stamp)
+            for case, kase in cases.items()
+        }
+        for rows in fills.values():
+            repo.add_rows(session, rows)
+    else:
+        repo.delete_year_quarters(session, [k.id for k in cases.values()], fiscal_year)
+    repo.set_quarterly(session, scenario.id, fiscal_year, mode == "quarterly")
+    scenario.updated_at = stamp
+    for kase in cases.values():
+        kase.updated_at = stamp
+    session.commit()
+    return _year_modes(session, scenario, history)
+
+
+def built_from_quarters(
+    session: Session, scenario: Scenario, history: ForecastHistory
+) -> list[int]:
+    """The forecast years the scenario sets by quarter, in year order."""
+    return [m.fiscal_year for m in _year_modes(session, scenario, history) if m.mode == "quarterly"]
+
+
+def _fill_year(
+    session: Session,
+    scenario: Scenario,
+    case: str,
+    kase: ScenarioCase,
+    history: ForecastHistory,
+    year: int,
+    stamp: datetime,
+) -> list[DriverValue]:
+    """The quarter rows that fill the case's forecast quarters of `year` as it resolves now."""
+    drivers = resolve_case(session, scenario, case, history)
+    quarters = [q for y, q in forecast_quarters(history) if y == year]
+    filled = fill_quarters(
+        year, quarters, drivers.resolved, [_driver_row(r) for r in drivers.own], case == "base"
+    )
+    return [
+        DriverValue(
+            case_id=kase.id,
+            driver_code=r.code,
+            fiscal_year=r.fiscal_year,
+            fiscal_period=r.fiscal_period,
+            kind=r.kind,
+            value=r.value,
+            source="manual",
+            created_at=stamp,
+            updated_at=stamp,
+        )
+        for r in filled
+    ]
 
 
 def _default_scenario(session: Session, company: Company) -> Scenario:
@@ -533,6 +654,8 @@ def _grid(
     ]
     own = {(r.driver_code, r.fiscal_year, r.fiscal_period): r for r in drivers.own}
     kinds = {r.driver_code: r.kind for r in drivers.own}
+    modes = _year_modes(session, scenario, history)
+    figures = _rollup(history, drivers, [m.fiscal_year for m in modes if m.mode == "quarterly"])
     rows = []
     for d in scenario_drivers(history, drivers.settings):
         if freq == "quarterly" and not d.quarterly:
@@ -550,6 +673,7 @@ def _grid(
                 sources=[r.source for r in resolved],
                 own=[None if r is None else r.value for r in mine],
                 kind=kinds.get(d.code),  # type: ignore[arg-type]  # checked by the schema
+                rollup=[figures.get((d.code, y)) for y in years],
             )
         )
     warnings = list(drivers.resolved.warnings)
@@ -559,8 +683,33 @@ def _grid(
     ):
         warnings.append(f"Offsets on revenue_growth are not used by the {method} method")
     return DriverGrid(
-        scenario.id, case, past, years, rows, warnings, freq, history_periods, forecast_periods
+        scenario.id,
+        case,
+        past,
+        years,
+        rows,
+        warnings,
+        freq,
+        history_periods,
+        forecast_periods,
+        modes,
     )
+
+
+def _rollup(
+    history: ForecastHistory, drivers: ScenarioDrivers, years: Sequence[int]
+) -> dict[tuple[str, int], Decimal | None]:
+    """The annual figures of the years set by quarter (`forecast/rollup.py`), from the case's
+    forecast; none when it cannot run (the forecast tab says why)."""
+    if not years:
+        return {}
+    try:
+        statements = DriverModel().run(
+            history, drivers.resolved, FORECAST_HORIZON, drivers.settings
+        )
+    except ForecastUnavailable:
+        return {}
+    return rollup(history, drivers.settings, statements, drivers.resolved, years)
 
 
 def _quarter_label(year: int, quarter: str, suffix: str) -> str:
@@ -578,7 +727,9 @@ def put_drivers(
     """Each row replaces the stored rows of its driver of its frequency (annual: every year,
     stale ones included; quarterly: every quarter); its None values are not stored. A row that
     stores a value of a kind other than the driver's other-frequency rows drops those (one kind
-    per driver). All rows are checked before anything is written. Returns the case's grid, the
+    per driver). A year the scenario sets by quarter takes quarter values only (its annual rows stay
+    stored, untouched), a year it sets annually annual values only (docs "Year modes" → Write
+    rules). All rows are checked before anything is written. Returns the case's grid, the
     quarterly one when every row is quarterly. Raises ScenarioNotFound, InvalidScenario (case),
     InvalidDrivers and ForecastUnavailable (no opening, or a quarterly row with no quarterly
     history)."""
@@ -600,11 +751,71 @@ def put_drivers(
         stores[number] = bool(values)
         new.extend(values)
     stored = repo.list_rows(session, [kase.id])
+    quarterly_years = repo.quarterly_years(session, scenario.id)
+    _check_modes(rows, quarterly_years, span, stored)
     for number, row in enumerate(rows):
-        _drop_replaced(session, kase, row, stored, stores[number])
+        _drop_replaced(session, kase, row, stored, stores[number], quarterly_years)
     _replace_rows(session, scenario, kase, set(), new, stamp)
     every_quarter = bool(rows) and all(r.freq == "quarterly" for r in rows)
     return _grid(session, scenario, case, history, "quarterly" if every_quarter else "annual")
+
+
+def _check_modes(
+    rows: Sequence[DriverRowInput],
+    quarterly_years: Collection[int],
+    span: Sequence[tuple[int, str]],
+    stored: Sequence[DriverValue],
+) -> None:
+    """The write rules of the year modes: no annual value in a year set by quarter, no quarter
+    value in a year set annually, and a quarterly row gives every forecast quarter of each year
+    set by quarter a value (it replaces the driver's quarters, and a quarter cannot be cleared)."""
+    for row in rows:
+        code = row.driver_code
+        for year, value in row.values:
+            if value is not None and year in quarterly_years:
+                raise InvalidDrivers(f"FY{year} is set by quarter")
+        for year, _, value in row.quarters:
+            if value is not None and year not in quarterly_years:
+                raise InvalidDrivers(f"FY{year} is set annually; switch it to by quarter first")
+        if row.freq == "quarterly":
+            given = {(y, q): v for y, q, v in row.quarters}
+            for year, period in span:
+                if year not in quarterly_years:
+                    continue
+                if (year, period) not in given:
+                    raise InvalidDrivers(
+                        f"{period} FY{year} is missing for {code} (FY{year} is set by quarter)"
+                    )
+                if given[(year, period)] is None:
+                    raise InvalidDrivers(
+                        f"{period} FY{year} cannot be cleared (FY{year} is set by quarter)"
+                    )
+        elif any(v is not None for _, v in row.values):
+            _check_kind_change(row, quarterly_years, stored, rows)
+
+
+def _check_kind_change(
+    row: DriverRowInput,
+    quarterly_years: Collection[int],
+    stored: Sequence[DriverValue],
+    rows: Sequence[DriverRowInput],
+) -> None:
+    """An annual row of another kind than the driver's stored quarters drops them; in a year set
+    by quarter that needs the new quarters in the same PUT."""
+    code = row.driver_code
+    if any(r.driver_code == code and r.freq == "quarterly" for r in rows):
+        return
+    for r in stored:
+        if (
+            r.driver_code == code
+            and r.fiscal_period != "FY"
+            and r.fiscal_year in quarterly_years
+            and r.kind != row.kind
+        ):
+            raise InvalidDrivers(
+                f"{code} is stored per quarter in FY{r.fiscal_year} (set by quarter): "
+                "send its quarters with the new kind"
+            )
 
 
 def _row_values(kase: ScenarioCase, row: DriverRowInput, stamp: datetime) -> list[DriverValue]:
@@ -633,16 +844,20 @@ def _drop_replaced(
     row: DriverRowInput,
     stored: Sequence[DriverValue],
     stores_values: bool,
+    quarterly_years: Collection[int],
 ) -> None:
     """Deletes what `row` replaces: its driver's rows of its frequency, and, when it stores a
-    value of another kind than the other frequency's rows, those too."""
+    value of another kind than the other frequency's rows, those too. The annual rows of a year
+    set by quarter stay."""
     same = ("FY",) if row.freq == "annual" else QUARTERS
     other = QUARTERS if row.freq == "annual" else ("FY",)
     other_kinds = {
         r.kind for r in stored if r.driver_code == row.driver_code and r.fiscal_period in other
     }
     clash = stores_values and bool(other_kinds - {row.kind})
-    repo.delete_rows(session, kase.id, [row.driver_code], None if clash else same)
+    # a change of kind starts the driver over: no annual row of a year set by quarter stays
+    keep = () if clash else quarterly_years
+    repo.delete_rows(session, kase.id, [row.driver_code], None if clash else same, keep)
 
 
 def _replace_rows(
@@ -697,12 +912,13 @@ def import_drivers(
     years = forecast_years(history, FORECAST_HORIZON.years)
     catalog = scenario_drivers(history, settings)
     span = forecast_quarters(history) if history_quarters(history) else []
+    quarterly = set(built_from_quarters(session, scenario, history))
     try:
-        plan = parse_driver_file(content, filename, catalog, years, case == "base", span)
+        plan = parse_driver_file(content, filename, catalog, years, case == "base", span, quarterly)
     except DriverFileError as error:
         raise InvalidDriverFile(error.issues) from error
     own = repo.list_rows(session, [kase.id])
-    result = plan_import(plan, [_driver_row(r) for r in own])
+    result = plan_import(plan, [_driver_row(r) for r in own], quarterly)
     if dry_run:
         return DriverImportResult(result.changes, None)
     if result.rows:

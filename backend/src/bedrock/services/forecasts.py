@@ -15,7 +15,13 @@ from bedrock.forecast.integrity import IntegrityCheck
 from bedrock.models.company import Company
 from bedrock.models.scenario import CASES, Scenario
 from bedrock.services.errors import UnknownLineItem
-from bedrock.services.scenarios import get_case, get_scenario, load_history, resolve_case
+from bedrock.services.scenarios import (
+    built_from_quarters,
+    get_case,
+    get_scenario,
+    load_history,
+    resolve_case,
+)
 from bedrock.services.statements import canonical_items
 from bedrock.statements.build import StatementTable, extend_table
 from bedrock.statements.periods import Period
@@ -53,6 +59,7 @@ class Forecast:
     forecast_keys: frozenset[str]
     integrity: list[IntegrityCheck]
     warnings: list[str]
+    built_from_quarters: list[int]  # the fiscal years the scenario sets by quarter
 
 
 @dataclass(frozen=True)
@@ -74,6 +81,7 @@ class Comparison:
     periods: list[Period]  # forecast periods only: the union of the cases' horizons
     codes: list[LineItem]
     cases: list[ComparedCase]  # base, bull, bear
+    built_from_quarters: list[int]  # the fiscal years the scenario sets by quarter
 
 
 def forecast_table(
@@ -102,6 +110,7 @@ def forecast_table(
         forecast_keys=keys,
         integrity=[c for c in statements.integrity if c.period_key in keys],
         warnings=warnings,
+        built_from_quarters=built_from_quarters(session, scenario, history),
     )
 
 
@@ -140,7 +149,7 @@ def compare(
                 for item in items
             }
         compared.append(ComparedCase(case, values, failure))
-    return Comparison(ordered, items, compared)
+    return Comparison(ordered, items, compared, built_from_quarters(session, scenario, history))
 
 
 def _run(

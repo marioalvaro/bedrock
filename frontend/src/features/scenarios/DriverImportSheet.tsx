@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/sheet";
 import type { Scale } from "@/lib/scale";
 
-import { forecastLabel, formatDriverOffset, formatDriverValue } from "./driverCells";
+import { formatDriverOffset, formatDriverValue, periodName } from "./driverCells";
 
 const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
 
@@ -53,12 +53,13 @@ function side(
     : formatDriverValue(value, driver.unit, scale);
 }
 
-// "Revenue growth · FY27: 5.0% → 8.0%", "… → cleared" for a removed value.
+// "Revenue growth · FY27: 5.0% → 8.0%", "Gross margin · Q1 FY26: 44.0% → 46.0%" for a quarter,
+// "… → cleared" for a removed value.
 function changeText(change: DriverChangeOut, driver: DriverRowOut | undefined, scale: Scale) {
   const label = driver?.label ?? change.driver_code;
-  const year = forecastLabel(change.fiscal_year).slice(0, -1);
+  const period = periodName(change.fiscal_year, change.fiscal_period);
   const after = change.new === null ? "cleared" : side(change.new, change.new_kind, driver, scale);
-  return `${label} · ${year}: ${side(change.old, change.old_kind, driver, scale)} → ${after}`;
+  return `${label} · ${period}: ${side(change.old, change.old_kind, driver, scale)} → ${after}`;
 }
 
 interface DriverImportSheetProps {
@@ -185,7 +186,10 @@ export function DriverImportSheet({
             <>
               <ul aria-label="Changes" className="list-disc space-y-1 pl-4 text-xs">
                 {result.changes.map((change) => (
-                  <li key={`${change.driver_code}-${change.fiscal_year}`} className="num">
+                  <li
+                    key={`${change.driver_code}-${change.fiscal_year}-${change.fiscal_period}`}
+                    className="num"
+                  >
                     {changeText(change, driverOf(change.driver_code), scale)}
                   </li>
                 ))}

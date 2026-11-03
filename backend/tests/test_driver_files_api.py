@@ -310,10 +310,28 @@ def _qgrid(client: TestClient, scenario_id: int, case: str) -> dict[str, Any]:
     )
 
 
-def _put_quarter(
-    client: TestClient, scenario_id: int, case: str, code: str, kind: str, value: str
-) -> dict[str, Any]:
-    first = _qgrid(client, scenario_id, case)["forecast_periods"][0]
+def _span_years(client: TestClient, scenario_id: int) -> list[int]:
+    years = _ok(client.get(f"{SCENARIOS}/{scenario_id}/years"))["years"]
+    return [y["fiscal_year"] for y in years if y["in_span"]]
+
+
+def _switch(client: TestClient, scenario_id: int, year: int, mode: str = "quarterly") -> None:
+    response = client.put(f"{SCENARIOS}/{scenario_id}/years/{year}/mode", json={"mode": mode})
+    assert response.status_code == 200, response.text
+
+
+def _put_quarters(
+    client: TestClient,
+    scenario_id: int,
+    case: str,
+    code: str,
+    kind: str,
+    value: str,
+    years: list[int],
+) -> None:
+    """Sets the driver to `value` in every forecast quarter of `years` (each already switched to
+    by quarter: a PUT row gives all of a year's quarters)."""
+    periods = _qgrid(client, scenario_id, case)["forecast_periods"]
     response = client.put(
         f"{SCENARIOS}/{scenario_id}/cases/{case}/drivers",
         json={
@@ -324,24 +342,29 @@ def _put_quarter(
                     "freq": "quarterly",
                     "values": [
                         {
-                            "fiscal_year": first["fiscal_year"],
-                            "fiscal_period": first["fiscal_period"],
+                            "fiscal_year": p["fiscal_year"],
+                            "fiscal_period": p["fiscal_period"],
                             "value": value,
                         }
+                        for p in periods
+                        if p["fiscal_year"] in years
                     ],
                 }
             ]
         },
     )
-    return _ok(response)
+    _ok(response)
 
 
 def test_the_export_has_a_column_per_forecast_quarter_holding_the_quarter_values(
     aapl_client: TestClient,
 ) -> None:
     main = _main(aapl_client)
-    _put_quarter(aapl_client, main, "base", "tax_rate", "value", "0.3")
+    first = _span_years(aapl_client, main)[0]
+    _switch(aapl_client, main, first)
+    _put_quarters(aapl_client, main, "base", "tax_rate", "value", "0.3", [first])
     quarters = _qgrid(aapl_client, main, "base")["forecast_periods"]
+    in_first = sum(p["fiscal_year"] == first for p in quarters)
 
     rows = list(csv.reader(io.StringIO(_export(aapl_client, main, "base", "csv").decode())))
 
@@ -349,7 +372,8 @@ def test_the_export_has_a_column_per_forecast_quarter_holding_the_quarter_values
     assert rows[0][-len(keys) :] == keys
     tax = next(r for r in rows if r[0] == "tax_rate")
     assert tax[3] == "value"
-    assert tax[-len(keys) :] == ["0.3", *[""] * (len(keys) - 1)]
+    assert tax[-len(keys) :] == ["0.3"] * in_first + [""] * (len(keys) - in_first)
+    assert tax[4] == ""  # the annual cell of a year set by quarter is hidden
     book = load_workbook(io.BytesIO(_export(aapl_client, main, "base", "xlsx")))
     resolved = [r for r in book["Resolved"].iter_rows(values_only=True)]
     assert any(str(c).endswith("Q4E source") for c in resolved[0] if c)
@@ -360,7 +384,10 @@ def test_a_file_with_quarter_values_imports_unchanged_and_one_edit_is_one_change
     aapl_client: TestClient, fmt: str
 ) -> None:
     main = _main(aapl_client)
-    _put_quarter(aapl_client, main, "bull", "gross_margin", "value", "0.5")
+    years = _span_years(aapl_client, main)[:2]
+    for year in years:
+        _switch(aapl_client, main, year)
+    _put_quarters(aapl_client, main, "bull", "gross_margin", "value", "0.5", years)
     content = _export(aapl_client, main, "bull", fmt)
 
     unchanged = _ok(_import(aapl_client, main, "bull", content, fmt, dry_run=True))
@@ -381,9 +408,9 @@ def test_a_file_with_quarter_values_imports_unchanged_and_one_edit_is_one_change
             "driver_code": "gross_margin",
             "fiscal_year": quarters[1]["fiscal_year"],
             "fiscal_period": quarters[1]["fiscal_period"],
-            "old": None,
+            "old": "0.5",
             "new": "0.55",
-            "old_kind": None,
+            "old_kind": "value",
             "new_kind": "value",
         }
     ]
@@ -394,6 +421,30 @@ def test_a_file_with_quarter_values_imports_unchanged_and_one_edit_is_one_change
     assert row["own"][:2] == ["0.5", "0.55"]
     again = _ok(_import(aapl_client, main, "bull", edited, fmt, dry_run=True))
     assert again["changes"] == []
+
+
+def test_a_value_in_a_year_set_the_other_way_is_a_located_error(aapl_client: TestClient) -> None:
+    main = _main(aapl_client)
+    first, second = _span_years(aapl_client, main)[:2]
+    _switch(aapl_client, main, first)
+    rows = list(csv.reader(io.StringIO(_export(aapl_client, main, "bull", "csv").decode())))
+    header = rows[0]
+    annual_of_first = header.index(f"FY{first}")
+    quarter_of_second = next(i for i, h in enumerate(header) if h.startswith(f"FY{second}Q"))
+    gross = next(r for r in rows if r[0] == "gross_margin")
+    gross[annual_of_first] = "0.5"  # FY first is set by quarter
+    gross[quarter_of_second] = "0.5"  # FY second is set annually
+    out = io.StringIO()
+    csv.writer(out, lineterminator="\n").writerows(rows)
+
+    response = _import(aapl_client, main, "bull", out.getvalue().encode(), "csv", dry_run=True)
+
+    assert response.status_code == 422
+    messages = {e["message"] for e in response.json()["errors"]}
+    assert messages == {
+        f"FY{first} is set by quarter",
+        f"FY{second} is set annually; switch it to by quarter first",
+    }
 
 
 def test_a_quarter_column_outside_the_span_is_a_located_error(aapl_client: TestClient) -> None:

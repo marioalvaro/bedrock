@@ -251,7 +251,7 @@ def test_compare_gives_the_three_cases_on_the_default_codes(aapl_client: TestCli
     ]
     assert set(body["codes"][0]) == {"code", "label", "unit"}
     assert len(body["periods"]) == 5 and all(p["is_forecast"] for p in body["periods"])
-    assert set(body) == {"periods", "codes", "cases"}
+    assert set(body) == {"periods", "codes", "cases", "built_from_quarters"}
     assert [(c["case"], c["label"]) for c in body["cases"]] == [
         ("base", "Base"),
         ("bull", "Bull"),
@@ -366,6 +366,16 @@ def test_a_quarter_override_changes_that_quarter_and_its_year_only(
     plain = _ok(_forecast(aapl_client, scenario_id, "bull", "IS", "quarterly"))
     quarters = [p for p in plain["periods"] if p["is_forecast"]]
     first = quarters[0]
+    year = first["fiscal_year"]
+    switched = aapl_client.put(
+        f"{_scenarios_url('AAPL')}/{scenario_id}/years/{year}/mode", json={"mode": "quarterly"}
+    )
+    assert switched.status_code == 200, switched.text
+    grid = _ok(aapl_client.get(f"{url}/drivers", params={"freq": "quarterly"}))
+    in_year = [i for i, p in enumerate(grid["forecast_periods"]) if p["fiscal_year"] == year]
+    margins = _row(grid, "gross_margin")["values"]
+    values = [margins[i] for i in in_year]
+    values[0] = "0.9"  # the first quarter only; the year's other quarters keep what they resolve to
     put = aapl_client.put(
         f"{url}/drivers",
         json={
@@ -376,10 +386,11 @@ def test_a_quarter_override_changes_that_quarter_and_its_year_only(
                     "freq": "quarterly",
                     "values": [
                         {
-                            "fiscal_year": first["fiscal_year"],
-                            "fiscal_period": first["fiscal_period"],
-                            "value": "0.9",
+                            "fiscal_year": year,
+                            "fiscal_period": grid["forecast_periods"][i]["fiscal_period"],
+                            "value": v,
                         }
+                        for i, v in zip(in_year, values, strict=True)
                     ],
                 }
             ]
@@ -405,11 +416,38 @@ def test_a_quarter_override_changes_that_quarter_and_its_year_only(
     revenue = dict(
         zip((p["key"] for p in changed["periods"]), _row(changed, "revenue")["values"], strict=True)
     )
-    differing = [k for k in after if after[k] != before[k]]
-    assert differing[0] == first["key"]
     assert D(after[first["key"]]) == D(revenue[first["key"]]) * D("0.9")
-    # the quarters after it are untouched, as the annual model carries no margin forward
-    other_quarters = [p["key"] for p in quarters[1:] if p["fiscal_year"] == first["fiscal_year"]]
-    assert all(after[k] == before[k] for k in other_quarters)
+    assert D(after[first["key"]]) != D(before[first["key"]])
+    # the year's other quarters are untouched (up to the stored 10 decimals); the annual offsets of
+    # the later years went with the change of kind (one kind per driver)
+    others = [p["key"] for p in quarters[1:] if p["fiscal_year"] == year]
+    assert [D(after[k]) for k in others] == pytest.approx(
+        [D(before[k]) for k in others], rel=D("1e-8")
+    )
     annual = _ok(_forecast(aapl_client, scenario_id, "bull", "IS", "annual"))
     assert all(c["ok"] for c in annual["integrity"])
+
+
+def test_forecast_and_compare_name_the_years_built_from_quarters(aapl_client: TestClient) -> None:
+    scenario_id = _main(aapl_client)
+    url = f"{_scenarios_url('AAPL')}/{scenario_id}"
+    years = aapl_client.get(f"{url}/years").json()["years"]
+    year = [y["fiscal_year"] for y in years if y["in_span"]][1]
+    none = _ok(_forecast(aapl_client, scenario_id, "bull", "IS", "annual"))
+    assert none["built_from_quarters"] == []
+    assert (
+        _ok(aapl_client.get(f"{url}/compare", params={"freq": "annual"}))["built_from_quarters"]
+        == []
+    )
+
+    switched = aapl_client.put(f"{url}/years/{year}/mode", json={"mode": "quarterly"})
+    assert switched.status_code == 200, switched.text
+
+    forecast = _ok(_forecast(aapl_client, scenario_id, "bull", "IS", "annual"))
+    compare = _ok(aapl_client.get(f"{url}/compare", params={"freq": "quarterly"}))
+    assert forecast["built_from_quarters"] == [year]
+    assert compare["built_from_quarters"] == [year]
+    # switching changes no number
+    assert _forecast_values(forecast, "revenue") == pytest.approx(
+        _forecast_values(none, "revenue"), rel=D("1e-8")
+    )

@@ -22,7 +22,7 @@ from bedrock.forecast.driver_io import (
     plan_import,
 )
 from bedrock.forecast.drivers import DriverDef, drivers_for
-from bedrock.forecast.grid import DriverGrid, GridPeriod, GridRow
+from bedrock.forecast.grid import DriverGrid, GridPeriod, GridRow, YearMode
 from bedrock.forecast.resolve import DriverRow
 
 D = Decimal
@@ -617,15 +617,20 @@ def _with_quarters() -> tuple[DriverGrid, DriverGrid]:
     return replace(grid, rows=rows), _qgrid_rows(QUARTER_OWN)
 
 
+BY_QUARTER = {2026, 2027}  # the years of QUARTERS
+
+
 def _qparse(content: bytes, is_base: bool = False, name: str = "f.csv") -> DriverFilePlan:
-    return parse_driver_file(content, name, CATALOG, YEARS, is_base, QUARTERS)
+    return parse_driver_file(content, name, CATALOG, YEARS, is_base, QUARTERS, BY_QUARTER)
 
 
 def _qerrors(
     content: bytes, is_base: bool = False, catalog: list[DriverDef] | None = None
 ) -> list[tuple[int | None, str | None, str]]:
     with pytest.raises(DriverFileError) as caught:
-        parse_driver_file(content, "f.csv", catalog or CATALOG, YEARS, is_base, QUARTERS)
+        parse_driver_file(
+            content, "f.csv", catalog or CATALOG, YEARS, is_base, QUARTERS, BY_QUARTER
+        )
     return [(i.row, i.column, i.message) for i in caught.value.issues]
 
 
@@ -676,23 +681,25 @@ def test_the_resolved_sheet_adds_the_quarters_history_values_and_sources() -> No
 
 
 def test_an_exported_file_with_quarters_parses_back_to_the_own_cells() -> None:
-    annual, quarterly = _with_quarters()
-    plan = _qparse(export_csv(annual, quarterly))
+    annual, quarterly, _ = _mixed()
+    plan = parse_driver_file(
+        export_csv(annual, quarterly), "f.csv", CATALOG, YEARS, False, QUARTERS, {2026}
+    )
 
     assert plan.years == (2026, 2027, 2028)
     assert plan.quarters == tuple(QUARTERS)
     rows = {r.code: r for r in plan.rows}
     assert rows["gross_margin"].quarter_values == {
         (2026, "Q3"): D("0.45"),
-        (2026, "Q4"): None,
-        (2027, "Q1"): D("0.5"),
+        (2026, "Q4"): D("0.46"),
+        (2027, "Q1"): None,
     }
     assert rows["gross_margin"].kind == "value"
     assert rows["buybacks"].quarter_values[(2026, "Q3")] == D("250000")
 
 
 def test_a_file_may_omit_the_quarter_columns_and_an_old_file_parses_as_before() -> None:
-    plan = _qparse(export_csv(_grid()))
+    plan = parse_driver_file(export_csv(_grid()), "f.csv", CATALOG, YEARS, False, QUARTERS)
 
     assert plan.quarters == ()
     assert plan.rows[0].quarter_values == {}
@@ -790,16 +797,20 @@ def test_a_blank_kind_clears_the_quarters_as_well() -> None:
 
 
 def _random_quarters(rng: random.Random, rows: list[GridRow]) -> tuple[DriverGrid, list[DriverRow]]:
-    """A quarterly grid whose rows hold random own quarter values of their driver's kind."""
+    """A quarterly grid whose rows hold, for each year of the span, either all of its quarters or
+    none: random own values of their driver's kind."""
     quarter_rows: list[GridRow] = []
     stored: list[DriverRow] = []
     for row in rows:
         own: list[Decimal | None] = [None] * len(QUARTERS)
         if row.kind is not None:
-            for i, (year, quarter) in enumerate(QUARTERS):
+            for year in sorted({y for y, _ in QUARTERS}):
                 if rng.random() < 0.5:
-                    own[i] = _random_value(rng, row.unit, row.kind)
-                    stored.append(DriverRow(row.code, year, row.kind, own[i], quarter))  # type: ignore[arg-type]
+                    continue
+                for i, (y, quarter) in enumerate(QUARTERS):
+                    if y == year:
+                        own[i] = _random_value(rng, row.unit, row.kind)
+                        stored.append(DriverRow(row.code, y, row.kind, own[i], quarter))  # type: ignore[arg-type]
         quarter_rows.append(replace(row, history=[None, None], values=[None] * 3, own=own))
     grid = _qgrid_rows({})
     return replace(grid, rows=quarter_rows), stored
@@ -811,13 +822,154 @@ def test_export_then_import_with_quarter_values_changes_nothing(seed: int, fmt: 
     rng = random.Random(seed)
     annual, own = _random_grid(rng)
     quarterly, quarter_rows = _random_quarters(rng, annual.rows)
+    annual = _with_modes(annual, BY_QUARTER)  # the annual cells of those years are hidden
+    quarterly = _with_modes(quarterly, BY_QUARTER)
     content = (export_csv if fmt == "csv" else export_xlsx)(annual, quarterly)
 
     plan = _qparse(content, name=f"f.{fmt}")
 
-    assert plan_import(plan, [*own, *quarter_rows]).changes == []
-    again = plan_import(plan, [])
+    assert plan_import(plan, [*own, *quarter_rows], BY_QUARTER).changes == []
+    again = plan_import(plan, [], BY_QUARTER)
     stored_back = [r for rows in again.rows.values() for r in rows if r.fiscal_period != "FY"]
     assert sorted((r.code, r.fiscal_year, r.fiscal_period) for r in stored_back) == sorted(
         (r.code, r.fiscal_year, r.fiscal_period) for r in quarter_rows
     )
+
+
+# Year modes (docs/erd/forecasting.md "Year modes" -> Write rules) -------------------------------
+
+
+def _with_modes(grid: DriverGrid, quarterly: set[int]) -> DriverGrid:
+    modes = [
+        YearMode(y, f"FY{y % 100}E", "quarterly" if y in quarterly else "annual", y in (2026, 2027))
+        for y in YEARS
+    ]
+    return replace(grid, year_modes=modes)
+
+
+def _mixed() -> tuple[DriverGrid, DriverGrid, list[DriverRow]]:
+    """FY2026 set by quarter (its Q3 and Q4 hold gross margin; the annual 0.03 of revenue growth
+    is a hidden stored value), FY2027 set annually."""
+    annual, quarterly = _with_quarters()
+    quarterly = replace(
+        quarterly,
+        rows=[
+            replace(r, own=[D("0.45"), D("0.46"), None])
+            if r.code == "gross_margin"
+            else replace(r, own=[D("250000"), D("260000"), None])
+            if r.code == "buybacks"
+            else r
+            for r in quarterly.rows
+        ],
+    )
+    stored = [
+        DriverRow("revenue_growth", 2026, "offset", D("0.03")),
+        DriverRow("revenue_growth", 2027, "offset", D("0.03")),
+        DriverRow("gross_margin", 2026, "value", D("0.45"), "Q3"),
+        DriverRow("gross_margin", 2026, "value", D("0.46"), "Q4"),
+        DriverRow("buybacks", 2026, "value", D("1000000")),  # hidden: FY2026 is set by quarter
+        DriverRow("buybacks", 2027, "value", D("2000000.5")),
+        DriverRow("buybacks", 2026, "value", D("250000"), "Q3"),
+        DriverRow("buybacks", 2026, "value", D("260000"), "Q4"),
+    ]
+    return _with_modes(annual, {2026}), _with_modes(quarterly, {2026}), stored
+
+
+def test_a_year_set_by_quarter_has_no_annual_cell_and_an_annual_year_no_quarter_cells() -> None:
+    annual, quarterly, _ = _mixed()
+
+    rows = {r[0]: r for r in _csv_rows(export_csv(annual, quarterly))}
+
+    # revenue growth holds 0.03 in FY2026 (hidden) and FY2027; only FY2027 is exported
+    assert rows["revenue_growth"][4:7] == ["", "0.03", ""]
+    # gross margin has quarter values in FY2026; FY2027Q1 is in an annual year: blank
+    assert rows["gross_margin"][7:] == ["0.45", "0.46", ""]
+
+
+def test_the_xlsx_leaves_the_same_cells_blank() -> None:
+    annual, quarterly, _ = _mixed()
+    sheet = load_workbook(io.BytesIO(export_xlsx(annual, quarterly)))["Drivers"]
+    rows = {r[0]: list(r) for r in sheet.iter_rows(values_only=True)}
+
+    assert rows["revenue_growth"][4:7] == [None, 0.03, None]
+    assert rows["gross_margin"][7:] == [0.45, 0.46, None]
+
+
+def test_the_exported_file_of_mixed_years_imports_as_nothing_to_change() -> None:
+    annual, quarterly, stored = _mixed()
+    plan = parse_driver_file(
+        export_csv(annual, quarterly), "f.csv", CATALOG, YEARS, False, QUARTERS, {2026}
+    )
+
+    assert plan_import(plan, stored, {2026}).changes == []
+
+
+def test_a_blank_annual_cell_of_a_year_set_by_quarter_keeps_its_stored_annual_value() -> None:
+    plan = DriverFilePlan(
+        (2026, 2027),
+        (FileRow("revenue_growth", "offset", {2026: None, 2027: D("0.04")}),),
+        (),
+    )
+    stored = [
+        DriverRow("revenue_growth", 2026, "offset", D("0.03")),
+        DriverRow("revenue_growth", 2027, "offset", D("0.03")),
+    ]
+
+    result = plan_import(plan, stored, {2026})
+
+    assert [(c.fiscal_year, c.new) for c in result.changes] == [(2027, D("0.04"))]
+    assert sorted(r.fiscal_year for r in result.rows["revenue_growth"]) == [2026, 2027]
+
+
+def _mode_errors(rows: list[list[object]]) -> list[tuple[int | None, str | None, str]]:
+    with pytest.raises(DriverFileError) as caught:
+        parse_driver_file(_csv(rows), "f.csv", CATALOG, YEARS, False, QUARTERS, {2026})
+    return [(i.row, i.column, i.message) for i in caught.value.issues]
+
+
+def test_a_value_under_the_annual_column_of_a_year_set_by_quarter_is_an_error_at_its_cell() -> None:
+    errors = _mode_errors(
+        [QHEADER, ["gross_margin", "", "", "value", "0.4", "", "", "0.5", "0.5", ""]]
+    )
+
+    assert errors == [(2, "E", "FY2026 is set by quarter")]
+
+
+def test_a_value_under_a_quarter_column_of_an_annual_year_is_an_error_at_its_cell() -> None:
+    errors = _mode_errors(
+        [QHEADER, ["gross_margin", "", "", "value", "", "", "", "0.5", "0.5", "0.4"]]
+    )
+
+    assert errors == [(2, "J", "FY2027 is set annually; switch it to by quarter first")]
+
+
+def test_a_row_gives_all_or_none_of_the_quarters_of_a_year_set_by_quarter() -> None:
+    errors = _mode_errors([QHEADER, ["gross_margin", "", "", "value", "", "", "", "0.5", "", ""]])
+
+    assert errors == [(2, "I", "Q4 FY2026 is missing for gross_margin (FY2026 is set by quarter)")]
+    none = [QHEADER, ["gross_margin", "", "", "value", "0.4", "", "", "", "", ""]]
+    # no quarter at all is a driver following Base's quarters: only its annual cell is wrong
+    assert _mode_errors(none) == [(2, "E", "FY2026 is set by quarter")]
+
+
+def test_the_resolved_sheet_shows_the_roll_up_of_a_year_set_by_quarter() -> None:
+    annual, quarterly, _ = _mixed()
+    annual = replace(
+        annual,
+        rows=[
+            replace(r, rollup=[D("0.0312"), None, None]) if r.code == "revenue_growth" else r
+            for r in annual.rows
+        ],
+    )
+    sheet = load_workbook(io.BytesIO(export_xlsx(annual, quarterly)))["Resolved"]
+    rows = [list(r) for r in sheet.iter_rows(values_only=True)]
+    header = rows[0]
+
+    growth = next(r for r in rows[1:] if r[0] == "revenue_growth")
+    value, source = header.index("FY2026E"), header.index("FY2026E source")
+    assert (growth[value], growth[source]) == (
+        0.0312,
+        "quarters",
+    )  # the roll-up, not the hidden 0.03
+    other = header.index("FY2027E")
+    assert growth[other] == 0.05 and growth[header.index("FY2027E source")] == "offset"

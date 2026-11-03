@@ -1,12 +1,12 @@
 from collections.abc import Collection, Iterable
 from datetime import datetime
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import set_committed_value
 
 from bedrock.models.driver_value import DriverValue
-from bedrock.models.scenario import CASES, Scenario, ScenarioCase
+from bedrock.models.scenario import CASES, Scenario, ScenarioCase, ScenarioYearMode
 from bedrock.repositories.numeric import plain
 
 
@@ -54,6 +54,7 @@ def delete_scenario(session: Session, scenario: Scenario) -> None:
     """Deletes the scenario, its cases and their driver rows, and flushes (no commit)."""
     case_ids = select(ScenarioCase.id).where(ScenarioCase.scenario_id == scenario.id)
     session.execute(delete(DriverValue).where(DriverValue.case_id.in_(case_ids)))
+    session.execute(delete(ScenarioYearMode).where(ScenarioYearMode.scenario_id == scenario.id))
     session.execute(delete(ScenarioCase).where(ScenarioCase.scenario_id == scenario.id))
     session.delete(scenario)
     session.flush()
@@ -83,10 +84,14 @@ def add_rows(session: Session, rows: Iterable[DriverValue]) -> None:
 
 
 def delete_rows(
-    session: Session, case_id: int, codes: Collection[str], periods: Collection[str] | None = None
+    session: Session,
+    case_id: int,
+    codes: Collection[str],
+    periods: Collection[str] | None = None,
+    keep_years: Collection[int] = (),
 ) -> None:
     """Deletes the rows of the given drivers of the case, of every fiscal period or only of
-    `periods` (`FY`, `Q1`..), and flushes (no commit)."""
+    `periods` (`FY`, `Q1`..), and flushes (no commit). The `FY` rows of `keep_years` stay."""
     if not codes:
         return
     stmt = delete(DriverValue).where(
@@ -94,6 +99,10 @@ def delete_rows(
     )
     if periods is not None:
         stmt = stmt.where(DriverValue.fiscal_period.in_(periods))
+    if keep_years:
+        stmt = stmt.where(
+            or_(DriverValue.fiscal_period != "FY", DriverValue.fiscal_year.not_in(keep_years))
+        )
     session.execute(stmt)
     session.flush()
 
@@ -101,4 +110,40 @@ def delete_rows(
 def delete_all_rows(session: Session, case_id: int) -> None:
     """Deletes every driver row of the case, and flushes (no commit)."""
     session.execute(delete(DriverValue).where(DriverValue.case_id == case_id))
+    session.flush()
+
+
+def quarterly_years(session: Session, scenario_id: int) -> set[int]:
+    """The fiscal years the scenario sets by quarter (no row is `annual`)."""
+    stmt = select(ScenarioYearMode.fiscal_year).where(
+        ScenarioYearMode.scenario_id == scenario_id, ScenarioYearMode.mode == "quarterly"
+    )
+    return set(session.execute(stmt).scalars())
+
+
+def set_quarterly(session: Session, scenario_id: int, fiscal_year: int, quarterly: bool) -> None:
+    """Marks the year `quarterly`, or back to `annual` (its row is deleted), and flushes (no
+    commit)."""
+    stmt = delete(ScenarioYearMode).where(
+        ScenarioYearMode.scenario_id == scenario_id, ScenarioYearMode.fiscal_year == fiscal_year
+    )
+    session.execute(stmt)
+    if quarterly:
+        session.add(
+            ScenarioYearMode(scenario_id=scenario_id, fiscal_year=fiscal_year, mode="quarterly")
+        )
+    session.flush()
+
+
+def delete_year_quarters(session: Session, case_ids: Collection[int], fiscal_year: int) -> None:
+    """Deletes the quarter rows of the year in the given cases, and flushes (no commit)."""
+    if not case_ids:
+        return
+    session.execute(
+        delete(DriverValue).where(
+            DriverValue.case_id.in_(case_ids),
+            DriverValue.fiscal_year == fiscal_year,
+            DriverValue.fiscal_period != "FY",
+        )
+    )
     session.flush()

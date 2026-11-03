@@ -13,6 +13,7 @@ from bedrock.services.scenarios import (
     DriverRowInput,
     GridPeriod,
     SettingsInput,
+    YearMode,
 )
 
 
@@ -69,6 +70,33 @@ class DriverRowOut(BaseModel):
     sources: list[Source | None]
     own: list[Decimal | None]
     kind: DriverKind | None
+    rollup: list[Decimal | None]  # aligned with `forecast_years`; null for a year set annually
+
+
+class YearModeOut(BaseModel):
+    """How a forecast year is set: `annual` or `quarterly` (by quarter). `in_span`: the year is
+    built from quarters and can be switched; later years are always annual."""
+
+    fiscal_year: int
+    label: str
+    mode: Literal["annual", "quarterly"]
+    in_span: bool
+
+    @classmethod
+    def from_mode(cls, mode: YearMode) -> "YearModeOut":
+        return cls.model_validate(mode, from_attributes=True)
+
+
+class YearModesOut(BaseModel):
+    years: list[YearModeOut]
+
+    @classmethod
+    def from_modes(cls, modes: list[YearMode]) -> "YearModesOut":
+        return cls(years=[YearModeOut.from_mode(m) for m in modes])
+
+
+class YearModeIn(BaseModel):
+    mode: Literal["annual", "quarterly"]
 
 
 class GridPeriodOut(BaseModel):
@@ -98,6 +126,7 @@ class DriverGridOut(BaseModel):
     forecast_periods: list[GridPeriodOut]
     rows: list[DriverRowOut]
     warnings: list[str]
+    year_modes: list[YearModeOut]
 
     @classmethod
     def from_grid(cls, grid: DriverGrid) -> "DriverGridOut":
@@ -120,10 +149,12 @@ class DriverGridOut(BaseModel):
                     sources=r.sources,
                     own=r.own,
                     kind=r.kind,
+                    rollup=r.rollup,
                 )
                 for r in grid.rows
             ],
             warnings=grid.warnings,
+            year_modes=[YearModeOut.from_mode(m) for m in grid.year_modes],
         )
 
 

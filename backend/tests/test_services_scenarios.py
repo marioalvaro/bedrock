@@ -49,6 +49,7 @@ from bedrock.services.scenarios import (
     load_history,
     put_drivers,
     reset_case,
+    set_year_mode,
     update_scenario,
 )
 
@@ -1125,18 +1126,18 @@ def test_a_row_that_stores_no_value_keeps_the_other_frequency_s_rows(
     db_session: Session, aapl: Company
 ) -> None:
     main = list_scenarios(db_session, aapl, NOW)[0]
-    first = driver_grid(db_session, aapl, main.id, "bull", "quarterly").forecast_periods[0]
-    quarterly = DriverRowInput(
-        "gross_margin",
-        "value",
-        freq="quarterly",
-        quarters=[(first.fiscal_year, first.fiscal_period, D("0.5"))],
-    )
+    periods = driver_grid(db_session, aapl, main.id, "bull", "quarterly").forecast_periods
+    year = periods[0].fiscal_year
+    set_year_mode(db_session, aapl, main.id, year, "quarterly", NOW)
+    quarters = [
+        (p.fiscal_year, p.fiscal_period, D("0.5")) for p in periods if p.fiscal_year == year
+    ]
+    quarterly = DriverRowInput("gross_margin", "value", freq="quarterly", quarters=quarters)
     grid = put_drivers(db_session, aapl, main.id, "bull", [quarterly], NOW)
     assert _row(grid, "gross_margin").own[0] == D("0.5")
 
     # an annual row of another kind that stores nothing clears the years, not the quarter
-    cleared = DriverRowInput("gross_margin", "offset", [(first.fiscal_year, None)])
+    cleared = DriverRowInput("gross_margin", "offset", [(year, None)])
     put_drivers(db_session, aapl, main.id, "bull", [cleared], NOW)
 
     kept = driver_grid(db_session, aapl, main.id, "bull", "quarterly")
@@ -1146,21 +1147,35 @@ def test_a_row_that_stores_no_value_keeps_the_other_frequency_s_rows(
 def test_one_put_can_hold_an_annual_and_a_quarterly_row_of_the_same_driver(
     db_session: Session, aapl: Company
 ) -> None:
+    """A year set annually and a year set by quarter, in the same PUT."""
     main = list_scenarios(db_session, aapl, NOW)[0]
-    first = driver_grid(db_session, aapl, main.id, "bull", "quarterly").forecast_periods[0]
-    annual = DriverRowInput("tax_rate", "value", [(first.fiscal_year, D("0.25"))])
+    periods = driver_grid(db_session, aapl, main.id, "bull", "quarterly").forecast_periods
+    annual_year = periods[0].fiscal_year
+    quarter_year = next(p.fiscal_year for p in periods if p.fiscal_year != annual_year)
+    set_year_mode(db_session, aapl, main.id, quarter_year, "quarterly", NOW)
+    annual = DriverRowInput("tax_rate", "value", [(annual_year, D("0.25"))])
     quarterly = DriverRowInput(
         "tax_rate",
         "value",
         freq="quarterly",
-        quarters=[(first.fiscal_year, first.fiscal_period, D("0.3"))],
+        quarters=[
+            (p.fiscal_year, p.fiscal_period, D("0.3"))
+            for p in periods
+            if p.fiscal_year == quarter_year
+        ],
     )
 
     put_drivers(db_session, aapl, main.id, "bull", [annual, quarterly], NOW)
 
     assert _row(driver_grid(db_session, aapl, main.id, "bull"), "tax_rate").own[0] == D("0.25")
     quarter = driver_grid(db_session, aapl, main.id, "bull", "quarterly")
-    assert _row(quarter, "tax_rate").own[0] == D("0.3")
-    twice = DriverRowInput("tax_rate", "value", [(first.fiscal_year, D("0.2"))])
+    tax = _row(quarter, "tax_rate")
+    owned = [
+        v
+        for p, v in zip(quarter.forecast_periods, tax.own, strict=True)
+        if p.fiscal_year == quarter_year
+    ]
+    assert owned == [D("0.3")] * len(owned) and owned
+    twice = DriverRowInput("tax_rate", "value", [(annual_year, D("0.2"))])
     with pytest.raises(InvalidDrivers, match="tax_rate is given twice"):
         put_drivers(db_session, aapl, main.id, "bull", [annual, twice], NOW)

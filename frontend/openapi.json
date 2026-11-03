@@ -897,6 +897,13 @@
       },
       "CompareOut": {
         "properties": {
+          "built_from_quarters": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Built From Quarters",
+            "type": "array"
+          },
           "cases": {
             "items": {
               "$ref": "#/components/schemas/ComparedCaseOut"
@@ -922,7 +929,8 @@
         "required": [
           "periods",
           "codes",
-          "cases"
+          "cases",
+          "built_from_quarters"
         ],
         "title": "CompareOut",
         "type": "object"
@@ -1660,6 +1668,13 @@
             },
             "title": "Warnings",
             "type": "array"
+          },
+          "year_modes": {
+            "items": {
+              "$ref": "#/components/schemas/YearModeOut"
+            },
+            "title": "Year Modes",
+            "type": "array"
           }
         },
         "required": [
@@ -1671,7 +1686,8 @@
           "history_periods",
           "forecast_periods",
           "rows",
-          "warnings"
+          "warnings",
+          "year_modes"
         ],
         "title": "DriverGridOut",
         "type": "object"
@@ -1808,6 +1824,21 @@
             "title": "Own",
             "type": "array"
           },
+          "rollup": {
+            "items": {
+              "anyOf": [
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Rollup",
+            "type": "array"
+          },
           "sources": {
             "items": {
               "anyOf": [
@@ -1863,7 +1894,8 @@
           "values",
           "sources",
           "own",
-          "kind"
+          "kind",
+          "rollup"
         ],
         "title": "DriverRowOut",
         "type": "object"
@@ -2233,6 +2265,13 @@
             "title": "Basis",
             "type": "string"
           },
+          "built_from_quarters": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Built From Quarters",
+            "type": "array"
+          },
           "case": {
             "enum": [
               "base",
@@ -2313,7 +2352,8 @@
           "scenario_id",
           "case",
           "warnings",
-          "integrity"
+          "integrity",
+          "built_from_quarters"
         ],
         "title": "ForecastOut",
         "type": "object"
@@ -5891,6 +5931,72 @@
         ],
         "title": "VintageOut",
         "type": "object"
+      },
+      "YearModeIn": {
+        "properties": {
+          "mode": {
+            "enum": [
+              "annual",
+              "quarterly"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "title": "YearModeIn",
+        "type": "object"
+      },
+      "YearModeOut": {
+        "description": "How a forecast year is set: `annual` or `quarterly` (by quarter). `in_span`: the year is\nbuilt from quarters and can be switched; later years are always annual.",
+        "properties": {
+          "fiscal_year": {
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "in_span": {
+            "title": "In Span",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "annual",
+              "quarterly"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fiscal_year",
+          "label",
+          "mode",
+          "in_span"
+        ],
+        "title": "YearModeOut",
+        "type": "object"
+      },
+      "YearModesOut": {
+        "properties": {
+          "years": {
+            "items": {
+              "$ref": "#/components/schemas/YearModeOut"
+            },
+            "title": "Years",
+            "type": "array"
+          }
+        },
+        "required": [
+          "years"
+        ],
+        "title": "YearModesOut",
+        "type": "object"
       }
     }
   },
@@ -8871,6 +8977,127 @@
         "summary": "Compare Cases",
         "tags": [
           "forecasts"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/scenarios/{scenario_id}/years": {
+      "get": {
+        "operationId": "get_year_modes_api_v1_companies__ticker__scenarios__scenario_id__years_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scenario_id",
+            "required": true,
+            "schema": {
+              "title": "Scenario Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/YearModesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Year Modes",
+        "tags": [
+          "scenarios"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/scenarios/{scenario_id}/years/{fiscal_year}/mode": {
+      "put": {
+        "operationId": "set_year_mode_api_v1_companies__ticker__scenarios__scenario_id__years__fiscal_year__mode_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scenario_id",
+            "required": true,
+            "schema": {
+              "title": "Scenario Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "fiscal_year",
+            "required": true,
+            "schema": {
+              "title": "Fiscal Year",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/YearModeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/YearModesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Year Mode",
+        "tags": [
+          "scenarios"
         ]
       }
     },

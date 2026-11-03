@@ -1,4 +1,9 @@
-import type { DriverGridOut, DriverRowIn, DriverRowOut } from "@/api/generated/types.gen";
+import type {
+  DriverGridOut,
+  DriverRowIn,
+  DriverRowOut,
+  GridPeriodOut,
+} from "@/api/generated/types.gen";
 import {
   formatRatio,
   formatValue,
@@ -20,11 +25,9 @@ const MUTED = "text-muted-foreground";
 
 const shortYear = (year: number) => String(year % 100).padStart(2, "0");
 
-/** An actual year's column header: 2024 → "FY24A". */
-export const historyLabel = (year: number) => `FY${shortYear(year)}A`;
-
-/** A forecast year's column header: 2027 → "FY27E". */
-export const forecastLabel = (year: number) => `FY${shortYear(year)}E`;
+/** A period's name in text: "FY26" for a year, "Q1 FY26" for a quarter. */
+export const periodName = (year: number, period: GridPeriodOut["fiscal_period"]) =>
+  period === "FY" ? `FY${shortYear(year)}` : `${period} FY${shortYear(year)}`;
 
 // |number| with 1 decimal, negatives in parentheses (the app's convention).
 function oneDecimal(number: number): string {
@@ -95,26 +98,29 @@ export interface ForecastCell {
   editText: string; // the editor's starting text
 }
 
-function defaultTitle(row: DriverRowOut, historyYears: number[]): string {
-  const window = historyYears.slice(-3);
+type GridColumns = Pick<DriverGridOut, "history_periods" | "forecast_periods">;
+
+function defaultTitle(row: DriverRowOut, { history_periods }: GridColumns): string {
+  const window = history_periods.slice(-3);
   const averaged = row.history.slice(-3).some((value) => value !== null);
   if (!averaged || window.length === 0) return "Default: no history, the driver's fallback";
-  const first = `FY${shortYear(window[0]!)}`;
-  const last = `FY${shortYear(window.at(-1)!)}`;
+  const first = periodName(window[0]!.fiscal_year, "FY");
+  const last = periodName(window.at(-1)!.fiscal_year, "FY");
   return `Default: mean of ${first}–${last}`;
 }
 
 /**
- * A forecast cell of `row` at forecast index `index`. In vs Base mode a year with an offset
- * shows the offset; every other cell shows the resolved value, styled by its source: `own` plain,
- * `base` muted italic, `default` muted, a required driver with no value "Set" in red.
+ * A forecast cell of `row` at forecast column `index` of `grid` (a year or a quarter). In vs Base
+ * mode a column with an offset shows the offset; every other cell shows the resolved value, styled
+ * by its source: `own` plain, `base` muted italic, `default` and `year` (a quarter taking its
+ * year's value) muted, a required driver with no value "Set" in red.
  */
 export function forecastCell(
   row: DriverRowOut,
   index: number,
   mode: DriverMode,
   scale: Scale,
-  historyYears: number[],
+  grid: GridColumns,
 ): ForecastCell {
   const value = row.values[index] ?? null;
   const source = row.sources[index] ?? null;
@@ -145,31 +151,55 @@ export function forecastCell(
     return { text, classes: [MUTED, "italic"], title: "Inherited from Base", editText };
   }
   if (source === "default") {
-    return { text, classes: [MUTED], title: defaultTitle(row, historyYears), editText };
+    return { text, classes: [MUTED], title: defaultTitle(row, grid), editText };
+  }
+  if (source === "year") {
+    const column = grid.forecast_periods[index];
+    const title = column
+      ? `From ${periodName(column.fiscal_year, "FY")} (annual)`
+      : "From the year";
+    return { text, classes: [MUTED], title, editText };
   }
   return { text, classes: [], title: "Set in this scenario", editText };
 }
 
-/**
- * The PUT row for an edit of `year` to `value` (null: the cell was emptied): the row's own values
- * of `mode` in the forecast years, with that year replaced or dropped. Stored values of another
- * kind are not kept (one driver stores one kind).
- */
-export function driverEdit(
-  row: DriverRowOut,
-  mode: DriverMode,
-  forecastYears: number[],
-  year: number,
-  value: string | null,
+/** An empty PUT row of `freq` in `kind`: it drops the driver's own values of that frequency. */
+export function driverClear(
+  code: string,
+  kind: DriverMode,
+  freq: DriverGridOut["freq"],
 ): DriverRowIn {
-  const values = forecastYears.flatMap((fiscalYear, index) => {
-    const own = fiscalYear === year ? value : row.kind === mode ? (row.own[index] ?? null) : null;
-    return own === null ? [] : [{ fiscal_year: fiscalYear, value: own }];
-  });
-  return { driver_code: row.code, kind: mode, values };
+  return freq === "quarterly"
+    ? { driver_code: code, kind, freq, values: [] }
+    : { driver_code: code, kind, values: [] };
 }
 
-/** The PUT row that drops every own value of `row` (back to inherited or default). */
-export function driverReset(row: DriverRowOut): DriverRowIn {
-  return { driver_code: row.code, kind: row.kind ?? "value", values: [] };
+/**
+ * The PUT row for an edit of forecast column `index` of `grid` to `value` (null: the cell was
+ * emptied): the row's own values of `mode` in the grid's columns (years, or quarters in a
+ * quarterly row), with that column replaced or dropped. Stored values of another kind are not kept
+ * (one driver stores one kind).
+ */
+export function driverEdit(
+  grid: Pick<DriverGridOut, "freq" | "forecast_periods">,
+  row: DriverRowOut,
+  mode: DriverMode,
+  index: number,
+  value: string | null,
+): DriverRowIn {
+  const values = grid.forecast_periods.flatMap(({ fiscal_year, fiscal_period }, i) => {
+    const own = i === index ? value : row.kind === mode ? (row.own[i] ?? null) : null;
+    if (own === null) return [];
+    return [
+      grid.freq === "quarterly"
+        ? { fiscal_year, fiscal_period, value: own }
+        : { fiscal_year, value: own },
+    ];
+  });
+  return { ...driverClear(row.code, mode, grid.freq), values };
+}
+
+/** The PUT row that drops every own value of `row` in `grid`'s frequency (back to inherited or default). */
+export function driverReset(grid: Pick<DriverGridOut, "freq">, row: DriverRowOut): DriverRowIn {
+  return driverClear(row.code, row.kind ?? "value", grid.freq);
 }

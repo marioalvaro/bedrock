@@ -41,6 +41,7 @@ import {
   driverGrid,
   driverImport,
   forecast,
+  quarterlyGrid,
   scenario,
   scenarios,
 } from "@/test/scenarios";
@@ -94,7 +95,8 @@ const file = new File(["driver_code,label,unit,kind,FY2026\n"], "AAPL-Main-Bull-
 const aapl = companyKey("AAPL");
 const moved = [
   scenariosKey("AAPL"),
-  [...aapl, "scenarios", 2, "bull", "drivers"],
+  [...aapl, "scenarios", 2, "bull", "drivers", "annual"],
+  [...aapl, "scenarios", 2, "bull", "drivers", "quarterly"],
   [...aapl, "scenarios", 2, "bear", "forecast", "BS", "quarterly"],
   [...aapl, "scenarios", 2, "compare", "annual"],
 ];
@@ -126,6 +128,15 @@ describe("keys", () => {
       2,
       "bull",
       "drivers",
+      "annual",
+    ]);
+    expect(driversQueryOptions("AAPL", 2, "bull", "quarterly").queryKey).toEqual([
+      ...aapl,
+      "scenarios",
+      2,
+      "bull",
+      "drivers",
+      "quarterly",
     ]);
     expect(forecastQueryOptions("AAPL", 2, "bear", "BS", "quarterly").queryKey).toEqual([
       ...aapl,
@@ -190,7 +201,28 @@ describe("driversQueryOptions", () => {
     expect(grid.forecast_years).toEqual([2026, 2027]);
     expect(getDrivers).toHaveBeenCalledWith({
       path: { ticker: "AAPL", scenario_id: 1, case: "bear" },
+      query: { freq: "annual" },
     });
+  });
+
+  it("asks for the quarterly grid when told to", async () => {
+    getDrivers.mockResolvedValue(okResult(quarterlyGrid()) as never);
+    const { queryClient } = setup();
+    const grid = await queryClient.fetchQuery(driversQueryOptions("AAPL", 1, "base", "quarterly"));
+    expect(grid.forecast_periods.map((p) => p.label)).toEqual(["Q1 FY26E", "Q2 FY26E"]);
+    expect(getDrivers).toHaveBeenCalledWith({
+      path: { ticker: "AAPL", scenario_id: 1, case: "base" },
+      query: { freq: "quarterly" },
+    });
+  });
+
+  it("rejects a 200 without the period lists (an older backend, or an HTML shell)", async () => {
+    const { history_periods: _history, forecast_periods: _forecast, ...bare } = quarterlyGrid();
+    getDrivers.mockResolvedValue(okResult(bare) as never);
+    const { queryClient } = setup();
+    await expect(
+      queryClient.fetchQuery(driversQueryOptions("AAPL", 1, "base", "quarterly")),
+    ).rejects.toBeInstanceOf(ApiError);
   });
 
   it("rejects a 200 without rows and years", async () => {
@@ -369,7 +401,7 @@ describe("mutations", () => {
       body: { rows },
     });
     // The edited case's drivers take the reply (no refetch); every other view is refreshed.
-    const edited = [...aapl, "scenarios", 2, "bull", "drivers"];
+    const edited = [...aapl, "scenarios", 2, "bull", "drivers", "annual"];
     expect(queryClient.getQueryData(edited)).toEqual(driverGrid());
     expect(queryClient.getQueryState(edited)?.isInvalidated).toBe(false);
     for (const key of moved.filter((key) => JSON.stringify(key) !== JSON.stringify(edited))) {
@@ -381,7 +413,7 @@ describe("mutations", () => {
   });
 
   describe("usePutDrivers with saves in flight", () => {
-    const edited = [...aapl, "scenarios", 2, "bull", "drivers"];
+    const edited = [...aapl, "scenarios", 2, "bull", "drivers", "annual"];
     const row = (value: string) => [
       {
         driver_code: "gross_margin",
@@ -455,8 +487,8 @@ describe("mutations", () => {
     let settle: (result: unknown) => void = () => {};
     putDrivers.mockImplementation((() => new Promise((resolve) => (settle = resolve))) as never);
     const { queryClient, wrapper } = setup();
-    const bull = [...aapl, "scenarios", 2, "bull", "drivers"];
-    const bear = [...aapl, "scenarios", 2, "bear", "drivers"];
+    const bull = [...aapl, "scenarios", 2, "bull", "drivers", "annual"];
+    const bear = [...aapl, "scenarios", 2, "bear", "drivers", "annual"];
     queryClient.setQueryData(bull, driverGrid({ case: "bull" }));
     queryClient.setQueryData(bear, driverGrid({ case: "bear" }));
     const { result } = renderHook(() => usePutDrivers("AAPL"), { wrapper });
@@ -482,7 +514,7 @@ describe("mutations", () => {
   });
 
   describe("useResetCase", () => {
-    const edited = [...aapl, "scenarios", 2, "bear", "drivers"];
+    const edited = [...aapl, "scenarios", 2, "bear", "drivers", "annual"];
 
     it("posts the reset of the case and takes its reply as the case's drivers", async () => {
       const reset = driverGrid({ case: "bear", warnings: ["reset"] });
@@ -591,6 +623,135 @@ describe("mutations", () => {
       kind: "offset",
       values: [null, "0.0234"],
       sources: ["offset", "default"],
+    });
+  });
+
+  describe("quarterly drivers", () => {
+    const annualKey = [...aapl, "scenarios", 2, "bull", "drivers", "annual"];
+    const quarterlyKey = [...aapl, "scenarios", 2, "bull", "drivers", "quarterly"];
+    const quarterRow = {
+      driver_code: "gross_margin",
+      kind: "value" as const,
+      freq: "quarterly" as const,
+      // A PUT row is the driver's whole row: Q1 kept, Q2 new.
+      values: [
+        { fiscal_year: 2026, fiscal_period: "Q1" as const, value: "0.48" },
+        { fiscal_year: 2026, fiscal_period: "Q2" as const, value: "0.5" },
+      ],
+    };
+
+    it("withDriverRows writes quarterly rows into a quarterly grid by quarter", () => {
+      const shown = withDriverRows(quarterlyGrid(), [quarterRow]);
+      expect(shown.rows[1]).toMatchObject({
+        own: ["0.48", "0.5"],
+        kind: "value",
+        values: ["0.48", "0.5"],
+        sources: ["own", "own"],
+      });
+    });
+
+    it("withDriverRows drops a quarter the quarterly row no longer sets", () => {
+      const shown = withDriverRows(quarterlyGrid(), [
+        { ...quarterRow, values: [{ fiscal_year: 2026, fiscal_period: "Q1", value: "0.49" }] },
+      ]);
+      // Q1 is replaced; Q2 had no own value and keeps its value and source until the reply.
+      expect(shown.rows[1]).toMatchObject({ own: ["0.49", null], values: ["0.49", "0.47"] });
+      expect(shown.rows[1]?.sources).toEqual(["own", "year"]);
+    });
+
+    it("withDriverRows ignores the rows of the other frequency", () => {
+      const annual = driverGrid();
+      expect(withDriverRows(annual, [quarterRow])).toEqual(annual);
+      const quarterly = quarterlyGrid();
+      const yearRow = {
+        driver_code: "gross_margin",
+        kind: "value" as const,
+        values: [{ fiscal_year: 2026, value: "0.5" }],
+      };
+      expect(withDriverRows(quarterly, [yearRow])).toEqual(quarterly);
+    });
+
+    it("usePutDrivers shows a quarterly edit in the quarterly grid only", async () => {
+      let settle: (result: unknown) => void = () => {};
+      putDrivers.mockImplementation((() => new Promise((resolve) => (settle = resolve))) as never);
+      const { queryClient, wrapper } = setup();
+      queryClient.setQueryData(annualKey, driverGrid({ case: "bull" }));
+      queryClient.setQueryData(quarterlyKey, quarterlyGrid({ case: "bull" }));
+      const { result } = renderHook(() => usePutDrivers("AAPL"), { wrapper });
+
+      result.current.mutate({ id: 2, case: "bull", rows: [quarterRow] });
+
+      await waitFor(() =>
+        expect(queryClient.getQueryData<DriverGridOut>(quarterlyKey)?.rows[1]?.own).toEqual([
+          "0.48",
+          "0.5",
+        ]),
+      );
+      expect(queryClient.getQueryData(annualKey)).toEqual(driverGrid({ case: "bull" }));
+      settle(okResult(quarterlyGrid({ case: "bull" })));
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(putDrivers).toHaveBeenCalledWith({
+        path: { ticker: "AAPL", scenario_id: 2, case: "bull" },
+        body: { rows: [quarterRow] },
+      });
+    });
+
+    it("takes a quarterly reply as the quarterly grid and refreshes the annual one", async () => {
+      const reply = quarterlyGrid({ case: "bull", warnings: ["saved"] });
+      putDrivers.mockResolvedValue(okResult(reply) as never);
+      const { queryClient, wrapper } = setup();
+      queryClient.setQueryData(annualKey, driverGrid({ case: "bull" }));
+      queryClient.setQueryData(quarterlyKey, quarterlyGrid({ case: "bull" }));
+      const { result } = renderHook(() => usePutDrivers("AAPL"), { wrapper });
+
+      result.current.mutate({ id: 2, case: "bull", rows: [quarterRow] });
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+      expect(queryClient.getQueryData(quarterlyKey)).toEqual(reply);
+      expect(queryClient.getQueryState(quarterlyKey)?.isInvalidated).toBe(false);
+      expect(queryClient.getQueryState(annualKey)?.isInvalidated).toBe(true);
+    });
+
+    it("takes an annual reply (rows of both frequencies) as the annual grid and refreshes the quarterly one", async () => {
+      const reply = driverGrid({ case: "bull", warnings: ["saved"] });
+      putDrivers.mockResolvedValue(okResult(reply) as never);
+      const { queryClient, wrapper } = setup();
+      queryClient.setQueryData(annualKey, driverGrid({ case: "bull" }));
+      queryClient.setQueryData(quarterlyKey, quarterlyGrid({ case: "bull" }));
+      const { result } = renderHook(() => usePutDrivers("AAPL"), { wrapper });
+      const clear = [
+        { driver_code: "gross_margin", kind: "offset" as const, values: [] },
+        {
+          driver_code: "gross_margin",
+          kind: "offset" as const,
+          freq: "quarterly" as const,
+          values: [],
+        },
+      ];
+
+      result.current.mutate({ id: 2, case: "bull", rows: clear });
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+      expect(queryClient.getQueryData(annualKey)).toEqual(reply);
+      expect(queryClient.getQueryState(annualKey)?.isInvalidated).toBe(false);
+      expect(queryClient.getQueryState(quarterlyKey)?.isInvalidated).toBe(true);
+    });
+
+    it("rolls back and reloads both frequencies when the save fails", async () => {
+      putDrivers.mockResolvedValue(
+        errorResult(422, { detail: "Q2 FY2026 is not a forecast quarter" }) as never,
+      );
+      const { queryClient, wrapper } = setup();
+      queryClient.setQueryData(annualKey, driverGrid({ case: "bull" }));
+      queryClient.setQueryData(quarterlyKey, quarterlyGrid({ case: "bull" }));
+      const { result } = renderHook(() => usePutDrivers("AAPL"), { wrapper });
+
+      result.current.mutate({ id: 2, case: "bull", rows: [quarterRow] });
+      await waitFor(() => expect(result.current.isError).toBe(true));
+
+      expect(queryClient.getQueryData(quarterlyKey)).toEqual(quarterlyGrid({ case: "bull" }));
+      expect(queryClient.getQueryState(quarterlyKey)?.isInvalidated).toBe(true);
+      expect(queryClient.getQueryState(annualKey)?.isInvalidated).toBe(true);
     });
   });
 

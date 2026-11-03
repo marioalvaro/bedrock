@@ -505,6 +505,10 @@ export type CompareCodeOut = {
  */
 export type CompareOut = {
     /**
+     * Built From Quarters
+     */
+    built_from_quarters: Array<number>;
+    /**
      * Cases
      */
     cases: Array<ComparedCaseOut>;
@@ -921,6 +925,10 @@ export type DriverGridOut = {
      * Warnings
      */
     warnings: Array<string>;
+    /**
+     * Year Modes
+     */
+    year_modes: Array<YearModeOut>;
 };
 
 /**
@@ -996,6 +1004,10 @@ export type DriverRowOut = {
      * Own
      */
     own: Array<string | null>;
+    /**
+     * Rollup
+     */
+    rollup: Array<string | null>;
     /**
      * Sources
      */
@@ -1199,6 +1211,10 @@ export type ForecastOut = {
      * Basis
      */
     basis: 'reported' | 'normalized';
+    /**
+     * Built From Quarters
+     */
+    built_from_quarters: Array<number>;
     /**
      * Case
      */
@@ -3168,6 +3184,51 @@ export type VintageOut = {
     value: string;
 };
 
+/**
+ * YearModeIn
+ */
+export type YearModeIn = {
+    /**
+     * Mode
+     */
+    mode: 'annual' | 'quarterly';
+};
+
+/**
+ * YearModeOut
+ *
+ * How a forecast year is set: `annual` or `quarterly` (by quarter). `in_span`: the year is
+ * built from quarters and can be switched; later years are always annual.
+ */
+export type YearModeOut = {
+    /**
+     * Fiscal Year
+     */
+    fiscal_year: number;
+    /**
+     * In Span
+     */
+    in_span: boolean;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Mode
+     */
+    mode: 'annual' | 'quarterly';
+};
+
+/**
+ * YearModesOut
+ */
+export type YearModesOut = {
+    /**
+     * Years
+     */
+    years: Array<YearModeOut>;
+};
+
 export type LoginApiV1AuthLoginPostData = {
     body: LoginRequest;
     path?: never;
@@ -5005,6 +5066,78 @@ export type CompareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGetRespons
 };
 
 export type CompareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGetResponse = CompareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGetResponses[keyof CompareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGetResponses];
+
+export type GetYearModesApiV1CompaniesTickerScenariosScenarioIdYearsGetData = {
+    body?: never;
+    path: {
+        /**
+         * Scenario Id
+         */
+        scenario_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/scenarios/{scenario_id}/years';
+};
+
+export type GetYearModesApiV1CompaniesTickerScenariosScenarioIdYearsGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetYearModesApiV1CompaniesTickerScenariosScenarioIdYearsGetError = GetYearModesApiV1CompaniesTickerScenariosScenarioIdYearsGetErrors[keyof GetYearModesApiV1CompaniesTickerScenariosScenarioIdYearsGetErrors];
+
+export type GetYearModesApiV1CompaniesTickerScenariosScenarioIdYearsGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: YearModesOut;
+};
+
+export type GetYearModesApiV1CompaniesTickerScenariosScenarioIdYearsGetResponse = GetYearModesApiV1CompaniesTickerScenariosScenarioIdYearsGetResponses[keyof GetYearModesApiV1CompaniesTickerScenariosScenarioIdYearsGetResponses];
+
+export type SetYearModeApiV1CompaniesTickerScenariosScenarioIdYearsFiscalYearModePutData = {
+    body: YearModeIn;
+    path: {
+        /**
+         * Scenario Id
+         */
+        scenario_id: number;
+        /**
+         * Fiscal Year
+         */
+        fiscal_year: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/scenarios/{scenario_id}/years/{fiscal_year}/mode';
+};
+
+export type SetYearModeApiV1CompaniesTickerScenariosScenarioIdYearsFiscalYearModePutErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SetYearModeApiV1CompaniesTickerScenariosScenarioIdYearsFiscalYearModePutError = SetYearModeApiV1CompaniesTickerScenariosScenarioIdYearsFiscalYearModePutErrors[keyof SetYearModeApiV1CompaniesTickerScenariosScenarioIdYearsFiscalYearModePutErrors];
+
+export type SetYearModeApiV1CompaniesTickerScenariosScenarioIdYearsFiscalYearModePutResponses = {
+    /**
+     * Successful Response
+     */
+    200: YearModesOut;
+};
+
+export type SetYearModeApiV1CompaniesTickerScenariosScenarioIdYearsFiscalYearModePutResponse = SetYearModeApiV1CompaniesTickerScenariosScenarioIdYearsFiscalYearModePutResponses[keyof SetYearModeApiV1CompaniesTickerScenariosScenarioIdYearsFiscalYearModePutResponses];
 
 export type CreateSeriesApiV1CompaniesTickerSegmentSeriesPostData = {
     body: SegmentSeriesIn;

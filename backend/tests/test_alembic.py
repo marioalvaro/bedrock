@@ -1441,3 +1441,93 @@ def test_0012_up_again_after_the_downgrade_keeps_the_year_rows_and_the_cascade(
         assert connection.execute(text("SELECT count(*) FROM driver_value")).scalar() == 2
         connection.execute(text("DELETE FROM scenario_case WHERE id = :id"), {"id": case_id})
         assert connection.execute(text("SELECT count(*) FROM driver_value")).scalar() == 0
+
+
+def _modes(connection: Connection) -> list[tuple[int, int, str]]:
+    rows = connection.execute(
+        text(
+            "SELECT scenario_id, fiscal_year, mode FROM scenario_year_mode"
+            " ORDER BY scenario_id, fiscal_year"
+        )
+    )
+    return [tuple(r) for r in rows]  # type: ignore[misc]
+
+
+def test_0013_creates_the_year_mode_table_with_its_constraints(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        owner = _company(connection, "AAA")
+        main = _scenario11(connection, owner, name="Main")
+        _insert(connection, "scenario_year_mode", scenario_id=main, fiscal_year=2027, mode="annual")
+        _insert(
+            connection, "scenario_year_mode", scenario_id=main, fiscal_year=2028, mode="quarterly"
+        )
+    for bad in (
+        dict(scenario_id=main, fiscal_year=2027, mode="quarterly"),  # the same year twice
+        dict(scenario_id=main, fiscal_year=2029, mode="weekly"),  # not a mode
+    ):
+        with pytest.raises(IntegrityError), engine.begin() as connection:
+            _insert(connection, "scenario_year_mode", **bad)
+
+
+def test_0013_modes_go_with_their_scenario(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    with create_engine(database_url).begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+        owner = _company(connection, "AAA")
+        main = _scenario11(connection, owner, name="Main")
+        _insert(
+            connection, "scenario_year_mode", scenario_id=main, fiscal_year=2027, mode="quarterly"
+        )
+        connection.execute(text("DELETE FROM scenario WHERE id = :id"), {"id": main})
+        assert _modes(connection) == []
+
+
+def test_0013_backfills_the_years_that_have_a_quarter_row_in_any_case(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0012"))
+    with create_engine(database_url).begin() as connection:
+        owner = _company(connection, "AAA")
+        main = _scenario11(connection, owner, name="Main")
+        other = _scenario11(connection, owner, name="Other", is_default=0)
+        main_base, main_bull = _case(connection, main, "base"), _case(connection, main, "bull")
+        other_base = _case(connection, other, "base")
+        _driver_row12(connection, main_bull, fiscal_year=2027, fiscal_period="Q1")
+        _driver_row12(connection, main_base, fiscal_year=2028, fiscal_period="Q4")
+        _driver_row12(connection, main_base, fiscal_year=2028, fiscal_period="Q3")
+        _driver_row12(connection, main_base, fiscal_year=2029)  # a year row is not a quarter row
+        _driver_row12(connection, other_base, fiscal_year=2029)
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+
+    with create_engine(database_url).begin() as connection:
+        assert _modes(connection) == [(main, 2027, "quarterly"), (main, 2028, "quarterly")]
+
+
+def test_0013_downgrade_drops_the_table_and_keeps_the_driver_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        case_id = _scenario_with_case(connection, "AAA")
+        _driver_row12(connection, case_id, fiscal_period="Q1")
+        scenario_id = connection.execute(text("SELECT id FROM scenario")).scalar()
+        _insert(
+            connection,
+            "scenario_year_mode",
+            scenario_id=scenario_id,
+            fiscal_year=2027,
+            mode="quarterly",
+        )
+
+    _run_alembic(tmp_path, monkeypatch, ("downgrade", "0012"))
+
+    assert "scenario_year_mode" not in inspect(engine).get_table_names()
+    with engine.begin() as connection:
+        assert connection.execute(text("SELECT count(*) FROM driver_value")).scalar() == 1
+        assert connection.execute(text("SELECT count(*) FROM company")).scalar() == 1

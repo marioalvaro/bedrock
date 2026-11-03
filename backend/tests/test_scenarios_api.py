@@ -238,6 +238,7 @@ def test_the_grid_has_the_documented_shape(aapl_client: TestClient) -> None:
         "forecast_periods",
         "rows",
         "warnings",
+        "year_modes",
     }
     assert grid["freq"] == "annual"
     # the periods mirror the years
@@ -258,6 +259,7 @@ def test_the_grid_has_the_documented_shape(aapl_client: TestClient) -> None:
         "sources",
         "own",
         "kind",
+        "rollup",
     }
     assert (growth["unit"], growth["kind"]) == ("pct", "offset")
     assert len(growth["history"]) == 5 and all(isinstance(v, str) for v in growth["history"])
@@ -427,6 +429,36 @@ def _qrow(code: str, kind: str, *values: tuple[int, str, str | None]) -> dict[st
     }
 
 
+def _year_quarters(
+    client: TestClient, scenario_id: int, year: int, case: str = "base"
+) -> list[dict[str, Any]]:
+    """The year's forecast quarters (columns of the quarterly grid)."""
+    grid = _qgrid(client, scenario_id, case)
+    return [p for p in grid["forecast_periods"] if p["fiscal_year"] == year]
+
+
+def _year_row(
+    client: TestClient,
+    scenario_id: int,
+    code: str,
+    kind: str,
+    year: int,
+    values: list[str],
+    case: str = "base",
+) -> dict[str, Any]:
+    """A quarterly row with one value per forecast quarter of the year."""
+    quarters = _year_quarters(client, scenario_id, year, case)
+    assert len(quarters) == len(values)
+    return _qrow(
+        code, kind, *((year, p["fiscal_period"], v) for p, v in zip(quarters, values, strict=True))
+    )
+
+
+def _first_year(client: TestClient, scenario_id: int) -> int:
+    """The first year of the span (AAPL's opening is inside it: it has fewer than 4 quarters)."""
+    return _span_years(client, scenario_id)[0]
+
+
 def test_the_quarterly_grid_has_the_history_quarters_and_the_span(aapl_client: TestClient) -> None:
     main = _scenarios(aapl_client)["Main"]
 
@@ -457,36 +489,49 @@ def test_the_quarterly_grid_has_the_history_quarters_and_the_span(aapl_client: T
 
 def test_the_annual_grid_is_unchanged_by_quarter_rows(aapl_client: TestClient) -> None:
     main = _scenarios(aapl_client)["Main"]
+    year = _first_year(aapl_client, main["id"])
     before = _grid(aapl_client, main["id"], "bull")
-    first = _quarter(_qgrid(aapl_client, main["id"], "bull"))
+    _switch(aapl_client, main["id"], year, "quarterly")
+    count = len(_year_quarters(aapl_client, main["id"], year, "bull"))
 
     put = _put(
         aapl_client,
         main["id"],
         "bull",
-        _qrow("gross_margin", "offset", (first["fiscal_year"], first["fiscal_period"], "0.02")),
+        _year_row(
+            aapl_client, main["id"], "gross_margin", "offset", year, ["0.02"] * count, "bull"
+        ),
     )
     assert put.status_code == 200, put.text
 
     after = _grid(aapl_client, main["id"], "bull")
-    assert after["rows"] == before["rows"]
+    drop = lambda rows: [{k: v for k, v in r.items() if k != "rollup"} for r in rows]  # noqa: E731
+    assert drop(after["rows"]) == drop(before["rows"])  # the annual rows keep their values
 
 
-def test_a_quarter_put_sets_that_quarter_only_and_replies_with_the_quarterly_grid(
+def test_a_quarter_put_sets_the_quarters_of_a_year_and_replies_with_the_quarterly_grid(
     aapl_client: TestClient,
 ) -> None:
     main = _scenarios(aapl_client)["Main"]
-    first = _quarter(_qgrid(aapl_client, main["id"], "bull"))
-    year, quarter = first["fiscal_year"], first["fiscal_period"]
+    year = _first_year(aapl_client, main["id"])
+    _switch(aapl_client, main["id"], year, "quarterly")
+    count = len(_year_quarters(aapl_client, main["id"], year, "bull"))
+    values = ["0.30"] + ["0.25"] * (count - 1)
 
-    put = _put(aapl_client, main["id"], "bull", _qrow("tax_rate", "value", (year, quarter, "0.30")))
+    put = _put(
+        aapl_client,
+        main["id"],
+        "bull",
+        _year_row(aapl_client, main["id"], "tax_rate", "value", year, values, "bull"),
+    )
 
     assert put.status_code == 200, put.text
     reply = put.json()
     assert reply["freq"] == "quarterly"
     tax = _row(reply, "tax_rate")
-    assert tax["own"][0] == "0.3" and tax["values"][0] == "0.3" and tax["sources"][0] == "own"
-    assert tax["sources"][1:] == ["year"] * (len(tax["sources"]) - 1)
+    assert tax["own"][:count] == ["0.3"] + ["0.25"] * (count - 1)
+    assert tax["values"][0] == "0.3" and tax["sources"][:count] == ["own"] * count
+    assert tax["sources"][count:] == ["year"] * (len(tax["sources"]) - count)
     assert tax["kind"] == "value"
     assert reply == _qgrid(aapl_client, main["id"], "bull")
     forecast = aapl_client.get(
@@ -499,11 +544,17 @@ def test_a_quarter_put_replaces_only_the_quarterly_rows_of_that_driver(
     aapl_client: TestClient,
 ) -> None:
     main = _scenarios(aapl_client)["Main"]
-    grid = _qgrid(aapl_client, main["id"], "bull")
-    (y1, q1), (y2, q2) = (
-        (p["fiscal_year"], p["fiscal_period"]) for p in grid["forecast_periods"][:2]
+    quarter_year, annual_year = _span_years(aapl_client, main["id"])[:2]
+    _switch(aapl_client, main["id"], quarter_year, "quarterly")
+    count = len(_year_quarters(aapl_client, main["id"], quarter_year, "bull"))
+    first = _put(
+        aapl_client,
+        main["id"],
+        "bull",
+        _year_row(
+            aapl_client, main["id"], "tax_rate", "value", quarter_year, ["0.30"] * count, "bull"
+        ),
     )
-    first = _put(aapl_client, main["id"], "bull", _qrow("tax_rate", "value", (y1, q1, "0.30")))
     assert first.status_code == 200
     annual = _put(
         aapl_client,
@@ -512,29 +563,39 @@ def test_a_quarter_put_replaces_only_the_quarterly_rows_of_that_driver(
         {
             "driver_code": "tax_rate",
             "kind": "value",
-            "values": [{"fiscal_year": y1, "value": "0.25"}],
+            "values": [{"fiscal_year": annual_year, "value": "0.25"}],
         },
     )
     assert annual.status_code == 200
-    assert _row(annual.json(), "tax_rate")["own"][0] == "0.25"  # the annual row
+    at = _grid(aapl_client, main["id"], "bull")["forecast_years"].index(annual_year)
+    assert _row(annual.json(), "tax_rate")["own"][at] == "0.25"  # the annual row
     assert _row(_qgrid(aapl_client, main["id"], "bull"), "tax_rate")["own"][0] == "0.3"  # kept
 
-    second = _put(aapl_client, main["id"], "bull", _qrow("tax_rate", "value", (y2, q2, "0.31")))
+    second = _put(
+        aapl_client,
+        main["id"],
+        "bull",
+        _year_row(
+            aapl_client, main["id"], "tax_rate", "value", quarter_year, ["0.31"] * count, "bull"
+        ),
+    )
     own = _row(second.json(), "tax_rate")["own"]
-    assert own[0] is None and own[1] == "0.31"  # the earlier quarter row was replaced
-    assert _row(_grid(aapl_client, main["id"], "bull"), "tax_rate")["own"][0] == "0.25"  # kept
+    assert own[:count] == ["0.31"] * count  # the earlier quarter rows were replaced
+    assert _row(_grid(aapl_client, main["id"], "bull"), "tax_rate")["own"][at] == "0.25"  # kept
 
 
 def test_a_kind_change_drops_the_other_frequency_s_rows(aapl_client: TestClient) -> None:
     main = _scenarios(aapl_client)["Main"]
-    first = _quarter(_qgrid(aapl_client, main["id"], "bull"))
+    year = _first_year(aapl_client, main["id"])
+    _switch(aapl_client, main["id"], year, "quarterly")
+    count = len(_year_quarters(aapl_client, main["id"], year, "bull"))
     assert _row(_grid(aapl_client, main["id"], "bull"), "gross_margin")["kind"] == "offset"
 
     put = _put(
         aapl_client,
         main["id"],
         "bull",
-        _qrow("gross_margin", "value", (first["fiscal_year"], first["fiscal_period"], "0.5")),
+        _year_row(aapl_client, main["id"], "gross_margin", "value", year, ["0.5"] * count, "bull"),
     )
 
     assert put.status_code == 200, put.text
@@ -607,11 +668,163 @@ def test_a_quarter_offset_on_base_is_422_and_an_unknown_freq_too(aapl_client: Te
 
 def test_a_quarter_row_of_base_reaches_bull_as_base_s_quarter(aapl_client: TestClient) -> None:
     main = _scenarios(aapl_client)["Main"]
-    first = _quarter(_qgrid(aapl_client, main["id"], "base"))
-    year, quarter = first["fiscal_year"], first["fiscal_period"]
-    put = _put(aapl_client, main["id"], "base", _qrow("tax_rate", "value", (year, quarter, "0.4")))
-    assert put.status_code == 200
+    year = _first_year(aapl_client, main["id"])
+    _switch(aapl_client, main["id"], year, "quarterly")
+    count = len(_year_quarters(aapl_client, main["id"], year))
+    row = _year_row(
+        aapl_client, main["id"], "tax_rate", "value", year, ["0.4"] + ["0.2"] * (count - 1)
+    )
+    put = _put(aapl_client, main["id"], "base", row)
+    assert put.status_code == 200, put.text
 
     bull = _row(_qgrid(aapl_client, main["id"], "bull"), "tax_rate")
 
     assert (bull["values"][0], bull["sources"][0], bull["own"][0]) == ("0.4", "base", None)
+
+
+# --- year modes (docs/erd/forecasting.md "Year modes" -> API) -----------------------------------
+
+
+def _years(client: TestClient, scenario_id: int) -> list[dict[str, Any]]:
+    response = client.get(f"{SCENARIOS}/{scenario_id}/years")
+    assert response.status_code == 200, response.text
+    body: dict[str, Any] = response.json()
+    return list(body["years"])
+
+
+def _switch(client: TestClient, scenario_id: int, year: int, mode: str) -> Any:
+    return client.put(f"{SCENARIOS}/{scenario_id}/years/{year}/mode", json={"mode": mode})
+
+
+def _span_years(client: TestClient, scenario_id: int) -> list[int]:
+    return [y["fiscal_year"] for y in _years(client, scenario_id) if y["in_span"]]
+
+
+def test_the_year_routes_require_a_session(client: TestClient) -> None:
+    assert client.get(f"{SCENARIOS}/1/years").status_code == 401
+    assert client.put(f"{SCENARIOS}/1/years/2027/mode", json={"mode": "annual"}).status_code == 401
+
+
+def test_every_forecast_year_starts_annual_and_only_the_span_can_be_switched(
+    aapl_client: TestClient,
+) -> None:
+    main = _scenarios(aapl_client)["Main"]
+
+    years = _years(aapl_client, main["id"])
+
+    assert [y["fiscal_year"] for y in years] == _grid(aapl_client, main["id"])["forecast_years"]
+    assert {y["mode"] for y in years} == {"annual"}
+    assert set(years[0]) == {"fiscal_year", "label", "mode", "in_span"}
+    assert years[0]["in_span"] is True and years[-1]["in_span"] is False
+
+
+def test_switching_a_year_replies_with_the_modes_and_the_grids_carry_them(
+    aapl_client: TestClient,
+) -> None:
+    main = _scenarios(aapl_client)["Main"]
+    year = _span_years(aapl_client, main["id"])[1]
+
+    switched = _switch(aapl_client, main["id"], year, "quarterly")
+
+    assert switched.status_code == 200, switched.text
+    assert switched.json()["years"] == _years(aapl_client, main["id"])
+    for case in ("base", "bull", "bear"):
+        for grid in (
+            _grid(aapl_client, main["id"], case),
+            _qgrid(aapl_client, main["id"], case),
+        ):
+            assert {m["fiscal_year"]: m["mode"] for m in grid["year_modes"]}[year] == "quarterly"
+            assert [m["mode"] for m in grid["year_modes"]].count("quarterly") == 1
+
+
+def test_a_year_set_by_quarter_has_a_roll_up_and_the_others_do_not(
+    aapl_client: TestClient,
+) -> None:
+    main = _scenarios(aapl_client)["Main"]
+    grid = _grid(aapl_client, main["id"], "bull")
+    year = _span_years(aapl_client, main["id"])[1]
+    at = grid["forecast_years"].index(year)
+    assert all(r["rollup"] == [None] * len(grid["forecast_years"]) for r in grid["rows"])
+
+    _switch(aapl_client, main["id"], year, "quarterly")
+
+    after = _grid(aapl_client, main["id"], "bull")
+    for row in after["rows"]:
+        assert len(row["rollup"]) == len(after["forecast_years"])
+        assert [v for i, v in enumerate(row["rollup"]) if i != at] == [None] * 4
+    growth = _row(after, "revenue_growth")
+    # nothing was changed by the switch: the roll-up is the year's number
+    assert D(growth["rollup"][at]) == pytest.approx(D(growth["values"][at]), abs=D("1e-6"))
+    assert D(_row(after, "gross_margin")["rollup"][at]) == pytest.approx(
+        D(_row(after, "gross_margin")["values"][at]), abs=D("1e-6")
+    )
+
+
+def test_the_roll_up_follows_an_edited_quarter(aapl_client: TestClient) -> None:
+    main = _scenarios(aapl_client)["Main"]
+    year = _span_years(aapl_client, main["id"])[1]
+    _switch(aapl_client, main["id"], year, "quarterly")
+    grid = _qgrid(aapl_client, main["id"], "base")
+    at = grid["forecast_years"].index(year)
+    before = D(_row(grid, "gross_margin")["rollup"][at])
+    quarters = [p for p in grid["forecast_periods"] if p["fiscal_year"] == year]
+    values = [("0.9" if p["fiscal_period"] == "Q2" else "0.4") for p in quarters]
+    row = _qrow(
+        "gross_margin",
+        "value",
+        *((year, p["fiscal_period"], v) for p, v in zip(quarters, values, strict=True)),
+    )
+
+    put = _put(aapl_client, main["id"], "base", row)
+
+    assert put.status_code == 200, put.text
+    after = D(_row(put.json(), "gross_margin")["rollup"][at])
+    assert after > before + D("0.05")  # one quarter at 90 % lifts the year's margin
+
+
+def test_the_mode_routes_refuse_a_year_outside_the_span_and_an_unknown_mode_or_scenario(
+    aapl_client: TestClient,
+) -> None:
+    main = _scenarios(aapl_client)["Main"]
+    years = _years(aapl_client, main["id"])
+    after_span = next(y["fiscal_year"] for y in years if not y["in_span"])
+
+    late = _switch(aapl_client, main["id"], after_span, "quarterly")
+    bad = _switch(aapl_client, main["id"], years[0]["fiscal_year"], "weekly")
+    missing = _switch(aapl_client, 9999, years[0]["fiscal_year"], "quarterly")
+
+    assert late.status_code == 422 and "quarterly span" in late.json()["detail"]
+    assert bad.status_code == 422
+    assert missing.status_code == 404
+    assert {y["mode"] for y in _years(aapl_client, main["id"])} == {"annual"}
+
+
+def test_the_driver_put_refuses_a_year_set_both_ways(aapl_client: TestClient) -> None:
+    main = _scenarios(aapl_client)["Main"]
+    first, second = _span_years(aapl_client, main["id"])[:2]
+    _switch(aapl_client, main["id"], second, "quarterly")
+    quarter = next(
+        p for p in _qgrid(aapl_client, main["id"])["forecast_periods"] if p["fiscal_year"] == first
+    )
+
+    in_annual_year = _put(
+        aapl_client,
+        main["id"],
+        "base",
+        _qrow("tax_rate", "value", (first, quarter["fiscal_period"], "0.2")),
+    )
+    in_quarterly_year = _put(
+        aapl_client,
+        main["id"],
+        "base",
+        {
+            "driver_code": "tax_rate",
+            "kind": "value",
+            "values": [{"fiscal_year": second, "value": "0.2"}],
+        },
+    )
+
+    assert in_annual_year.status_code == 422
+    assert f"FY{first} is set annually" in in_annual_year.json()["detail"]
+    assert in_quarterly_year.status_code == 422
+    assert f"FY{second} is set by quarter" in in_quarterly_year.json()["detail"]

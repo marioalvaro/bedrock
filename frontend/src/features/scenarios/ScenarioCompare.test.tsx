@@ -57,9 +57,9 @@ describe("ScenarioCompare chart", () => {
     await screen.findByRole("table", { name: "Case comparison" });
     expect(screen.getByLabelText("Metric")).toHaveValue("revenue");
     // A case that cannot run keeps its (empty) series, so every case keeps its color.
-    expect(lastSeries().map((series) => series.name)).toEqual(["Base", "Bull", "Bear"]);
+    expect(lastSeries().map((series) => series.name)).toEqual(["Bull", "Base", "Bear"]);
     expect(lastSeries()[2]).toMatchObject({ data: [] });
-    expect(lastSeries()[0]).toMatchObject({ type: "line", data: [425000, 435000] });
+    expect(lastSeries()[1]).toMatchObject({ type: "line", data: [425000, 435000] });
     expect(lastOption().xAxis).toMatchObject({ type: "category", data: ["FY26E", "FY27E"] });
     expect(screen.getByRole("img", { name: "Revenue by case" })).toBeInTheDocument();
   });
@@ -68,9 +68,9 @@ describe("ScenarioCompare chart", () => {
     setScale("B");
     renderCompare();
     await screen.findByRole("table", { name: "Case comparison" });
-    expect(lastSeries()[1]).toMatchObject({ data: [437, 460] });
+    expect(lastSeries()[0]).toMatchObject({ data: [437, 460] });
     await userEvent.selectOptions(screen.getByLabelText("Metric"), "eps_diluted");
-    expect(lastSeries()[1]).toMatchObject({ name: "Bull", data: [7.52, 8.1] });
+    expect(lastSeries()[0]).toMatchObject({ name: "Bull", data: [7.52, 8.1] });
     expect(screen.getByRole("img", { name: "EPS (diluted) by case" })).toBeInTheDocument();
   });
 
@@ -111,6 +111,32 @@ describe("ScenarioCompare chart", () => {
   });
 });
 
+describe("ScenarioCompare colors", () => {
+  it("paints Bull green, Base blue and Bear red in the chart", async () => {
+    const tokens = { "--positive": "#00aa00", "--chart-1": "#0000aa", "--negative": "#aa0000" };
+    for (const [name, value] of Object.entries(tokens)) {
+      document.documentElement.style.setProperty(name, value);
+    }
+    renderCompare();
+    await screen.findByRole("table", { name: "Case comparison" });
+    expect(lastOption().color).toEqual(["#00aa00", "#0000aa", "#aa0000"]);
+    for (const name of Object.keys(tokens)) document.documentElement.style.removeProperty(name);
+  });
+
+  it("colors each case's table label the same way", async () => {
+    renderCompare();
+    const label = async (name: string) =>
+      (
+        await within(await screen.findByRole("table", { name: "Case comparison" })).findAllByText(
+          name,
+        )
+      )[0]!;
+    expect(await label("Bull")).toHaveClass("text-positive");
+    expect(await label("Base")).toHaveClass("text-chart-1");
+    expect(await label("Bear")).toHaveClass("text-negative");
+  });
+});
+
 describe("ScenarioCompare table", () => {
   it("heads each metric and lists a row per case, values by unit", async () => {
     renderCompare();
@@ -120,12 +146,12 @@ describe("ScenarioCompare table", () => {
     expect(rows).toEqual([
       "FY26EFY27E",
       "Revenue · USD millions",
-      "Base425,000435,000",
       "Bull437,000460,000",
+      "Base425,000435,000",
       "BearSet these drivers: tax_rate",
       "EPS (diluted) · USD/share",
-      "Base7.107.45",
       "Bull7.528.10",
+      "Base7.107.45",
       "BearSet these drivers: tax_rate",
     ]);
   });
@@ -136,7 +162,7 @@ describe("ScenarioCompare table", () => {
     compare.mockResolvedValue(okResult(data) as never);
     renderCompare();
     await screen.findByRole("table", { name: "Case comparison" });
-    expect(within(table()).getAllByRole("row")[3]).toHaveTextContent("Bull437,000—");
+    expect(within(table()).getAllByRole("row")[2]).toHaveTextContent("Bull437,000—");
   });
 });
 
@@ -168,8 +194,8 @@ describe("ScenarioCompare states", () => {
         .getAllByRole("listitem")
         .map((item) => item.textContent),
     ).toEqual([
-      "Base: Set these drivers: gross_margin",
       "Bull: Set these drivers: gross_margin",
+      "Base: Set these drivers: gross_margin",
       "Bear: No quarterly history",
     ]);
     expect(screen.queryByRole("img")).not.toBeInTheDocument();

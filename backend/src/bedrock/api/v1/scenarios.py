@@ -19,6 +19,8 @@ from bedrock.schemas.scenarios import (
     ScenarioIn,
     ScenarioOut,
     ScenarioSettingsIn,
+    YearModeIn,
+    YearModesOut,
 )
 from bedrock.services import scenarios as service
 from bedrock.services.errors import InvalidDriverFile
@@ -71,6 +73,28 @@ def delete_scenario(
     session: Session = Depends(get_session),
 ) -> None:
     service.delete_scenario(session, company, scenario_id)
+
+
+@router.get("/companies/{ticker}/scenarios/{scenario_id}/years")
+def get_year_modes(
+    scenario_id: int,
+    company: Company = Depends(followed_company),
+    session: Session = Depends(get_session),
+) -> YearModesOut:
+    return YearModesOut.from_modes(service.year_modes(session, company, scenario_id))
+
+
+@router.put("/companies/{ticker}/scenarios/{scenario_id}/years/{fiscal_year}/mode")
+def set_year_mode(
+    scenario_id: int,
+    fiscal_year: int,
+    body: YearModeIn,
+    company: Company = Depends(followed_company),
+    session: Session = Depends(get_session),
+    now: datetime = Depends(get_clock),
+) -> YearModesOut:
+    modes = service.set_year_mode(session, company, scenario_id, fiscal_year, body.mode, now)
+    return YearModesOut.from_modes(modes)
 
 
 @router.get("/companies/{ticker}/scenarios/{scenario_id}/cases/{case}/drivers")

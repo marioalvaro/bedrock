@@ -12,6 +12,7 @@ import {
   useDeleteScenario,
   useResetCase,
   useUpdateScenario,
+  type ForecastFreq,
   type ScenarioCase,
 } from "@/api/scenarios";
 import { UnitToggle } from "@/components/UnitToggle";
@@ -168,6 +169,7 @@ export function ScenariosView({ ticker }: ScenariosViewProps) {
   const [resetting, setResetting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [freq, setFreq] = useState<ForecastFreq>("annual");
 
   if (isPending) return <p className="text-muted-foreground p-4 text-sm">Loading…</p>;
   // Only a failed first load replaces the tab; a failed background refetch keeps the data shown.
@@ -312,6 +314,8 @@ export function ScenariosView({ ticker }: ScenariosViewProps) {
         ticker={ticker}
         scenario={selected}
         scenarioCase={scenarioCase}
+        freq={freq}
+        onFreq={setFreq}
         scale={scale}
       />
       <ScenarioCompare key={selected.id} ticker={ticker} scenarioId={selected.id} />

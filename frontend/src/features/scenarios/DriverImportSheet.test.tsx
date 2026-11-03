@@ -65,6 +65,7 @@ describe("DriverImportSheet", () => {
     renderSheet();
     expect(getDrivers).toHaveBeenCalledWith({
       path: { ticker: "AAPL", scenario_id: 2, case: "bull" },
+      query: { freq: "annual" },
     });
   });
 
@@ -90,6 +91,46 @@ describe("DriverImportSheet", () => {
         .map((item) => item.textContent),
     ).toEqual(["Revenue growth · FY27: 5.0% → 8.0%", "Gross margin · FY26: 47.0% → cleared"]);
     expect(screen.getByRole("button", { name: "Apply 2 changes" })).toBeEnabled();
+  });
+
+  it("names a quarter's change by the quarter and keeps it apart from its year's", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    importDrivers.mockResolvedValue(
+      okResult(
+        driverImport({
+          changes: [
+            {
+              driver_code: "gross_margin",
+              fiscal_year: 2026,
+              fiscal_period: "FY",
+              old: "0.47",
+              new: "0.48",
+              old_kind: "value",
+              new_kind: "value",
+            },
+            {
+              driver_code: "gross_margin",
+              fiscal_year: 2026,
+              fiscal_period: "Q1",
+              old: "0.44",
+              new: "0.46",
+              old_kind: "value",
+              new_kind: "value",
+            },
+          ],
+        }),
+      ) as never,
+    );
+    renderSheet();
+    await preview();
+    const list = await screen.findByRole("list", { name: "Changes" });
+    expect(
+      within(list)
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual(["Gross margin · FY26: 47.0% → 48.0%", "Gross margin · Q1 FY26: 44.0% → 46.0%"]);
+    expect(errors).not.toHaveBeenCalled(); // no duplicate React key
+    errors.mockRestore();
   });
 
   it("shows offsets as offsets and a new value from nothing", async () => {

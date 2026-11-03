@@ -374,7 +374,7 @@ class _Run:
             if s.dimension == self.settings.segment_dimension and s.metric == "revenue"
         ]
         growth = {s.id: self._driver(segment_code(s.id), year, quarter) for s in series}
-        if all(g == self._driver(segment_code(i), year) for i, g in growth.items()):
+        if not any(_differs(g, self._driver(segment_code(i), year)) for i, g in growth.items()):
             return self.factors[year]
         before = {s.id: self._segment_quarter(s, year - 1, quarter) for s in series}
         total = sum(before.values(), ZERO)

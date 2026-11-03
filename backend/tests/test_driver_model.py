@@ -700,6 +700,26 @@ def test_a_quarter_segment_growth_grows_the_segment_in_that_quarter() -> None:
     assert all(c.ok for c in out.integrity)
 
 
+def test_quarter_segment_growths_equal_to_the_year_s_up_to_rounding_keep_the_year_s_growth() -> (
+    None
+):
+    """A stored driver keeps 10 decimals, so a quarter row filled from a default differs from the
+    year's value in the last digits: that is not an override (year-mode switch, FR-FCST-13)."""
+    history = replace(quarterly_company(), segment_series=tuple(quarterly_series((100, 100))))
+    settings = ScenarioSettings("segments", segment_dimension="business")
+    extra = {"segment_growth:1": "0.10", "segment_growth:2": "-0.10"}
+    rows = [
+        qrow("segment_growth:1", "Q3", "0.1000000000001"),
+        qrow("segment_growth:2", "Q3", "-0.0999999999999"),
+    ]
+
+    out = quarter_run(rows, history=history, settings=settings, extra=extra)
+
+    # the company's Q3 FY2025 revenue 250 grows by the year's implied 930 / 900, not by the
+    # quarter's own mix (100 × 1.10 + 100 × 0.90) / 200
+    assert near(out.get("revenue", "FY2026Q3"), D(250) * D(930) / D(900))
+
+
 def test_a_quarter_segment_override_needs_the_segments_quarter_last_year() -> None:
     history = replace(quarterly_company(), segment_series=tuple(quarterly_series((100, None))))
     settings = ScenarioSettings("segments", segment_dimension="business")

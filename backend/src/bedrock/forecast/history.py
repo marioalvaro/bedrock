@@ -2,7 +2,7 @@
 opening period and the forecast years (docs/erd/forecasting.md "Drivers (M4)", "Start and
 periods"). Pure."""
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -148,11 +148,20 @@ def historical_drivers(
 ) -> dict[tuple[str, int], Decimal | None]:
     """Each driver of the scenario for each history year; None where an input is missing or a
     denominator is 0 (or the driver's own null rule applies)."""
+    return annual_driver_values(history, settings, history_years(history))
+
+
+def annual_driver_values(
+    history: ForecastHistory, settings: ScenarioSettings, years: Sequence[int]
+) -> dict[tuple[str, int], Decimal | None]:
+    """Each driver of the scenario for each of the given fiscal years of the history's annual
+    tables, by the history rules (`historical_drivers` on the last actual years; the roll-up of a
+    forecast year on tables that carry it)."""
     reader = _Reader(history, settings)
     return {
         (d.code, fy): reader.value(d, fy)
         for d in scenario_drivers(history, settings)
-        for fy in history_years(history)
+        for fy in years
     }
 
 

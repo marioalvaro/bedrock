@@ -71,6 +71,14 @@ describe("Chart", () => {
     expect(lastOption().color).toEqual(["#111111", "#222222", "#333333", "#444444", "#555555"]);
   });
 
+  it("colors the series from the given tokens when the caller names them", () => {
+    setTokens({ "--positive": "#0a0a0a", "--negative": "#0b0b0b" });
+    render(
+      <Chart option={OPTION} ariaLabel="Revenue by case" colors={["--positive", "--negative"]} />,
+    );
+    expect(lastOption().color).toEqual(["#0a0a0a", "#0b0b0b"]);
+  });
+
   it("hands ECharts an rgb color for an oklch token, as Chrome's canvas keeps oklch()", () => {
     // Chrome's `fillStyle` getter returns "oklch(…)" unchanged; only the painted pixel is sRGB.
     // ECharts cannot parse oklch() for its hover color, so the hovered line vanished.

@@ -40,10 +40,10 @@ interface Palette {
 
 // The tokens of `theme`: the theme store switches the `.dark` class before it notifies, so the
 // computed tokens are already the new theme's when this runs (the argument keys the memo).
-function readPalette(theme: Theme): Palette {
+function readPalette(theme: Theme, seriesTokens: string[]): Palette {
   void theme;
   return {
-    series: SERIES_TOKENS.map(readToken),
+    series: seriesTokens.map(readToken),
     text: readToken("--foreground"),
     muted: readToken("--muted-foreground"),
     border: readToken("--border"),
@@ -71,18 +71,22 @@ interface ChartProps {
   option: EChartsOption;
   ariaLabel: string;
   height?: number;
+  colors?: string[]; // color tokens by series position, instead of --chart-1..5
 }
 
 /**
- * The app's one ECharts wrapper: series colors from `--chart-1..5`, text and axes from
+ * The app's one ECharts wrapper: series colors from `--chart-1..5` (or the `colors` tokens), text and axes from
  * `--foreground` / `--muted-foreground` / `--border` (re-read when the theme changes), and no
  * animation when the OS asks for less motion.
  */
-export function Chart({ option, ariaLabel, height = 260 }: ChartProps) {
+export function Chart({ option, ariaLabel, height = 260, colors = SERIES_TOKENS }: ChartProps) {
   const theme = useTheme();
   const reduced = usePrefersReducedMotion();
 
-  const palette = useMemo(() => readPalette(theme), [theme]);
+  // Keyed by content, as callers pass a fresh array each render.
+  const tokens = colors.join(",");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const palette = useMemo(() => readPalette(theme, tokens.split(",")), [theme, tokens]);
 
   const themed = useMemo<EChartsOption>(
     () => ({

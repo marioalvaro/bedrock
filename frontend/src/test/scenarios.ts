@@ -43,8 +43,17 @@ export function driverRow(overrides: Partial<DriverRowOut> = {}): DriverRowOut {
     sources: ["default", "default"],
     own: [null, null],
     kind: null,
+    rollup: [null, null],
     ...overrides,
   };
+}
+
+/** GET …/years: FY2026 is in the quarterly span, FY2027 is not; both annual. */
+export function yearModes(): DriverGridOut["year_modes"] {
+  return [
+    { fiscal_year: 2026, label: "FY26E", mode: "annual", in_span: true },
+    { fiscal_year: 2027, label: "FY27E", mode: "annual", in_span: false },
+  ];
 }
 
 /**
@@ -57,6 +66,7 @@ export function driverGrid(overrides: Partial<DriverGridOut> = {}): DriverGridOu
     scenario_id: 1,
     case: "base",
     freq: "annual",
+    year_modes: yearModes(),
     history_years: [2023, 2024, 2025],
     forecast_years: [2026, 2027],
     history_periods: [2023, 2024, 2025].map((y) => ({
@@ -106,6 +116,74 @@ export function driverGrid(overrides: Partial<DriverGridOut> = {}): DriverGridOu
         history: ["77550000000", "94949000000", "90711000000"],
         values: ["87736666666.67", "87736666666.67"],
         sources: ["default", "default"],
+      }),
+    ],
+    warnings: [],
+    ...overrides,
+  };
+}
+
+/**
+ * GET …/drivers?freq=quarterly of Base: 3 actual quarters (Q2–Q4 FY25A) and 2 forecast quarters
+ * (Q1–Q2 FY26E), the same five drivers as `driverGrid`. A quarter with no row of its own takes
+ * its year's value (source `year`): only gross margin Q1 FY26 is set (own).
+ */
+export function quarterlyGrid(overrides: Partial<DriverGridOut> = {}): DriverGridOut {
+  const quarter = (fiscal_year: number, fiscal_period: "Q1" | "Q2" | "Q3" | "Q4", tag: string) => ({
+    fiscal_year,
+    fiscal_period,
+    label: `${fiscal_period} FY${fiscal_year % 100}${tag}`,
+  });
+  return {
+    scenario_id: 1,
+    case: "base",
+    freq: "quarterly",
+    year_modes: yearModes(),
+    history_years: [2023, 2024, 2025],
+    forecast_years: [2026, 2027],
+    history_periods: [quarter(2025, "Q2", "A"), quarter(2025, "Q3", "A"), quarter(2025, "Q4", "A")],
+    forecast_periods: [quarter(2026, "Q1", "E"), quarter(2026, "Q2", "E")],
+    rows: [
+      driverRow({
+        history: ["0.0507", "0.0384", "0.0627"],
+        values: ["0.0234", "0.0234"],
+        sources: ["year", "year"],
+      }),
+      driverRow({
+        code: "gross_margin",
+        label: "Gross margin",
+        group: "Costs",
+        history: ["0.468", "0.465", "0.469"],
+        values: ["0.48", "0.47"],
+        sources: ["own", "year"],
+        own: ["0.48", null],
+        kind: "value",
+      }),
+      driverRow({
+        code: "tax_rate",
+        label: "Tax rate",
+        group: "Below the line",
+        history: [null, null, null],
+        values: [null, null],
+        sources: [null, null],
+      }),
+      driverRow({
+        code: "receivable_days",
+        label: "Receivable days",
+        group: "Working capital",
+        unit: "days",
+        history: ["58.3", "61.2", "62.0"],
+        values: [null, null],
+        sources: ["default", "default"],
+      }),
+      driverRow({
+        code: "buybacks",
+        label: "Buybacks",
+        group: "Shareholders",
+        unit: "USD",
+        history: ["22000000000", "23500000000", "21000000000"],
+        values: ["21934166666.67", "21934166666.67"],
+        sources: ["year", "year"],
       }),
     ],
     warnings: [],
@@ -211,6 +289,7 @@ export function comparison(overrides: Partial<CompareOut> = {}): CompareOut {
         error: "Set these drivers: tax_rate",
       },
     ],
+    built_from_quarters: [],
     ...overrides,
   };
 }
@@ -225,6 +304,7 @@ export function forecast(overrides: Partial<ForecastOut> = {}): ForecastOut {
     currency: "USD",
     scenario_id: 1,
     case: "base",
+    built_from_quarters: [],
     periods: [forecastPeriod(2026)],
     rows: [],
     balance_check: null,

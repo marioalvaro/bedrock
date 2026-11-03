@@ -1,25 +1,25 @@
 import { describe, expect, it } from "vitest";
 
-import { driverGrid, driverRow } from "@/test/scenarios";
+import { driverGrid, driverRow, quarterlyGrid } from "@/test/scenarios";
 
 import {
+  driverClear,
   driverEdit,
   driverReset,
   forecastCell,
   formatDriverOffset,
   formatDriverValue,
-  historyLabel,
-  forecastLabel,
   parseDriverText,
+  periodName,
   toDriverRows,
   toDriverText,
 } from "./driverCells";
 
-describe("column labels", () => {
-  it("marks actual years A and forecast years E with two digits", () => {
-    expect(historyLabel(2024)).toBe("FY24A");
-    expect(forecastLabel(2027)).toBe("FY27E");
-    expect(forecastLabel(2100)).toBe("FY00E");
+describe("periodName", () => {
+  it("names a year FYyy and a quarter Qn FYyy, with two digits", () => {
+    expect(periodName(2024, "FY")).toBe("FY24");
+    expect(periodName(2026, "Q1")).toBe("Q1 FY26");
+    expect(periodName(2100, "Q4")).toBe("Q4 FY00");
   });
 });
 
@@ -136,11 +136,11 @@ describe("toDriverRows", () => {
 });
 
 describe("forecastCell", () => {
-  const years = [2023, 2024, 2025];
+  const grid = driverGrid();
 
   it("shows an own value plain", () => {
     const row = driverRow({ values: ["0.47"], sources: ["own"], own: ["0.47"], kind: "value" });
-    expect(forecastCell(row, 0, "value", "M", years)).toEqual({
+    expect(forecastCell(row, 0, "value", "M", grid)).toEqual({
       text: "47.0%",
       classes: [],
       title: "Set in this scenario",
@@ -150,14 +150,14 @@ describe("forecastCell", () => {
 
   it("shows an inherited value muted and italic", () => {
     const row = driverRow({ values: ["0.47"], sources: ["base"] });
-    const cell = forecastCell(row, 0, "value", "M", years);
+    const cell = forecastCell(row, 0, "value", "M", grid);
     expect(cell.classes).toEqual(["text-muted-foreground", "italic"]);
     expect(cell.title).toBe("Inherited from Base");
     expect(cell.editText).toBe("47");
   });
 
   it("shows a default muted, naming the years it averages", () => {
-    const cell = forecastCell(driverRow(), 0, "value", "M", years);
+    const cell = forecastCell(driverRow(), 0, "value", "M", grid);
     expect(cell.text).toBe("2.3%");
     expect(cell.classes).toEqual(["text-muted-foreground"]);
     expect(cell.title).toBe("Default: mean of FY23–FY25");
@@ -165,14 +165,14 @@ describe("forecastCell", () => {
 
   it("names the fallback when there is no history to average", () => {
     const row = driverRow({ history: [null, null, null], values: ["0"] });
-    expect(forecastCell(row, 0, "value", "M", years).title).toBe(
+    expect(forecastCell(row, 0, "value", "M", grid).title).toBe(
       "Default: no history, the driver's fallback",
     );
   });
 
   it("shows 'Set' in red for a required driver with no value", () => {
     const row = driverRow({ values: [null], sources: [null] });
-    expect(forecastCell(row, 0, "value", "M", years)).toEqual({
+    expect(forecastCell(row, 0, "value", "M", grid)).toEqual({
       text: "Set",
       classes: ["text-negative"],
       title: "Required: set a value",
@@ -182,7 +182,7 @@ describe("forecastCell", () => {
 
   it("shows a line held flat", () => {
     const row = driverRow({ unit: "days", values: [null], sources: ["default"] });
-    const cell = forecastCell(row, 0, "value", "M", years);
+    const cell = forecastCell(row, 0, "value", "M", grid);
     expect(cell.text).toBe("Flat");
     expect(cell.classes).toEqual(["text-muted-foreground"]);
     expect(cell.title).toBe("Default: the line is held flat");
@@ -195,7 +195,7 @@ describe("forecastCell", () => {
       own: ["0.03"],
       kind: "offset",
     });
-    expect(forecastCell(row, 0, "offset", "M", years)).toEqual({
+    expect(forecastCell(row, 0, "offset", "M", grid)).toEqual({
       text: "+3.0 pts",
       classes: [],
       title: "Base + 3.0 pts = 5.3%",
@@ -205,7 +205,7 @@ describe("forecastCell", () => {
 
   it("leaves the resolved value out of the title while it is unknown (a save is pending)", () => {
     const row = driverRow({ values: [null], sources: ["offset"], own: ["-0.05"], kind: "offset" });
-    expect(forecastCell(row, 0, "offset", "M", years)).toMatchObject({
+    expect(forecastCell(row, 0, "offset", "M", grid)).toMatchObject({
       text: "-5.0 pts",
       title: "Base - 5.0 pts",
     });
@@ -213,19 +213,55 @@ describe("forecastCell", () => {
 
   it("starts an empty editor on a vs Base year with no offset", () => {
     const row = driverRow({ values: ["0.0234"], sources: ["base"], own: [null] });
-    const cell = forecastCell(row, 0, "offset", "M", years);
+    const cell = forecastCell(row, 0, "offset", "M", grid);
     expect(cell.text).toBe("2.3%");
     expect(cell.title).toBe("Inherited from Base");
     expect(cell.editText).toBe("");
   });
+
+  describe("in the quarterly grid", () => {
+    const quarters = quarterlyGrid();
+
+    it("shows a quarter that takes its year's value muted, naming the year", () => {
+      const row = driverRow({ values: ["0.47"], sources: ["year"] });
+      const cell = forecastCell(row, 0, "value", "M", quarters);
+      expect(cell).toEqual({
+        text: "47.0%",
+        classes: ["text-muted-foreground"],
+        title: "From FY26 (annual)",
+        editText: "47",
+      });
+    });
+
+    it("starts the editor of a year-sourced quarter from the year's value in Value mode", () => {
+      const row = driverRow({ values: ["0.47", "0.47"], sources: ["year", "year"] });
+      expect(forecastCell(row, 1, "value", "M", quarters).editText).toBe("47");
+      expect(forecastCell(row, 1, "offset", "M", quarters).editText).toBe("");
+    });
+
+    it("shows an own quarter value plain", () => {
+      const row = quarters.rows[1]!;
+      expect(forecastCell(row, 0, "value", "M", quarters)).toMatchObject({
+        text: "48.0%",
+        classes: [],
+        title: "Set in this scenario",
+        editText: "48",
+      });
+    });
+
+    it("keeps 'Set' for a required driver the year has no value for", () => {
+      const row = quarters.rows[2]!;
+      expect(forecastCell(row, 0, "value", "M", quarters).text).toBe("Set");
+    });
+  });
 });
 
 describe("driverEdit", () => {
-  const years = [2026, 2027];
+  const grid = driverGrid(); // forecast years 2026, 2027
 
   it("sends the whole row of own values with the change", () => {
     const row = driverRow({ own: ["0.47", "0.46"], kind: "value", sources: ["own", "own"] });
-    expect(driverEdit(row, "value", years, 2027, "0.5")).toEqual({
+    expect(driverEdit(grid, row, "value", 1, "0.5")).toEqual({
       driver_code: "revenue_growth",
       kind: "value",
       values: [
@@ -236,7 +272,7 @@ describe("driverEdit", () => {
   });
 
   it("adds a first own value to a row that has none", () => {
-    expect(driverEdit(driverRow(), "value", years, 2026, "0.04")).toEqual({
+    expect(driverEdit(grid, driverRow(), "value", 0, "0.04")).toEqual({
       driver_code: "revenue_growth",
       kind: "value",
       values: [{ fiscal_year: 2026, value: "0.04" }],
@@ -245,7 +281,7 @@ describe("driverEdit", () => {
 
   it("drops the year of an emptied cell", () => {
     const row = driverRow({ own: ["0.03", "0.03"], kind: "offset" });
-    expect(driverEdit(row, "offset", years, 2026, null)).toEqual({
+    expect(driverEdit(grid, row, "offset", 0, null)).toEqual({
       driver_code: "revenue_growth",
       kind: "offset",
       values: [{ fiscal_year: 2027, value: "0.03" }],
@@ -254,27 +290,90 @@ describe("driverEdit", () => {
 
   it("sends an empty row when the last own value is cleared", () => {
     const row = driverRow({ own: ["0.03", null], kind: "offset" });
-    expect(driverEdit(row, "offset", years, 2026, null).values).toEqual([]);
+    expect(driverEdit(grid, row, "offset", 0, null).values).toEqual([]);
   });
 
   it("keeps none of the stored values of another kind", () => {
     const row = driverRow({ own: ["0.03", "0.03"], kind: "offset" });
-    expect(driverEdit(row, "value", years, 2026, "0.1").values).toEqual([
+    expect(driverEdit(grid, row, "value", 0, "0.1").values).toEqual([
       { fiscal_year: 2026, value: "0.1" },
     ]);
+  });
+
+  describe("in the quarterly grid", () => {
+    const quarters = quarterlyGrid(); // forecast quarters Q1 FY26, Q2 FY26
+
+    it("sends a quarterly row whose values name their quarter", () => {
+      const row = quarters.rows[1]!; // own 0.48 in Q1
+      expect(driverEdit(quarters, row, "value", 1, "0.5")).toEqual({
+        driver_code: "gross_margin",
+        kind: "value",
+        freq: "quarterly",
+        values: [
+          { fiscal_year: 2026, fiscal_period: "Q1", value: "0.48" },
+          { fiscal_year: 2026, fiscal_period: "Q2", value: "0.5" },
+        ],
+      });
+    });
+
+    it("sets the first quarter of a driver that follows its year", () => {
+      expect(driverEdit(quarters, quarters.rows[0]!, "value", 0, "0.06")).toEqual({
+        driver_code: "revenue_growth",
+        kind: "value",
+        freq: "quarterly",
+        values: [{ fiscal_year: 2026, fiscal_period: "Q1", value: "0.06" }],
+      });
+    });
+
+    it("clears a quarter so it falls back to its year", () => {
+      const cleared = driverEdit(quarters, quarters.rows[1]!, "value", 0, null);
+      expect(cleared).toEqual({
+        driver_code: "gross_margin",
+        kind: "value",
+        freq: "quarterly",
+        values: [],
+      });
+    });
   });
 });
 
 describe("driverReset", () => {
   it("sends the row with no values, in its stored kind", () => {
-    expect(driverReset(driverRow({ own: ["0.03", "0.03"], kind: "offset" }))).toEqual({
+    const grid = driverGrid();
+    expect(driverReset(grid, driverRow({ own: ["0.03", "0.03"], kind: "offset" }))).toEqual({
       driver_code: "revenue_growth",
       kind: "offset",
       values: [],
     });
-    expect(driverReset(driverRow())).toEqual({
+    expect(driverReset(grid, driverRow())).toEqual({
       driver_code: "revenue_growth",
       kind: "value",
+      values: [],
+    });
+  });
+
+  it("resets only the quarterly rows in the quarterly grid", () => {
+    const quarters = quarterlyGrid();
+    expect(driverReset(quarters, quarters.rows[1]!)).toEqual({
+      driver_code: "gross_margin",
+      kind: "value",
+      freq: "quarterly",
+      values: [],
+    });
+  });
+});
+
+describe("driverClear", () => {
+  it("is an empty row of a frequency in a kind, for a mode switch", () => {
+    expect(driverClear("tax_rate", "offset", "annual")).toEqual({
+      driver_code: "tax_rate",
+      kind: "offset",
+      values: [],
+    });
+    expect(driverClear("tax_rate", "offset", "quarterly")).toEqual({
+      driver_code: "tax_rate",
+      kind: "offset",
+      freq: "quarterly",
       values: [],
     });
   });

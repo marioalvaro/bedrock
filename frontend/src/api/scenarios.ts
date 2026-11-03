@@ -57,20 +57,35 @@ export const scenariosQueryOptions = (ticker: string) =>
     },
   });
 
-/** GET …/scenarios/{id}/cases/{case}/drivers. Rejects a 200 without `rows` and the year lists. */
-export const driversQueryOptions = (ticker: string, id: number, scenarioCase: ScenarioCase) =>
+// Every driver grid of a case (both frequencies) sits under this key.
+const driversPrefix = (ticker: string, id: number, scenarioCase: ScenarioCase) =>
+  [...scenariosKey(ticker), id, scenarioCase, "drivers"] as const;
+
+/**
+ * GET …/scenarios/{id}/cases/{case}/drivers?freq=. Rejects a 200 without `rows`, the year lists and
+ * the period lists (the columns of the grid).
+ */
+export const driversQueryOptions = (
+  ticker: string,
+  id: number,
+  scenarioCase: ScenarioCase,
+  freq: ForecastFreq = "annual",
+) =>
   queryOptions<DriverGridOut>({
-    queryKey: [...scenariosKey(ticker), id, scenarioCase, "drivers"],
+    queryKey: [...driversPrefix(ticker, id, scenarioCase), freq],
     queryFn: async () => {
       const grid = await unwrap(
         getDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversGet({
           path: { ticker, scenario_id: id, case: scenarioCase },
+          query: { freq },
         }),
       );
       if (
         !Array.isArray(grid?.rows) ||
         !Array.isArray(grid?.history_years) ||
-        !Array.isArray(grid?.forecast_years)
+        !Array.isArray(grid?.forecast_years) ||
+        !Array.isArray(grid?.history_periods) ||
+        !Array.isArray(grid?.forecast_periods)
       ) {
         throw unexpected();
       }
@@ -199,28 +214,38 @@ export function useDeleteScenario(ticker: string) {
   });
 }
 
+const periodId = (year: number, period: string) => `${year}:${period}`;
+
 /**
  * The drivers grid with `rows` written in as the case's own rows, for display while their PUT
- * runs. A value-kind year shows the sent value with source `own`; an offset-kind year has source
- * `offset` and no resolved value until the reply (Base + offset is the backend's); a year the row
+ * runs. Only the rows of the grid's frequency apply, matched to its columns by year and quarter. A
+ * value-kind period shows the sent value with source `own`; an offset-kind period has source
+ * `offset` and no resolved value until the reply (Base + offset is the backend's); a period the row
  * no longer sets keeps its value and source until the reply. Rows of other drivers are unchanged.
  */
 export function withDriverRows(grid: DriverGridOut, rows: DriverRowIn[]): DriverGridOut {
-  const sent = new Map(rows.map((row) => [row.driver_code, row]));
+  const sent = new Map(
+    rows.filter((row) => (row.freq ?? "annual") === grid.freq).map((row) => [row.driver_code, row]),
+  );
   return {
     ...grid,
     rows: grid.rows.map((driver) => {
       const row = sent.get(driver.code);
       if (!row) return driver;
-      const byYear = new Map(
-        row.values.map((v) => [v.fiscal_year, v.value == null ? null : String(v.value)]),
+      const byPeriod = new Map(
+        row.values.map((v) => [
+          periodId(v.fiscal_year, v.fiscal_period ?? "FY"),
+          v.value == null ? null : String(v.value),
+        ]),
       );
-      const own = grid.forecast_years.map((year) => byYear.get(year) ?? null);
+      const own = grid.forecast_periods.map(
+        (p) => byPeriod.get(periodId(p.fiscal_year, p.fiscal_period)) ?? null,
+      );
       return {
         ...driver,
         kind: own.some((value) => value !== null) ? row.kind : null,
         own,
-        // An offset year's resolved value (Base + offset) is the backend's: unknown until the reply.
+        // An offset period's resolved value (Base + offset) is the backend's: unknown until the reply.
         values: driver.values.map((value, i) =>
           own[i] === null ? value : row.kind === "value" ? (own[i] ?? null) : null,
         ),
@@ -236,11 +261,12 @@ const putDriversKey = (ticker: string) => [...scenariosKey(ticker), "put-drivers
 
 /**
  * Where a driver write of a case ends (a PUT or a reset share one in-flight count, so their replies
- * cannot overwrite each other). `saved` is the reply, or undefined after an error. When no other
- * write of the company is running, the reply (the saved grid) replaces the case's drivers with no
- * refetch; a reply that lands while another write runs is not applied but marks the grid stale,
- * and the last write to settle then reloads it instead (replies can arrive out of order). An
- * error reloads it too. This write still counts as running here.
+ * cannot overwrite each other). `saved` is the reply (the grid of the frequency the backend picked),
+ * or undefined after an error. When no other write of the company is running, the reply replaces
+ * its own grid with no refetch; a reply that lands while another write runs is not applied but
+ * marks the case's grids stale, and the last write to settle then reloads them instead (replies can
+ * arrive out of order). An error reloads both frequencies too. This write still counts as running
+ * here.
  */
 function settleDrivers(
   queryClient: QueryClient,
@@ -249,24 +275,27 @@ function settleDrivers(
   scenarioCase: ScenarioCase,
   saved: DriverGridOut | undefined,
 ) {
-  const key = driversQueryOptions(ticker, id, scenarioCase).queryKey;
+  const prefix = driversPrefix(ticker, id, scenarioCase);
+  const key = saved && driversQueryOptions(ticker, id, scenarioCase, saved.freq).queryKey;
   if (queryClient.isMutating({ mutationKey: putDriversKey(ticker) }) > 1) {
-    void queryClient.invalidateQueries({ queryKey: key, exact: true, refetchType: "none" });
-  } else if (saved && !queryClient.getQueryState(key)?.isInvalidated) {
+    void queryClient.invalidateQueries({ queryKey: prefix, refetchType: "none" });
+  } else if (saved && key && !queryClient.getQueryState(key)?.isInvalidated) {
     queryClient.setQueryData(key, saved);
   } else {
-    void queryClient.invalidateQueries({ queryKey: key, exact: true });
+    void queryClient.invalidateQueries({ queryKey: prefix });
   }
 }
 
-// Marks every scenario view but the case's own drivers stale, and refreshes them in the background.
+// Marks every scenario view but the reply's own grid stale, and refreshes them in the background
+// (the case's grid of the other frequency included: a write can move its `year` values and kinds).
 function refreshOtherViews(
   queryClient: QueryClient,
   ticker: string,
   id: number,
   scenarioCase: ScenarioCase,
+  saved: DriverGridOut,
 ) {
-  const own = JSON.stringify(driversQueryOptions(ticker, id, scenarioCase).queryKey);
+  const own = JSON.stringify(driversQueryOptions(ticker, id, scenarioCase, saved.freq).queryKey);
   void queryClient.invalidateQueries({
     queryKey: scenariosKey(ticker),
     predicate: (query) => JSON.stringify(query.queryKey) !== own,
@@ -274,20 +303,18 @@ function refreshOtherViews(
 }
 
 /**
- * PUT …/cases/{case}/drivers: each row replaces that driver's rows. The edited grid shows at once
- * (`withDriverRows`) and goes back on an error; the reply is settled as `settleDrivers` says. The
- * other scenario views (the other cases' drivers, forecasts, the comparison) are refreshed in the
- * background.
+ * PUT …/cases/{case}/drivers: each row replaces that driver's rows of its frequency. The edit shows
+ * at once (`withDriverRows`, in each cached grid of the case) and goes back on an error; the reply
+ * is settled as `settleDrivers` says. The other scenario views (the other cases' drivers, the
+ * other frequency's grid, forecasts, the comparison) are refreshed in the background.
  */
 export function usePutDrivers(ticker: string) {
   const queryClient = useQueryClient();
-  const driversKey = (id: number, scenarioCase: ScenarioCase) =>
-    driversQueryOptions(ticker, id, scenarioCase).queryKey;
   return useMutation<
     DriverGridOut,
     Error,
     { id: number; case: ScenarioCase; rows: DriverRowIn[] },
-    { previous: DriverGridOut | undefined }
+    { previous: [readonly unknown[], DriverGridOut][] }
   >({
     mutationKey: putDriversKey(ticker),
     mutationFn: ({ id, case: scenarioCase, rows }) =>
@@ -298,23 +325,23 @@ export function usePutDrivers(ticker: string) {
         }),
       ),
     onMutate: async ({ id, case: scenarioCase, rows }) => {
-      const key = driversKey(id, scenarioCase);
-      await queryClient.cancelQueries({ queryKey: key });
-      const previous = queryClient.getQueryData<DriverGridOut>(key);
-      if (Array.isArray(previous?.rows)) {
-        queryClient.setQueryData(key, withDriverRows(previous, rows));
+      const queryKey = driversPrefix(ticker, id, scenarioCase);
+      await queryClient.cancelQueries({ queryKey });
+      const previous: [readonly unknown[], DriverGridOut][] = [];
+      for (const [key, grid] of queryClient.getQueriesData<DriverGridOut>({ queryKey })) {
+        if (!Array.isArray(grid?.rows)) continue;
+        previous.push([key, grid]);
+        queryClient.setQueryData(key, withDriverRows(grid, rows));
       }
       return { previous };
     },
     onError: (_error, { id, case: scenarioCase }, context) => {
-      if (context?.previous) {
-        queryClient.setQueryData(driversKey(id, scenarioCase), context.previous);
-      }
+      for (const [key, grid] of context?.previous ?? []) queryClient.setQueryData(key, grid);
       settleDrivers(queryClient, ticker, id, scenarioCase, undefined);
     },
     onSuccess: (saved, { id, case: scenarioCase }) => {
       settleDrivers(queryClient, ticker, id, scenarioCase, saved);
-      refreshOtherViews(queryClient, ticker, id, scenarioCase);
+      refreshOtherViews(queryClient, ticker, id, scenarioCase, saved);
     },
   });
 }
@@ -336,7 +363,7 @@ export function useResetCase(ticker: string) {
       ),
     onSuccess: (saved, { id, case: scenarioCase }) => {
       settleDrivers(queryClient, ticker, id, scenarioCase, saved);
-      refreshOtherViews(queryClient, ticker, id, scenarioCase);
+      refreshOtherViews(queryClient, ticker, id, scenarioCase, saved);
     },
   });
 }

@@ -3,14 +3,16 @@ it sets (docs/erd/forecasting.md "Driver files (M4)"). Pure.
 
 The layout is one header row `driver_code, label, unit, kind, FY<year>…, FY<year>Q<n>…`, then one
 row per driver. A cell is the scenario's own stored value (pct as a fraction), blank where it
-inherits. The quarter columns are the quarters the forecast runs quarter by quarter.
+inherits. The quarter columns are the quarters the forecast runs quarter by quarter. A year is set
+either annually or by quarter (docs "Year modes"): the annual cell of a year set by quarter and the
+quarter cells of a year set annually are blank in an export and an error in an import.
 """
 
 import csv
 import io
 import re
 import zipfile
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
@@ -151,11 +153,29 @@ def _drivers_table(grid: DriverGrid, quarterly: DriverGrid | None = None) -> lis
     ]
     table: list[list[Any]] = [header]
     by_code = _by_code(quarterly)
+    modes = {m.fiscal_year: m.mode for m in grid.year_modes}
     for row in grid.rows:
         mine = by_code.get(row.code)
         # a driver that cannot be set per quarter has no row in the quarterly grid: blanks
         cells = [None] * len(quarters) if mine is None else mine.own
-        table.append([row.code, row.label, row.unit, row.kind, *row.own, *cells])
+        table.append(
+            [
+                row.code,
+                row.label,
+                row.unit,
+                row.kind,
+                # the annual cell of a year set by quarter is hidden, the quarters of a year set
+                # annually are empty: neither is part of the file
+                *(
+                    None if modes.get(y) == "quarterly" else v
+                    for y, v in zip(grid.forecast_years, row.own, strict=True)
+                ),
+                *(
+                    None if modes.get(p.fiscal_year) == "annual" else v
+                    for p, v in zip(quarters, cells, strict=True)
+                ),
+            ]
+        )
     return table
 
 
@@ -178,9 +198,17 @@ def _resolved_table(grid: DriverGrid, quarterly: DriverGrid | None = None) -> li
         ]
     table: list[list[Any]] = [header]
     by_code = _by_code(quarterly)
+    by_quarter = [m.mode == "quarterly" for m in grid.year_modes] or [False] * len(
+        grid.forecast_years
+    )
     for row in grid.rows:
         values = _resolved_values(row)
-        cells = [*row.history, *values, *row.sources]
+        sources: list[Any] = list(row.sources)
+        for i, quarterly_year in enumerate(by_quarter):
+            if quarterly_year:  # the year's figure is what its quarters add up to
+                rolled = row.rollup[i] if i < len(row.rollup) else None
+                values[i], sources[i] = rolled, "quarters"
+        cells = [*row.history, *values, *sources]
         if quarterly is not None:
             mine = by_code.get(row.code)
             if mine is None:
@@ -238,16 +266,21 @@ def parse_driver_file(
     forecast_years: Sequence[int],
     is_base: bool,
     forecast_quarters: Sequence[tuple[int, str]] = (),
+    quarterly_years: Collection[int] = (),
 ) -> DriverFilePlan:
     """The rows a CSV or xlsx file sets (xlsx: its Drivers sheet), told apart by the content
     (an xlsx is a zip) or a `.xlsx` name. `catalog` is the scenario's drivers, `forecast_quarters`
-    the quarters the forecast runs quarter by quarter (the allowed `FY<yyyy>Q<n>` columns).
-    `label` and `unit` are ignored. Raises DriverFileError with every error found."""
+    the quarters the forecast runs quarter by quarter (the allowed `FY<yyyy>Q<n>` columns),
+    `quarterly_years` the years set by quarter (a value under their annual column, under the
+    quarter column of any other year, or a row that gives only some of a year's quarters is an
+    error). `label` and `unit` are ignored. Raises DriverFileError with every error found."""
     if content.startswith(b"PK") or filename.lower().endswith(".xlsx"):
         rows, delimiter = _read_xlsx(content), None
     else:
         rows, delimiter = _read_csv(content)
-    parser = _Parser(catalog, forecast_years, is_base, delimiter != ";", forecast_quarters)
+    parser = _Parser(
+        catalog, forecast_years, is_base, delimiter != ";", forecast_quarters, quarterly_years
+    )
     return parser.run(rows)
 
 
@@ -303,7 +336,9 @@ class _Parser:
         is_base: bool,
         comma_allowed: bool,
         forecast_quarters: Sequence[tuple[int, str]] = (),
+        quarterly_years: Collection[int] = (),
     ) -> None:
+        self.quarterly_years = set(quarterly_years)
         self.comma_allowed = comma_allowed  # False in a `;` CSV, where a comma is a decimal one
         self.catalog = {d.code for d in catalog}
         self.per_quarter = {d.code for d in catalog if d.quarterly}
@@ -399,8 +434,10 @@ class _Parser:
             known = False
         values: dict[int, Decimal | None] = {}
         quarter_values: dict[tuple[int, str], Decimal | None] = {}
+        letters: dict[tuple[int, str], str] = {}
         for index, (year, period) in columns.items():
             raw = _at(cells, index)
+            letters[(year, period)] = get_column_letter(index + 1)
             if _blank(raw):
                 cell = None
             else:
@@ -409,7 +446,13 @@ class _Parser:
                 if cell is None:
                     self._issue(number, letter, f"'{_text(raw)}' is not a number{hint}")
                     continue
-                if period != "FY" and known and code not in self.per_quarter:
+                if period == "FY" and year in self.quarterly_years:
+                    self._issue(number, letter, f"FY{year} is set by quarter")
+                elif period != "FY" and year not in self.quarterly_years:
+                    self._issue(
+                        number, letter, f"FY{year} is set annually; switch it to by quarter first"
+                    )
+                elif period != "FY" and known and code not in self.per_quarter:
                     self._issue(number, letter, f"{code} cannot be set per quarter")
                 elif known and kind is not None:
                     message = check_bounds(code, kind, cell)
@@ -419,10 +462,33 @@ class _Parser:
                 values[year] = cell
             else:
                 quarter_values[(year, period)] = cell
+        if known and code in self.per_quarter:
+            self._whole_years(number, code, quarter_values, letters)
         given = [*values.values(), *quarter_values.values()]
         if kind is None and not kind_text and any(v is not None for v in given):
             self._issue(number, "D", "kind is blank but the row has values")
         return FileRow(code, kind, values, quarter_values)  # discarded when the file has an issue
+
+    def _whole_years(
+        self,
+        number: int,
+        code: str,
+        quarter_values: Mapping[tuple[int, str], Decimal | None],
+        letters: Mapping[tuple[int, str], str],
+    ) -> None:
+        """A year set by quarter takes all of a row's quarters or none (none: the driver follows
+        Base's quarters): a quarter left blank beside a filled one is an error."""
+        for year in sorted(self.quarterly_years):
+            quarters = [(y, q) for y, q in self.forecast_quarters if y == year]
+            filled = [k for k in quarters if quarter_values.get(k) is not None]
+            if not filled:
+                continue
+            for key in quarters:
+                if quarter_values.get(key) is None and key in letters:
+                    message = (
+                        f"{key[1]} FY{year} is missing for {code} (FY{year} is set by quarter)"
+                    )
+                    self._issue(number, letters[key], message)
 
     def _number(self, raw: Any) -> tuple[Decimal | None, str]:
         """The cell as a number rounded to the stored 10 decimals (G15), or None and a hint."""
@@ -477,12 +543,16 @@ def _blank(value: Any) -> bool:
 # The import plan ---------------------------------------------------------------------------------
 
 
-def plan_import(plan: DriverFilePlan, own: Sequence[DriverRow]) -> DriverImport:
+def plan_import(
+    plan: DriverFilePlan, own: Sequence[DriverRow], quarterly_years: Collection[int] = ()
+) -> DriverImport:
     """What importing `plan` does to the scenario's own rows `own` (every year and quarter). A
     file row replaces its driver's rows in the file's year and quarter columns; the driver's rows
     in other periods stay when the kind is unchanged, and go when it changes (one driver stores
     one kind). A row with a blank kind clears every row of the driver. Values that are the same
-    double are equal (the column is a REAL, G15). Only drivers with a change are in `rows`."""
+    double are equal (the column is a REAL, G15). The annual cell of a year in `quarterly_years`
+    (set by quarter) is hidden in the file: blank, it leaves the stored annual row alone. Only
+    drivers with a change are in `rows`."""
     stored: dict[str, dict[tuple[int, str], DriverRow]] = {}
     for row in own:
         stored.setdefault(row.code, {})[(row.fiscal_year, row.fiscal_period)] = row
@@ -490,7 +560,7 @@ def plan_import(plan: DriverFilePlan, own: Sequence[DriverRow]) -> DriverImport:
     rows: dict[str, list[DriverRow]] = {}
     for file_row in plan.rows:
         before = stored.get(file_row.code, {})
-        after = _after(file_row, before)
+        after = _after(file_row, before, set(quarterly_years))
         changed = [
             DriverChange(
                 file_row.code,
@@ -516,12 +586,16 @@ def _order(key: tuple[int, str]) -> tuple[int, int]:
 
 
 def _after(
-    file_row: FileRow, before: Mapping[tuple[int, str], DriverRow]
+    file_row: FileRow, before: Mapping[tuple[int, str], DriverRow], quarterly_years: Collection[int]
 ) -> dict[tuple[int, str], DriverRow]:
     kind = file_row.kind
     if kind is None:
         return {}
-    cells = {(y, "FY"): v for y, v in file_row.values.items()} | file_row.quarter_values
+    cells = {
+        (y, "FY"): v
+        for y, v in file_row.values.items()
+        if v is not None or y not in quarterly_years
+    } | file_row.quarter_values
     kept = {k: r for k, r in before.items() if k not in cells and r.kind == kind}
     given = {
         (y, p): DriverRow(file_row.code, y, kind, v, p)

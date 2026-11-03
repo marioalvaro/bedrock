@@ -85,3 +85,23 @@ class ScenarioCase(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=utc_now, onupdate=utc_now
     )
+
+
+YearModeValue = Literal["annual", "quarterly"]
+YEAR_MODES: tuple[str, ...] = get_args(YearModeValue)
+
+
+class ScenarioYearMode(Base):
+    """How a forecast year of the quarterly span is set, for all three cases of a scenario: one
+    annual value or quarter by quarter (docs/erd/forecasting.md "Year modes"). No row is
+    `annual`."""
+
+    __tablename__ = "scenario_year_mode"
+    __table_args__ = (CheckConstraint("mode IN ('annual', 'quarterly')", name="mode"),)
+
+    scenario_id: Mapped[int] = mapped_column(
+        ForeignKey("scenario.id", ondelete="CASCADE"), primary_key=True
+    )
+    fiscal_year: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # one of YEAR_MODES
+    mode: Mapped[str] = mapped_column(String, nullable=False)
