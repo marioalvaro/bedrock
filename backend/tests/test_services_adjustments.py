@@ -1,6 +1,6 @@
 """Adjustment CRUD: validation against the canonical items and the company's fiscal calendar."""
 
-from collections.abc import Iterator
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from bedrock.models.adjustment import Adjustment
 from bedrock.models.company import Company
+from bedrock.repositories import companies as companies_repo
 from bedrock.services.adjustments import (
     AdjustmentInput,
     create_adjustment,
@@ -19,7 +20,6 @@ from bedrock.services.adjustments import (
     update_adjustment,
 )
 from bedrock.services.errors import AdjustmentNotFound, InvalidAdjustment, user_message
-from bedrock.services.refresh import refresh_company
 
 from .seed import fake_sources, follow
 
@@ -37,11 +37,15 @@ SGA = AdjustmentInput(
 
 
 @pytest.fixture
-def aapl(db_session: Session) -> Iterator[Company]:
-    sources = fake_sources()
-    company = follow(db_session, sources.edgar, "AAPL")
-    refresh_company(db_session, sources, "AAPL", NOW)
-    yield company
+def aapl_db(seed_db: Callable[..., None]) -> None:
+    seed_db("AAPL")
+
+
+@pytest.fixture
+def aapl(aapl_db: None, db_session: Session) -> Company:
+    company = companies_repo.get_by_ticker(db_session, "AAPL")
+    assert company is not None
+    return company
 
 
 def test_create_stores_the_adjustment_with_the_clock_time_and_a_plain_amount(

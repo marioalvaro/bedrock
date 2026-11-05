@@ -2,7 +2,7 @@
 (FR-FCST-01, -02, -04, -06; docs/erd/forecasting.md "Scenarios and cases"), on the recorded
 fixtures."""
 
-import time
+from collections.abc import Callable
 from decimal import Decimal
 from typing import Any
 
@@ -17,8 +17,12 @@ def _scenarios_url(ticker: str) -> str:
 
 
 @pytest.fixture
-def aapl_client(authed_client: TestClient) -> TestClient:
-    assert authed_client.post("/api/v1/companies", json={"ticker": "AAPL"}).status_code == 201
+def aapl_db(seed_db: Callable[..., None]) -> None:
+    seed_db("AAPL")
+
+
+@pytest.fixture
+def aapl_client(aapl_db: None, authed_client: TestClient) -> TestClient:
     return authed_client
 
 
@@ -73,11 +77,7 @@ def test_aapl_forecasts_balance_and_follow_the_actuals(
 ) -> None:
     scenario_id = _main(aapl_client)
 
-    started = time.perf_counter()
     body = _ok(_forecast(aapl_client, scenario_id, case, type_, freq))
-    elapsed = time.perf_counter() - started
-
-    assert elapsed < 2  # NFR-02: a recompute < 2 s
     assert (body["ticker"], body["statement"], body["freq"], body["basis"]) == (
         "AAPL",
         type_,

@@ -1,6 +1,7 @@
 """Comps sets, peer suggestions and the peer comparison through the API (FR-ANL-08), on the
 recorded AAPL, MSFT, COST and DE fixtures."""
 
+from collections.abc import Callable
 from decimal import Decimal
 from typing import Any
 
@@ -20,9 +21,12 @@ ALL = ("AAPL", "MSFT", "COST", "DE")
 
 
 @pytest.fixture
-def followed(authed_client: TestClient) -> TestClient:
-    for ticker in ALL:
-        assert authed_client.post(f"{API}/companies", json={"ticker": ticker}).status_code == 201
+def followed_db(seed_db: Callable[..., None]) -> None:
+    seed_db(*ALL)
+
+
+@pytest.fixture
+def followed(followed_db: None, authed_client: TestClient) -> TestClient:
     return authed_client
 
 
@@ -292,30 +296,32 @@ def test_the_comparison_has_the_documented_shape(followed: TestClient) -> None:
     assert all(len(r["peers"]) == 3 for r in body["rows"])
 
 
-@pytest.mark.parametrize("code", ["pe", "ev_ebitda", "ps", "fcf_yield"])
-def test_valuation_cells_equal_each_companys_current_multiple(
-    followed: TestClient, code: str
+def _assert_cells_equal(
+    cells: list[Any],
+    expected: list[Decimal | None],
+    code: str,  # target first, then the peers
 ) -> None:
-    body = comparison(followed, create(followed)["id"])
-    r = row(body, code)
-    expected = [current_multiple(followed, t, code) for t in ("AAPL", "COST", "DE", "MSFT")]
-    got = [r["target"], *r["peers"]]
-    for g, e in zip(got, expected, strict=True):
-        assert (g is None) == (e is None)
-        if g is not None and e is not None:
-            assert Decimal(g) == e
+    for got, want in zip(cells, expected, strict=True):
+        assert (got is None) == (want is None), code
+        if got is not None and want is not None:
+            assert Decimal(got) == want, code
 
 
-@pytest.mark.parametrize("code", ["gross_margin", "net_margin", "roe", "net_debt_to_ebitda", "ccc"])
-def test_ratio_cells_equal_each_companys_last_ttm_value(followed: TestClient, code: str) -> None:
+def test_valuation_cells_equal_each_companys_current_multiple(followed: TestClient) -> None:
+    # One comparison for every code: it is the same response, only the row differs.
     body = comparison(followed, create(followed)["id"])
-    r = row(body, code)
-    expected = [last_ttm_ratio(followed, t, code) for t in ("AAPL", "COST", "DE", "MSFT")]
-    got = [r["target"], *r["peers"]]
-    for g, e in zip(got, expected, strict=True):
-        assert (g is None) == (e is None)
-        if g is not None and e is not None:
-            assert Decimal(g) == e
+    for code in ("pe", "ev_ebitda", "ps", "fcf_yield"):
+        r = row(body, code)
+        expected = [current_multiple(followed, t, code) for t in ("AAPL", "COST", "DE", "MSFT")]
+        _assert_cells_equal([r["target"], *r["peers"]], expected, code)
+
+
+def test_ratio_cells_equal_each_companys_last_ttm_value(followed: TestClient) -> None:
+    body = comparison(followed, create(followed)["id"])
+    for code in ("gross_margin", "net_margin", "roe", "net_debt_to_ebitda", "ccc"):
+        r = row(body, code)
+        expected = [last_ttm_ratio(followed, t, code) for t in ("AAPL", "COST", "DE", "MSFT")]
+        _assert_cells_equal([r["target"], *r["peers"]], expected, code)
 
 
 def test_revenue_growth_is_the_ttm_revenue_yoy_of_each_company(followed: TestClient) -> None:

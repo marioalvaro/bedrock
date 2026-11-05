@@ -1,6 +1,6 @@
 """Segment and KPI series: CRUD, values, grid and import (FR-DATA-11)."""
 
-from collections.abc import Iterator
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
@@ -11,9 +11,9 @@ from sqlalchemy.orm import Session
 from bedrock.models.company import Company
 from bedrock.models.segment_series import SegmentSeries
 from bedrock.models.segment_value import SegmentValue
+from bedrock.repositories import companies as companies_repo
 from bedrock.repositories import segments as repo
 from bedrock.services.errors import InvalidImport, InvalidSeries, SeriesNotFound
-from bedrock.services.refresh import refresh_company
 from bedrock.services.segments import (
     SeriesInput,
     ValueInput,
@@ -34,11 +34,15 @@ IPHONE = SeriesInput("business", "iPhone", "revenue", "USD")
 
 
 @pytest.fixture
-def aapl(db_session: Session) -> Iterator[Company]:
-    sources = fake_sources()
-    company = follow(db_session, sources.edgar, "AAPL")
-    refresh_company(db_session, sources, "AAPL", NOW)
-    yield company
+def aapl_db(seed_db: Callable[..., None]) -> None:
+    seed_db("AAPL")
+
+
+@pytest.fixture
+def aapl(aapl_db: None, db_session: Session) -> Company:
+    company = companies_repo.get_by_ticker(db_session, "AAPL")
+    assert company is not None
+    return company
 
 
 def _count(session: Session, model: type) -> int:

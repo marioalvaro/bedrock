@@ -2,7 +2,7 @@
 AAPL fixtures: the modes of the forecast years, the switch with its fill and clear across the three
 cases, the write rules of a driver PUT and a case reset."""
 
-from collections.abc import Iterator
+from collections.abc import Callable
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -17,10 +17,10 @@ from bedrock.forecast.history import forecast_years
 from bedrock.models.company import Company
 from bedrock.models.driver_value import DriverValue
 from bedrock.models.scenario import Scenario, ScenarioCase
+from bedrock.repositories import companies as companies_repo
 from bedrock.repositories import scenarios as repo
 from bedrock.services import forecasts as forecasts_service
 from bedrock.services.errors import InvalidDrivers, InvalidScenario, ScenarioNotFound
-from bedrock.services.refresh import refresh_company
 from bedrock.services.scenarios import (
     DriverRowInput,
     SettingsInput,
@@ -42,11 +42,15 @@ D = Decimal
 
 
 @pytest.fixture
-def aapl(db_session: Session) -> Iterator[Company]:
-    sources = fake_sources()
-    company = follow(db_session, sources.edgar, "AAPL")
-    refresh_company(db_session, sources, "AAPL", NOW)
-    yield company
+def aapl_db(seed_db: Callable[..., None]) -> None:
+    seed_db("AAPL")
+
+
+@pytest.fixture
+def aapl(aapl_db: None, db_session: Session) -> Company:
+    company = companies_repo.get_by_ticker(db_session, "AAPL")
+    assert company is not None
+    return company
 
 
 @pytest.fixture

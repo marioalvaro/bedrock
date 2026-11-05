@@ -1,6 +1,7 @@
 """The capital-allocation route over a followed AAPL (recorded fixtures, no network).
 FR-ANL-06."""
 
+from collections.abc import Callable
 from decimal import Decimal
 from typing import Any
 
@@ -25,8 +26,12 @@ ROWS = [
 
 
 @pytest.fixture
-def aapl_client(authed_client: TestClient) -> TestClient:
-    assert authed_client.post("/api/v1/companies", json={"ticker": "AAPL"}).status_code == 201
+def aapl_db(seed_db: Callable[..., None]) -> None:
+    seed_db("AAPL")
+
+
+@pytest.fixture
+def aapl_client(aapl_db: None, authed_client: TestClient) -> TestClient:
     return authed_client
 
 

@@ -1,5 +1,6 @@
 """Valuation ratios through the API over a followed AAPL (recorded fixtures). FR-ANL-07."""
 
+from collections.abc import Callable
 from datetime import date
 from decimal import Decimal
 from typing import Any
@@ -20,8 +21,12 @@ FY2024_CLOSE = Decimal("225.00")
 
 
 @pytest.fixture
-def aapl_client(authed_client: TestClient) -> TestClient:
-    assert authed_client.post("/api/v1/companies", json={"ticker": "AAPL"}).status_code == 201
+def aapl_db(seed_db: Callable[..., None]) -> None:
+    seed_db("AAPL")
+
+
+@pytest.fixture
+def aapl_client(aapl_db: None, authed_client: TestClient) -> TestClient:
     return authed_client
 
 

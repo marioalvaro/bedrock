@@ -1,6 +1,6 @@
 """The ratios use-case and its one-load statement helper over a test database (FR-ANL-01..04)."""
 
-from collections.abc import Iterator
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 import pytest
@@ -10,8 +10,8 @@ from bedrock.models.company import Company
 from bedrock.ratios.calculator import RatioInputs, compute_ratios
 from bedrock.ratios.caveats import load_caveats
 from bedrock.ratios.registry import RATIOS
+from bedrock.repositories import companies as companies_repo
 from bedrock.services.ratios import ratios
-from bedrock.services.refresh import refresh_company
 from bedrock.services.statements import statement_tables
 from bedrock.statements import build
 from bedrock.statements.build import build_statement
@@ -24,11 +24,15 @@ CODES = [r.code for r in RATIOS]
 
 
 @pytest.fixture
-def aapl(db_session: Session) -> Iterator[Company]:
-    sources = fake_sources()
-    company = follow(db_session, sources.edgar, "AAPL")
-    refresh_company(db_session, sources, "AAPL", NOW)
-    yield company
+def aapl_db(seed_db: Callable[..., None]) -> None:
+    seed_db("AAPL")
+
+
+@pytest.fixture
+def aapl(aapl_db: None, db_session: Session) -> Company:
+    company = companies_repo.get_by_ticker(db_session, "AAPL")
+    assert company is not None
+    return company
 
 
 # --- statement_tables ------------------------------------------------------------------------

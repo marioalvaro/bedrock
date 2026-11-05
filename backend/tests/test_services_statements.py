@@ -1,6 +1,6 @@
 """The statements use-cases over a refreshed database, checked against the engine-only pipeline."""
 
-from collections.abc import Iterator
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 import pytest
@@ -16,7 +16,7 @@ from bedrock.mapping.config import DEFAULT_ITEMS_PATH, load_canonical_items
 from bedrock.mapping.gaps import missing_items
 from bedrock.mapping.triage import DEFAULT_TRIAGE_PATH, load_concept_triage
 from bedrock.models.company import Company
-from bedrock.services.refresh import refresh_company
+from bedrock.repositories import companies as companies_repo
 from bedrock.services.statements import (
     CellNotFound,
     build_statements,
@@ -35,11 +35,15 @@ NOW = datetime(2026, 10, 8, 14, 30, tzinfo=UTC)
 
 
 @pytest.fixture
-def aapl(db_session: Session) -> Iterator[Company]:
-    sources = fake_sources()
-    company = follow(db_session, sources.edgar, "AAPL")
-    refresh_company(db_session, sources, "AAPL", NOW)
-    yield company
+def aapl_db(seed_db: Callable[..., None]) -> None:
+    seed_db("AAPL")
+
+
+@pytest.fixture
+def aapl(aapl_db: None, db_session: Session) -> Company:
+    company = companies_repo.get_by_ticker(db_session, "AAPL")
+    assert company is not None
+    return company
 
 
 @pytest.mark.parametrize("statement", STATEMENTS)

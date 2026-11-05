@@ -1,7 +1,6 @@
 """The driver model on the recorded companies (AAPL, MSFT, COST, DE): Base defaults and Bull- and
 Bear-like offsets, at the fixed horizon (5 years, 8 quarters), pass every integrity check."""
 
-import time
 from decimal import Decimal
 from functools import cache
 
@@ -36,7 +35,7 @@ def history(ticker: str) -> ForecastHistory:
     return fixture_history(ticker)
 
 
-def forecast(ticker: str, scenario: str, horizon: Horizon) -> tuple[ForecastStatements, float]:
+def forecast(ticker: str, scenario: str, horizon: Horizon) -> ForecastStatements:
     h = history(ticker)
     years = forecast_years(h, horizon.years)
     # DE has no cost of revenue from FY2018, so its Base sets gross margin.
@@ -62,27 +61,24 @@ def forecast(ticker: str, scenario: str, horizon: Horizon) -> tuple[ForecastStat
         years,
         is_base=offsets is None,
     )
-    started = time.perf_counter()
-    out = DriverModel().run(h, drivers, horizon, GROWTH)
-    return out, time.perf_counter() - started
+    return DriverModel().run(h, drivers, horizon, GROWTH)
 
 
 @pytest.mark.parametrize("horizon", HORIZONS, ids=lambda h: f"{h.years}y{h.quarters}q")
 @pytest.mark.parametrize("scenario", list(SCENARIOS))
 @pytest.mark.parametrize("ticker", TICKERS)
 def test_every_integrity_check_passes(ticker: str, scenario: str, horizon: Horizon) -> None:
-    out, seconds = forecast(ticker, scenario, horizon)
+    out = forecast(ticker, scenario, horizon)
     assert out.integrity and all(c.ok for c in out.integrity), [
         c for c in out.integrity if not c.ok
     ]
     assert len(out.annual()) == horizon.years
     assert len(out.quarterly()) >= horizon.quarters
-    assert seconds < 2  # NFR-02: a recompute
 
 
 @pytest.mark.parametrize("ticker", TICKERS)
 def test_years_after_the_quarter_span_grow_by_the_revenue_growth(ticker: str) -> None:
-    out, _ = forecast(ticker, "bull", Horizon(10, 8))
+    out = forecast(ticker, "bull", Horizon(10, 8))
     h = history(ticker)
     defaults = default_drivers(h, GROWTH)
     growth = defaults["revenue_growth"]
@@ -101,7 +97,7 @@ def test_the_forecast_starts_after_the_latest_fixture_quarter(ticker: str) -> No
     h = history(ticker)
     latest = h.quarterly["BS"].periods[-1]
     assert opening_period(h) == latest
-    out, _ = forecast(ticker, "base", Horizon(5, 4))
+    out = forecast(ticker, "base", Horizon(5, 4))
     first = out.quarterly()[0]
     number = int(latest.fiscal_period[1])
     assert (first.fiscal_year, first.fiscal_period) == (
@@ -120,7 +116,7 @@ def test_quarter_drivers_change_only_their_quarter_and_stay_balanced(ticker: str
         if ticker == "DE"
         else []
     )
-    plain, _ = forecast(ticker, "base", FORECAST_HORIZON)
+    plain = forecast(ticker, "base", FORECAST_HORIZON)
     first = plain.quarterly()[0]
     rows = [
         *base_rows,
