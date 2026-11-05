@@ -16,13 +16,13 @@ from bedrock.models.company import Company
 from bedrock.models.scenario import CASES, Scenario
 from bedrock.services.errors import UnknownLineItem
 from bedrock.services.scenarios import (
-    built_from_quarters,
     get_case,
     get_scenario,
     load_history,
     resolve_case,
 )
 from bedrock.services.statements import canonical_items
+from bedrock.services.year_modes import built_from_quarters
 from bedrock.statements.build import StatementTable, extend_table
 from bedrock.statements.periods import Period
 from bedrock.statements.view import select_periods, trim_periods

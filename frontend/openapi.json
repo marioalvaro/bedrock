@@ -1637,6 +1637,10 @@
             "title": "Freq",
             "type": "string"
           },
+          "has_quarters": {
+            "title": "Has Quarters",
+            "type": "boolean"
+          },
           "history_periods": {
             "items": {
               "$ref": "#/components/schemas/GridPeriodOut"
@@ -1687,7 +1691,8 @@
           "forecast_periods",
           "rows",
           "warnings",
-          "year_modes"
+          "year_modes",
+          "has_quarters"
         ],
         "title": "DriverGridOut",
         "type": "object"
@@ -1824,6 +1829,10 @@
             "title": "Own",
             "type": "array"
           },
+          "quarterly": {
+            "title": "Quarterly",
+            "type": "boolean"
+          },
           "rollup": {
             "items": {
               "anyOf": [
@@ -1895,7 +1904,8 @@
           "sources",
           "own",
           "kind",
-          "rollup"
+          "rollup",
+          "quarterly"
         ],
         "title": "DriverRowOut",
         "type": "object"

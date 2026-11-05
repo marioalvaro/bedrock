@@ -943,13 +943,15 @@ def test_a_value_under_a_quarter_column_of_an_annual_year_is_an_error_at_its_cel
     assert errors == [(2, "J", "FY2027 is set annually; switch it to by quarter first")]
 
 
-def test_a_row_gives_all_or_none_of_the_quarters_of_a_year_set_by_quarter() -> None:
-    errors = _mode_errors([QHEADER, ["gross_margin", "", "", "value", "", "", "", "0.5", "", ""]])
+def test_a_row_may_give_some_of_the_quarters_of_a_year_set_by_quarter() -> None:
+    """A blank quarter of a year set by quarter has no row: it follows Base's quarter or the
+    default, like a quarter cleared in the grid."""
+    some = [QHEADER, ["gross_margin", "", "", "value", "", "", "", "0.5", "", ""]]
+    plan = parse_driver_file(_csv(some), "f.csv", CATALOG, YEARS, False, QUARTERS, {2026})
 
-    assert errors == [(2, "I", "Q4 FY2026 is missing for gross_margin (FY2026 is set by quarter)")]
-    none = [QHEADER, ["gross_margin", "", "", "value", "0.4", "", "", "", "", ""]]
-    # no quarter at all is a driver following Base's quarters: only its annual cell is wrong
-    assert _mode_errors(none) == [(2, "E", "FY2026 is set by quarter")]
+    (row,) = plan.rows
+    given = {k: v for k, v in row.quarter_values.items() if v is not None}
+    assert given == {(2026, "Q3"): D("0.5")}
 
 
 def test_the_resolved_sheet_shows_the_roll_up_of_a_year_set_by_quarter() -> None:

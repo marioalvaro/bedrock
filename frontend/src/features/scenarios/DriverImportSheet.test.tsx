@@ -216,7 +216,7 @@ describe("DriverImportSheet", () => {
           {
             row: 4,
             column: null,
-            message: "Q4 FY2027 is missing for gross_margin (FY2027 is set by quarter)",
+            message: "FY2027 is set annually; switch it to by quarter first",
           },
         ],
       }) as never,
@@ -231,7 +231,7 @@ describe("DriverImportSheet", () => {
     ).toEqual([
       "row 2, column E: FY2027 is set by quarter",
       "row 3, column G: FY2026 is set annually; switch it to by quarter first",
-      "row 4: Q4 FY2027 is missing for gross_margin (FY2027 is set by quarter)",
+      "row 4: FY2027 is set annually; switch it to by quarter first",
     ]);
   });
 

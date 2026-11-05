@@ -240,12 +240,7 @@ export function driverEdit(
     // A year set by quarter takes no annual value: the API refuses one, and its stored annual value
     // is kept out of sight.
     if (grid.freq === "annual" && byQuarter.has(fiscal_year)) return [];
-    let own = i === index ? value : row.kind === mode ? (row.own[i] ?? null) : null;
-    // A quarterly row replaces the driver's quarters and must give every quarter of a by-quarter
-    // year a value (the API refuses a gap): those not edited keep their current figure.
-    if (own === null && grid.freq === "quarterly" && byQuarter.has(fiscal_year)) {
-      own = quarterFiller(row, i, mode);
-    }
+    const own = i === index ? value : row.kind === mode ? (row.own[i] ?? null) : null;
     if (own === null) return [];
     return [
       grid.freq === "quarterly"
@@ -256,60 +251,20 @@ export function driverEdit(
   return { ...driverClear(row.code, mode, grid.freq), values };
 }
 
-// A by-quarter quarter's value when its row is rewritten: an offset of 0 (it follows Base), or the
-// value it resolves to now; null when there is none (a line held flat, a required driver unset).
-function quarterFiller(row: DriverRowOut, index: number, mode: DriverMode): string | null {
-  return mode === "offset" ? "0" : (row.values[index] ?? null);
-}
-
-/** Whether the cell at forecast column `index` can be emptied: not a quarter of a by-quarter year. */
-export function canClear(
-  grid: Pick<DriverGridOut, "freq" | "forecast_periods" | "year_modes">,
-  index: number,
-): boolean {
-  const period = grid.forecast_periods[index];
-  return !(grid.freq === "quarterly" && period && byQuarterYears(grid).has(period.fiscal_year));
-}
-
 /**
  * Whether `row` has own values the grid on screen can drop. The annual grid ignores the stored
- * annual value of a by-quarter year; the quarterly grid offers no reset while a year is set by
- * quarter, because a quarter of such a year cannot be cleared.
+ * annual value of a by-quarter year.
  */
 export function canReset(
   grid: Pick<DriverGridOut, "freq" | "forecast_periods" | "year_modes">,
   row: DriverRowOut,
 ): boolean {
   const byQuarter = byQuarterYears(grid);
-  if (
-    grid.freq === "quarterly" &&
-    grid.forecast_periods.some((p) => byQuarter.has(p.fiscal_year))
-  ) {
-    return false;
-  }
   return row.own.some(
     (value, i) =>
       value !== null &&
       !(grid.freq === "annual" && byQuarter.has(grid.forecast_periods[i]?.fiscal_year ?? -1)),
   );
-}
-
-/**
- * The quarterly row of a mode switch (Value ↔ vs Base): it drops the driver's own quarter values,
- * except in a year set by quarter, whose quarters must stay given: at an offset of 0 (following
- * Base) or at the value they resolve to now.
- */
-export function quarterSwitchRow(
-  grid: Pick<DriverGridOut, "forecast_periods" | "year_modes">,
-  row: DriverRowOut,
-  mode: DriverMode,
-): DriverRowIn {
-  const byQuarter = byQuarterYears(grid);
-  const values = grid.forecast_periods.flatMap(({ fiscal_year, fiscal_period }, i) => {
-    const value = byQuarter.has(fiscal_year) ? quarterFiller(row, i, mode) : null;
-    return value === null ? [] : [{ fiscal_year, fiscal_period, value }];
-  });
-  return { ...driverClear(row.code, mode, "quarterly"), values };
 }
 
 /** The PUT row that drops every own value of `row` in `grid`'s frequency (back to inherited or default). */

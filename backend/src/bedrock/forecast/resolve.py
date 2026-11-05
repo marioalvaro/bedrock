@@ -2,7 +2,7 @@
 where it came from (docs/erd/forecasting.md "Scenarios (M4)" → Resolution, "Quarterly drivers" →
 Resolution). Pure."""
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Literal
@@ -99,6 +99,7 @@ def resolve_drivers(
     defaults: Mapping[str, Default],
     years: Sequence[int],
     is_base: bool,
+    quarterly_years: Collection[int] = frozenset(),
 ) -> ResolvedDrivers:
     """For each driver of `defaults` and forecast year: the scenario's `value` row → else Base's
     resolved value + the scenario's `offset` row → else Base's `value` row → else the default.
@@ -106,8 +107,10 @@ def resolve_drivers(
     takes that driver's resolved value in the same scenario. Rows of other years are ignored.
     Quarters follow the five-step chain of the ERD's "Quarterly drivers" (`_quarters`): the
     scenario's quarter row, its quarter offset on Base's quarter, its annual offset on Base's
-    quarter, Base's quarter row, the year's resolved value. Raises ValueError for an offset on
-    Base."""
+    quarter, Base's quarter row, the year's resolved value. In a year of `quarterly_years` (set by
+    quarter, docs "Year modes") the quarters ignore every annual row, the case's and Base's: steps
+    3 and 5 read the year as if it had none (the default, or what Base inherits), with that
+    source; the year's own value stays as stored. Raises ValueError for an offset on Base."""
     if is_base and any(r.kind == "offset" for r in own_rows):
         raise ValueError("Base cannot hold an offset")
     wanted = tuple(years)
@@ -116,15 +119,46 @@ def resolve_drivers(
     base = None if is_base else _resolve(year_rows, defaults, wanted, None, warnings)
     own_years = [r for r in own_rows if r.fiscal_period == "FY"]
     values = _resolve(own_years, defaults, wanted, base, warnings)
+    by_quarter = frozenset(quarterly_years) & frozenset(wanted)
+    if by_quarter:
+        # the years as they resolve with no annual row in a year set by quarter
+        scratch: list[str] = []
+        free_base = (
+            None
+            if is_base
+            else _resolve(
+                [r for r in year_rows if r.fiscal_year not in by_quarter],
+                defaults,
+                wanted,
+                None,
+                scratch,
+            )
+        )
+        free = _resolve(
+            [r for r in own_years if r.fiscal_year not in by_quarter],
+            defaults,
+            wanted,
+            free_base,
+            scratch,
+        )
+        quarter_years = {**values, **{k: v for k, v in free.items() if k[1] in by_quarter}}
+        quarter_base = (
+            None
+            if base is None or free_base is None
+            else {**base, **{k: v for k, v in free_base.items() if k[1] in by_quarter}}
+        )
+    else:
+        quarter_years, quarter_base = values, base
     quarters = _quarters(
         {k: r for r in own_rows if (k := _quarter_key(r)) is not None},
         {k: r for r in base_rows if (k := _quarter_key(r)) is not None},
-        {(r.code, r.fiscal_year): r for r in own_years},
-        values,
-        base,
+        {(r.code, r.fiscal_year): r for r in own_years if r.fiscal_year not in by_quarter},
+        quarter_years,
+        quarter_base,
         defaults,
         wanted,
         warnings,
+        by_quarter,
     )
     return ResolvedDrivers(
         tuple(defaults),
@@ -149,13 +183,15 @@ def _quarters(
     defaults: Mapping[str, Default],
     years: tuple[int, ...],
     warnings: list[str],
+    by_quarter: frozenset[int],
 ) -> dict[tuple[str, int, str], Resolved]:
     """Every quarter of every forecast year, first rule that applies: (1) the scenario's value at
     the quarter → `own`; (2) its offset at the quarter → Base's quarter + the offset (`offset`);
     (3) its annual offset → Base's quarter + the offset (`offset`); (4) Base's value at the quarter
     → `base`; (5) the year's resolved value → `year`. "Base's quarter" is Base's row at the quarter
     else Base's year. A USD flow works in quarter amounts: a year's amount counts for a quarter
-    × `quarter_share`, a quarter row as it is."""
+    × `quarter_share`, a quarter row as it is. In a year of `by_quarter` step 5 keeps the source
+    of the year's value (`default`, `base`): the year has no annual value of its own there."""
     resolved: dict[tuple[str, int, str], Resolved] = {}
     scratch: list[str] = []  # an annual offset on a flat line already warned at the year
     for code in defaults:
@@ -189,9 +225,18 @@ def _quarters(
                     resolved[key] = Resolved(annual_row.value * share, "year")
                 elif baseline is not None and inherited is not None:
                     resolved[key] = baseline
+                elif year in by_quarter:
+                    resolved[key] = _share(code, annual)
                 else:
                     resolved[key] = _from_year(code, annual)
     return resolved
+
+
+def _share(code: str, annual: Resolved) -> Resolved:
+    """A year's value as a quarter's, its source kept (a USD flow: a quarter of the amount)."""
+    if not isinstance(annual.value, Decimal):
+        return annual
+    return Resolved(annual.value * quarter_share(code), annual.source)
 
 
 def _from_year(code: str, annual: Resolved) -> Resolved:

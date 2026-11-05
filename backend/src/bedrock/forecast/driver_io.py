@@ -271,9 +271,9 @@ def parse_driver_file(
     """The rows a CSV or xlsx file sets (xlsx: its Drivers sheet), told apart by the content
     (an xlsx is a zip) or a `.xlsx` name. `catalog` is the scenario's drivers, `forecast_quarters`
     the quarters the forecast runs quarter by quarter (the allowed `FY<yyyy>Q<n>` columns),
-    `quarterly_years` the years set by quarter (a value under their annual column, under the
-    quarter column of any other year, or a row that gives only some of a year's quarters is an
-    error). `label` and `unit` are ignored. Raises DriverFileError with every error found."""
+    `quarterly_years` the years set by quarter (a value under their annual column, or under the
+    quarter column of any other year, is an error; a blank quarter has no row). `label` and
+    `unit` are ignored. Raises DriverFileError with every error found."""
     if content.startswith(b"PK") or filename.lower().endswith(".xlsx"):
         rows, delimiter = _read_xlsx(content), None
     else:
@@ -434,10 +434,8 @@ class _Parser:
             known = False
         values: dict[int, Decimal | None] = {}
         quarter_values: dict[tuple[int, str], Decimal | None] = {}
-        letters: dict[tuple[int, str], str] = {}
         for index, (year, period) in columns.items():
             raw = _at(cells, index)
-            letters[(year, period)] = get_column_letter(index + 1)
             if _blank(raw):
                 cell = None
             else:
@@ -462,33 +460,10 @@ class _Parser:
                 values[year] = cell
             else:
                 quarter_values[(year, period)] = cell
-        if known and code in self.per_quarter:
-            self._whole_years(number, code, quarter_values, letters)
         given = [*values.values(), *quarter_values.values()]
         if kind is None and not kind_text and any(v is not None for v in given):
             self._issue(number, "D", "kind is blank but the row has values")
         return FileRow(code, kind, values, quarter_values)  # discarded when the file has an issue
-
-    def _whole_years(
-        self,
-        number: int,
-        code: str,
-        quarter_values: Mapping[tuple[int, str], Decimal | None],
-        letters: Mapping[tuple[int, str], str],
-    ) -> None:
-        """A year set by quarter takes all of a row's quarters or none (none: the driver follows
-        Base's quarters): a quarter left blank beside a filled one is an error."""
-        for year in sorted(self.quarterly_years):
-            quarters = [(y, q) for y, q in self.forecast_quarters if y == year]
-            filled = [k for k in quarters if quarter_values.get(k) is not None]
-            if not filled:
-                continue
-            for key in quarters:
-                if quarter_values.get(key) is None and key in letters:
-                    message = (
-                        f"{key[1]} FY{year} is missing for {code} (FY{year} is set by quarter)"
-                    )
-                    self._issue(number, letters[key], message)
 
     def _number(self, raw: Any) -> tuple[Decimal | None, str]:
         """The cell as a number rounded to the stored 10 decimals (G15), or None and a hint."""

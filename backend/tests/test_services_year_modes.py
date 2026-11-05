@@ -17,6 +17,7 @@ from bedrock.forecast.history import forecast_years
 from bedrock.models.company import Company
 from bedrock.models.driver_value import DriverValue
 from bedrock.models.scenario import Scenario, ScenarioCase
+from bedrock.repositories import scenarios as repo
 from bedrock.services import forecasts as forecasts_service
 from bedrock.services.errors import InvalidDrivers, InvalidScenario, ScenarioNotFound
 from bedrock.services.refresh import refresh_company
@@ -25,6 +26,7 @@ from bedrock.services.scenarios import (
     SettingsInput,
     create_scenario,
     delete_scenario,
+    driver_grid,
     list_scenarios,
     load_history,
     put_drivers,
@@ -369,35 +371,109 @@ def test_an_annual_value_in_a_quarterly_year_is_refused(db_session: Session, aap
         )
 
 
-def test_a_quarter_of_a_quarterly_year_cannot_be_cleared_or_left_out(
+def _quarter_cells(
+    session: Session, company: Company, scenario: Scenario, case: str, code: str, year: int
+) -> dict[str, tuple[Decimal | None, str | None]]:
+    """(value, source) of each forecast quarter of `year` of `code` in the quarterly grid."""
+    grid = driver_grid(session, company, scenario.id, case, "quarterly")
+    row = next(r for r in grid.rows if r.code == code)
+    return {
+        p.fiscal_period: (row.values[i], row.sources[i])
+        for i, p in enumerate(grid.forecast_periods)
+        if p.fiscal_year == year
+    }
+
+
+def test_a_quarterly_row_may_set_some_quarters_and_the_others_take_the_default(
+    db_session: Session, aapl: Company
+) -> None:
+    """A quarter with no row of a year set by quarter does not fall back to the year's hidden
+    annual value: a cleared or left-out quarter takes the default."""
+    main = _main(db_session, aapl)
+    _, span = _years(db_session, aapl)
+    year = span[1]
+    put_drivers(
+        db_session,
+        aapl,
+        main.id,
+        "base",
+        [DriverRowInput("tax_rate", "value", [(year, D("0.31"))])],
+        NOW,
+    )
+    set_year_mode(db_session, aapl, main.id, year, "quarterly", NOW)
+    quarters = _forecast_quarters(db_session, aapl, year)
+
+    put_drivers(
+        db_session,
+        aapl,
+        main.id,
+        "base",
+        [
+            DriverRowInput(
+                "tax_rate",
+                "value",
+                freq="quarterly",
+                quarters=[(year, quarters[0], D("0.2")), (year, quarters[1], None)],
+            )
+        ],
+        NOW,
+    )
+
+    assert {k[2] for k in _quarter_rows(db_session, main, "base", year) if k[0] == "tax_rate"} == {
+        quarters[0]
+    }
+    cells = _quarter_cells(db_session, aapl, main, "base", "tax_rate", year)
+    assert cells[quarters[0]] == (D("0.2"), "own")
+    assert all(cells[q][1] == "default" and cells[q][0] != D("0.31") for q in quarters[1:])
+
+
+def test_editing_one_quarter_in_bull_keeps_the_other_quarters_following_base(
     db_session: Session, aapl: Company
 ) -> None:
     main = _main(db_session, aapl)
     _, span = _years(db_session, aapl)
     year = span[1]
     set_year_mode(db_session, aapl, main.id, year, "quarterly", NOW)
-    before = _rows(db_session, main, "base")
-    quarters = _quarters(db_session, aapl, year, "0.2")
+    quarters = _forecast_quarters(db_session, aapl, year)
 
-    cleared = [*quarters[:3], (year, "Q4", None)]
-    with pytest.raises(InvalidDrivers, match=f"Q4 FY{year} cannot be cleared"):
-        put_drivers(
-            db_session,
-            aapl,
-            main.id,
-            "base",
-            [DriverRowInput("tax_rate", "value", freq="quarterly", quarters=cleared)],
-            NOW,
-        )
-    with pytest.raises(InvalidDrivers, match=f"Q4 FY{year} is missing for tax_rate"):
-        put_drivers(
-            db_session,
-            aapl,
-            main.id,
-            "base",
-            [DriverRowInput("tax_rate", "value", freq="quarterly", quarters=quarters[:3])],
-            NOW,
-        )
+    put_drivers(
+        db_session,
+        aapl,
+        main.id,
+        "bull",
+        [
+            DriverRowInput(
+                "tax_rate", "value", freq="quarterly", quarters=[(year, quarters[0], D("0.2"))]
+            )
+        ],
+        NOW,
+    )
+
+    cells = _quarter_cells(db_session, aapl, main, "bull", "tax_rate", year)
+    assert cells[quarters[0]] == (D("0.2"), "own")
+    base = _quarter_cells(db_session, aapl, main, "base", "tax_rate", year)
+    assert all(cells[q] == (base[q][0], "base") for q in quarters[1:])
+
+
+def test_switching_a_year_already_set_by_quarter_again_writes_nothing(
+    db_session: Session, aapl: Company
+) -> None:
+    main = _main(db_session, aapl)
+    _, span = _years(db_session, aapl)
+    year = span[1]
+    set_year_mode(db_session, aapl, main.id, year, "quarterly", NOW)
+    put_drivers(
+        db_session,
+        aapl,
+        main.id,
+        "base",
+        [DriverRowInput("tax_rate", "value", freq="quarterly", quarters=[])],
+        NOW,
+    )
+    before = _rows(db_session, main, "base")
+
+    set_year_mode(db_session, aapl, main.id, year, "quarterly", NOW)
+
     assert _rows(db_session, main, "base") == before
 
 
@@ -454,26 +530,29 @@ def test_an_annual_row_leaves_the_stored_annual_value_of_a_quarterly_year_alone(
     assert rows[("tax_rate", other, "FY")] == ("value", D("0.17"))
 
 
-def test_a_new_mode_for_the_annual_rows_needs_the_quarters_of_a_quarterly_year_too(
+def test_a_new_kind_for_the_annual_rows_drops_the_quarters_of_a_year_set_by_quarter(
     db_session: Session, aapl: Company
 ) -> None:
-    """Changing a driver between value and offset drops its other-frequency rows: that would leave
-    a quarterly year without quarters."""
+    """Changing a driver between value and offset starts it over: its quarters of a year set by
+    quarter go too, and those quarters then follow Base."""
     main = _main(db_session, aapl)
     _, span = _years(db_session, aapl)
-    set_year_mode(db_session, aapl, main.id, span[1], "quarterly", NOW)
-    before = _rows(db_session, main, "bull")
+    year = span[1]
+    set_year_mode(db_session, aapl, main.id, year, "quarterly", NOW)
+    assert any(k[0] == "gross_margin" for k in _quarter_rows(db_session, main, "bull", year))
 
-    with pytest.raises(InvalidDrivers, match=f"gross_margin is stored per quarter in FY{span[1]}"):
-        put_drivers(
-            db_session,
-            aapl,
-            main.id,
-            "bull",
-            [DriverRowInput("gross_margin", "value", [(span[2], D("0.5"))])],
-            NOW,
-        )
-    assert _rows(db_session, main, "bull") == before
+    put_drivers(
+        db_session,
+        aapl,
+        main.id,
+        "bull",
+        [DriverRowInput("gross_margin", "value", [(span[2], D("0.5"))])],
+        NOW,
+    )
+
+    assert not any(k[0] == "gross_margin" for k in _quarter_rows(db_session, main, "bull", year))
+    cells = _quarter_cells(db_session, aapl, main, "bull", "gross_margin", year)
+    assert {source for _, source in cells.values()} == {"base"}
 
 
 # --- reset ----------------------------------------------------------------------------------------
@@ -494,3 +573,29 @@ def test_resetting_a_case_keeps_the_quarters_of_its_quarterly_years_filled(
     assert {k[2] for k in _quarter_rows(db_session, main, "bull", year)} == set(QUARTERS)
     assert {k[2] for k in _quarter_rows(db_session, main, "base", year)} == set(QUARTERS)
     _same_numbers(_numbers(db_session, aapl, main), before)  # the defaults the fill started from
+
+
+def test_a_stored_mode_for_a_year_after_the_span_is_annual_for_every_write(
+    db_session: Session, aapl: Company
+) -> None:
+    """A `quarterly` row left for a year the quarterly span no longer covers reads as annual in
+    the grid; the PUT and the reset treat it the same way (one definition of the modes)."""
+    main = _main(db_session, aapl)
+    years, span = _years(db_session, aapl)
+    after = next(y for y in years if y not in span)
+    repo.set_quarterly(db_session, main.id, after, True)
+    db_session.commit()
+    assert {m.fiscal_year: m.mode for m in year_modes(db_session, aapl, main.id)}[after] == "annual"
+
+    put_drivers(
+        db_session,
+        aapl,
+        main.id,
+        "base",
+        [DriverRowInput("tax_rate", "value", [(after, D("0.2"))])],
+        NOW,
+    )
+    assert _rows(db_session, main, "base")[("tax_rate", after, "FY")] == ("value", D("0.2"))
+
+    reset_case(db_session, aapl, main.id, "base", NOW)
+    assert _quarter_rows(db_session, main, "base", after) == {}

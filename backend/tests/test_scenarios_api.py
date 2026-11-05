@@ -239,8 +239,10 @@ def test_the_grid_has_the_documented_shape(aapl_client: TestClient) -> None:
         "rows",
         "warnings",
         "year_modes",
+        "has_quarters",
     }
     assert grid["freq"] == "annual"
+    assert grid["has_quarters"] is True  # AAPL has quarterly history
     # the periods mirror the years
     assert [p["fiscal_year"] for p in grid["history_periods"]] == grid["history_years"]
     assert [p["fiscal_year"] for p in grid["forecast_periods"]] == grid["forecast_years"]
@@ -260,8 +262,10 @@ def test_the_grid_has_the_documented_shape(aapl_client: TestClient) -> None:
         "own",
         "kind",
         "rollup",
+        "quarterly",
     }
     assert (growth["unit"], growth["kind"]) == ("pct", "offset")
+    assert growth["quarterly"] is True  # quarter-capable (drivers.py `quarterly`)
     assert len(growth["history"]) == 5 and all(isinstance(v, str) for v in growth["history"])
     assert growth["sources"] == ["offset"] * 5
     assert growth["own"] == ["0.03"] * 5  # plain decimals (G15)

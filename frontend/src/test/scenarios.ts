@@ -44,6 +44,7 @@ export function driverRow(overrides: Partial<DriverRowOut> = {}): DriverRowOut {
     own: [null, null],
     kind: null,
     rollup: [null, null],
+    quarterly: true,
     ...overrides,
   };
 }
@@ -72,6 +73,7 @@ export function driverGrid(overrides: Partial<DriverGridOut> = {}): DriverGridOu
     case: "base",
     freq: "annual",
     year_modes: yearModes(),
+    has_quarters: true,
     history_years: [2023, 2024, 2025],
     forecast_years: [2026, 2027],
     history_periods: [2023, 2024, 2025].map((y) => ({
@@ -144,6 +146,7 @@ export function quarterlyGrid(overrides: Partial<DriverGridOut> = {}): DriverGri
     case: "base",
     freq: "quarterly",
     year_modes: modesOf("quarterly"), // quarter values exist only in a year set by quarter
+    has_quarters: true,
     history_years: [2023, 2024, 2025],
     forecast_years: [2026, 2027],
     history_periods: [quarter(2025, "Q2", "A"), quarter(2025, "Q3", "A"), quarter(2025, "Q4", "A")],

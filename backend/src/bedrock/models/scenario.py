@@ -87,10 +87,6 @@ class ScenarioCase(Base):
     )
 
 
-YearModeValue = Literal["annual", "quarterly"]
-YEAR_MODES: tuple[str, ...] = get_args(YearModeValue)
-
-
 class ScenarioYearMode(Base):
     """How a forecast year of the quarterly span is set, for all three cases of a scenario: one
     annual value or quarter by quarter (docs/erd/forecasting.md "Year modes"). No row is
@@ -103,5 +99,5 @@ class ScenarioYearMode(Base):
         ForeignKey("scenario.id", ondelete="CASCADE"), primary_key=True
     )
     fiscal_year: Mapped[int] = mapped_column(Integer, primary_key=True)
-    # one of YEAR_MODES
+    # `quarterly` (forecast/grid.py::YearModeValue; an annual year has no row)
     mode: Mapped[str] = mapped_column(String, nullable=False)

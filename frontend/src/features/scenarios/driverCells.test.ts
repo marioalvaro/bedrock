@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import { driverGrid, driverRow, modesOf, quarterlyGrid } from "@/test/scenarios";
 
 import {
-  canClear,
   canReset,
   driverClear,
   driverEdit,
@@ -13,7 +12,6 @@ import {
   formatDriverValue,
   parseDriverText,
   periodName,
-  quarterSwitchRow,
   toDriverRows,
   toDriverText,
 } from "./driverCells";
@@ -319,24 +317,18 @@ describe("driverEdit", () => {
       });
     });
 
-    it("sets the first quarter of a driver that follows its year, the other quarter keeping the year's figure", () => {
+    it("sets one quarter of a driver with no own quarters, the other left to Base or the default", () => {
       expect(driverEdit(quarters, quarters.rows[0]!, "value", 0, "0.06")).toEqual({
         driver_code: "revenue_growth",
         kind: "value",
         freq: "quarterly",
-        values: [
-          { fiscal_year: 2026, fiscal_period: "Q1", value: "0.06" },
-          { fiscal_year: 2026, fiscal_period: "Q2", value: "0.0234" },
-        ],
+        values: [{ fiscal_year: 2026, fiscal_period: "Q1", value: "0.06" }],
       });
     });
 
-    it("cannot clear a quarter of a by-quarter year: it keeps its figure", () => {
+    it("clears a quarter of a by-quarter year by leaving it out", () => {
       const cleared = driverEdit(quarters, quarters.rows[1]!, "value", 0, null);
-      expect(cleared.values).toEqual([
-        { fiscal_year: 2026, fiscal_period: "Q1", value: "0.48" },
-        { fiscal_year: 2026, fiscal_period: "Q2", value: "0.47" },
-      ]);
+      expect(cleared.values).toEqual([]);
     });
   });
 });
@@ -455,7 +447,7 @@ describe("year modes", () => {
       });
     });
 
-    it("gives every quarter of a by-quarter year: the rest keep their resolved value", () => {
+    it("sends only the quarters set in the case: the others follow Base or the default", () => {
       const quarters = quarterlyGrid();
       const row = driverRow({
         code: "gross_margin",
@@ -468,46 +460,21 @@ describe("year modes", () => {
         driver_code: "gross_margin",
         kind: "value",
         freq: "quarterly",
-        values: [
-          { fiscal_year: 2026, fiscal_period: "Q1", value: "0.5" },
-          { fiscal_year: 2026, fiscal_period: "Q2", value: "0.47" },
-        ],
+        values: [{ fiscal_year: 2026, fiscal_period: "Q1", value: "0.5" }],
       });
+      expect(driverEdit(quarters, row, "offset", 1, "0.01").values).toEqual([
+        { fiscal_year: 2026, fiscal_period: "Q2", value: "0.01" },
+      ]);
     });
 
-    it("gives the quarters it does not edit an offset of 0 in vs Base mode", () => {
-      const quarters = quarterlyGrid();
-      const row = driverRow({ own: [null, null], kind: null });
-      expect(driverEdit(quarters, row, "offset", 1, "0.01")).toEqual({
-        driver_code: "revenue_growth",
-        kind: "offset",
-        freq: "quarterly",
-        values: [
-          { fiscal_year: 2026, fiscal_period: "Q1", value: "0" },
-          { fiscal_year: 2026, fiscal_period: "Q2", value: "0.01" },
-        ],
-      });
-    });
-
-    it("keeps a quarter's own value and leaves a quarter with no figure out", () => {
+    it("keeps a quarter's own value and drops an emptied one", () => {
       const quarters = quarterlyGrid();
       const own = driverRow({ values: ["0.48", "0.47"], own: ["0.48", null], kind: "value" });
       expect(driverEdit(quarters, own, "value", 1, "0.5").values).toEqual([
         { fiscal_year: 2026, fiscal_period: "Q1", value: "0.48" },
         { fiscal_year: 2026, fiscal_period: "Q2", value: "0.5" },
       ]);
-      const flat = driverRow({ values: [null, null], sources: ["default", "default"] });
-      expect(driverEdit(quarters, flat, "value", 0, "61").values).toEqual([
-        { fiscal_year: 2026, fiscal_period: "Q1", value: "61" },
-      ]);
-    });
-  });
-
-  describe("canClear", () => {
-    it("is false for a quarter of a by-quarter year, true elsewhere", () => {
-      expect(canClear(quarterlyGrid(), 0)).toBe(false);
-      expect(canClear(driverGrid(), 0)).toBe(true);
-      expect(canClear(driverGrid({ year_modes: modesOf("quarterly") }), 0)).toBe(true);
+      expect(driverEdit(quarters, own, "value", 0, null).values).toEqual([]);
     });
   });
 
@@ -526,41 +493,10 @@ describe("year modes", () => {
       );
     });
 
-    it("is off in the quarterly grid while a year is set by quarter (its quarters cannot be cleared)", () => {
+    it("is offered in the quarterly grid of a by-quarter year (its quarters fall back to Base)", () => {
       const quarters = quarterlyGrid();
-      expect(canReset(quarters, quarters.rows[1]!)).toBe(false);
-    });
-  });
-
-  describe("quarterSwitchRow", () => {
-    it("is an empty quarterly row when no year is set by quarter", () => {
-      expect(quarterSwitchRow(quartersByYear, quartersByYear.rows[1]!, "offset")).toEqual({
-        driver_code: "gross_margin",
-        kind: "offset",
-        freq: "quarterly",
-        values: [],
-      });
-    });
-
-    it("holds a by-quarter year's quarters at an offset of 0 when switching to vs Base", () => {
-      const quarters = quarterlyGrid();
-      expect(quarterSwitchRow(quarters, quarters.rows[1]!, "offset")).toEqual({
-        driver_code: "gross_margin",
-        kind: "offset",
-        freq: "quarterly",
-        values: [
-          { fiscal_year: 2026, fiscal_period: "Q1", value: "0" },
-          { fiscal_year: 2026, fiscal_period: "Q2", value: "0" },
-        ],
-      });
-    });
-
-    it("keeps a by-quarter year's resolved quarter values when switching to Value", () => {
-      const quarters = quarterlyGrid();
-      expect(quarterSwitchRow(quarters, quarters.rows[1]!, "value").values).toEqual([
-        { fiscal_year: 2026, fiscal_period: "Q1", value: "0.48" },
-        { fiscal_year: 2026, fiscal_period: "Q2", value: "0.47" },
-      ]);
+      expect(canReset(quarters, quarters.rows[1]!)).toBe(true);
+      expect(canReset(quarters, quarters.rows[0]!)).toBe(false);
     });
   });
 });

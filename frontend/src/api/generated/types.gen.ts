@@ -906,6 +906,10 @@ export type DriverGridOut = {
      */
     freq: 'annual' | 'quarterly';
     /**
+     * Has Quarters
+     */
+    has_quarters: boolean;
+    /**
      * History Periods
      */
     history_periods: Array<GridPeriodOut>;
@@ -1004,6 +1008,10 @@ export type DriverRowOut = {
      * Own
      */
     own: Array<string | null>;
+    /**
+     * Quarterly
+     */
+    quarterly: boolean;
     /**
      * Rollup
      */

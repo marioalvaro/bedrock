@@ -61,8 +61,9 @@ export const scenariosQueryOptions = (ticker: string) =>
   });
 
 // Every driver grid of a case (both frequencies) sits under this key.
+const DRIVERS = "drivers";
 const driversPrefix = (ticker: string, id: number, scenarioCase: ScenarioCase) =>
-  [...scenariosKey(ticker), id, scenarioCase, "drivers"] as const;
+  [...scenariosKey(ticker), id, scenarioCase, DRIVERS] as const;
 
 /**
  * GET …/scenarios/{id}/cases/{case}/drivers?freq=. Rejects a 200 without `rows`, the year lists and
@@ -89,7 +90,8 @@ export const driversQueryOptions = (
         !Array.isArray(grid?.forecast_years) ||
         !Array.isArray(grid?.history_periods) ||
         !Array.isArray(grid?.forecast_periods) ||
-        !Array.isArray(grid?.year_modes)
+        !Array.isArray(grid?.year_modes) ||
+        typeof grid?.has_quarters !== "boolean"
       ) {
         throw unexpected();
       }
@@ -398,7 +400,7 @@ export function useSetYearMode(ticker: string, id: number) {
       ),
     onSuccess: async () => {
       const queryKey = [...scenariosKey(ticker), id];
-      const isGrid = (key: readonly unknown[]) => key.includes("drivers");
+      const isGrid = (key: readonly unknown[]) => key.includes(DRIVERS);
       void queryClient.invalidateQueries({ queryKey, predicate: (q) => !isGrid(q.queryKey) });
       await queryClient.invalidateQueries({ queryKey, predicate: (q) => isGrid(q.queryKey) });
     },

@@ -83,10 +83,8 @@ export function Chart({ option, ariaLabel, height = 260, colors = SERIES_TOKENS 
   const theme = useTheme();
   const reduced = usePrefersReducedMotion();
 
-  // Keyed by content, as callers pass a fresh array each render.
-  const tokens = colors.join(",");
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const palette = useMemo(() => readPalette(theme, tokens.split(",")), [theme, tokens]);
+  // `colors` is a module-level constant at every caller, so the memo holds across renders.
+  const palette = useMemo(() => readPalette(theme, colors), [theme, colors]);
 
   const themed = useMemo<EChartsOption>(
     () => ({

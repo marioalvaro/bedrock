@@ -5,6 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 from bedrock.forecast.drivers import DriverKind, RevenueMethod, Unit
+from bedrock.forecast.grid import YearModeValue
 from bedrock.forecast.resolve import Source
 from bedrock.models.scenario import Case, Scenario
 from bedrock.services.scenarios import (
@@ -71,6 +72,7 @@ class DriverRowOut(BaseModel):
     own: list[Decimal | None]
     kind: DriverKind | None
     rollup: list[Decimal | None]  # aligned with `forecast_years`; null for a year set annually
+    quarterly: bool  # the driver can be set per quarter
 
 
 class YearModeOut(BaseModel):
@@ -79,7 +81,7 @@ class YearModeOut(BaseModel):
 
     fiscal_year: int
     label: str
-    mode: Literal["annual", "quarterly"]
+    mode: YearModeValue
     in_span: bool
 
     @classmethod
@@ -96,7 +98,7 @@ class YearModesOut(BaseModel):
 
 
 class YearModeIn(BaseModel):
-    mode: Literal["annual", "quarterly"]
+    mode: YearModeValue
 
 
 class GridPeriodOut(BaseModel):
@@ -127,6 +129,8 @@ class DriverGridOut(BaseModel):
     rows: list[DriverRowOut]
     warnings: list[str]
     year_modes: list[YearModeOut]
+    # the company has quarterly history: the quarterly grid and quarter rows exist
+    has_quarters: bool
 
     @classmethod
     def from_grid(cls, grid: DriverGrid) -> "DriverGridOut":
@@ -150,11 +154,13 @@ class DriverGridOut(BaseModel):
                     own=r.own,
                     kind=r.kind,
                     rollup=r.rollup,
+                    quarterly=r.quarterly,
                 )
                 for r in grid.rows
             ],
             warnings=grid.warnings,
             year_modes=[YearModeOut.from_mode(m) for m in grid.year_modes],
+            has_quarters=grid.has_quarters,
         )
 
 

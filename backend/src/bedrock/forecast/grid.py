@@ -3,6 +3,7 @@ forecast year (docs/erd/forecasting.md "API" -> DriverGridOut). Pure data."""
 
 from dataclasses import dataclass, field
 from decimal import Decimal
+from typing import Literal
 
 from bedrock.forecast.drivers import DriverKind, Unit
 from bedrock.forecast.resolve import Source
@@ -26,6 +27,7 @@ class GridRow:
     kind: DriverKind | None
     # aligned with the grid's forecast years: the annual figure of a year set by quarter, else None
     rollup: list[Decimal | None] = field(default_factory=list)
+    quarterly: bool = False  # the driver can be set per quarter (`drivers.DriverDef.quarterly`)
 
 
 @dataclass(frozen=True)
@@ -38,6 +40,9 @@ class GridPeriod:
     label: str
 
 
+YearModeValue = Literal["annual", "quarterly"]
+
+
 @dataclass(frozen=True)
 class YearMode:
     """How a forecast year is set: `annual` or `quarterly` (by quarter). `in_span`: the year is
@@ -45,7 +50,7 @@ class YearMode:
 
     fiscal_year: int
     label: str
-    mode: str
+    mode: YearModeValue
     in_span: bool
 
 
@@ -65,3 +70,4 @@ class DriverGrid:
     history_periods: list[GridPeriod] = field(default_factory=list)
     forecast_periods: list[GridPeriod] = field(default_factory=list)
     year_modes: list["YearMode"] = field(default_factory=list)
+    has_quarters: bool = False  # the company has quarterly history (a quarterly grid exists)

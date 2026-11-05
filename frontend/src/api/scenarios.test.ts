@@ -240,6 +240,15 @@ describe("driversQueryOptions", () => {
     ).rejects.toMatchObject({ status: 200 });
   });
 
+  it("rejects a 200 without has_quarters (an older backend)", async () => {
+    const { has_quarters: _quarters, ...bare } = driverGrid();
+    getDrivers.mockResolvedValue(okResult(bare) as never);
+    const { queryClient } = setup();
+    await expect(
+      queryClient.fetchQuery(driversQueryOptions("AAPL", 1, "base")),
+    ).rejects.toMatchObject({ status: 200 });
+  });
+
   it("rejects a 200 without rows and years", async () => {
     getDrivers.mockResolvedValue(html());
     const { queryClient } = setup();

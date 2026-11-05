@@ -333,3 +333,52 @@ def test_with_no_quarter_rows_every_quarter_is_its_years_value_over_random_rows(
                     got = resolved.get(code, year, period)
                     assert got.value == annual.value * share  # type: ignore[operator]
                     assert got.source == "year"
+
+
+# --- years set by quarter (FR-FCST-13): the quarters ignore the year's annual rows ------------
+
+
+def test_in_a_year_set_by_quarter_a_quarter_without_a_row_takes_the_default() -> None:
+    base = [row("gross_margin", 2027, "0.50"), row("gross_margin", 2027, "0.45", period="Q1")]
+    resolved = resolve_drivers(base, base, DEFAULTS, YEARS, is_base=True, quarterly_years={2027})
+
+    assert resolved.get("gross_margin", 2027, "Q1") == Resolved(D("0.45"), "own")
+    assert resolved.get("gross_margin", 2027, "Q2") == Resolved(D("0.40"), "default")
+    assert resolved.get("gross_margin", 2027) == Resolved(D("0.50"), "own")  # the year as stored
+    assert resolved.get("gross_margin", 2028, "Q2") == Resolved(D("0.40"), "year")  # annual year
+
+
+def test_in_a_year_set_by_quarter_a_case_follows_bases_quarter_and_ignores_its_annual_rows() -> (
+    None
+):
+    base = [row("gross_margin", 2027, "0.50"), row("gross_margin", 2027, "0.45", period="Q1")]
+    own = [
+        row("gross_margin", 2027, "0.05", "offset"),
+        row("revenue_growth", 2027, "0.09"),
+        row("gross_margin", 2027, "0.01", "offset", "Q3"),
+    ]
+    resolved = resolve_drivers(base, own, DEFAULTS, YEARS, is_base=False, quarterly_years={2027})
+
+    assert resolved.get("gross_margin", 2027, "Q1") == Resolved(D("0.45"), "base")
+    # Base's hidden annual row is ignored too: Base's quarter there is its default
+    assert resolved.get("gross_margin", 2027, "Q2") == Resolved(D("0.40"), "default")
+    assert resolved.get("gross_margin", 2027, "Q3") == Resolved(D("0.41"), "offset")
+    assert resolved.get("revenue_growth", 2027, "Q4") == Resolved(D("0.05"), "default")
+    assert resolved.get("gross_margin", 2027) == Resolved(D("0.55"), "offset")  # the year as is
+
+
+def test_in_a_year_set_by_quarter_a_flow_with_no_quarter_row_is_a_quarter_of_its_default() -> None:
+    defaults: dict[str, Default] = {"buybacks": D("400")}
+    rows = [row("buybacks", 2027, "1000")]
+    resolved = resolve_drivers(rows, rows, defaults, YEARS, is_base=True, quarterly_years={2027})
+
+    assert resolved.get("buybacks", 2027, "Q1") == Resolved(D("100"), "default")
+    assert resolved.get("buybacks", 2028, "Q1") == Resolved(D("100"), "year")
+
+
+def test_in_a_year_set_by_quarter_a_following_default_follows_the_quarter_free_year() -> None:
+    base = [row("capex_pct_revenue", 2027, "0.08")]
+    resolved = resolve_drivers(base, base, DEFAULTS, YEARS, is_base=True, quarterly_years={2027})
+
+    assert resolved.get("d_and_a_pct_revenue", 2027, "Q1") == Resolved(D("0.03"), "default")
+    assert resolved.get("d_and_a_pct_revenue", 2027) == Resolved(D("0.08"), "default")

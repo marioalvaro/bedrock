@@ -1076,7 +1076,21 @@ def test_an_annual_only_company_has_no_quarterly_grid_and_no_quarterly_put(
     row = DriverRowInput("tax_rate", "value", freq="quarterly", quarters=[(2027, "Q1", D("0.2"))])
     with pytest.raises(ForecastUnavailable, match="^No quarterly history$"):
         put_drivers(db_session, aapl, main.id, "bull", [row], NOW)
-    assert driver_grid(db_session, aapl, main.id, "bull").freq == "annual"  # annual works
+    annual = driver_grid(db_session, aapl, main.id, "bull")
+    assert annual.freq == "annual"  # annual works
+    assert annual.has_quarters is False
+
+
+def test_an_annual_only_company_cannot_set_a_year_by_quarter(
+    db_session: Session, aapl: Company, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    main = list_scenarios(db_session, aapl, NOW)[0]
+    year = driver_grid(db_session, aapl, main.id, "base").forecast_years[0]
+    _annual_only(monkeypatch)
+
+    with pytest.raises(ForecastUnavailable, match="^No quarterly history$"):
+        scenarios_service.set_year_mode(db_session, aapl, main.id, year, "quarterly", NOW)
+    assert all(m.mode == "annual" for m in scenarios_service.year_modes(db_session, aapl, main.id))
 
 
 def test_a_company_without_data_has_no_quarterly_grid(db_session: Session, empty: Company) -> None:
