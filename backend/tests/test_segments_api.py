@@ -1,5 +1,6 @@
 """Segment and KPI series through the API (FR-DATA-11), on the AAPL fixtures."""
 
+from collections.abc import Callable
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -23,8 +24,12 @@ KPI = {"dimension": "kpi", "name": "Stores", "metric": "stores", "unit": "count"
 
 
 @pytest.fixture
-def aapl_client(authed_client: TestClient) -> TestClient:
-    assert authed_client.post("/api/v1/companies", json={"ticker": "AAPL"}).status_code == 201
+def aapl_db(seed_db: Callable[..., None]) -> None:
+    seed_db("AAPL")
+
+
+@pytest.fixture
+def aapl_client(aapl_db: None, authed_client: TestClient) -> TestClient:
     return authed_client
 
 

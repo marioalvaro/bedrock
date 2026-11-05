@@ -335,6 +335,9 @@ const segmentStale = () => [
   [...segmentsKey("AAPL"), "quarterly"],
   [...aapl, "guidance"],
   [...aapl, "guidance-metrics"],
+  // Segment and KPI series drive the segments and volume × price revenue drivers (M4 S5).
+  [...aapl, "scenarios"],
+  [...aapl, "scenarios", 1, "drivers"],
 ];
 const segmentFresh = () => [
   [...aapl, "notes", {}],
@@ -342,6 +345,7 @@ const segmentFresh = () => [
   [...aapl, "statements", "IS", "annual", "total", "reported"],
   [...companyKey("MSFT"), "segments", "annual"],
   [...companyKey("MSFT"), "guidance"],
+  [...companyKey("MSFT"), "scenarios"],
 ];
 const noteStale = () => [
   [...notesKey("AAPL"), {}],

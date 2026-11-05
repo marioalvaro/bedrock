@@ -1,7 +1,7 @@
 """Statement tables: periods as columns, canonical items as rows. Pure."""
 
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from typing import Literal
 
@@ -13,6 +13,7 @@ from bedrock.statements.cells import solve_cells
 from bedrock.statements.imports import company_calendar
 from bedrock.statements.normalize import AdjustmentLike, apply_adjustments
 from bedrock.statements.periods import (
+    Calendar,
     Period,
     annual_periods,
     quarterly_periods,
@@ -79,13 +80,47 @@ def build_statement(
 
     Common-size divides every row by one base row of the same period: `total` is revenue (IS, CF)
     or total assets (BS); `parent` is the row's parent, and a row without one uses the total."""
-    if statement == "BS" and freq == "ttm":
+    tables = build_tables(frame, items, [(statement, freq)], common_size_base, adjustments, rules)
+    return tables[(statement, freq)]
+
+
+def build_tables(
+    frame: pd.DataFrame,
+    items: Sequence[CanonicalItemDef],
+    wanted: Sequence[tuple[str, Freq]],
+    common_size_base: CommonSizeBase = "total",
+    adjustments: Sequence[AdjustmentLike] = (),
+    rules: Rules = NO_RULES,
+) -> dict[tuple[str, Freq], StatementTable]:
+    """Every (statement, freq) table of `wanted`, keyed in request order, each equal to its
+    `build_statement`. The cells (and the adjustments on them) do not depend on the statement or
+    the frequency, so they are solved once for all the tables. Raises ValueError for a TTM
+    balance sheet."""
+    if ("BS", "ttm") in wanted:
         raise ValueError("TTM is only defined for flow statements, not the balance sheet")
     calendar = company_calendar(frame, rules.imported)
     solved = solve_cells(frame, items, calendar, rules)
     cells = solved.cells
     if adjustments:
         cells, _ = apply_adjustments(cells, items, adjustments, calendar, rules.identities)
+    return {
+        (statement, freq): _table(
+            items, statement, freq, common_size_base, calendar, dict(cells), solved.warnings
+        )
+        for statement, freq in wanted
+    }
+
+
+def _table(
+    items: Sequence[CanonicalItemDef],
+    statement: str,
+    freq: Freq,
+    common_size_base: CommonSizeBase,
+    calendar: Calendar,
+    cells: dict[CellKey, Cell],
+    rule_warnings: tuple[RuleWarning, ...],
+) -> StatementTable:
+    """One table from the solved cells; adds its TTM and "Other" cells to `cells` (its own copy)."""
     if freq == "annual":
         periods = annual_periods(calendar)
     elif freq == "quarterly":
@@ -116,7 +151,7 @@ def build_statement(
     )
     balance = _balance_check(periods, cells) if statement == "BS" else None
     return StatementTable(
-        statement, freq, periods, rows, balance, list(calendar.warnings), solved.warnings
+        statement, freq, periods, rows, balance, list(calendar.warnings), rule_warnings
     )
 
 
@@ -190,6 +225,46 @@ def _with_others(
     while open_breakdowns:
         rows.append(make(others[open_breakdowns.pop()]))
     return rows
+
+
+def extend_table(
+    table: StatementTable,
+    periods: Sequence[Period],
+    values: Mapping[CellKey, Decimal | None],
+) -> StatementTable:
+    """`table` with forecast `periods` appended (docs/erd/forecasting.md "API" → forecast). Each
+    row takes its value from `values` (null where absent; a non-null value has provenance
+    `forecast`); YoY of a new column runs against the same period one year earlier among all the
+    columns; common size divides by the period's total in `values` (total assets for BS, else
+    revenue); a balance sheet gets the check of each new column. The existing columns are kept
+    as built."""
+    added = list(periods)
+    combined = table.periods + added
+    position = {(p.fiscal_year, p.fiscal_period): i for i, p in enumerate(combined)}
+    total = "total_assets" if table.statement == "BS" else "revenue"
+    rows = []
+    for row in table.rows:
+        new = [values.get((row.code, p.key)) for p in added]
+        all_values = row.values + new
+        yoy = []
+        for p, value in zip(added, new, strict=True):
+            prior_at = position.get((p.fiscal_year - 1, p.fiscal_period))
+            yoy.append(growth(value, None if prior_at is None else all_values[prior_at]))
+        rows.append(
+            replace(
+                row,
+                values=all_values,
+                provenance=row.provenance + ["forecast" if v is not None else None for v in new],
+                yoy=row.yoy + yoy,
+                common_size=row.common_size
+                + [_ratio(v, values.get((total, p.key))) for v, p in zip(new, added, strict=True)],
+            )
+        )
+    balance = None
+    if table.balance_check is not None:
+        cells = {key: Cell(v, "forecast") for key, v in values.items()}
+        balance = table.balance_check + _balance_check(added, cells)
+    return replace(table, periods=combined, rows=rows, balance_check=balance)
 
 
 def _ttm_cell(item: CanonicalItemDef, quarter_keys: list[str], cells: dict[CellKey, Cell]) -> Cell:
@@ -272,7 +347,7 @@ def _ratio(value: Decimal | None, base: Decimal | None) -> Decimal | None:
     return (value / base).quantize(RATIO_PLACES)
 
 
-def _balance_check(periods: list[Period], cells: dict[CellKey, Cell]) -> list[BalanceCheck]:
+def _balance_check(periods: list[Period], cells: Mapping[CellKey, Cell]) -> list[BalanceCheck]:
     checks = []
     for p in periods:
         assets, liabilities, equity = (

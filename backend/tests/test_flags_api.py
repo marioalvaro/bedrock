@@ -1,6 +1,7 @@
 """The quality-of-earnings flags route over followed companies (recorded fixtures, no network).
 FR-ANL-05."""
 
+from collections.abc import Callable
 from decimal import Decimal
 from typing import Any
 
@@ -58,8 +59,12 @@ SGA_FY2024 = {
 
 
 @pytest.fixture
-def msft_client(authed_client: TestClient) -> TestClient:
-    assert authed_client.post(COMPANIES, json={"ticker": "MSFT"}).status_code == 201
+def msft_db(seed_db: Callable[..., None]) -> None:
+    seed_db("MSFT")
+
+
+@pytest.fixture
+def msft_client(msft_db: None, authed_client: TestClient) -> TestClient:
     return authed_client
 
 

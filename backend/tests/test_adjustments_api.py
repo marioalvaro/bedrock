@@ -1,5 +1,6 @@
 """Adjustments through the API, and what they do to the normalized statements (AAPL fixtures)."""
 
+from collections.abc import Callable
 from decimal import Decimal
 
 import pytest
@@ -21,8 +22,12 @@ SGA_FY2024 = {
 
 
 @pytest.fixture
-def aapl_client(authed_client: TestClient) -> TestClient:
-    assert authed_client.post("/api/v1/companies", json={"ticker": "AAPL"}).status_code == 201
+def aapl_db(seed_db: Callable[..., None]) -> None:
+    seed_db("AAPL")
+
+
+@pytest.fixture
+def aapl_client(aapl_db: None, authed_client: TestClient) -> TestClient:
     return authed_client
 
 

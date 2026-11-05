@@ -83,7 +83,10 @@ def insert_parsed(session: Session, company: Company, parsed: ParsedFacts) -> tu
             }
         )
     if rows:
-        session.execute(insert(RawFact), rows)
+        # Through the connection (Core), not the session's ORM bulk path: that one splits the
+        # batch wherever a row has a NULL the next does not (instants, no frame), turning ~60k
+        # rows into ~12k statements.
+        session.connection().execute(insert(RawFact), rows)
     return len(new_filings), len(rows)
 
 

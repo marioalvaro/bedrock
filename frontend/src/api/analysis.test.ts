@@ -327,11 +327,7 @@ const customBody = {
 // Mutations: hook, trigger, SDK mock, expected call, success payload, and which group goes stale.
 type AnyMutation = UseMutationResult<unknown, Error, never>;
 const offBalanceStale = () => [offBalanceItemsKey("AAPL"), [...flagsKey("AAPL"), "annual"]];
-const thresholdStale = () => [
-  qoeRulesKey,
-  qoeCustomRulesKey,
-  [...flagsKey("AAPL"), "annual"],
-];
+const thresholdStale = () => [qoeRulesKey, qoeCustomRulesKey, [...flagsKey("AAPL"), "annual"]];
 
 const mutations = [
   {

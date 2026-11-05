@@ -2,6 +2,7 @@
 
 import inspect
 import io
+from collections.abc import Callable
 
 import pytest
 from fastapi.testclient import TestClient
@@ -16,8 +17,12 @@ XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 @pytest.fixture
-def aapl_client(authed_client: TestClient) -> TestClient:
-    assert authed_client.post("/api/v1/companies", json={"ticker": "AAPL"}).status_code == 201
+def aapl_db(seed_db: Callable[..., None]) -> None:
+    seed_db("AAPL")
+
+
+@pytest.fixture
+def aapl_client(aapl_db: None, authed_client: TestClient) -> TestClient:
     return authed_client
 
 

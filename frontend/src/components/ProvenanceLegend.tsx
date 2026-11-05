@@ -1,4 +1,9 @@
-export function ProvenanceLegend() {
+interface ProvenanceLegendProps {
+  // The Forecast tab adds the forecast values' line.
+  forecast?: boolean;
+}
+
+export function ProvenanceLegend({ forecast = false }: ProvenanceLegendProps) {
   return (
     <p className="text-muted-foreground flex flex-wrap gap-x-4 text-xs">
       <span>Reported: as filed</span>
@@ -9,6 +14,11 @@ export function ProvenanceLegend() {
       <span className="prov-imported">Imported: from your file, where SEC has no value</span>
       <span>Inferred 0: a rule concluded the line is exactly 0</span>
       <span className="prov-normalized">Normalized: with your adjustments</span>
+      {forecast && (
+        <span className="prov-forecast cell-forecast px-1">
+          Forecast: built from the scenario&apos;s drivers
+        </span>
+      )}
     </p>
   );
 }

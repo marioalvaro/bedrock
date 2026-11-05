@@ -1,4 +1,4 @@
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from datetime import date
 from decimal import Decimal
 from typing import Literal
@@ -13,7 +13,7 @@ from bedrock.statements.explain import CellExplanation
 from bedrock.statements.periods import Period
 
 Provenance = Literal[
-    "reported", "derived", "normalized", "zero_inferred", "approximated", "imported"
+    "reported", "derived", "normalized", "zero_inferred", "approximated", "imported", "forecast"
 ]
 
 
@@ -27,8 +27,7 @@ class PeriodOut(BaseModel):
     is_forecast: bool
 
     @classmethod
-    def from_period(cls, period: Period) -> "PeriodOut":
-        """An actual (not forecast) period."""
+    def from_period(cls, period: Period, is_forecast: bool = False) -> "PeriodOut":
         return cls(
             key=period.key,
             label=period.label,
@@ -36,7 +35,7 @@ class PeriodOut(BaseModel):
             fiscal_period=period.fiscal_period,
             period_start=period.start,
             period_end=period.end,
-            is_forecast=False,
+            is_forecast=is_forecast,
         )
 
 
@@ -86,14 +85,16 @@ class StatementOut(BaseModel):
         freq: Literal["annual", "quarterly", "ttm"],
         basis: Literal["reported", "normalized"],
         currency: str,
+        forecast_keys: Collection[str] = (),
     ) -> "StatementOut":
+        """`forecast_keys`: the periods that are forecast, not actual."""
         return cls(
             ticker=ticker,
             statement=statement,
             freq=freq,
             basis=basis,
             currency=currency,
-            periods=[PeriodOut.from_period(p) for p in table.periods],
+            periods=[PeriodOut.from_period(p, p.key in forecast_keys) for p in table.periods],
             rows=[
                 RowOut(
                     code=r.code,

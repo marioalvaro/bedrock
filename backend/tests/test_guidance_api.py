@@ -1,5 +1,6 @@
 """The guidance log through the API (FR-ANL-09), on the recorded AAPL fixtures."""
 
+from collections.abc import Callable
 from decimal import Decimal
 from typing import Any
 
@@ -30,8 +31,12 @@ ENTRY = {
 
 
 @pytest.fixture
-def aapl_client(authed_client: TestClient) -> TestClient:
-    assert authed_client.post(f"{API}/companies", json={"ticker": "AAPL"}).status_code == 201
+def aapl_db(seed_db: Callable[..., None]) -> None:
+    seed_db("AAPL")
+
+
+@pytest.fixture
+def aapl_client(aapl_db: None, authed_client: TestClient) -> TestClient:
     return authed_client
 
 

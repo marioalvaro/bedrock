@@ -3,6 +3,7 @@ import {
   colorSchemeLight,
   themeQuartz,
   type ColDef,
+  type ColGroupDef,
   type CsvExportParams,
   type GridApi,
   type FirstDataRenderedEvent,
@@ -24,7 +25,7 @@ export interface DataGridHandle {
 
 interface DataGridProps<T> {
   rowData: T[];
-  columnDefs: ColDef<T>[];
+  columnDefs: (ColDef<T> | ColGroupDef<T>)[]; // columns, or column groups under a header
   // A pure function of the row (the grid reads it once).
   getRowId: (row: T) => string;
   onCellClicked?: (event: CellClickedEvent<T>) => void;

@@ -24,6 +24,25 @@ export function formatValue(value: string | null, unit: string, scale: Scale): s
 }
 
 /**
+ * A chart value (already in the page scale, see `scaledNumber`) for its tooltip and axis: 1
+ * decimal, 2 for per-share units (EPS), grouped, negatives in parentheses; null "—".
+ */
+export function formatChartNumber(value: number | null, unit: string): string {
+  if (value === null) return DASH;
+  return formatNumber(value, unit === "USD/shares" ? 2 : 1);
+}
+
+/**
+ * A value as a plain number for a chart axis: USD and share counts divided into the page scale
+ * (as `formatValue` shows them), every other unit unchanged; null stays null.
+ */
+export function scaledNumber(value: string | null, unit: string, scale: Scale): number | null {
+  if (value === null) return null;
+  const number = Number(value);
+  return unit === "USD" || unit === "shares" ? number / DIVISORS[scale] : number;
+}
+
+/**
  * The inverse of `formatValue` for a USD amount typed in the page scale: "-25" in M →
  * "-25000000". Accepts an optional leading "-" or surrounding parentheses for a negative,
  * "," thousands separators, a decimal point and surrounding blanks. Returns the amount in

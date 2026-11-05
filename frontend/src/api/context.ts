@@ -2,6 +2,7 @@ import { queryOptions, useMutation, useQueryClient, type QueryClient } from "@ta
 
 import { companyKey } from "@/api/companies";
 import { ApiError, unwrap } from "@/api/errors";
+import { scenariosKey } from "@/api/scenarios";
 import {
   createEntryApiV1CompaniesTickerGuidancePost,
   createSetApiV1CompaniesTickerCompsSetsPost,
@@ -193,13 +194,17 @@ export const guidanceMetricsQueryOptions = (ticker: string) =>
 
 /**
  * A segment change moves the segment grids, the KPI actuals of the guidance log and the guidance
- * metric choices (a KPI series is a metric).
+ * metric choices (a KPI series is a metric), and the scenarios (segment and KPI series drive the
+ * segments and volume × price revenue drivers).
  */
 export function invalidateSegmentViews(queryClient: QueryClient, ticker: string): Promise<void> {
   return Promise.all(
-    [segmentsKey(ticker), guidanceKey(ticker), guidanceMetricsKey(ticker)].map((queryKey) =>
-      queryClient.invalidateQueries({ queryKey }),
-    ),
+    [
+      segmentsKey(ticker),
+      guidanceKey(ticker),
+      guidanceMetricsKey(ticker),
+      scenariosKey(ticker),
+    ].map((queryKey) => queryClient.invalidateQueries({ queryKey })),
   ).then(() => undefined);
 }
 

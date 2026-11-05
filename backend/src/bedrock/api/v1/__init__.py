@@ -8,6 +8,7 @@ from bedrock.api.v1 import (
     comps,
     corporate_actions,
     flags,
+    forecasts,
     guidance,
     health,
     imports,
@@ -15,6 +16,7 @@ from bedrock.api.v1 import (
     notes,
     qoe_rules,
     ratios,
+    scenarios,
     segments,
     statements,
 )
@@ -41,6 +43,8 @@ protected.include_router(comps.router)
 protected.include_router(guidance.router)
 protected.include_router(notes.router)
 protected.include_router(imports.router)
+protected.include_router(forecasts.router)
+protected.include_router(scenarios.router)
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(public)

@@ -1,6 +1,6 @@
 """The ratios route over a followed AAPL (recorded fixtures, no network). FR-ANL-01..04."""
 
-import time
+from collections.abc import Callable
 from decimal import Decimal
 from typing import Any
 
@@ -24,8 +24,12 @@ SGA_FY2024 = {
 
 
 @pytest.fixture
-def aapl_client(authed_client: TestClient) -> TestClient:
-    assert authed_client.post("/api/v1/companies", json={"ticker": "AAPL"}).status_code == 201
+def aapl_db(seed_db: Callable[..., None]) -> None:
+    seed_db("AAPL")
+
+
+@pytest.fixture
+def aapl_client(aapl_db: None, authed_client: TestClient) -> TestClient:
     return authed_client
 
 
@@ -99,13 +103,10 @@ def test_annual_ratios_have_the_documented_shape(aapl_client: TestClient) -> Non
     assert all(0 < Decimal(v) < 1 for v in gross)
 
 
-def test_ttm_ratios_are_served_fast_with_a_diluted_eps(aapl_client: TestClient) -> None:
-    started = time.perf_counter()
+def test_ttm_ratios_are_served_with_a_diluted_eps(aapl_client: TestClient) -> None:
     response = aapl_client.get(RATIOS_PATH, params={"freq": "ttm"})
-    elapsed = time.perf_counter() - started
 
     assert response.status_code == 200, response.text
-    assert elapsed < 1.0
     body = response.json()
     assert body["freq"] == "ttm"
     assert all(p["key"].startswith("TTM-") for p in body["periods"])

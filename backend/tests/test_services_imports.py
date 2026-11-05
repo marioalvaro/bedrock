@@ -2,7 +2,7 @@
 (recorded fixtures, no network)."""
 
 import io
-from collections.abc import Iterator
+from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -15,6 +15,7 @@ from bedrock.mapping.config import load_canonical_items
 from bedrock.models.company import Company
 from bedrock.models.imported_fact import ImportedFact
 from bedrock.models.statement_import import StatementImport
+from bedrock.repositories import companies as companies_repo
 from bedrock.services.companies import add_manual_company
 from bedrock.services.errors import ImportNotFound, InvalidStatementImport
 from bedrock.services.imports import (
@@ -25,21 +26,23 @@ from bedrock.services.imports import (
     list_imports,
     preview_import,
 )
-from bedrock.services.refresh import refresh_company
 from bedrock.services.statements import build_statements, fiscal_periods
 
 from .import_data import FY2006, Q1_2006, Q2_2006, Q3_2006, filled, save, statement_rows, workbook
-from .seed import fake_sources, follow
 
 NOW = datetime(2026, 10, 26, 9, 0, tzinfo=UTC)
 
 
 @pytest.fixture
-def aapl(db_session: Session) -> Iterator[Company]:
-    sources = fake_sources()
-    company = follow(db_session, sources.edgar, "AAPL")
-    refresh_company(db_session, sources, "AAPL", NOW)
-    yield company
+def aapl_db(seed_db: Callable[..., None]) -> None:
+    seed_db("AAPL")
+
+
+@pytest.fixture
+def aapl(aapl_db: None, db_session: Session) -> Company:
+    company = companies_repo.get_by_ticker(db_session, "AAPL")
+    assert company is not None
+    return company
 
 
 def _count(session: Session, model: type) -> int:

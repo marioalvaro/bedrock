@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import Literal
 
 Provenance = Literal[
-    "reported", "derived", "normalized", "zero_inferred", "approximated", "imported"
+    "reported", "derived", "normalized", "zero_inferred", "approximated", "imported", "forecast"
 ]
 
 # The accession number of an imported cell's source is `import:<id>` (docs/erd/data.md "Precedence")

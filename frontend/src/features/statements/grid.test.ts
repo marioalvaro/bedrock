@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { PeriodOut, StatementOut } from "@/api/generated/types.gen";
 import { noteLink, noteLinks } from "@/test/context";
+import { forecastIncome } from "@/test/scenarios";
 import { balanceStatement, customIncomeStatement, incomeStatement } from "@/test/statements";
 
 import {
@@ -9,6 +10,8 @@ import {
   cellNoteCount,
   csvLabel,
   expandableCodes,
+  forecastColumnClass,
+  isBuiltFromQuarters,
   lineNoteCount,
   noteIndex,
   provenanceClasses,
@@ -602,6 +605,10 @@ describe("provenance display", () => {
     expect(provenanceClasses("normalized")).toEqual(["prov-normalized"]);
   });
 
+  it("gives a forecast value its own class, apart from the actual figures", () => {
+    expect(provenanceClasses("forecast")).toEqual(["prov-forecast"]);
+  });
+
   it("leaves reported and empty cells plain", () => {
     expect(provenanceClasses("reported")).toEqual([]);
     expect(provenanceClasses(null)).toEqual([]);
@@ -660,5 +667,40 @@ describe("custom lines", () => {
     const other = rows.find((row) => row.id === "other:cost_of_revenue")!;
     expect(canExplain(products, period)).toBe(true);
     expect(canExplain(other, period)).toBe(false);
+  });
+});
+
+describe("a forecast payload", () => {
+  const payload = forecastIncome();
+  const [revenue] = toGridRows(payload, { ...OFF, expanded: all(payload) });
+  const [actual, , estimate] = payload.periods;
+
+  it("keeps each period's provenance, so history cells stay as they were", () => {
+    expect(revenue?.provenance).toEqual({
+      FY2024: "reported",
+      FY2025: "normalized",
+      FY2026: "forecast",
+      FY2027: "forecast",
+    });
+  });
+
+  it("tints only the forecast columns", () => {
+    expect(forecastColumnClass(estimate!)).toEqual(["cell-forecast"]);
+    expect(forecastColumnClass(actual!)).toEqual([]);
+  });
+
+  it("marks only a forecast year that is in the scenario's by-quarter list", () => {
+    expect(isBuiltFromQuarters(estimate!, [2026])).toBe(true);
+    expect(isBuiltFromQuarters(estimate!, [2027])).toBe(false);
+    expect(isBuiltFromQuarters(estimate!, [])).toBe(false);
+    // An actual year of the same number is never built from forecast quarters.
+    expect(isBuiltFromQuarters(actual!, [actual!.fiscal_year])).toBe(false);
+    expect(isBuiltFromQuarters({ ...estimate!, fiscal_period: "Q1" }, [2026])).toBe(false);
+  });
+
+  it("never opens the cell details of a forecast period, which has no filing behind it", () => {
+    expect(canExplain(revenue!, estimate!)).toBe(false);
+    expect(canExplain({ ...revenue!, adjustable: true }, estimate!)).toBe(false);
+    expect(canExplain(revenue!, actual!)).toBe(true);
   });
 });
