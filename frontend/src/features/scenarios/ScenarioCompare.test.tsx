@@ -201,3 +201,43 @@ describe("ScenarioCompare states", () => {
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
   });
 });
+
+describe("ScenarioCompare years built from quarters", () => {
+  const mark = (header: HTMLElement) => within(header).queryByLabelText("Built from quarters");
+  const header = (name: string) =>
+    within(table()).getByRole("columnheader", { name: new RegExp(name) });
+
+  it("marks the header of a year set by quarter", async () => {
+    compare.mockResolvedValue(okResult(comparison({ built_from_quarters: [2026] })) as never);
+    renderCompare();
+    await screen.findByRole("table", { name: "Case comparison" });
+    expect(mark(header("FY26E"))).toBeInTheDocument();
+    expect(mark(header("FY27E"))).toBeNull();
+  });
+
+  it("marks nothing when no year is set by quarter", async () => {
+    renderCompare();
+    await screen.findByRole("table", { name: "Case comparison" });
+    expect(screen.queryByLabelText("Built from quarters")).not.toBeInTheDocument();
+  });
+
+  it("marks annual columns only: a quarter is not built from anything", async () => {
+    const quarter = (fiscal_period: "Q1" | "Q2") => ({
+      ...comparison().periods[0]!,
+      key: `${fiscal_period}FY2026`,
+      label: `${fiscal_period} FY26E`,
+      fiscal_period,
+    });
+    compare.mockResolvedValue(
+      okResult(
+        comparison({
+          periods: [quarter("Q1"), quarter("Q2")],
+          built_from_quarters: [2026],
+        }),
+      ) as never,
+    );
+    renderCompare();
+    await screen.findByRole("table", { name: "Case comparison" });
+    expect(screen.queryByLabelText("Built from quarters")).not.toBeInTheDocument();
+  });
+});

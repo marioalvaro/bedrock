@@ -334,3 +334,39 @@ describe("ForecastView", () => {
     expect(await screen.findByText("No forecast lines to show.")).toBeInTheDocument();
   });
 });
+
+describe("ForecastView years built from quarters", () => {
+  const mark = (column: string) => within(header(column)).queryByLabelText("Built from quarters");
+
+  it("marks the header of a year set by quarter", async () => {
+    getForecast.mockResolvedValue(
+      okResult(forecastIncome({ built_from_quarters: [2026] })) as never,
+    );
+    renderView();
+    await loaded();
+    expect(mark("FY2026")).toBeInTheDocument();
+    expect(mark("FY2025")).toBeNull();
+    expect(header("FY2026")).toHaveTextContent("FY26E");
+  });
+
+  it("marks nothing when the scenario sets every year annually", async () => {
+    renderView();
+    await loaded();
+    expect(screen.queryByLabelText("Built from quarters")).not.toBeInTheDocument();
+  });
+
+  it("marks no quarter", async () => {
+    const income = forecastIncome({ built_from_quarters: [2026] });
+    const quarterly = {
+      ...income,
+      freq: "quarterly" as const,
+      periods: income.periods.map((p) => ({ ...p, key: `Q1${p.key}`, fiscal_period: "Q1" })),
+      rows: income.rows,
+    };
+    getForecast.mockResolvedValue(okResult(quarterly) as never);
+    renderView("/c/AAPL/forecast");
+    await waitFor(() => expect(document.querySelector(".ag-header-cell")).not.toBeNull());
+    expect(header("Q1FY2026")).toHaveClass("cell-forecast");
+    expect(screen.queryByLabelText("Built from quarters")).not.toBeInTheDocument();
+  });
+});

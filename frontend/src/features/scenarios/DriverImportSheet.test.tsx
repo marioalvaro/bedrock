@@ -206,6 +206,35 @@ describe("DriverImportSheet", () => {
     expect(screen.queryByRole("button", { name: /^Apply/ })).not.toBeInTheDocument();
   });
 
+  it("lists the year-mode errors as the API words them", async () => {
+    importDrivers.mockResolvedValue(
+      errorResult(422, {
+        detail: "The file has errors",
+        errors: [
+          { row: 2, column: "E", message: "FY2027 is set by quarter" },
+          { row: 3, column: "G", message: "FY2026 is set annually; switch it to by quarter first" },
+          {
+            row: 4,
+            column: null,
+            message: "Q4 FY2027 is missing for gross_margin (FY2027 is set by quarter)",
+          },
+        ],
+      }) as never,
+    );
+    renderSheet();
+    await preview();
+    const errors = await screen.findByRole("list", { name: "Errors" });
+    expect(
+      within(errors)
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual([
+      "row 2, column E: FY2027 is set by quarter",
+      "row 3, column G: FY2026 is set annually; switch it to by quarter first",
+      "row 4: Q4 FY2027 is missing for gross_margin (FY2027 is set by quarter)",
+    ]);
+  });
+
   it("shows a plain 422 reason", async () => {
     importDrivers.mockResolvedValue(
       errorResult(422, { detail: "The file is larger than 1 MB" }) as never,

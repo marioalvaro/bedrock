@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import type { CellClassParams, ColDef } from "ag-grid-community";
+import type { CustomHeaderProps } from "ag-grid-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
 
@@ -14,6 +15,7 @@ import {
   type ScenarioCase,
 } from "@/api/scenarios";
 import type { StatementType } from "@/api/statements";
+import { BuiltFromQuartersMark } from "@/components/BuiltFromQuartersMark";
 import { DataGrid } from "@/components/DataGrid";
 import { ProvenanceLegend } from "@/components/ProvenanceLegend";
 import { UnitToggle } from "@/components/UnitToggle";
@@ -28,6 +30,7 @@ import {
   cellText,
   expandableCodes,
   forecastColumnClass,
+  isBuiltFromQuarters,
   provenanceClasses,
   rowUnitHint,
   toGridRows,
@@ -82,6 +85,9 @@ function columnDefs(payload: ForecastOut, scale: Scale): ColDef<GridRow>[] {
     headerName: period.label,
     width: 100,
     headerClass: ["num", "ag-right-aligned-header", ...forecastColumnClass(period)],
+    ...(isBuiltFromQuarters(period, payload.built_from_quarters) && {
+      headerComponent: BuiltFromQuartersHeader,
+    }),
     valueGetter: ({ data }) => data?.values[period.key] ?? null,
     valueFormatter: ({ data }) => (data ? cellText(data, period.key, scale) : ""),
     cellClass: ({ data }: CellClassParams<GridRow>) => {
@@ -96,6 +102,16 @@ function columnDefs(payload: ForecastOut, scale: Scale): ColDef<GridRow>[] {
   }));
 
   return [labelColumn, ...periodColumns];
+}
+
+// The header of a year the scenario sets by quarter: its label and the mark.
+function BuiltFromQuartersHeader({ displayName }: CustomHeaderProps) {
+  return (
+    <div className="flex w-full items-center justify-end">
+      <span>{displayName}</span>
+      <BuiltFromQuartersMark />
+    </div>
+  );
 }
 
 interface ForecastBodyProps {

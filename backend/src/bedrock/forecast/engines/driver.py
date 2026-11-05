@@ -2,7 +2,7 @@
 and the normalized history in, a balanced annual and quarterly IS/BS/CF forecast out. Pure,
 `Decimal` throughout, no rounding."""
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
 
@@ -386,17 +386,13 @@ class _Run:
         return sum((before[i] * (1 + growth[i]) for i in before), ZERO) / total
 
     def _segment_quarter(self, series: SeriesHistory, year: int, quarter: str) -> Decimal:
-        """A segment's value in a quarter: the actual one, or, in a forecast quarter, the same
-        quarter one year earlier × (1 + the quarter's segment growth)."""
-        if (year, quarter) in self.span:
-            before = self._segment_quarter(series, year - 1, quarter)
-            return before * (1 + self._driver(segment_code(series.id), year, quarter))
-        value = series.quarter_values.get((year, quarter))
-        if value is None:
-            raise ForecastUnavailable(
-                f"Segment {series.name} has no {_label(f'FY{year}{quarter}')} value"
-            )
-        return value
+        return segment_quarter(
+            series,
+            year,
+            quarter,
+            self.span,
+            lambda y, q: self._driver(segment_code(series.id), y, q),
+        )
 
     def _warn_quarter_drivers(self, year: int, quarters: list[str]) -> None:
         """A year built from quarters takes its revenue and its USD flows from the quarters: say
@@ -598,6 +594,27 @@ class _Run:
         self.periods.append(period)
         for code, value in values.items():
             self.out[(code, period.key)] = value
+
+
+def segment_quarter(
+    series: SeriesHistory,
+    year: int,
+    quarter: str,
+    span: Collection[tuple[int, str]],
+    growth: Callable[[int, str], Decimal],
+) -> Decimal:
+    """A segment's value in a quarter: the actual one, or, in a forecast quarter (`span`), the same
+    quarter one year earlier × (1 + the quarter's segment growth, `growth(year, quarter)`).
+    Raises ForecastUnavailable when an actual quarter the chain needs has no value."""
+    if (year, quarter) in span:
+        before = segment_quarter(series, year - 1, quarter, span, growth)
+        return before * (1 + growth(year, quarter))
+    value = series.quarter_values.get((year, quarter))
+    if value is None:
+        raise ForecastUnavailable(
+            f"Segment {series.name} has no {_label(f'FY{year}{quarter}')} value"
+        )
+    return value
 
 
 def forecast_quarters(

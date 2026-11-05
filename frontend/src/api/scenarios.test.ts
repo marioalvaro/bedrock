@@ -15,6 +15,7 @@ import {
   listScenariosApiV1CompaniesTickerScenariosGet,
   putDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversPut,
   resetCaseApiV1CompaniesTickerScenariosScenarioIdCasesCaseResetPost,
+  setYearModeApiV1CompaniesTickerScenariosScenarioIdYearsFiscalYearModePut,
   updateScenarioApiV1CompaniesTickerScenariosScenarioIdPut,
 } from "@/api/generated/sdk.gen";
 import type { DriverGridOut } from "@/api/generated/types.gen";
@@ -33,6 +34,7 @@ import {
   usePreviewDriverImport,
   usePutDrivers,
   useResetCase,
+  useSetYearMode,
   withDriverRows,
   useUpdateScenario,
 } from "@/api/scenarios";
@@ -58,6 +60,7 @@ vi.mock("@/api/generated/sdk.gen", () => ({
   importDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversImportPost: vi.fn(),
   getForecastApiV1CompaniesTickerScenariosScenarioIdCasesCaseForecastGet: vi.fn(),
   compareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGet: vi.fn(),
+  setYearModeApiV1CompaniesTickerScenariosScenarioIdYearsFiscalYearModePut: vi.fn(),
 }));
 
 const list = vi.mocked(listScenariosApiV1CompaniesTickerScenariosGet);
@@ -74,6 +77,9 @@ const getForecast = vi.mocked(
 );
 const resetCase = vi.mocked(resetCaseApiV1CompaniesTickerScenariosScenarioIdCasesCaseResetPost);
 const compare = vi.mocked(compareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGet);
+const setYearMode = vi.mocked(
+  setYearModeApiV1CompaniesTickerScenariosScenarioIdYearsFiscalYearModePut,
+);
 
 afterEach(() => vi.clearAllMocks());
 
@@ -225,6 +231,15 @@ describe("driversQueryOptions", () => {
     ).rejects.toBeInstanceOf(ApiError);
   });
 
+  it("rejects a 200 without the year modes (an older backend)", async () => {
+    const { year_modes: _modes, ...bare } = driverGrid();
+    getDrivers.mockResolvedValue(okResult(bare) as never);
+    const { queryClient } = setup();
+    await expect(
+      queryClient.fetchQuery(driversQueryOptions("AAPL", 1, "base")),
+    ).rejects.toMatchObject({ status: 200 });
+  });
+
   it("rejects a 200 without rows and years", async () => {
     getDrivers.mockResolvedValue(html());
     const { queryClient } = setup();
@@ -292,6 +307,35 @@ describe("forecastQueryOptions", () => {
   });
 });
 
+describe("built_from_quarters", () => {
+  it("is read from a forecast", async () => {
+    getForecast.mockResolvedValue(okResult(forecast({ built_from_quarters: [2026] })) as never);
+    const { queryClient } = setup();
+    const table = await queryClient.fetchQuery(
+      forecastQueryOptions("AAPL", 1, "base", "IS", "annual"),
+    );
+    expect(table.built_from_quarters).toEqual([2026]);
+  });
+
+  it("is required in a forecast", async () => {
+    const { built_from_quarters: _years, ...bare } = forecast();
+    getForecast.mockResolvedValue(okResult(bare) as never);
+    const { queryClient } = setup();
+    await expect(
+      queryClient.fetchQuery(forecastQueryOptions("AAPL", 1, "base", "IS", "annual")),
+    ).rejects.toMatchObject({ status: 200 });
+  });
+
+  it("is required in a comparison", async () => {
+    const { built_from_quarters: _years, ...bare } = comparison();
+    compare.mockResolvedValue(okResult(bare) as never);
+    const { queryClient } = setup();
+    await expect(
+      queryClient.fetchQuery(compareQueryOptions("AAPL", 1, "annual")),
+    ).rejects.toMatchObject({ status: 200 });
+  });
+});
+
 describe("compareQueryOptions", () => {
   it("asks for the scenario's frequency with the API's default codes", async () => {
     compare.mockResolvedValue(okResult(comparison()) as never);
@@ -353,6 +397,81 @@ describe("mutations", () => {
       body: { name: "Bullish" },
     });
     expectInvalidated(queryClient, true);
+  });
+
+  describe("useSetYearMode", () => {
+    const modes = {
+      years: [{ fiscal_year: 2026, label: "FY26E", mode: "quarterly", in_span: true }],
+    };
+
+    it("puts the mode of the year and invalidates the grids, forecasts and comparisons of that scenario", async () => {
+      setYearMode.mockResolvedValue(okResult(modes) as never);
+      const { queryClient, wrapper } = setup();
+      seed(queryClient);
+      const { result } = renderHook(() => useSetYearMode("AAPL", 2), { wrapper });
+      result.current.mutate({ fiscalYear: 2026, mode: "quarterly" });
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(setYearMode).toHaveBeenCalledWith({
+        path: { ticker: "AAPL", scenario_id: 2, fiscal_year: 2026 },
+        body: { mode: "quarterly" },
+      });
+      for (const key of moved.slice(1)) {
+        expect(queryClient.getQueryState(key)?.isInvalidated, JSON.stringify(key)).toBe(true);
+      }
+      for (const key of [scenariosKey("AAPL"), ...untouched]) {
+        expect(queryClient.getQueryState(key)?.isInvalidated, JSON.stringify(key)).toBe(false);
+      }
+    });
+
+    it("leaves another scenario's views alone", async () => {
+      setYearMode.mockResolvedValue(okResult(modes) as never);
+      const { queryClient, wrapper } = setup();
+      const other = [...aapl, "scenarios", 3, "base", "drivers", "annual"];
+      queryClient.setQueryData(other, {});
+      const { result } = renderHook(() => useSetYearMode("AAPL", 2), { wrapper });
+      result.current.mutate({ fiscalYear: 2026, mode: "annual" });
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(queryClient.getQueryState(other)?.isInvalidated).toBe(false);
+    });
+
+    it("settles only once the driver grid on screen has reloaded, not the comparison", async () => {
+      setYearMode.mockResolvedValue(okResult(modes) as never);
+      const { queryClient, wrapper } = setup();
+      let reload: (grid: object) => void = () => {};
+      const grid = new QueryObserver(queryClient, {
+        queryKey: [...aapl, "scenarios", 2, "base", "drivers", "annual"],
+        queryFn: () => new Promise((resolve) => (reload = resolve)),
+      });
+      const compareView = new QueryObserver(queryClient, {
+        queryKey: [...aapl, "scenarios", 2, "compare", "annual"],
+        queryFn: () => new Promise(() => {}), // never returns
+      });
+      const stops = [grid.subscribe(() => {}), compareView.subscribe(() => {})];
+      const { result } = renderHook(() => useSetYearMode("AAPL", 2), { wrapper });
+      result.current.mutate({ fiscalYear: 2026, mode: "quarterly" });
+      await waitFor(() => expect(setYearMode).toHaveBeenCalled());
+      await new Promise((r) => setTimeout(r, 20));
+      expect(result.current.isPending).toBe(true);
+      reload({});
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      stops.forEach((stop) => stop());
+    });
+
+    it("keeps the API's reason on a 422 and invalidates nothing", async () => {
+      setYearMode.mockResolvedValue(
+        errorResult(422, { detail: "FY2030 is not in the quarterly span" }) as never,
+      );
+      const { queryClient, wrapper } = setup();
+      seed(queryClient);
+      const { result } = renderHook(() => useSetYearMode("AAPL", 2), { wrapper });
+      result.current.mutate({ fiscalYear: 2030, mode: "quarterly" });
+      await waitFor(() => expect(result.current.isError).toBe(true));
+      expect(result.current.error).toMatchObject({
+        status: 422,
+        detail: "FY2030 is not in the quarterly span",
+      });
+      expectInvalidated(queryClient, false);
+    });
   });
 
   it("useDeleteScenario deletes and invalidates", async () => {

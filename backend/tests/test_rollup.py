@@ -1,6 +1,7 @@
 """The annual figure of a year built from quarters (FR-FCST-13; docs/erd/forecasting.md "Year
 modes" → Roll-up): each driver's history rule run on the forecast statements."""
 
+from dataclasses import replace
 from decimal import Decimal
 
 import pytest
@@ -163,6 +164,100 @@ def test_a_segment_growth_is_the_year_s_driver_while_its_quarters_agree_with_it(
 
 def test_a_segment_growth_whose_quarters_differ_has_no_annual_figure() -> None:
     assert _segment_figure([DriverRow(segment_code(1), 2026, "value", D("0.2"), "Q2")]) is None
+
+
+def _quarter(fiscal_year: int, quarter: str) -> Period:
+    start, end = period_dates(FYE, fiscal_year, quarter)
+    key = f"FY{fiscal_year}{quarter}"
+    return Period(key, f"{quarter} FY{fiscal_year % 100:02d}", fiscal_year, quarter, start, end)
+
+
+def _segment_year_figures(
+    quarter_values: dict[tuple[int, str], int],
+    rows: list[DriverRow],
+    span: list[tuple[int, str]],
+    years: list[int],
+) -> dict[int, Decimal | None]:
+    """The roll-up of segment 1's growth for `years`, a forecast whose quarters are `span`."""
+    code = segment_code(1)
+    cloud = SeriesHistory(
+        1,
+        "business",
+        "Cloud",
+        "revenue",
+        "USD",
+        {2025: D(600)},
+        {k: D(v) for k, v in quarter_values.items()},
+    )
+    history = make_history({2025: {"revenue": 1000}}, series=[cloud])
+    forecast_years_ = sorted({y for y, _ in span})
+    resolved = _resolved(
+        [DriverRow(code, y, "value", D("0.1")) for y in forecast_years_] + rows,
+        {code: D("0.05")},
+        forecast_years_,
+        history,
+        SEGMENTS,
+    )
+    statements = replace(
+        _statements({("revenue", y): 1000 for y in forecast_years_}),
+        periods=tuple(
+            sorted(
+                [_year(y) for y in forecast_years_] + [_quarter(y, q) for y, q in span],
+                key=lambda p: (p.end, p.fiscal_period == "FY"),
+            )
+        ),
+    )
+    figures = rollup(history, SEGMENTS, statements, resolved, years)
+    return {y: figures[(code, y)] for y in years}
+
+
+PRIOR = {(2025, "Q1"): 100, (2025, "Q2"): 100, (2025, "Q3"): 200, (2025, "Q4"): 200}
+FY2026 = [(2026, q) for q in ("Q1", "Q2", "Q3", "Q4")]
+FY2027 = [(2027, q) for q in ("Q1", "Q2", "Q3", "Q4")]
+
+
+def test_a_segment_growth_is_its_quarters_summed_over_the_previous_year_s_quarters() -> None:
+    # Q1 grows 50 %, the others 10 %: (150 + 110 + 220 + 220) / (100 + 100 + 200 + 200) - 1
+    rows = [DriverRow(segment_code(1), 2026, "value", D("0.5"), "Q1")]
+
+    figures = _segment_year_figures(PRIOR, rows, FY2026, [2026])
+
+    assert figures[2026] == pytest.approx(D("700") / D("600") - 1, abs=D("1e-12"))
+
+
+def test_a_segment_growth_follows_the_forecast_quarters_of_the_previous_year() -> None:
+    # FY26 = 150, 110, 220, 220 (700); FY27 Q2 grows 30 %, the rest 10 %: 165 + 143 + 242 + 242
+    rows = [
+        DriverRow(segment_code(1), 2026, "value", D("0.5"), "Q1"),
+        DriverRow(segment_code(1), 2027, "value", D("0.3"), "Q2"),
+    ]
+
+    figures = _segment_year_figures(PRIOR, rows, FY2026 + FY2027, [2026, 2027])
+
+    assert figures[2027] == pytest.approx(D("792") / D("700") - 1, abs=D("1e-12"))
+
+
+def test_a_year_in_progress_adds_its_actual_quarters_to_the_forecast_ones() -> None:
+    # Q1-Q3 FY26 are reported (120, 90, 210); Q4 grows 10 % from 200: 120 + 90 + 210 + 220
+    values = {**PRIOR, (2026, "Q1"): 120, (2026, "Q2"): 90, (2026, "Q3"): 210}
+
+    figures = _segment_year_figures(values, [], [(2026, "Q4")], [2026])
+
+    assert figures[2026] == pytest.approx(D("640") / D("600") - 1, abs=D("1e-12"))
+
+
+def test_a_segment_growth_whose_quarters_are_missing_falls_back_to_the_year_s_driver() -> None:
+    values = {k: v for k, v in PRIOR.items() if k != (2025, "Q3")}
+
+    assert _segment_year_figures(values, [], FY2026, [2026])[2026] == D("0.1")  # quarters agree
+    rows = [DriverRow(segment_code(1), 2026, "value", D("0.5"), "Q1")]
+    assert _segment_year_figures(values, rows, FY2026, [2026])[2026] is None  # they differ
+
+
+def test_with_no_difference_between_quarters_a_segment_rolls_up_to_its_driver() -> None:
+    figures = _segment_year_figures(PRIOR, [], FY2026, [2026])
+
+    assert figures[2026] == pytest.approx(D("0.1"), abs=D("1e-12"))
 
 
 # -- on the recorded companies ---------------------------------------------------------------

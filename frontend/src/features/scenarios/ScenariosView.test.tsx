@@ -14,6 +14,7 @@ import {
   listScenariosApiV1CompaniesTickerScenariosGet,
   putDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversPut,
   resetCaseApiV1CompaniesTickerScenariosScenarioIdCasesCaseResetPost,
+  setYearModeApiV1CompaniesTickerScenariosScenarioIdYearsFiscalYearModePut,
   updateScenarioApiV1CompaniesTickerScenariosScenarioIdPut,
 } from "@/api/generated/sdk.gen";
 import { createQueryClient } from "@/lib/query-client";
@@ -24,6 +25,7 @@ import {
   bullGrid,
   comparison,
   driverGrid,
+  modesOf,
   quarterlyGrid,
   scenario,
   scenarios,
@@ -42,6 +44,7 @@ vi.mock("@/api/generated/sdk.gen", () => ({
   importDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversImportPost: vi.fn(),
   compareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGet: vi.fn(),
   getSegmentsApiV1CompaniesTickerSegmentsGet: vi.fn(),
+  setYearModeApiV1CompaniesTickerScenariosScenarioIdYearsFiscalYearModePut: vi.fn(),
 }));
 
 // The comparison has its own test file; here its chart only needs to render nothing.
@@ -56,6 +59,9 @@ const putDrivers = vi.mocked(putDriversApiV1CompaniesTickerScenariosScenarioIdCa
 const resetCase = vi.mocked(resetCaseApiV1CompaniesTickerScenariosScenarioIdCasesCaseResetPost);
 const compare = vi.mocked(compareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGet);
 const getSegments = vi.mocked(getSegmentsApiV1CompaniesTickerSegmentsGet);
+const setYearMode = vi.mocked(
+  setYearModeApiV1CompaniesTickerScenariosScenarioIdYearsFiscalYearModePut,
+);
 
 // The URL's query, as the view last left it.
 const seen = { search: "" };
@@ -619,6 +625,14 @@ describe("vs Base mode", () => {
   });
 
   it("clears the row's own values when the mode switches, after a confirm", async () => {
+    getDrivers.mockImplementation(((options: { query: { freq: string } }) =>
+      Promise.resolve(
+        okResult(
+          options.query.freq === "quarterly"
+            ? quarterlyGrid({ case: "bull", year_modes: modesOf("annual") })
+            : bullGrid(),
+        ),
+      )) as never);
     await renderLoaded("/c/AAPL/scenarios?case=bull");
     await userEvent.selectOptions(
       screen.getByRole("combobox", { name: "Mode of Revenue growth" }),
@@ -972,7 +986,9 @@ describe("quarterly drivers", () => {
     for (const header of ["Q2 FY25A", "Q3 FY25A", "Q4 FY25A", "Q1 FY26E", "Q2 FY26E"]) {
       expect(screen.getByText(header)).toBeInTheDocument();
     }
-    expect(screen.queryByText("FY26E")).not.toBeInTheDocument();
+    // The year is a header over its quarters, with no annual column of its own.
+    expect(screen.getAllByText("FY26E")).toHaveLength(1);
+    expect(document.querySelector('[col-id="f:2026"]')).toBeNull();
     expect(cell("driver:gross_margin", "h:2025Q3")).toHaveTextContent("46.5%");
     expect(cell("driver:gross_margin", "h:2025Q3")).toHaveClass("text-muted-foreground");
     expect(cell("driver:gross_margin", "f:2026Q1")).toHaveClass("cell-forecast");
@@ -1047,13 +1063,14 @@ describe("quarterly drivers", () => {
     expect(putDrivers).not.toHaveBeenCalled();
   });
 
-  it("drops an emptied quarter so it falls back to its year", async () => {
+  it("does not clear a quarter of a by-quarter year: it says why and sends nothing", async () => {
     await openQuarterly();
     await edit("driver:gross_margin", "f:2026Q1", "");
-    await waitFor(() => expect(putDrivers).toHaveBeenCalledTimes(1));
-    expect(putDrivers.mock.lastCall?.[0].body.rows).toEqual([
-      { driver_code: "gross_margin", kind: "value", freq: "quarterly", values: [] },
-    ]);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Q1 FY26 cannot be cleared (FY26 is set by quarter)",
+    );
+    expect(putDrivers).not.toHaveBeenCalled();
+    expect(cell("driver:gross_margin", "f:2026Q1")).toHaveTextContent("48.0%");
   });
 
   it("shows the typed quarter at once, and takes the reply as the quarterly grid", async () => {
@@ -1067,16 +1084,19 @@ describe("quarterly drivers", () => {
     expect(quarterlyCalls()).toHaveLength(1); // the reply was taken, not reloaded
   });
 
-  it("resets only a row with own quarter values, dropping its quarters alone", async () => {
-    const grid = quarterlyGrid();
-    grid.rows[0] = { ...grid.rows[0]!, kind: "value" }; // set per year, nothing of its own in a quarter
+  it("offers no row Reset in the quarterly grid of a by-quarter year (its quarters cannot be cleared)", async () => {
+    await openQuarterly();
+    // Gross margin has an own quarter value, but a reset would leave the year without quarters.
+    expect(screen.queryByRole("button", { name: "Reset Gross margin" })).not.toBeInTheDocument();
+  });
+
+  it("resets a row's own quarter values when no year is set by quarter", async () => {
+    const grid = quarterlyGrid({ year_modes: modesOf("annual") });
     getDrivers.mockImplementation(((options: { query: { freq: string } }) =>
       Promise.resolve(
         okResult(options.query.freq === "quarterly" ? grid : driverGrid()),
       )) as never);
     await openQuarterly();
-    // Revenue growth has a stored kind (annual rows) but no own quarter: nothing to reset here.
-    expect(screen.queryByRole("button", { name: "Reset Revenue growth" })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Reset Gross margin" }));
     expect(putDrivers).toHaveBeenCalledWith({
       path: { ticker: "AAPL", scenario_id: 1, case: "base" },
@@ -1123,9 +1143,18 @@ describe("quarterly drivers", () => {
     expect(dialog).toHaveTextContent("annual and quarterly");
     await userEvent.click(within(dialog).getByRole("button", { name: "Switch" }));
     await waitFor(() => expect(putDrivers).toHaveBeenCalledTimes(1));
+    // FY26 is set by quarter: its quarters stay, at the values they resolve to.
     expect(putDrivers.mock.lastCall?.[0].body.rows).toEqual([
       { driver_code: "revenue_growth", kind: "value", values: [] },
-      { driver_code: "revenue_growth", kind: "value", freq: "quarterly", values: [] },
+      {
+        driver_code: "revenue_growth",
+        kind: "value",
+        freq: "quarterly",
+        values: [
+          { fiscal_year: 2026, fiscal_period: "Q1", value: "0.0534" },
+          { fiscal_year: 2026, fiscal_period: "Q2", value: "0.0234" },
+        ],
+      },
     ]);
   });
 
@@ -1267,6 +1296,328 @@ describe("quarterly drivers", () => {
         path: { ticker: "AAPL", scenario_id: 1, case: "bull" },
         query: { freq: "quarterly" },
       }),
+    );
+  });
+});
+
+describe("year modes", () => {
+  // The scenario's modes live on the server: the mocks keep them here and switch them on a PUT.
+  const server = { mode: "annual" as "annual" | "quarterly" };
+
+  function serve() {
+    server.mode = "annual";
+    getDrivers.mockImplementation(((options: {
+      path: { scenario_id: number; case: "base" | "bull" | "bear" };
+      query: { freq: "annual" | "quarterly" };
+    }) => {
+      const year_modes = modesOf(server.mode);
+      const { case: scenarioCase } = options.path;
+      if (options.query.freq === "quarterly") {
+        return Promise.resolve(okResult(quarterlyGrid({ year_modes, case: scenarioCase })));
+      }
+      const grid = scenarioCase === "base" ? driverGrid({ year_modes }) : bullGrid();
+      grid.year_modes = year_modes;
+      if (server.mode === "quarterly") {
+        grid.rows[0] = { ...grid.rows[0]!, rollup: ["0.0501", null] };
+      }
+      return Promise.resolve(okResult(grid));
+    }) as never);
+    setYearMode.mockImplementation((async ({
+      body,
+    }: {
+      body: { mode: "annual" | "quarterly" };
+    }) => {
+      server.mode = body.mode;
+      return okResult({ years: modesOf(body.mode) });
+    }) as never);
+  }
+
+  const yearSwitch = (label: string) => screen.getByRole("radiogroup", { name: `${label} mode` });
+  const modeRadio = (label: string, name: "Annual" | "By quarter") =>
+    within(yearSwitch(label)).getByRole("radio", { name });
+  const freqRadio = (name: "Annual" | "Quarterly") =>
+    within(screen.getByRole("radiogroup", { name: "Driver frequency" })).getByRole("radio", {
+      name,
+    });
+
+  async function toQuarterly() {
+    await userEvent.click(freqRadio("Quarterly"));
+    await screen.findByText("Q1 FY26E");
+  }
+
+  it("puts an Annual | By quarter switch in the header of each year of the span, none after it", async () => {
+    serve();
+    await renderLoaded();
+    expect(modeRadio("FY26E", "Annual")).toBeChecked();
+    expect(modeRadio("FY26E", "By quarter")).not.toBeChecked();
+    expect(screen.queryByRole("radiogroup", { name: "FY27E mode" })).not.toBeInTheDocument();
+    expect(screen.getByText("FY27E")).toBeInTheDocument();
+  });
+
+  it("keeps the switch short: A and Q, each naming its mode on hover and to a screen reader", async () => {
+    serve();
+    await renderLoaded();
+    const group = yearSwitch("FY26E");
+    expect(
+      within(group)
+        .getAllByRole("radio")
+        .map((r) => r.textContent),
+    ).toEqual(["A", "Q"]);
+    expect(modeRadio("FY26E", "Annual")).toHaveAttribute("title", "Annual");
+    expect(modeRadio("FY26E", "By quarter")).toHaveAttribute("title", "By quarter");
+  });
+
+  it("gives a year with a switch the same column width as the others", async () => {
+    serve();
+    await renderLoaded();
+    const width = (column: string) =>
+      (document.querySelector(`.ag-header-cell[col-id="${column}"]`) as HTMLElement).style.width;
+    expect(width("f:2026")).not.toBe("");
+    expect(width("f:2026")).toBe(width("f:2027"));
+  });
+
+  it("fits the switch over a year with a single quarter left", async () => {
+    serve();
+    getDrivers.mockImplementation(((options: { query: { freq: string } }) => {
+      const grid = quarterlyGrid({ year_modes: modesOf("annual") });
+      grid.forecast_periods = grid.forecast_periods.slice(1); // only Q2 FY26E is left
+      grid.rows = grid.rows.map((r) => ({
+        ...r,
+        values: r.values.slice(1),
+        sources: r.sources.slice(1),
+        own: r.own.slice(1),
+      }));
+      return Promise.resolve(okResult(options.query.freq === "quarterly" ? grid : driverGrid()));
+    }) as never);
+    await renderLoaded();
+    await userEvent.click(freqRadio("Quarterly"));
+    await screen.findByText("Q2 FY26E");
+    const group = document.querySelector(".ag-header-group-cell") as HTMLElement;
+    const widthOf = (e: HTMLElement) => parseInt(e.style.width, 10);
+    // The group header must be as wide as the label and the switch need (144 px).
+    expect(widthOf(group)).toBeGreaterThanOrEqual(144);
+    expect(within(group).getByText("FY26E")).toBeInTheDocument();
+    expect(modeRadio("FY26E", "Annual")).toBeInTheDocument();
+  });
+
+  it("puts the switch before the year's name, which stays at the numbers' edge", async () => {
+    serve();
+    await renderLoaded();
+    const label = within(
+      document.querySelector('.ag-header-cell[col-id="f:2026"]') as HTMLElement,
+    ).getByText("FY26E");
+    expect(
+      yearSwitch("FY26E").compareDocumentPosition(label) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    await userEvent.click(freqRadio("Quarterly"));
+    await screen.findByText("Q1 FY26E");
+    const group = document.querySelector(".ag-header-group-cell") as HTMLElement;
+    expect(
+      yearSwitch("FY26E").compareDocumentPosition(within(group).getByText("FY26E")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("explains the choice in one line above the grid", async () => {
+    serve();
+    await renderLoaded();
+    expect(
+      screen.getByText("Each year is set either as one annual value or quarter by quarter."),
+    ).toBeInTheDocument();
+  });
+
+  it("switching to By quarter sends one PUT and shows the roll-up, read-only", async () => {
+    serve();
+    await renderLoaded();
+    expect(cell("driver:revenue_growth", "f:2026")).toHaveTextContent("2.3%");
+    await userEvent.click(modeRadio("FY26E", "By quarter"));
+    await waitFor(() => expect(setYearMode).toHaveBeenCalledTimes(1));
+    expect(setYearMode).toHaveBeenCalledWith({
+      path: { ticker: "AAPL", scenario_id: 1, fiscal_year: 2026 },
+      body: { mode: "quarterly" },
+    });
+    await waitFor(() =>
+      expect(cell("driver:revenue_growth", "f:2026")).toHaveTextContent("5.0%Quarters"),
+    );
+    expect(modeRadio("FY26E", "By quarter")).toBeChecked();
+    expect(
+      within(cell("driver:revenue_growth", "f:2026")).getByTitle(
+        "Built from Q1–Q4. Switch FY26 to Annual to set it here.",
+      ),
+    ).toBeInTheDocument();
+    await userEvent.dblClick(cell("driver:revenue_growth", "f:2026"));
+    expect(cell("driver:revenue_growth", "f:2026").querySelector("input")).toBeNull();
+    expect(putDrivers).not.toHaveBeenCalled();
+  });
+
+  it("never sends an annual value for a year set by quarter on an edit of another year", async () => {
+    serve();
+    server.mode = "quarterly";
+    getDrivers.mockImplementation(((options: { query: { freq: string } }) => {
+      const grid = driverGrid({ year_modes: modesOf("quarterly") });
+      grid.rows[1] = { ...grid.rows[1]!, own: ["0.47", "0.46"], kind: "value" }; // FY26's is hidden
+      return Promise.resolve(okResult(options.query.freq === "quarterly" ? quarterlyGrid() : grid));
+    }) as never);
+    await renderLoaded();
+    await edit("driver:gross_margin", "f:2027", "50");
+    await waitFor(() => expect(putDrivers).toHaveBeenCalledTimes(1));
+    expect(putDrivers.mock.lastCall?.[0].body.rows).toEqual([
+      {
+        driver_code: "gross_margin",
+        kind: "value",
+        values: [{ fiscal_year: 2027, value: "0.5" }],
+      },
+    ]);
+  });
+
+  it("disables the switch while the mode is being saved", async () => {
+    serve();
+    let finish: (result: unknown) => void = () => {};
+    setYearMode.mockImplementation((() => new Promise((resolve) => (finish = resolve))) as never);
+    await renderLoaded();
+    await userEvent.click(modeRadio("FY26E", "By quarter"));
+    await waitFor(() => expect(modeRadio("FY26E", "Annual")).toBeDisabled());
+    expect(modeRadio("FY26E", "By quarter")).toBeDisabled();
+    finish(okResult({ years: modesOf("quarterly") }));
+    await waitFor(() => expect(modeRadio("FY26E", "Annual")).toBeEnabled());
+  });
+
+  it("shows the API's reason when the switch is refused, leaving the mode as it was", async () => {
+    serve();
+    setYearMode.mockResolvedValue(
+      errorResult(422, { detail: "FY2026 is not in the quarterly span" }) as never,
+    );
+    await renderLoaded();
+    await userEvent.click(modeRadio("FY26E", "By quarter"));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "FY2026 is not in the quarterly span",
+    );
+    expect(modeRadio("FY26E", "Annual")).toBeChecked();
+  });
+
+  describe("going back to annual", () => {
+    async function openByQuarter() {
+      serve();
+      server.mode = "quarterly";
+      await renderLoaded();
+      expect(modeRadio("FY26E", "By quarter")).toBeChecked();
+    }
+
+    it("asks first, saying the quarter values of the three cases are deleted", async () => {
+      await openByQuarter();
+      await userEvent.click(modeRadio("FY26E", "Annual"));
+      const dialog = await screen.findByRole("alertdialog");
+      expect(dialog).toHaveTextContent(
+        "FY26 returns to its annual values. The quarter values of Base, Bull and Bear are deleted.",
+      );
+      expect(setYearMode).not.toHaveBeenCalled();
+    });
+
+    it("sends nothing on Cancel", async () => {
+      await openByQuarter();
+      await userEvent.click(modeRadio("FY26E", "Annual"));
+      await userEvent.click(
+        within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Cancel" }),
+      );
+      expect(setYearMode).not.toHaveBeenCalled();
+      expect(modeRadio("FY26E", "By quarter")).toBeChecked();
+    });
+
+    it("puts the annual mode on confirm and makes the cell editable again", async () => {
+      await openByQuarter();
+      await userEvent.click(modeRadio("FY26E", "Annual"));
+      await userEvent.click(
+        within(await screen.findByRole("alertdialog")).getByRole("button", {
+          name: "Return to annual",
+        }),
+      );
+      await waitFor(() => expect(setYearMode).toHaveBeenCalledTimes(1));
+      expect(setYearMode).toHaveBeenCalledWith({
+        path: { ticker: "AAPL", scenario_id: 1, fiscal_year: 2026 },
+        body: { mode: "annual" },
+      });
+      await waitFor(() => expect(modeRadio("FY26E", "Annual")).toBeChecked());
+      await userEvent.dblClick(cell("driver:revenue_growth", "f:2026"));
+      expect(cell("driver:revenue_growth", "f:2026").querySelector("input")).not.toBeNull();
+    });
+  });
+
+  describe("in the quarterly grid", () => {
+    it("puts the switch over the year's quarters", async () => {
+      serve();
+      await renderLoaded();
+      await toQuarterly();
+      expect(modeRadio("FY26E", "Annual")).toBeChecked();
+      await userEvent.click(modeRadio("FY26E", "By quarter"));
+      await waitFor(() => expect(setYearMode).toHaveBeenCalledTimes(1));
+      expect(setYearMode.mock.lastCall?.[0].path.fiscal_year).toBe(2026);
+    });
+
+    it("locks the quarters of an annually set year, naming the year", async () => {
+      serve();
+      await renderLoaded();
+      await toQuarterly();
+      const quarter = cell("driver:gross_margin", "f:2026Q1");
+      expect(quarter).toHaveTextContent("48.0%FY26"); // no "From": the year says it
+      expect(
+        within(quarter).getByTitle(
+          "FY26 is set annually. Switch it to By quarter to edit quarters.",
+        ),
+      ).toBeInTheDocument();
+      await userEvent.dblClick(quarter);
+      expect(quarter.querySelector("input")).toBeNull();
+    });
+
+    it("unlocks them once the year is set by quarter", async () => {
+      serve();
+      await renderLoaded();
+      await toQuarterly();
+      await userEvent.click(modeRadio("FY26E", "By quarter"));
+      await waitFor(() => expect(modeRadio("FY26E", "By quarter")).toBeChecked());
+      await waitFor(() =>
+        expect(cell("driver:gross_margin", "f:2026Q1")).not.toHaveTextContent("FY26"),
+      );
+      await edit("driver:gross_margin", "f:2026Q2", "50");
+      await waitFor(() => expect(putDrivers).toHaveBeenCalledTimes(1));
+      expect(putDrivers.mock.lastCall?.[0].body.rows[0]).toMatchObject({
+        freq: "quarterly",
+        values: [
+          { fiscal_year: 2026, fiscal_period: "Q1", value: "0.48" },
+          { fiscal_year: 2026, fiscal_period: "Q2", value: "0.5" },
+        ],
+      });
+    });
+  });
+
+  it("shows the same modes for Bull and Bear: the switch is the scenario's", async () => {
+    serve();
+    server.mode = "quarterly";
+    await renderLoaded("/c/AAPL/scenarios?case=bull");
+    expect(modeRadio("FY26E", "By quarter")).toBeChecked();
+    await userEvent.click(modeRadio("FY26E", "Annual"));
+    await userEvent.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", {
+        name: "Return to annual",
+      }),
+    );
+    await waitFor(() => expect(setYearMode).toHaveBeenCalledTimes(1));
+    expect(setYearMode.mock.lastCall?.[0].path).toEqual({
+      ticker: "AAPL",
+      scenario_id: 1,
+      fiscal_year: 2026,
+    }); // no case in the route
+  });
+
+  it("explains in the mode-switch confirm that a by-quarter year keeps its quarters", async () => {
+    serve();
+    server.mode = "quarterly";
+    await renderLoaded("/c/AAPL/scenarios?case=bull");
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: "Mode of Revenue growth" }),
+      "value",
+    );
+    expect(await screen.findByRole("alertdialog")).toHaveTextContent(
+      "Years set by quarter keep their quarters",
     );
   });
 });

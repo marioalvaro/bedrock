@@ -4,9 +4,11 @@ import { Fragment, useMemo, useState } from "react";
 
 import type { CompareOut } from "@/api/generated/types.gen";
 import { compareQueryOptions, type ForecastFreq } from "@/api/scenarios";
+import { BuiltFromQuartersMark } from "@/components/BuiltFromQuartersMark";
 import { Chart } from "@/components/Chart";
 import { Label } from "@/components/ui/label";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { isBuiltFromQuarters } from "@/features/statements/grid";
 import { formatChartNumber, formatValue, scaleLabel, scaledNumber } from "@/lib/format";
 import { useScale, type Scale } from "@/lib/scale";
 
@@ -161,6 +163,9 @@ export function ScenarioCompare({ ticker, scenarioId }: ScenarioCompareProps) {
                   {table.periods.map((period) => (
                     <th key={period.key} className="cell-forecast py-1 pl-3 text-right font-normal">
                       {period.label}
+                      {isBuiltFromQuarters(period, table.built_from_quarters) && (
+                        <BuiltFromQuartersMark />
+                      )}
                     </th>
                   ))}
                 </tr>

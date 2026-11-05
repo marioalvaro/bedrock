@@ -242,6 +242,12 @@ export function forecastColumnClass(period: PeriodOut): string[] {
   return period.is_forecast ? ["cell-forecast"] : [];
 }
 
+// A forecast year the scenario sets by quarter: its figures are the sum of its quarters (FR-FCST-13).
+// Only annual columns qualify; the quarters themselves are not built from anything.
+export function isBuiltFromQuarters(period: PeriodOut, years: readonly number[]): boolean {
+  return period.is_forecast && period.fiscal_period === "FY" && years.includes(period.fiscal_year);
+}
+
 // An approximated value carries a tilde in front of its number; the CSV export does not.
 export function provenanceMark(provenance: Provenance | null | undefined): string {
   return provenance === "approximated" ? "~" : "";

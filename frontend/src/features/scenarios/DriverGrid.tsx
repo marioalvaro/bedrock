@@ -1,7 +1,13 @@
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { CellClassParams, CellValueChangedEvent, ColDef } from "ag-grid-community";
+import type {
+  CellClassParams,
+  CellValueChangedEvent,
+  ColDef,
+  ColGroupDef,
+} from "ag-grid-community";
+import type { CustomHeaderGroupProps, CustomHeaderProps } from "ag-grid-react";
 import { RotateCcw } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useMemo, useState } from "react";
 
 import { companyErrorMessage } from "@/api/companies";
 import { ApiError } from "@/api/errors";
@@ -11,10 +17,12 @@ import type {
   DriverRowOut,
   GridPeriodOut,
   ScenarioOut,
+  YearModeOut,
 } from "@/api/generated/types.gen";
 import {
   driversQueryOptions,
   usePutDrivers,
+  useSetYearMode,
   type ForecastFreq,
   type ScenarioCase,
 } from "@/api/scenarios";
@@ -34,12 +42,16 @@ import { scaleLabel } from "@/lib/format";
 import type { Scale } from "@/lib/scale";
 
 import {
+  canClear,
+  canReset,
   driverClear,
   driverEdit,
   driverReset,
   forecastCell,
   formatDriverValue,
   parseDriverText,
+  periodName,
+  quarterSwitchRow,
   toDriverRows,
   type DriverGridRow,
   type DriverMode,
@@ -67,6 +79,85 @@ const FREQS: { value: ForecastFreq; label: string }[] = [
   { value: "quarterly", label: "Quarterly" },
 ];
 
+type YearModeValue = YearModeOut["mode"];
+
+// The switch shows one letter so it fits any year header, even over a single quarter; the full
+// name is the hover title and the accessible name.
+const YEAR_MODE_LABELS: Record<YearModeValue, { name: string; letter: string }> = {
+  annual: { name: "Annual", letter: "A" },
+  quarterly: { name: "By quarter", letter: "Q" },
+};
+
+// What the year headers need from the grid: the scenario's modes and the switch itself. AG Grid
+// renders header components outside the column definitions' closures, so they read it from here.
+interface YearModes {
+  modes: Map<number, YearModeOut>;
+  disabled: boolean;
+  onMode: (year: number, mode: YearModeValue) => void;
+}
+
+const YearModesContext = createContext<YearModes>({
+  modes: new Map(),
+  disabled: true,
+  onMode: () => {},
+});
+
+/** The Annual | By quarter switch of a forecast year of the quarterly span; nothing after it. */
+function YearSwitch({ year }: { year: number }) {
+  const { modes, disabled, onMode } = useContext(YearModesContext);
+  const entry = modes.get(year);
+  if (!entry?.in_span) return null;
+  return (
+    <ToggleGroup
+      type="single"
+      variant="outline"
+      size="sm"
+      spacing={0}
+      disabled={disabled}
+      aria-label={`${entry.label} mode`}
+      value={entry.mode}
+      onValueChange={(value) =>
+        value && value !== entry.mode && onMode(year, value as YearModeValue)
+      }
+    >
+      {(Object.keys(YEAR_MODE_LABELS) as YearModeValue[]).map((value) => (
+        <ToggleGroupItem
+          key={value}
+          value={value}
+          title={YEAR_MODE_LABELS[value].name}
+          aria-label={YEAR_MODE_LABELS[value].name}
+          className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground h-5 min-w-0 px-1.5 text-[11px]"
+        >
+          {YEAR_MODE_LABELS[value].letter}
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
+  );
+}
+
+// Header of a forecast year in the annual grid: its label and its switch.
+function YearHeader({ displayName, year }: CustomHeaderProps & { year: number }) {
+  return (
+    <div className="flex w-full items-center justify-end gap-2">
+      <YearSwitch year={year} />
+      <span>{displayName}</span>
+    </div>
+  );
+}
+
+// Header over a forecast year's quarters in the quarterly grid.
+function YearGroupHeader({ displayName, year }: CustomHeaderGroupProps & { year: number }) {
+  return (
+    <div className="flex w-full items-center justify-center gap-2">
+      <YearSwitch year={year} />
+      <span>{displayName}</span>
+    </div>
+  );
+}
+
+// Every forecast column has this width, so a year with a switch lines up with the others.
+const FORECAST_WIDTH = 144;
+
 function unitHint(unit: DriverUnit, scale: Scale): string {
   if (unit === "pct") return "%";
   if (unit === "days") return "days";
@@ -85,7 +176,7 @@ function columnDefs(
   isBase: boolean,
   editable: boolean,
   { modeOf, onMode, onReset }: Handlers,
-): ColDef<Row>[] {
+): (ColDef<Row> | ColGroupDef<Row>)[] {
   const label: ColDef<Row> = {
     colId: "label",
     headerName: "Driver",
@@ -98,7 +189,7 @@ function columnDefs(
       return (
         <span className="flex min-w-0 items-center gap-1 pl-3" title={driver.label}>
           <span className="truncate">{driver.label}</span>
-          {driver.own.some((value) => value !== null) && (
+          {canReset(grid, driver) && (
             <button
               type="button"
               className="text-muted-foreground hover:text-foreground ml-auto shrink-0 cursor-pointer p-0.5 disabled:cursor-default disabled:opacity-50"
@@ -160,19 +251,26 @@ function columnDefs(
         : "",
   }));
 
+  const modeOfYear = (year: number) => grid.year_modes.find((m) => m.fiscal_year === year);
   const forecast = grid.forecast_periods.map((period, index): ColDef<Row> => {
     const column = forecastColumn(period);
     const cellOf = (data: Row) =>
       data.type === "driver"
         ? forecastCell(data.driver, index, modeOf(data.driver), scale, grid)
         : null;
+    // A year of the span carries its switch: in its own header (annual), or over its quarters.
+    const switchable = grid.freq === "annual" && modeOfYear(period.fiscal_year)?.in_span === true;
     return {
       colId: column,
       headerName: period.label,
-      width: 96,
+      width: FORECAST_WIDTH,
       headerClass: [...NUM_HEADER, "cell-forecast"],
       cellClass: [...NUM, "cell-forecast"],
-      editable: ({ data }) => editable && data?.type === "driver",
+      ...(switchable && {
+        headerComponent: YearHeader,
+        headerComponentParams: { year: period.fiscal_year },
+      }),
+      editable: ({ data }) => editable && data?.type === "driver" && !cellOf(data)?.locked,
       // The editor starts from the cell's edit text; the renderer shows the formatted one.
       valueGetter: ({ data }) => {
         if (!data) return "";
@@ -186,15 +284,47 @@ function columnDefs(
         const cell = data ? cellOf(data) : null;
         if (!cell) return null;
         return (
-          <span className={cell.classes.join(" ")} title={cell.title}>
-            {cell.text}
-          </span>
+          <>
+            <span className={cell.classes.join(" ")} title={cell.title}>
+              {cell.text}
+            </span>
+            {cell.note && (
+              <span className="text-muted-foreground ml-1 text-[10px]">{cell.note}</span>
+            )}
+          </>
         );
       },
     };
   });
 
-  return [label, unit, ...(isBase ? [] : [mode]), ...history, ...forecast];
+  // The quarterly grid puts each year's quarters under a header group holding the year's switch.
+  const grouped: (ColDef<Row> | ColGroupDef<Row>)[] = [];
+  if (grid.freq === "quarterly") {
+    for (const column of forecast) {
+      const year = Number(String(column.colId).slice(2, 6));
+      const last = grouped.at(-1);
+      if (last && "children" in last && last.groupId === `y:${year}`) {
+        last.children.push(column);
+        continue;
+      }
+      grouped.push({
+        groupId: `y:${year}`,
+        headerName: modeOfYear(year)?.label ?? `FY${year}`,
+        headerClass: "cell-forecast",
+        headerGroupComponent: YearGroupHeader,
+        headerGroupComponentParams: { year },
+        children: [column],
+      });
+    }
+  }
+
+  return [
+    label,
+    unit,
+    ...(isBase ? [] : [mode]),
+    ...history,
+    ...(grid.freq === "quarterly" ? grouped : forecast),
+  ];
 }
 
 interface DriverGridProps {
@@ -231,12 +361,15 @@ export function DriverGrid({
     placeholderData: keepPreviousData, // the other frequency's grid stays up while this one loads (G32)
   });
   const { mutate: putRows } = usePutDrivers(ticker);
+  const { mutate: putYearMode, isPending: modeSaving } = useSetYearMode(ticker, scenario.id);
   const [message, setMessage] = useState<string | null>(null);
   // The mode picked for a row with no own values (a row with own values has its stored kind).
   const [picked, setPicked] = useState<Record<string, DriverMode>>({});
   const [switching, setSwitching] = useState<{ driver: DriverRowOut; mode: DriverMode } | null>(
     null,
   );
+  // The year being returned to annual, awaiting the confirm.
+  const [returning, setReturning] = useState<YearModeOut | null>(null);
 
   const isBase = scenarioCase === "base";
 
@@ -250,6 +383,32 @@ export function DriverGrid({
     },
     [putRows, scenario.id, scenarioCase],
   );
+
+  const switchYear = useCallback(
+    (year: number, mode: YearModeValue) => {
+      setMessage(null);
+      putYearMode(
+        { fiscalYear: year, mode },
+        { onError: (e) => setMessage(companyErrorMessage(e, "Could not switch the year.")) },
+      );
+    },
+    [putYearMode],
+  );
+  const yearModes = useMemo<YearModes>(
+    () => ({
+      modes: new Map((grid?.year_modes ?? []).map((m) => [m.fiscal_year, m])),
+      disabled: modeSaving || isPlaceholderData,
+      // Going back to annual deletes the quarter values: ask first. By quarter changes no number.
+      onMode: (year, mode) => {
+        const entry = grid?.year_modes.find((m) => m.fiscal_year === year);
+        if (mode === "annual" && entry) setReturning(entry);
+        else switchYear(year, mode);
+      },
+    }),
+    [grid, modeSaving, isPlaceholderData, switchYear],
+  );
+  const hasSwitches = grid?.year_modes.some((m) => m.in_span) ?? false;
+  const hasByQuarter = grid?.year_modes.some((m) => m.mode === "quarterly") ?? false;
 
   const handlers = useMemo<Handlers>(() => {
     const modeOf = (driver: DriverRowOut): DriverMode =>
@@ -287,9 +446,17 @@ export function DriverGrid({
     if (!grid || row.type !== "driver" || index < 0) return;
     const typed = String(event.newValue ?? "").trim();
     delete row.edits[column];
+
     const mode = handlers.modeOf(row.driver);
     const start = forecastCell(row.driver, index, mode, scale, grid).editText;
     if (typed === start.trim()) return;
+    if (typed === "" && !canClear(grid, index)) {
+      // A quarter of a year set by quarter always holds a value: the API refuses a gap.
+      const { fiscal_year, fiscal_period } = grid.forecast_periods[index]!;
+      return setMessage(
+        `${periodName(fiscal_year, fiscal_period)} cannot be cleared (${periodName(fiscal_year, "FY")} is set by quarter)`,
+      );
+    }
     const value = typed === "" ? null : parseDriverText(typed, row.driver.unit, scale);
     if (typed !== "" && value === null) return setMessage("Enter a number");
     send([driverEdit(grid, row.driver, mode, index, value)]);
@@ -307,9 +474,9 @@ export function DriverGrid({
       const quarterly = await queryClient.ensureQueryData(
         driversQueryOptions(ticker, scenario.id, scenarioCase, "quarterly"),
       );
-      if (quarterly.rows.some((row) => row.code === driver.code)) {
-        rows.push(driverClear(driver.code, mode, "quarterly"));
-      }
+      const quarterlyDriver = quarterly.rows.find((row) => row.code === driver.code);
+      // A year set by quarter keeps its quarters: they are re-sent in the new kind.
+      if (quarterlyDriver) rows.push(quarterSwitchRow(quarterly, quarterlyDriver, mode));
     } catch (e) {
       // No quarterly history means no quarterly rows to clear; any other failure stops the switch.
       const noQuarters = e instanceof ApiError && e.detail === NO_QUARTERS;
@@ -351,6 +518,11 @@ export function DriverGrid({
           ))}
         </ToggleGroup>
         {isPlaceholderData && <span className="text-muted-foreground text-xs">Updating…</span>}
+        {hasSwitches && (
+          <p className="text-muted-foreground ml-auto text-xs">
+            Each year is set either as one annual value or quarter by quarter.
+          </p>
+        )}
       </div>
       {isPending && <p className="text-muted-foreground p-4 text-sm">Loading drivers…</p>}
       {!grid && !isPending && (
@@ -372,12 +544,14 @@ export function DriverGrid({
               {message}
             </p>
           )}
-          <DataGrid<Row>
-            rowData={rows}
-            columnDefs={columns}
-            getRowId={(row) => row.id}
-            onCellValueChanged={commit}
-          />
+          <YearModesContext.Provider value={yearModes}>
+            <DataGrid<Row>
+              rowData={rows}
+              columnDefs={columns}
+              getRowId={(row) => row.id}
+              onCellValueChanged={commit}
+            />
+          </YearModesContext.Provider>
           {annualOnly.length > 0 && (
             <p className="text-muted-foreground px-4 py-2 text-xs">
               Set per year only: {annualOnly.map((row) => row.label).join(", ")}.
@@ -395,11 +569,34 @@ export function DriverGrid({
               Its own values in this case, annual and quarterly, are cleared, and it follows{" "}
               {switching?.mode === "offset" ? "Base" : "Base or its default"} until you set new
               ones.
+              {hasByQuarter &&
+                " Years set by quarter keep their quarters: held at an offset of 0 (following Base), or at the values they have now."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={confirmSwitch}>Switch</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={returning !== null} onOpenChange={(open) => !open && setReturning(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Return {returning && periodName(returning.fiscal_year, "FY")} to annual?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {returning && periodName(returning.fiscal_year, "FY")} returns to its annual values.
+              The quarter values of Base, Bull and Bear are deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => returning && switchYear(returning.fiscal_year, "annual")}
+            >
+              Return to annual
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

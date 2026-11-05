@@ -56,6 +56,11 @@ export function yearModes(): DriverGridOut["year_modes"] {
   ];
 }
 
+/** Both forecast years' modes: FY2026 (in the span) set as `modes[2026]`, FY2027 never in the span. */
+export function modesOf(mode: "annual" | "quarterly"): DriverGridOut["year_modes"] {
+  return yearModes().map((m) => (m.in_span ? { ...m, mode } : m));
+}
+
 /**
  * GET …/drivers of Base: 3 history years and 2 forecast years (kept small: jsdom renders only
  * about 10 grid rows, G25). Rows: revenue growth (default), gross margin (own value in FY2026),
@@ -125,7 +130,7 @@ export function driverGrid(overrides: Partial<DriverGridOut> = {}): DriverGridOu
 
 /**
  * GET …/drivers?freq=quarterly of Base: 3 actual quarters (Q2–Q4 FY25A) and 2 forecast quarters
- * (Q1–Q2 FY26E), the same five drivers as `driverGrid`. A quarter with no row of its own takes
+ * (Q1–Q2 FY26E; FY2026 is set by quarter), the same five drivers as `driverGrid`. A quarter with no row of its own takes
  * its year's value (source `year`): only gross margin Q1 FY26 is set (own).
  */
 export function quarterlyGrid(overrides: Partial<DriverGridOut> = {}): DriverGridOut {
@@ -138,7 +143,7 @@ export function quarterlyGrid(overrides: Partial<DriverGridOut> = {}): DriverGri
     scenario_id: 1,
     case: "base",
     freq: "quarterly",
-    year_modes: yearModes(),
+    year_modes: modesOf("quarterly"), // quarter values exist only in a year set by quarter
     history_years: [2023, 2024, 2025],
     forecast_years: [2026, 2027],
     history_periods: [quarter(2025, "Q2", "A"), quarter(2025, "Q3", "A"), quarter(2025, "Q4", "A")],

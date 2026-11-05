@@ -12,6 +12,7 @@ import {
   listScenariosApiV1CompaniesTickerScenariosGet,
   putDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversPut,
   resetCaseApiV1CompaniesTickerScenariosScenarioIdCasesCaseResetPost,
+  setYearModeApiV1CompaniesTickerScenariosScenarioIdYearsFiscalYearModePut,
   updateScenarioApiV1CompaniesTickerScenariosScenarioIdPut,
 } from "@/api/generated/sdk.gen";
 import type {
@@ -24,6 +25,8 @@ import type {
   ScenarioIn,
   ScenarioOut,
   ScenarioSettingsIn,
+  YearModeIn,
+  YearModesOut,
 } from "@/api/generated/types.gen";
 import type { StatementType } from "@/api/statements";
 
@@ -85,7 +88,8 @@ export const driversQueryOptions = (
         !Array.isArray(grid?.history_years) ||
         !Array.isArray(grid?.forecast_years) ||
         !Array.isArray(grid?.history_periods) ||
-        !Array.isArray(grid?.forecast_periods)
+        !Array.isArray(grid?.forecast_periods) ||
+        !Array.isArray(grid?.year_modes)
       ) {
         throw unexpected();
       }
@@ -103,7 +107,7 @@ export class ForecastUnavailable extends ApiError {
 
 /**
  * GET …/scenarios/{id}/cases/{case}/forecast. A 422 rejects with `ForecastUnavailable(detail)`; a 200 without
- * `periods` and `integrity` with `ApiError(200)`.
+ * `periods`, `integrity` and `built_from_quarters` with `ApiError(200)`.
  */
 export const forecastQueryOptions = (
   ticker: string,
@@ -126,7 +130,13 @@ export const forecastQueryOptions = (
         }
         throw error;
       });
-      if (!Array.isArray(table?.periods) || !Array.isArray(table?.integrity)) throw unexpected();
+      if (
+        !Array.isArray(table?.periods) ||
+        !Array.isArray(table?.integrity) ||
+        !Array.isArray(table?.built_from_quarters)
+      ) {
+        throw unexpected();
+      }
       return table;
     },
   });
@@ -148,7 +158,8 @@ export const compareQueryOptions = (ticker: string, id: number, freq: ForecastFr
       if (
         !Array.isArray(table?.periods) ||
         !Array.isArray(table?.codes) ||
-        !Array.isArray(table?.cases)
+        !Array.isArray(table?.cases) ||
+        !Array.isArray(table?.built_from_quarters)
       ) {
         throw unexpected();
       }
@@ -364,6 +375,32 @@ export function useResetCase(ticker: string) {
     onSuccess: (saved, { id, case: scenarioCase }) => {
       settleDrivers(queryClient, ticker, id, scenarioCase, saved);
       refreshOtherViews(queryClient, ticker, id, scenarioCase, saved);
+    },
+  });
+}
+
+/**
+ * PUT …/scenarios/{id}/years/{fiscal_year}/mode: a forecast year of the quarterly span is set
+ * annually or by quarter, for the scenario's three cases. The switch moves values (a fill of the
+ * quarters, or their removal), so every grid, forecast and comparison of the scenario is
+ * invalidated. The mutation settles once the driver grids on screen have reloaded, so the switch
+ * and the cells never show the old mode; the other views refetch in the background.
+ */
+export function useSetYearMode(ticker: string, id: number) {
+  const queryClient = useQueryClient();
+  return useMutation<YearModesOut, Error, { fiscalYear: number; mode: YearModeIn["mode"] }>({
+    mutationFn: ({ fiscalYear, mode }) =>
+      unwrap(
+        setYearModeApiV1CompaniesTickerScenariosScenarioIdYearsFiscalYearModePut({
+          path: { ticker, scenario_id: id, fiscal_year: fiscalYear },
+          body: { mode },
+        }),
+      ),
+    onSuccess: async () => {
+      const queryKey = [...scenariosKey(ticker), id];
+      const isGrid = (key: readonly unknown[]) => key.includes("drivers");
+      void queryClient.invalidateQueries({ queryKey, predicate: (q) => !isGrid(q.queryKey) });
+      await queryClient.invalidateQueries({ queryKey, predicate: (q) => isGrid(q.queryKey) });
     },
   });
 }

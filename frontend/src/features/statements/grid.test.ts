@@ -11,6 +11,7 @@ import {
   csvLabel,
   expandableCodes,
   forecastColumnClass,
+  isBuiltFromQuarters,
   lineNoteCount,
   noteIndex,
   provenanceClasses,
@@ -686,6 +687,15 @@ describe("a forecast payload", () => {
   it("tints only the forecast columns", () => {
     expect(forecastColumnClass(estimate!)).toEqual(["cell-forecast"]);
     expect(forecastColumnClass(actual!)).toEqual([]);
+  });
+
+  it("marks only a forecast year that is in the scenario's by-quarter list", () => {
+    expect(isBuiltFromQuarters(estimate!, [2026])).toBe(true);
+    expect(isBuiltFromQuarters(estimate!, [2027])).toBe(false);
+    expect(isBuiltFromQuarters(estimate!, [])).toBe(false);
+    // An actual year of the same number is never built from forecast quarters.
+    expect(isBuiltFromQuarters(actual!, [actual!.fiscal_year])).toBe(false);
+    expect(isBuiltFromQuarters({ ...estimate!, fiscal_period: "Q1" }, [2026])).toBe(false);
   });
 
   it("never opens the cell details of a forecast period, which has no filing behind it", () => {
