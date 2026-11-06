@@ -1586,3 +1586,71 @@ def test_0014_downgrade_drops_the_table_and_up_again_recreates_it(
 
     _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
     assert "valuation_input" in inspect(engine).get_table_names()
+
+
+def _engine_row(connection: Connection, scenario_id: int, **cols: object) -> int:
+    row = {
+        "scenario_id": scenario_id,
+        "driver_code": "gross_margin",
+        "engine_code": "ets",
+        "config_json": None,
+        "updated_at": _NOW,
+        **cols,
+    }
+    return _insert(connection, "driver_engine_choice", **row)
+
+
+def _scenario_id(connection: Connection) -> int:
+    return int(connection.execute(text("SELECT id FROM scenario")).scalar_one())
+
+
+def test_0015_creates_the_engine_choice_table_with_its_unique_key_and_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        _scenario_with_case(connection, "AAA")
+        scenario_id = _scenario_id(connection)
+        for code in ("mean", "arima", "ets", "blend", "stl"):
+            _engine_row(connection, scenario_id, driver_code=f"d_{code}", engine_code=code)
+    for bad in (
+        dict(driver_code="d_ets"),  # the same driver twice in a scenario
+        dict(driver_code="x", engine_code="auto"),  # `auto` is a missing row, never stored
+        dict(driver_code="x", engine_code="prophet"),  # not an engine
+        dict(driver_code=None),  # NOT NULL
+        dict(driver_code="x", scenario_id=999_999),  # no such scenario
+    ):
+        with pytest.raises(IntegrityError), engine.begin() as connection:
+            connection.execute(text("PRAGMA foreign_keys=ON"))
+            _engine_row(connection, **{"scenario_id": scenario_id, **bad})  # type: ignore[arg-type]
+
+
+def test_0015_choices_go_with_their_scenario(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    with create_engine(database_url).begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+        _scenario_with_case(connection, "AAA")
+        _engine_row(connection, _scenario_id(connection))
+        connection.execute(text("DELETE FROM scenario"))
+        assert connection.execute(text("SELECT count(*) FROM driver_engine_choice")).scalar() == 0
+
+
+def test_0015_downgrade_drops_the_table_and_up_again_recreates_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        _scenario_with_case(connection, "AAA")
+        _engine_row(connection, _scenario_id(connection))
+
+    _run_alembic(tmp_path, monkeypatch, ("downgrade", "0014"))
+    assert "driver_engine_choice" not in inspect(engine).get_table_names()
+    with engine.begin() as connection:
+        assert connection.execute(text("SELECT count(*) FROM scenario")).scalar() == 1
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    assert "driver_engine_choice" in inspect(engine).get_table_names()

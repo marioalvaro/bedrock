@@ -302,6 +302,7 @@ def test_mean_sets_no_value_but_keeps_autos_band_for_the_cross_check() -> None:
     assert (row.choice, row.used, row.note) == ("mean", "mean", None)
     assert all((CODE, y) not in out.values for y in YEARS)
     assert row.band[2026] == Band(D("0.33"), D("0.38"), D("0.48"), D("0.53"))
+    assert row.band_engine == "ets"
     assert set(row.holdout) == {"arima", "ets", "blend"}
 
 
@@ -314,6 +315,15 @@ def test_the_band_is_autos_winners_and_empty_when_auto_keeps_the_mean() -> None:
     assert set(with_engine.band) == set(YEARS)
     assert with_engine.band[2030] == Band(D("0.34"), D("0.39"), D("0.49"), D("0.54"))
     assert with_mean.band == {}
+    assert (with_engine.band_engine, with_mean.band_engine) == ("blend", None)
+
+
+def test_an_explicit_engine_is_its_own_bands_engine() -> None:
+    out = defaults_of(
+        margins_history(margins(18)), FakeFit(full={"arima": [0.43]}), {CODE: "arima"}
+    )
+
+    assert out.rows[CODE].band_engine == "arima"
 
 
 def quarters_with_pattern(n: int, pattern: Sequence[float]) -> dict[str, dict[str, Value]]:

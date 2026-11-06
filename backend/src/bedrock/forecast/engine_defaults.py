@@ -59,6 +59,7 @@ class EngineRow:
     holdout: Mapping[str, Decimal] = field(default_factory=dict)  # engine code -> MAE
     band: Mapping[int, Band] = field(default_factory=dict)  # the cross-check band per year
     seasonal: bool = False  # `stl` is allowed (the driver is in SEASONAL)
+    band_engine: UsedEngine | None = None  # the engine `band` comes from; None: no band
 
 
 @dataclass(frozen=True)
@@ -242,7 +243,14 @@ class _Context:
                     note = f"{exc.message}; {MEAN_NOTE}"
             used: UsedEngine = choice if result is not None else "mean"
             band = {} if result is None else self.bands(result)
-            row = EngineRow(choice, used, note, band=band, seasonal=seasonal_allowed)
+            row = EngineRow(
+                choice,
+                used,
+                note,
+                band=band,
+                seasonal=seasonal_allowed,
+                band_engine=choice if result is not None else None,
+            )
             return _Outcome(row, result, None, choice)
         auto_used, result, note, holdout = self._auto(run)
         band = {} if result is None else self.bands(result)
@@ -258,6 +266,7 @@ class _Context:
             holdout,
             band,
             seasonal_allowed,
+            auto_used if result is not None else None,
         )
         return _Outcome(row, None if choice == "mean" else result, index, auto_used)
 

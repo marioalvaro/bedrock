@@ -17,6 +17,7 @@ from bedrock.api.v1 import (
     qoe_rules,
     ratios,
     scenarios,
+    seasonality,
     segments,
     statements,
     valuation,
@@ -46,6 +47,7 @@ protected.include_router(notes.router)
 protected.include_router(imports.router)
 protected.include_router(forecasts.router)
 protected.include_router(scenarios.router)
+protected.include_router(seasonality.router)
 protected.include_router(valuation.router)
 
 api_router = APIRouter(prefix="/api/v1")

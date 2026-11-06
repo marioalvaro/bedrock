@@ -11,6 +11,7 @@ from bedrock.api.v1.statements import followed_company
 from bedrock.forecast.driver_io import DriverFileIssue
 from bedrock.models.company import Company
 from bedrock.models.scenario import Case
+from bedrock.schemas.engines import DriverEnginesOut, EngineChoicesIn, EngineChoicesOut
 from bedrock.schemas.scenarios import (
     DriverFileErrorsOut,
     DriverGridOut,
@@ -107,6 +108,39 @@ def get_drivers(
 ) -> DriverGridOut:
     grid = service.driver_grid(session, company, scenario_id, case, freq)
     return DriverGridOut.from_grid(grid)
+
+
+@router.get("/companies/{ticker}/scenarios/{scenario_id}/engines")
+def get_engines(
+    scenario_id: int,
+    company: Company = Depends(followed_company),
+    session: Session = Depends(get_session),
+) -> EngineChoicesOut:
+    return EngineChoicesOut.from_view(service.get_engines(session, company, scenario_id))
+
+
+@router.put("/companies/{ticker}/scenarios/{scenario_id}/engines")
+def put_engines(
+    scenario_id: int,
+    body: EngineChoicesIn,
+    company: Company = Depends(followed_company),
+    session: Session = Depends(get_session),
+    now: datetime = Depends(get_clock),
+) -> EngineChoicesOut:
+    view = service.put_engines(session, company, scenario_id, body.to_input(), now)
+    return EngineChoicesOut.from_view(view)
+
+
+@router.get("/companies/{ticker}/scenarios/{scenario_id}/cases/{case}/driver-engines")
+def get_driver_engines(
+    scenario_id: int,
+    case: Case,
+    code: str,
+    company: Company = Depends(followed_company),
+    session: Session = Depends(get_session),
+) -> DriverEnginesOut:
+    view = service.case_driver_engines(session, company, scenario_id, case, code)
+    return DriverEnginesOut.from_view(code, view)
 
 
 @router.put("/companies/{ticker}/scenarios/{scenario_id}/cases/{case}/drivers")

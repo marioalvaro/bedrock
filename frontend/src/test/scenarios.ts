@@ -45,6 +45,11 @@ export function driverRow(overrides: Partial<DriverRowOut> = {}): DriverRowOut {
     kind: null,
     rollup: [null, null],
     quarterly: true,
+    engine: "auto",
+    engine_used: "mean",
+    engine_note: null,
+    seasonal: false,
+    check: [null, null],
     ...overrides,
   };
 }

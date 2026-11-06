@@ -52,6 +52,7 @@ from bedrock.services.scenarios import (
     set_year_mode,
     update_scenario,
 )
+from tests.forecast_data import choose_engines
 
 from .seed import fake_sources, follow
 
@@ -516,6 +517,7 @@ def test_reset_of_base_drops_its_rows_and_returns_the_grid(
     db_session: Session, aapl: Company
 ) -> None:
     main = _main(db_session, aapl)
+    choose_engines(db_session, main.id, {"tax_rate": "mean"})  # asserts the M4 3-year mean
     y = driver_grid(db_session, aapl, main.id, "base").forecast_years[0]
     _put(db_session, aapl, main, "base", DriverRowInput("tax_rate", "value", [(y, D("0.2"))]))
     bull_before = _rows(db_session, main, "bull")
@@ -673,6 +675,7 @@ def test_base_s_grid_shows_five_history_years_and_the_defaults(
     db_session: Session, aapl: Company
 ) -> None:
     main = _main(db_session, aapl)
+    choose_engines(db_session, main.id, {"revenue_growth": "mean"})  # asserts the M4 3-year mean
     history = load_history(db_session, aapl)
 
     grid = driver_grid(db_session, aapl, main.id, "base")
@@ -703,6 +706,7 @@ def test_base_s_grid_shows_five_history_years_and_the_defaults(
 
 def test_bull_s_grid_shows_base_plus_its_offsets(db_session: Session, aapl: Company) -> None:
     main = _main(db_session, aapl)
+    choose_engines(db_session, main.id, {"sga_pct_revenue": "mean"})  # asserts the M4 3-year mean
     base = driver_grid(db_session, aapl, main.id, "base")
 
     bull = driver_grid(db_session, aapl, main.id, "bull")
@@ -757,6 +761,7 @@ def _put(
 
 def test_a_put_stores_a_row_and_drops_its_nulls(db_session: Session, aapl: Company) -> None:
     main = _main(db_session, aapl)
+    choose_engines(db_session, main.id, {"revenue_growth": "mean"})  # asserts the M4 3-year mean
     y = driver_grid(db_session, aapl, main.id, "base").forecast_years
 
     grid = _put(
@@ -804,6 +809,7 @@ def test_a_put_replaces_every_row_of_the_driver_including_stale_years(
 
 def test_a_value_row_on_bull_replaces_its_offsets(db_session: Session, aapl: Company) -> None:
     main = _main(db_session, aapl)
+    choose_engines(db_session, main.id, {"gross_margin": "mean"})  # asserts the M4 3-year mean
     y = driver_grid(db_session, aapl, main.id, "bull").forecast_years
 
     grid = _put(

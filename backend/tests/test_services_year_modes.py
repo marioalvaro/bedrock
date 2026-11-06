@@ -34,6 +34,7 @@ from bedrock.services.scenarios import (
     set_year_mode,
     year_modes,
 )
+from tests.forecast_data import choose_engines
 
 from .seed import fake_sources, follow
 
@@ -394,6 +395,7 @@ def test_a_quarterly_row_may_set_some_quarters_and_the_others_take_the_default(
     """A quarter with no row of a year set by quarter does not fall back to the year's hidden
     annual value: a cleared or left-out quarter takes the default."""
     main = _main(db_session, aapl)
+    choose_engines(db_session, main.id, {"tax_rate": "mean"})  # asserts the M4 3-year mean
     _, span = _years(db_session, aapl)
     year = span[1]
     put_drivers(
