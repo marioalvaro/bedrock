@@ -411,6 +411,8 @@ const compsStale = () => [
   [...aapl, "comps", 1, "reported"],
   [...aapl, "peer-suggestions", 1],
   [...aapl, "peer-suggestions", null],
+  // Peer-median multiple targets.
+  [...aapl, "scenarios", 1, "valuation-summary"],
 ];
 const compsFresh = () => [
   [...aapl, "guidance"],

@@ -169,7 +169,10 @@ class _Context:
 
     def ratios(self) -> RatioTable:
         if self._ratios is None:
-            self._ratios = ratios_service.ratios(self.session, self.company, "annual", "normalized")
+            # The history's normalized annual tables: the statements are built once (NFR-02).
+            self._ratios = ratios_service.annual_ratios_from(
+                self.session, self.company, self.history.annual
+            )
         return self._ratios
 
     def comparison(self, set_id: int) -> comps_service.Comparison:

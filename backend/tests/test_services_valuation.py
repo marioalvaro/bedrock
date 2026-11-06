@@ -4,6 +4,7 @@
 from collections.abc import Callable
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Any
 
 import pytest
 from sqlalchemy import func, select
@@ -18,6 +19,7 @@ from bedrock.repositories import companies as companies_repo
 from bedrock.repositories import prices as price_repo
 from bedrock.services import comps as comps_service
 from bedrock.services import ratios as ratios_service
+from bedrock.services import statements as statements_service
 from bedrock.services import valuation as svc
 from bedrock.services.errors import InvalidValuationInput, ScenarioNotFound
 from bedrock.services.scenarios import (
@@ -256,6 +258,29 @@ def test_own_history_needs_three_years_of_priced_ratios(db_session: Session, aap
     assert pe.details.source == "own_history" and pe.details.percentile == D("0.5")
     assert pe.details.n is not None and pe.details.n >= 3
     assert pe.value_per_share is not None
+
+
+@pytest.mark.parametrize("call", ["case", "summary"])
+def test_a_valuation_request_builds_the_statements_once(
+    db_session: Session, aapl: Company, monkeypatch: pytest.MonkeyPatch, call: str
+) -> None:
+    # NFR-02: the statements are the costly part of a valuation (≈0.3 s for AAPL); the history
+    # loaded for the forecast also feeds the own-history multiples (P/E and EV/EBITDA by default).
+    scenario = _main(db_session, aapl)
+    loads: list[str] = []
+    real = statements_service._load
+
+    def counted(*args: Any, **kwargs: Any) -> Any:
+        loads.append("load")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(statements_service, "_load", counted)
+    if call == "case":
+        svc.case_valuation(db_session, aapl, scenario.id, "base")
+    else:
+        svc.valuation_summary(db_session, aapl, scenario.id)
+
+    assert len(loads) == 1
 
 
 def test_bull_values_above_base_above_bear(db_session: Session, aapl: Company) -> None:
