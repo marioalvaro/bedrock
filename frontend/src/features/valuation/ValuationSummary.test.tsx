@@ -29,6 +29,31 @@ const row = (table: HTMLElement, method: string) =>
   within(table).getByRole("rowheader", { name: method }).closest("tr") as HTMLElement;
 
 describe("ValuationSummary", () => {
+  it("sits in its own card", async () => {
+    getSummary.mockResolvedValue(okResult(valuationSummary()) as never);
+    renderSummary();
+    expect(await screen.findByRole("region", { name: "Summary" })).toHaveClass(
+      "rounded-lg",
+      "border",
+    );
+  });
+
+  it("is titled by what it shows and shades the picked case's column", async () => {
+    getSummary.mockResolvedValue(okResult(valuationSummary()) as never);
+    renderSummary("bear");
+    const table = await loaded();
+    const summary = screen.getByRole("region", { name: "Summary" });
+    expect(
+      within(summary).getByRole("heading", { name: "Target price by case" }),
+    ).toBeInTheDocument();
+    const header = within(table).getByRole("columnheader", { name: "Bear" });
+    expect(header).toHaveClass("bg-muted");
+    const row = within(table).getByRole("rowheader", { name: "DCF (FCFF)" }).closest("tr")!;
+    const [bull, , bear] = within(row).getAllByRole("cell");
+    expect(bear).toHaveClass("bg-muted");
+    expect(bull).not.toHaveClass("bg-muted");
+  });
+
   it("asks for the scenario's summary and shows the price line", async () => {
     getSummary.mockResolvedValue(okResult(valuationSummary()) as never);
     renderSummary();

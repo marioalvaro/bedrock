@@ -1,9 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import { dcf, inputRow, peResult, valuationInputs } from "@/test/valuation";
+import { dcf, gridAxis, inputRow, peResult, tornadoBar, valuationInputs } from "@/test/valuation";
 
 import {
+  barLabel,
   choiceLabel,
+  formatChange,
+  gridPointText,
+  gridPointTitle,
+  shiftText,
+  stepText,
+  tornadoTooltip,
   clearText,
   discountText,
   formatPerShare,
@@ -115,9 +122,9 @@ describe("result texts", () => {
 
   it("describes a Gordon terminal value with its implied exit multiple and its share of EV", () => {
     expect(terminalTexts(dcf())).toEqual({
-      method: "Gordon growth 2.5%",
-      implied: "Implied exit multiple 12.1× EV/EBITDA",
-      share: "Terminal value is 76% of EV",
+      method: ["Gordon growth", "2.5%"],
+      implied: ["Implied exit multiple", "12.1× EV/EBITDA"],
+      share: ["Share of EV", "76%"],
     });
   });
 
@@ -134,8 +141,8 @@ describe("result texts", () => {
       terminal_share: null,
     });
     expect(terminalTexts(exit)).toEqual({
-      method: "Exit multiple 12.0× EV/EBITDA",
-      implied: "Implied perpetual growth 3.1%",
+      method: ["Exit multiple", "12.0× EV/EBITDA"],
+      implied: ["Implied perpetual growth", "3.1%"],
       share: null,
     });
   });
@@ -297,5 +304,107 @@ describe("display rules", () => {
     expect(targetFields("manual")).toEqual({ multiple: true, percentile: false, year: true });
     expect(targetFields("own_history")).toEqual({ multiple: false, percentile: true, year: true });
     expect(targetFields("peer_median")).toEqual({ multiple: false, percentile: false, year: true });
+  });
+});
+
+describe("sensitivity texts", () => {
+  const pct = { unit: "pct", mode: "add" };
+  const days = { unit: "days", mode: "add" };
+  const usd = { unit: "USD", mode: "scale" };
+  const x = { unit: "x", mode: "add" };
+
+  it("names an input's unit step", () => {
+    expect(stepText({ ...pct, step: "0.01" })).toBe("±1 pt");
+    expect(stepText({ ...pct, step: "0.005" })).toBe("±0.5 pt");
+    expect(stepText({ ...days, step: "5" })).toBe("±5 days");
+    expect(stepText({ ...usd, step: "0.1" })).toBe("±10%");
+    expect(stepText({ ...x, step: "1" })).toBe("±1×");
+  });
+
+  it("names a signed shift, the zero shift 'Base'", () => {
+    expect(shiftText(pct, "-0.02")).toBe("−2 pts");
+    expect(shiftText(pct, "-0.01")).toBe("−1 pt");
+    expect(shiftText(pct, "0")).toBe("Base");
+    expect(shiftText(pct, "0.01")).toBe("+1 pt");
+    expect(shiftText(pct, "0.02")).toBe("+2 pts");
+    expect(shiftText(pct, "0.005")).toBe("+0.5 pt");
+    expect(shiftText(days, "-10")).toBe("−10 days");
+    expect(shiftText(days, "1")).toBe("+1 day");
+    expect(shiftText(usd, "-0.2")).toBe("−20%");
+    expect(shiftText(usd, "0.1")).toBe("+10%");
+    expect(shiftText(x, "-1")).toBe("−1×");
+  });
+
+  it("labels a bar with its step", () => {
+    expect(barLabel(tornadoBar())).toBe("Revenue growth ±1 pt");
+    expect(
+      barLabel(tornadoBar({ label: "Buybacks", unit: "USD", step: "0.1", mode: "scale" })),
+    ).toBe("Buybacks ±10%");
+  });
+
+  it("gives a bar's tooltip the values at either step", () => {
+    expect(tornadoTooltip(tornadoBar())).toBe("Revenue growth −1 pt: $125.10 · +1 pt: $140.20");
+    expect(
+      tornadoTooltip(
+        tornadoBar({ unit: "days", step: "5", label: "Receivable days", high_value: null }),
+      ),
+    ).toBe("Receivable days −5 days: $125.10 · +5 days: —");
+  });
+
+  it("formats a change in value per share with its sign", () => {
+    expect(formatChange(7.734)).toBe("+$7.73");
+    expect(formatChange(-9.3)).toBe("−$9.30");
+    expect(formatChange(0)).toBe("$0.00");
+    expect(formatChange(-0.001)).toBe("$0.00");
+    expect(formatChange(1234.5)).toBe("+$1,234.50");
+  });
+
+  it("heads a valuation input's grid point with its value", () => {
+    const rate = gridAxis();
+    expect(gridPointText(rate, "valuation", 0)).toBe("7.85%");
+    expect(gridPointText(gridAxis({ points: ["0.086", "0", "0", "0", "0"] }), "valuation", 0)).toBe(
+      "8.6%",
+    );
+    const exit = gridAxis({ unit: "x", step: "1", points: ["10", "11", "12", "13", "14"] });
+    expect(gridPointText(exit, "valuation", 2)).toBe("12.0×");
+    expect(
+      gridPointText(gridAxis({ points: [null, null, null, null, null] }), "valuation", 0),
+    ).toBe("—");
+    expect(gridPointTitle(rate, "valuation", 0, "M")).toBeUndefined();
+  });
+
+  it("heads a driver's grid point with its shift, the first-year value as its title", () => {
+    const growth = gridAxis({
+      code: "revenue_growth",
+      step: "0.01",
+      shifts: ["-0.02", "-0.01", "0", "0.01", "0.02"],
+      points: ["0.03", "0.04", "0.05", "0.06", null],
+    });
+    expect([0, 1, 2, 3, 4].map((i) => gridPointText(growth, "driver", i))).toEqual([
+      "−2 pts",
+      "−1 pt",
+      "Base",
+      "+1 pt",
+      "+2 pts",
+    ]);
+    expect(gridPointTitle(growth, "driver", 0, "M")).toBe("First forecast year: 3.0%");
+    expect(gridPointTitle(growth, "driver", 4, "M")).toBeUndefined();
+    const capex = gridAxis({
+      unit: "USD",
+      step: "0.1",
+      mode: "scale",
+      shifts: ["-0.2", "-0.1", "0", "0.1", "0.2"],
+      points: ["8000000000", "9000000000", "10000000000", "11000000000", "12000000000"],
+    });
+    expect(gridPointText(capex, "driver", 0)).toBe("−20%");
+    expect(gridPointTitle(capex, "driver", 0, "M")).toBe("First forecast year: 8,000 USD millions");
+    const days = gridAxis({
+      unit: "days",
+      step: "5",
+      shifts: ["-10", "-5", "0", "5", "10"],
+      points: ["30", "35", "40", "45", "50"],
+    });
+    expect(gridPointText(days, "driver", 4)).toBe("+10 days");
+    expect(gridPointTitle(days, "driver", 4, "M")).toBe("First forecast year: 50.0 days");
   });
 });

@@ -293,9 +293,9 @@ export function ValuationInputs({ ticker, scenarioId, scenarioCase }: ValuationI
   const shown = shownCodes(data.rows);
 
   return (
-    <section aria-label="Inputs" className="space-y-3 px-4 py-3">
+    <section aria-label="Inputs" className="space-y-3">
       <div className="flex items-center gap-2">
-        <h2 className="text-sm font-medium">Inputs</h2>
+        <h2 className="text-base font-semibold">Inputs</h2>
         <Button variant="outline" size="sm" onClick={() => setResetting(true)}>
           Reset {caseLabel} inputs
         </Button>

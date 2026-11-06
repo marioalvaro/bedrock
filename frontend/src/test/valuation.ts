@@ -1,5 +1,9 @@
 import type {
   DcfOut,
+  GridAxisOut,
+  SensitivityGridOut,
+  TornadoBarOut,
+  TornadoOut,
   ValuationInputRowOut,
   ValuationInputsOut,
   ValuationOut,
@@ -334,6 +338,130 @@ export function valuationSummary(
       kase("bull", "Bull", "353.15", "0.0490"),
       kase("bear", "Bear", "112.91", "-0.6646"),
     ],
+    ...overrides,
+  };
+}
+
+// ---- Sensitivity (AAPL Main Base, base value 132.47 against a 336.67 close) -----------------
+
+export function tornadoBar(overrides: Partial<TornadoBarOut> = {}): TornadoBarOut {
+  return {
+    code: "revenue_growth",
+    label: "Revenue growth",
+    kind: "driver",
+    unit: "pct",
+    step: "0.01",
+    mode: "add",
+    low_value: "125.10",
+    high_value: "140.20",
+    low_change: "-7.37",
+    high_change: "7.73",
+    range: "15.10",
+    error: null,
+    ...overrides,
+  };
+}
+
+/** GET …/cases/base/sensitivity/tornado: bars by range, an error bar last. */
+export function tornado(overrides: Partial<TornadoOut> = {}): TornadoOut {
+  return {
+    scenario_id: 1,
+    case: "base",
+    base_value: "132.47",
+    price: "336.67",
+    bars: [
+      tornadoBar({
+        code: "discount_rate",
+        label: "Discount rate",
+        kind: "valuation",
+        step: "0.005",
+        low_value: "143.47",
+        high_value: "123.17",
+        low_change: "11.00",
+        high_change: "-9.30",
+        range: "20.30",
+      }),
+      tornadoBar(),
+      tornadoBar({
+        code: "terminal_growth",
+        label: "Terminal growth",
+        kind: "valuation",
+        step: "0.005",
+        low_value: "126.47",
+        high_value: "139.67",
+        low_change: "-6.00",
+        high_change: "7.20",
+        range: "13.20",
+      }),
+      tornadoBar({
+        code: "receivable_days",
+        label: "Receivable days",
+        unit: "days",
+        step: "5",
+        low_value: "133.00",
+        high_value: "131.94",
+        low_change: "0.53",
+        high_change: "-0.53",
+        range: "1.06",
+      }),
+      tornadoBar({
+        code: "buybacks",
+        label: "Buybacks",
+        unit: "USD",
+        step: "0.1",
+        mode: "scale",
+        low_value: null,
+        high_value: null,
+        low_change: null,
+        high_change: null,
+        range: null,
+        error: "r must exceed g",
+      }),
+    ],
+    ...overrides,
+  };
+}
+
+const FIVE = [0, 1, 2, 3, 4];
+
+export function gridAxis(overrides: Partial<GridAxisOut> = {}): GridAxisOut {
+  return {
+    code: "discount_rate",
+    label: "Discount rate",
+    unit: "pct",
+    step: "0.005",
+    mode: "add",
+    shifts: ["-0.01", "-0.005", "0", "0.005", "0.01"],
+    points: ["0.0785", "0.0835", "0.0885", "0.0935", "0.0985"],
+    ...overrides,
+  };
+}
+
+/** GET …/sensitivity/grid?x=discount_rate&y=terminal_growth: rows are y, the center the base. */
+export function sensitivityGrid(overrides: Partial<SensitivityGridOut> = {}): SensitivityGridOut {
+  // The corner point (highest growth, highest rate) fails, as a point can.
+  const failed = (i: number, j: number) => i === 4 && j === 4;
+  const values = FIVE.map((i) =>
+    FIVE.map((j) => (failed(i, j) ? null : (132.47 + (i - 2) * 6 - (j - 2) * 10).toFixed(2))),
+  );
+  return {
+    scenario_id: 1,
+    case: "base",
+    base_value: "132.47",
+    price: "140.00",
+    x: gridAxis(),
+    y: gridAxis({
+      code: "terminal_growth",
+      label: "Terminal growth",
+      points: ["0.015", "0.02", "0.025", "0.03", "0.035"],
+    }),
+    values,
+    upside: values.map((cells) =>
+      cells.map((value) => (value === null ? null : (Number(value) / 140 - 1).toFixed(4))),
+    ),
+    errors: FIVE.map((i) =>
+      FIVE.map((j) => (failed(i, j) ? "Discount rate must exceed growth" : null)),
+    ),
     ...overrides,
   };
 }

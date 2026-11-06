@@ -92,12 +92,18 @@ describe("DCF", () => {
   it("shows the terminal value with its implied exit multiple and its share of EV", async () => {
     serve();
     renderResults();
-    const terminal = await screen.findByRole("region", { name: "Terminal value" });
-    expect(terminal).toHaveTextContent("Gordon growth 2.5%");
-    expect(terminal).toHaveTextContent("Terminal value 2,082,191");
-    expect(terminal).toHaveTextContent("Present value 1,484,242");
-    expect(terminal).toHaveTextContent("Implied exit multiple 12.1× EV/EBITDA");
-    expect(terminal).toHaveTextContent("Terminal value is 76% of EV");
+    // A label/value table like the bridge beside it.
+    const table = await screen.findByRole("table", { name: "Terminal value" });
+    const rows = within(table)
+      .getAllByRole("row")
+      .map((row) => row.textContent);
+    expect(rows).toEqual([
+      "Gordon growth2.5%",
+      "Terminal value2,082,191",
+      "Present value1,484,242",
+      "Implied exit multiple12.1× EV/EBITDA",
+      "Share of EV76%",
+    ]);
   });
 
   it("bridges EV to the value per share, the signs as labels", async () => {
@@ -137,8 +143,9 @@ describe("DCF", () => {
       }),
     );
     renderResults();
+    const card = await screen.findByRole("region", { name: "DCF" });
     expect(
-      await screen.findByText("The discount rate must exceed the terminal growth"),
+      within(card).getByText("The discount rate must exceed the terminal growth"),
     ).toBeInTheDocument();
     expect(screen.queryByRole("table", { name: "Bridge" })).not.toBeInTheDocument();
   });
@@ -195,6 +202,99 @@ describe("multiples", () => {
     serve(valuation({ results: [result()] }));
     renderResults();
     expect(await screen.findByText("No multiple target is on.")).toBeInTheDocument();
+  });
+});
+
+describe("target prices", () => {
+  const tile = async (name: string) => {
+    const tiles = await screen.findByRole("list", { name: "Target prices" });
+    return within(tiles).getByRole("listitem", { name });
+  };
+
+  it("shows one tile per method, in result order, above the method cards", async () => {
+    serve();
+    renderResults();
+    const tiles = await screen.findByRole("list", { name: "Target prices" });
+    expect(
+      within(tiles)
+        .getAllByRole("listitem")
+        .map((item) => item.getAttribute("aria-label")),
+    ).toEqual(["DCF (FCFF)", "P/E", "EV/EBITDA"]);
+    const dcfCard = screen.getByRole("region", { name: "DCF" });
+    expect(tiles.compareDocumentPosition(dcfCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("puts the value per share up front, large, with its upside against the price", async () => {
+    serve();
+    renderResults();
+    const dcfTile = await tile("DCF (FCFF)");
+    const value = within(dcfTile).getByText("$131.83");
+    expect(value).toHaveClass("text-2xl", "font-semibold");
+    expect(within(dcfTile).getByText("Target price")).toBeInTheDocument();
+    expect(within(dcfTile).getByText("-60.8%")).toHaveClass("text-negative");
+    expect(dcfTile).toHaveTextContent("-60.8% vs price $336.67");
+  });
+
+  it("names a multiple target's year and multiple", async () => {
+    serve();
+    renderResults();
+    const pe = await tile("P/E");
+    expect(within(pe).getByText("$218.53")).toHaveClass("text-2xl");
+    expect(pe).toHaveTextContent("25.0× FY26E");
+  });
+
+  it("shows a method that could not value as a dash with its error", async () => {
+    serve();
+    renderResults();
+    const ev = await tile("EV/EBITDA");
+    expect(within(ev).getByText("—")).toHaveClass("text-muted-foreground");
+    expect(ev).toHaveTextContent("EV/EBITDA: fewer than 3 years of history");
+  });
+
+  it("says when there is no price to compare with", async () => {
+    serve(valuation({ price: null, results: [result({ upside: null })] }));
+    renderResults();
+    const dcfTile = await tile("DCF (FCFF)");
+    expect(dcfTile).toHaveTextContent("No price to compare with");
+  });
+
+  it("sets the DCF and the multiples apart, each in its own card", async () => {
+    serve();
+    renderResults();
+    for (const name of ["DCF", "Multiples"]) {
+      expect(await screen.findByRole("region", { name })).toHaveClass("rounded-lg", "border");
+    }
+  });
+
+  it("splits the DCF into its steps, each under a heading", async () => {
+    serve();
+    renderResults();
+    const card = await screen.findByRole("region", { name: "DCF" });
+    expect(
+      within(card)
+        .getAllByRole("heading", { level: 4 })
+        .map((heading) => heading.textContent),
+    ).toEqual(["Discount rate", "Free cash flow to firm", "Terminal value", "Equity bridge"]);
+  });
+
+  it("lays the terminal value and the bridge side by side at their own width", async () => {
+    serve();
+    renderResults();
+    const bridge = await screen.findByRole("table", { name: "Bridge" });
+    const terminal = screen.getByRole("table", { name: "Terminal value" });
+    // One wrapping row, not a half-and-half grid that pushes the bridge to the card's middle.
+    const row = bridge.parentElement!.parentElement!;
+    expect(row).toContainElement(terminal);
+    expect(row).toHaveClass("flex", "flex-wrap");
+    expect(row).not.toHaveClass("grid");
+  });
+
+  it("bolds the DCF's value per share in the bridge", async () => {
+    serve();
+    renderResults();
+    const table = await screen.findByRole("table", { name: "Bridge" });
+    const row = within(table).getByRole("rowheader", { name: "= Value per share" }).closest("tr");
+    expect(row).toHaveClass("font-semibold");
   });
 });
 

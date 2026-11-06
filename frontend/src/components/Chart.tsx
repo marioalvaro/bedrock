@@ -1,5 +1,10 @@
-import { LineChart } from "echarts/charts";
-import { GridComponent, LegendComponent, TooltipComponent } from "echarts/components";
+import { BarChart, LineChart } from "echarts/charts";
+import {
+  GridComponent,
+  LegendComponent,
+  MarkLineComponent,
+  TooltipComponent,
+} from "echarts/components";
 import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 import type { EChartsOption, XAXisComponentOption, YAXisComponentOption } from "echarts";
@@ -9,8 +14,16 @@ import { useMemo } from "react";
 import { usePrefersReducedMotion } from "@/lib/motion";
 import { useTheme, type Theme } from "@/lib/theme";
 
-// Only what the app draws is bundled (line charts with axes, legend and tooltip).
-echarts.use([LineChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer]);
+// Only what the app draws is bundled: line and bar charts with axes, legend, tooltip and mark lines.
+echarts.use([
+  LineChart,
+  BarChart,
+  GridComponent,
+  LegendComponent,
+  MarkLineComponent,
+  TooltipComponent,
+  CanvasRenderer,
+]);
 
 const SERIES_TOKENS = ["--chart-1", "--chart-2", "--chart-3", "--chart-4", "--chart-5"];
 

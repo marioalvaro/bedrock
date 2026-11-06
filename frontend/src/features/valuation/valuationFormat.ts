@@ -5,6 +5,8 @@ import type {
   DcfOut,
   DcfPeriodOut,
   DiscountOut,
+  GridAxisOut,
+  TornadoBarOut,
   ValuationInputIn,
   ValuationInputRowOut,
 } from "@/api/generated/types.gen";
@@ -13,9 +15,12 @@ import {
   formatPercent,
   formatPrice,
   formatSignedPercent,
+  formatValue,
   parseThreshold,
+  scaleLabel,
   toThresholdText,
 } from "@/lib/format";
+import type { Scale } from "@/lib/scale";
 
 const DASH = "—";
 
@@ -86,26 +91,31 @@ export function midYearText(midYear: boolean): string {
   return midYear ? "Mid-year discounting" : "End-of-year discounting";
 }
 
+/** A label and its value, a row of a label/value table. */
+export type LabelValue = [label: string, value: string];
+
 export interface TerminalTexts {
-  method: string;
-  implied: string | null;
-  share: string | null;
+  method: LabelValue;
+  implied: LabelValue | null;
+  share: LabelValue | null;
 }
 
-/** The terminal value's method, its implied counterpart and its share of EV. */
+/** The terminal value's method, its implied counterpart and its share of EV, as table rows. */
 export function terminalTexts({ terminal, terminal_share: share }: DcfOut): TerminalTexts {
   const gordon = terminal.method === "gordon";
-  const implied = gordon
-    ? terminal.implied_exit_multiple &&
-      `Implied exit multiple ${formatTimes(terminal.implied_exit_multiple)} EV/EBITDA`
-    : terminal.implied_growth &&
-      `Implied perpetual growth ${formatPercent(terminal.implied_growth)}`;
+  const implied: LabelValue | null = gordon
+    ? terminal.implied_exit_multiple
+      ? ["Implied exit multiple", `${formatTimes(terminal.implied_exit_multiple)} EV/EBITDA`]
+      : null
+    : terminal.implied_growth
+      ? ["Implied perpetual growth", formatPercent(terminal.implied_growth)]
+      : null;
   return {
     method: gordon
-      ? `Gordon growth ${formatPercent(terminal.growth)}`
-      : `Exit multiple ${formatTimes(terminal.exit_multiple)} EV/EBITDA`,
-    implied: implied || null,
-    share: share === null ? null : `Terminal value is ${Math.round(Number(share) * 100)}% of EV`,
+      ? ["Gordon growth", formatPercent(terminal.growth)]
+      : ["Exit multiple", `${formatTimes(terminal.exit_multiple)} EV/EBITDA`],
+    implied,
+    share: share === null ? null : ["Share of EV", `${Math.round(Number(share) * 100)}%`],
   };
 }
 
@@ -245,4 +255,92 @@ export function targetFields(source: string | null) {
     percentile: source === "own_history",
     year: source !== null && source !== "off",
   };
+}
+
+// ---- Sensitivity ----------------------------------------------------------------------------
+
+const MINUS = "−";
+
+/** How an input moves: its unit (`pct`, `days`, `USD`, `x`) and `add` or `scale`. */
+interface Move {
+  unit: string;
+  mode: string;
+}
+
+// A plain number without float noise or trailing zeros: 0.5, 10, 2.
+const plain = (number: number) => String(Number(number.toFixed(6)));
+
+// The size of a move of `amount` (≥ 0) in its unit: "1 pt", "2 pts", "5 days", "10%", "1×".
+function moveSize({ unit, mode }: Move, amount: number): string {
+  if (mode === "scale") return `${plain(amount * 100)}%`;
+  if (unit === "pct") return `${plain(amount * 100)} ${amount * 100 > 1 ? "pts" : "pt"}`;
+  if (unit === "days") return `${plain(amount)} ${amount === 1 ? "day" : "days"}`;
+  return `${plain(amount)}×`;
+}
+
+/** An input's unit step: "±1 pt", "±0.5 pt", "±5 days", "±10%", "±1×". */
+export function stepText(input: Move & { step: string }): string {
+  return `±${moveSize(input, Number(input.step))}`;
+}
+
+/** A signed shift of an input (an API `shifts` value, or ± its step): "−2 pts", "+10%"; zero "Base". */
+export function shiftText(input: Move, shift: string | number): string {
+  const amount = Number(shift);
+  if (amount === 0) return "Base";
+  return `${amount < 0 ? MINUS : "+"}${moveSize(input, Math.abs(amount))}`;
+}
+
+/** A tornado bar's category: the input's label with its step, "Revenue growth ±1 pt". */
+export const barLabel = (bar: TornadoBarOut) => `${bar.label} ${stepText(bar)}`;
+
+/** A bar's tooltip: "Revenue growth −1 pt: $172.10 · +1 pt: $203.50". */
+export function tornadoTooltip(bar: TornadoBarOut): string {
+  const step = Number(bar.step);
+  return (
+    `${bar.label} ${shiftText(bar, -step)}: ${formatPerShare(bar.low_value)} · ` +
+    `${shiftText(bar, step)}: ${formatPerShare(bar.high_value)}`
+  );
+}
+
+/** A change in value per share, for the tornado's axis: "+$7.73", "−$9.30", "$0.00". */
+export function formatChange(change: number): string {
+  const text = Math.abs(change).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  if (Number(text.replaceAll(",", "")) === 0) return `$${text}`;
+  return `${change < 0 ? MINUS : "+"}$${text}`;
+}
+
+const percentText = (value: string) => `${oneOrTwo(Number(value) * 100)}%`;
+
+type InputKind = TornadoBarOut["kind"];
+
+/**
+ * A grid header: a valuation input's value at the point ("7.85%", "12.0×"), a driver's shift
+ * ("−2 pts", "Base", "+10%").
+ */
+export function gridPointText(axis: GridAxisOut, kind: InputKind, index: number): string {
+  if (kind === "driver") return shiftText(axis, axis.shifts[index] ?? "0");
+  const point = axis.points[index] ?? null;
+  if (point === null) return DASH;
+  return axis.unit === "pct" ? percentText(point) : formatTimes(point);
+}
+
+/** A driver's grid header title: its first forecast year's value at the point; none otherwise. */
+export function gridPointTitle(
+  axis: GridAxisOut,
+  kind: InputKind,
+  index: number,
+  scale: Scale,
+): string | undefined {
+  const point = axis.points[index] ?? null;
+  if (kind !== "driver" || point === null) return undefined;
+  const value =
+    axis.unit === "pct"
+      ? percentText(point)
+      : axis.unit === "days"
+        ? `${oneOrTwo(Number(point))} days`
+        : `${formatValue(point, "USD", scale)} ${scaleLabel("USD", scale)}`;
+  return `First forecast year: ${value}`;
 }

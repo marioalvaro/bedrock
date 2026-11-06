@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { companyKey } from "@/api/companies";
 import { ApiError } from "@/api/errors";
 import {
+  getSensitivityGridApiV1CompaniesTickerScenariosScenarioIdCasesCaseSensitivityGridGet,
+  getTornadoApiV1CompaniesTickerScenariosScenarioIdCasesCaseSensitivityTornadoGet,
   getValuationApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationGet,
   getValuationInputsApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationInputsGet,
   getValuationSummaryApiV1CompaniesTickerScenariosScenarioIdValuationGet,
@@ -14,6 +16,8 @@ import {
 } from "@/api/generated/sdk.gen";
 import {
   ValuationUnavailable,
+  sensitivityGridQueryOptions,
+  tornadoQueryOptions,
   usePutValuationInputs,
   useResetValuationInputs,
   valuationInputsQueryOptions,
@@ -21,9 +25,17 @@ import {
   valuationSummaryQueryOptions,
 } from "@/api/valuation";
 import { errorResult, okResult } from "@/test/responses";
-import { valuation, valuationInputs, valuationSummary } from "@/test/valuation";
+import {
+  sensitivityGrid,
+  tornado,
+  valuation,
+  valuationInputs,
+  valuationSummary,
+} from "@/test/valuation";
 
 vi.mock("@/api/generated/sdk.gen", () => ({
+  getTornadoApiV1CompaniesTickerScenariosScenarioIdCasesCaseSensitivityTornadoGet: vi.fn(),
+  getSensitivityGridApiV1CompaniesTickerScenariosScenarioIdCasesCaseSensitivityGridGet: vi.fn(),
   getValuationInputsApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationInputsGet: vi.fn(),
   getValuationApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationGet: vi.fn(),
   getValuationSummaryApiV1CompaniesTickerScenariosScenarioIdValuationGet: vi.fn(),
@@ -46,6 +58,13 @@ const putInputs = vi.mocked(
 );
 const resetInputs = vi.mocked(
   resetValuationInputsApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationInputsResetPost,
+);
+
+const getTornado = vi.mocked(
+  getTornadoApiV1CompaniesTickerScenariosScenarioIdCasesCaseSensitivityTornadoGet,
+);
+const getGrid = vi.mocked(
+  getSensitivityGridApiV1CompaniesTickerScenariosScenarioIdCasesCaseSensitivityGridGet,
 );
 
 afterEach(() => vi.clearAllMocks());
@@ -85,6 +104,24 @@ describe("keys", () => {
       2,
       "valuation-summary",
     ]);
+    expect(tornadoQueryOptions("AAPL", 2, "bull").queryKey).toEqual([
+      ...aapl,
+      "scenarios",
+      2,
+      "bull",
+      "tornado",
+    ]);
+    expect(
+      sensitivityGridQueryOptions("AAPL", 2, "bear", "discount_rate", "revenue_growth").queryKey,
+    ).toEqual([
+      ...aapl,
+      "scenarios",
+      2,
+      "bear",
+      "sensitivity-grid",
+      "discount_rate",
+      "revenue_growth",
+    ]);
   });
 });
 
@@ -112,6 +149,26 @@ const queries = [
     args: { path: { ticker: "AAPL", scenario_id: 2 } },
     body: valuationSummary({ scenario_id: 2 }),
     bad: { ...valuationSummary(), cases: null },
+  },
+  {
+    name: "tornadoQueryOptions",
+    options: () => tornadoQueryOptions("AAPL", 2, "bull"),
+    sdk: getTornado,
+    args: { path: { ticker: "AAPL", scenario_id: 2, case: "bull" } },
+    body: tornado({ scenario_id: 2, case: "bull" }),
+    bad: { ...tornado(), bars: null },
+  },
+  {
+    name: "sensitivityGridQueryOptions",
+    options: () =>
+      sensitivityGridQueryOptions("AAPL", 2, "bull", "discount_rate", "terminal_growth"),
+    sdk: getGrid,
+    args: {
+      path: { ticker: "AAPL", scenario_id: 2, case: "bull" },
+      query: { x: "discount_rate", y: "terminal_growth" },
+    },
+    body: sensitivityGrid({ scenario_id: 2, case: "bull" }),
+    bad: { ...sensitivityGrid(), x: null },
   },
 ];
 

@@ -5,6 +5,7 @@ import type { ScenarioCase } from "@/api/scenarios";
 import { ValuationUnavailable, valuationSummaryQueryOptions } from "@/api/valuation";
 import { cn } from "@/lib/utils";
 
+import { CARD } from "./card";
 import { formatPerShare, formatUpside, priceText, upsideClass } from "./valuationFormat";
 
 // The comparison's order and colors (features/scenarios/ScenarioCompare.tsx).
@@ -20,14 +21,27 @@ interface ValuationSummaryProps {
   scenarioCase: ScenarioCase;
 }
 
-function SummaryCell({ entry, method }: { entry: SummaryCaseOut | undefined; method: string }) {
+// The picked case's column is shaded: it is the case the rest of the tab details.
+const PICKED = "bg-muted";
+
+function SummaryCell({
+  entry,
+  method,
+  picked,
+}: {
+  entry: SummaryCaseOut | undefined;
+  method: string;
+  picked: boolean;
+}) {
   const error = entry?.error ?? entry?.errors[method];
   if (error) {
-    return <td className="text-muted-foreground px-3 py-1 text-xs">{error}</td>;
+    return (
+      <td className={cn("text-muted-foreground px-3 py-1 text-xs", picked && PICKED)}>{error}</td>
+    );
   }
   const upside = entry?.upside[method] ?? null;
   return (
-    <td className="num px-3 py-1 text-right">
+    <td className={cn("num px-3 py-1 text-right", picked && PICKED)}>
       <div>{formatPerShare(entry?.value_per_share[method] ?? null)}</div>
       <div className={cn("text-xs", upsideClass(upside))}>{formatUpside(upside)}</div>
     </td>
@@ -51,8 +65,11 @@ export function ValuationSummary({ ticker, scenarioId, scenarioCase }: Valuation
 
   const byCase = new Map(data.cases.map((entry) => [entry.case, entry]));
   return (
-    <section aria-label="Summary" className="space-y-2 px-4 py-3">
-      <p className="text-sm">{priceText(data.price, data.price_date)}</p>
+    <section aria-label="Summary" className={CARD}>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-base font-semibold">Target price by case</h2>
+        <p className="text-muted-foreground text-sm">{priceText(data.price, data.price_date)}</p>
+      </div>
       {data.methods.length === 0 ? (
         // No case ran, so there is no method row: each case's reason instead.
         <ul className="text-muted-foreground text-sm">
@@ -75,7 +92,7 @@ export function ValuationSummary({ ticker, scenarioId, scenarioCase }: Valuation
                   className={cn(
                     "px-3 py-1 text-right",
                     column.text,
-                    column.case === scenarioCase ? "font-bold" : "font-normal",
+                    column.case === scenarioCase ? cn("font-bold", PICKED) : "font-normal",
                   )}
                 >
                   {column.label}
@@ -94,6 +111,7 @@ export function ValuationSummary({ ticker, scenarioId, scenarioCase }: Valuation
                     key={column.case}
                     entry={byCase.get(column.case)}
                     method={method.key}
+                    picked={column.case === scenarioCase}
                   />
                 ))}
               </tr>

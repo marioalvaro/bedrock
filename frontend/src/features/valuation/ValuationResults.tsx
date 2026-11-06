@@ -11,10 +11,11 @@ import type { ScenarioCase } from "@/api/scenarios";
 import { ValuationUnavailable, valuationQueryOptions } from "@/api/valuation";
 import { Button } from "@/components/ui/button";
 import { CASE_PARAM, SCENARIO_PARAM } from "@/features/scenarios/useScenarioParam";
-import { formatValue, scaleLabel } from "@/lib/format";
+import { formatPercent, formatValue, scaleLabel } from "@/lib/format";
 import { useScale, type Scale } from "@/lib/scale";
 import { cn } from "@/lib/utils";
 
+import { CARD } from "./card";
 import {
   discountText,
   formatPerShare,
@@ -25,6 +26,7 @@ import {
   sourceText,
   terminalTexts,
   upsideClass,
+  type LabelValue,
 } from "./valuationFormat";
 
 // A valuation the user can unblock by setting drivers in the Scenarios tab.
@@ -51,6 +53,8 @@ const PERIOD_ROWS: {
 ];
 
 const CELL = "num px-3 py-1 text-right";
+// The heading of a step inside a method's card.
+const SUBHEAD = "text-muted-foreground text-xs font-medium tracking-wide uppercase";
 const ROW_HEADER = "px-3 py-1 text-left font-normal";
 
 function CashFlows({ details, scale }: { details: DcfOut; scale: Scale }) {
@@ -97,15 +101,26 @@ function CashFlows({ details, scale }: { details: DcfOut; scale: Scale }) {
 
 function Terminal({ details, scale }: { details: DcfOut; scale: Scale }) {
   const texts = terminalTexts(details);
+  const rows: LabelValue[] = [
+    texts.method,
+    ["Terminal value", usd(details.terminal.value, scale)],
+    ["Present value", usd(details.terminal.present_value, scale)],
+    ...(texts.implied ? [texts.implied] : []),
+    ...(texts.share ? [texts.share] : []),
+  ];
   return (
-    <section aria-label="Terminal value" className="space-y-0.5 text-sm">
-      <p>
-        {texts.method} · Terminal value {usd(details.terminal.value, scale)} · Present value{" "}
-        {usd(details.terminal.present_value, scale)}
-      </p>
-      {texts.implied && <p className="text-muted-foreground">{texts.implied}</p>}
-      {texts.share && <p className="text-muted-foreground">{texts.share}</p>}
-    </section>
+    <table aria-label="Terminal value" className="text-sm">
+      <tbody>
+        {rows.map(([name, text]) => (
+          <tr key={name} className="border-border border-b">
+            <th scope="row" className={ROW_HEADER}>
+              {name}
+            </th>
+            <td className={CELL}>{text}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
@@ -119,24 +134,24 @@ function Bridge({
   scale: Scale;
 }) {
   const { bridge } = view;
-  const rows: [string, string, string?][] = [
-    ["Enterprise value", usd(dcf.enterprise_value, scale)],
-    ["− Debt", usd(bridge.total_debt, scale)],
-    ["+ Cash", usd(bridge.cash, scale)],
-    ["+ Short-term investments", usd(bridge.short_term_investments, scale)],
-    ["− Minority interest", usd(bridge.minority_interest, scale)],
-    ["− Temporary equity", usd(bridge.temporary_equity, scale)],
-    ["= Equity value", usd(dcf.equity_value, scale)],
-    ["÷ Shares", formatValue(view.shares, "shares", scale)],
-    ["= Value per share", formatPerShare(dcf.value_per_share)],
-    ["Upside vs price", formatUpside(dcf.upside), upsideClass(dcf.upside)],
+  const rows: { name: string; text: string; color?: string; bold?: boolean }[] = [
+    { name: "Enterprise value", text: usd(dcf.enterprise_value, scale) },
+    { name: "− Debt", text: usd(bridge.total_debt, scale) },
+    { name: "+ Cash", text: usd(bridge.cash, scale) },
+    { name: "+ Short-term investments", text: usd(bridge.short_term_investments, scale) },
+    { name: "− Minority interest", text: usd(bridge.minority_interest, scale) },
+    { name: "− Temporary equity", text: usd(bridge.temporary_equity, scale) },
+    { name: "= Equity value", text: usd(dcf.equity_value, scale) },
+    { name: "÷ Shares", text: formatValue(view.shares, "shares", scale) },
+    { name: "= Value per share", text: formatPerShare(dcf.value_per_share), bold: true },
+    { name: "Upside vs price", text: formatUpside(dcf.upside), color: upsideClass(dcf.upside) },
   ];
   return (
     <table aria-label="Bridge" className="text-sm">
       <tbody>
-        {rows.map(([name, text, color]) => (
-          <tr key={name} className="border-border border-b">
-            <th scope="row" className={ROW_HEADER}>
+        {rows.map(({ name, text, color, bold }) => (
+          <tr key={name} className={cn("border-border border-b", bold && "font-semibold")}>
+            <th scope="row" className={cn(ROW_HEADER, bold && "font-semibold")}>
               {name}
             </th>
             <td className={cn(CELL, color)}>{text}</td>
@@ -151,17 +166,33 @@ function Dcf({ view, scale }: { view: ValuationOut; scale: Scale }) {
   const dcf = view.results.find((result) => result.key === DCF_KEY);
   if (!dcf) return null;
   return (
-    <section aria-label="DCF" className="space-y-2">
-      <h3 className="text-sm font-medium">{label(dcf)}</h3>
+    <section aria-label="DCF" className={CARD}>
+      <h3 className="text-base font-semibold">{label(dcf)}</h3>
       {dcf.error || !dcf.dcf ? (
         <p className="text-destructive text-sm">{dcf.error ?? "No DCF result."}</p>
       ) : (
         <>
-          <p className="text-sm">{discountText(dcf.dcf.discount)}</p>
-          <p className="text-muted-foreground text-xs">{midYearText(dcf.dcf.mid_year)}</p>
-          <CashFlows details={dcf.dcf} scale={scale} />
-          <Terminal details={dcf.dcf} scale={scale} />
-          <Bridge view={view} dcf={dcf} scale={scale} />
+          <div className="space-y-1">
+            <h4 className={SUBHEAD}>Discount rate</h4>
+            <p className="text-sm">{discountText(dcf.dcf.discount)}</p>
+            <p className="text-muted-foreground text-xs">{midYearText(dcf.dcf.mid_year)}</p>
+          </div>
+          <div className="space-y-1">
+            <h4 className={SUBHEAD}>Free cash flow to firm</h4>
+            <CashFlows details={dcf.dcf} scale={scale} />
+          </div>
+          {/* The two last steps side by side, each at its own width: terminal value, then EV to
+              equity; they wrap on a narrow screen. */}
+          <div className="flex flex-wrap items-start gap-x-12 gap-y-4">
+            <div className="space-y-1">
+              <h4 className={SUBHEAD}>Terminal value</h4>
+              <Terminal details={dcf.dcf} scale={scale} />
+            </div>
+            <div className="space-y-1">
+              <h4 className={SUBHEAD}>Equity bridge</h4>
+              <Bridge view={view} dcf={dcf} scale={scale} />
+            </div>
+          </div>
         </>
       )}
     </section>
@@ -171,8 +202,8 @@ function Dcf({ view, scale }: { view: ValuationOut; scale: Scale }) {
 function Multiples({ view, scale }: { view: ValuationOut; scale: Scale }) {
   const targets = view.results.filter((result) => result.key !== DCF_KEY);
   return (
-    <section aria-label="Multiples" className="space-y-2">
-      <h3 className="text-sm font-medium">Multiples</h3>
+    <section aria-label="Multiples" className={CARD}>
+      <h3 className="text-base font-semibold">Multiples</h3>
       {targets.length === 0 ? (
         <p className="text-muted-foreground text-sm">No multiple target is on.</p>
       ) : (
@@ -237,6 +268,65 @@ function Multiples({ view, scale }: { view: ValuationOut; scale: Scale }) {
   );
 }
 
+// What a method's target price rests on: the discount rate, or the multiple and its year.
+function basis(result: ValuationResultOut): string | null {
+  if (result.dcf) {
+    const { method, rate } = result.dcf.discount;
+    return `${method === "wacc" ? "WACC" : "Discount rate"} ${formatPercent(rate)}`;
+  }
+  if (result.multiple) {
+    return `${formatTimes(result.multiple.multiple)} ${result.multiple.period_label}`;
+  }
+  return null;
+}
+
+/** A tile per method: its target price (value per share) up front, then its upside vs the price. */
+function TargetPrices({ view }: { view: ValuationOut }) {
+  return (
+    <ul aria-label="Target prices" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {view.results.map((result) => {
+        const failed = result.error !== null || result.value_per_share === null;
+        const context = basis(result);
+        return (
+          <li key={result.key} aria-label={result.label} className={cn(CARD, "space-y-1 p-3")}>
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="text-sm font-semibold">{label(result)}</span>
+              {context && !failed && (
+                <span className="text-muted-foreground text-xs">{context}</span>
+              )}
+            </div>
+            <div className="text-muted-foreground text-xs">Target price</div>
+            {failed ? (
+              <>
+                <div className="text-muted-foreground text-2xl">—</div>
+                <p className="text-muted-foreground text-xs">{result.error}</p>
+              </>
+            ) : (
+              <>
+                <div className="text-2xl font-semibold tabular-nums">
+                  {formatPerShare(result.value_per_share)}
+                </div>
+                <p className="text-muted-foreground text-xs">
+                  {view.price === null ? (
+                    "No price to compare with"
+                  ) : (
+                    <>
+                      <span className={cn("font-medium", upsideClass(result.upside))}>
+                        {formatUpside(result.upside)}
+                      </span>{" "}
+                      vs price {formatPerShare(view.price)}
+                    </>
+                  )}
+                </p>
+              </>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 interface ValuationResultsProps {
   ticker: string;
   scenarioId: number;
@@ -273,7 +363,8 @@ export function ValuationResults({ ticker, scenarioId, scenarioCase }: Valuation
 
   const caveats = data.results.filter((result) => result.caveat);
   return (
-    <section aria-label="Results" className="space-y-4 px-4 py-3">
+    <section aria-label="Results" className="space-y-4">
+      <TargetPrices view={data} />
       <Dcf view={data} scale={scale} />
       <Multiples view={data} scale={scale} />
       {caveats.map((result) => (

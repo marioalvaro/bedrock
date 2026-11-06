@@ -2,6 +2,8 @@ import { queryOptions, useMutation, useQueryClient, type QueryClient } from "@ta
 
 import { ApiError, unwrap } from "@/api/errors";
 import {
+  getSensitivityGridApiV1CompaniesTickerScenariosScenarioIdCasesCaseSensitivityGridGet,
+  getTornadoApiV1CompaniesTickerScenariosScenarioIdCasesCaseSensitivityTornadoGet,
   getValuationApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationGet,
   getValuationInputsApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationInputsGet,
   getValuationSummaryApiV1CompaniesTickerScenariosScenarioIdValuationGet,
@@ -9,6 +11,8 @@ import {
   resetValuationInputsApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationInputsResetPost,
 } from "@/api/generated/sdk.gen";
 import type {
+  SensitivityGridOut,
+  TornadoOut,
   ValuationInputIn,
   ValuationInputsOut,
   ValuationOut,
@@ -105,6 +109,63 @@ export const valuationSummaryQueryOptions = (ticker: string, id: number) =>
         }),
       );
       if (!Array.isArray(view?.methods) || !Array.isArray(view?.cases)) throw unexpected();
+      return view;
+    },
+  });
+
+/**
+ * GET …/cases/{case}/sensitivity/tornado: the DCF value per share's change per input at its unit
+ * step, bars sorted by range. Rejects a 200 without `bars` and `base_value`.
+ */
+export const tornadoQueryOptions = (ticker: string, id: number, scenarioCase: ScenarioCase) =>
+  queryOptions<TornadoOut>({
+    queryKey: [...scenarioKey(ticker, id), scenarioCase, "tornado"],
+    queryFn: async () => {
+      const view = await fetchValuation(
+        getTornadoApiV1CompaniesTickerScenariosScenarioIdCasesCaseSensitivityTornadoGet({
+          path: { ticker, scenario_id: id, case: scenarioCase },
+        }),
+      );
+      if (!Array.isArray(view?.bars) || typeof view?.base_value !== "string") throw unexpected();
+      return view;
+    },
+  });
+
+const isAxis = (axis: unknown) =>
+  typeof axis === "object" &&
+  axis !== null &&
+  Array.isArray((axis as { shifts?: unknown }).shifts) &&
+  Array.isArray((axis as { points?: unknown }).points);
+
+/**
+ * GET …/cases/{case}/sensitivity/grid?x&y: the 5 × 5 DCF value per share over two inputs (rows
+ * are y). Rejects a 200 without both axes, `values`, `upside` and `errors`.
+ */
+export const sensitivityGridQueryOptions = (
+  ticker: string,
+  id: number,
+  scenarioCase: ScenarioCase,
+  x: string,
+  y: string,
+) =>
+  queryOptions<SensitivityGridOut>({
+    queryKey: [...scenarioKey(ticker, id), scenarioCase, "sensitivity-grid", x, y],
+    queryFn: async () => {
+      const view = await fetchValuation(
+        getSensitivityGridApiV1CompaniesTickerScenariosScenarioIdCasesCaseSensitivityGridGet({
+          path: { ticker, scenario_id: id, case: scenarioCase },
+          query: { x, y },
+        }),
+      );
+      if (
+        !isAxis(view?.x) ||
+        !isAxis(view?.y) ||
+        !Array.isArray(view?.values) ||
+        !Array.isArray(view?.upside) ||
+        !Array.isArray(view?.errors)
+      ) {
+        throw unexpected();
+      }
       return view;
     },
   });

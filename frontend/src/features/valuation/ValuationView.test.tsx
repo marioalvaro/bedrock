@@ -1,8 +1,10 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  getSensitivityGridApiV1CompaniesTickerScenariosScenarioIdCasesCaseSensitivityGridGet,
+  getTornadoApiV1CompaniesTickerScenariosScenarioIdCasesCaseSensitivityTornadoGet,
   getValuationApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationGet,
   getValuationInputsApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationInputsGet,
   getValuationSummaryApiV1CompaniesTickerScenariosScenarioIdValuationGet,
@@ -10,7 +12,13 @@ import {
 } from "@/api/generated/sdk.gen";
 import { errorResult, okResult } from "@/test/responses";
 import { scenarios } from "@/test/scenarios";
-import { valuation, valuationInputs, valuationSummary } from "@/test/valuation";
+import {
+  sensitivityGrid,
+  tornado,
+  valuation,
+  valuationInputs,
+  valuationSummary,
+} from "@/test/valuation";
 import { renderWithClient, seen } from "@/test/valuationView";
 
 import { ValuationView } from "./ValuationView";
@@ -21,7 +29,10 @@ vi.mock("@/api/generated/sdk.gen", () => ({
   getValuationApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationGet: vi.fn(),
   getValuationInputsApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationInputsGet: vi.fn(),
   listSetsApiV1CompaniesTickerCompsSetsGet: vi.fn(),
+  getTornadoApiV1CompaniesTickerScenariosScenarioIdCasesCaseSensitivityTornadoGet: vi.fn(),
+  getSensitivityGridApiV1CompaniesTickerScenariosScenarioIdCasesCaseSensitivityGridGet: vi.fn(),
 }));
+vi.mock("echarts-for-react/esm/core", () => ({ default: vi.fn(() => null) }));
 
 const list = vi.mocked(listScenariosApiV1CompaniesTickerScenariosGet);
 const getSummary = vi.mocked(
@@ -34,7 +45,16 @@ const getInputs = vi.mocked(
   getValuationInputsApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationInputsGet,
 );
 
+const getTornado = vi.mocked(
+  getTornadoApiV1CompaniesTickerScenariosScenarioIdCasesCaseSensitivityTornadoGet,
+);
+const getGrid = vi.mocked(
+  getSensitivityGridApiV1CompaniesTickerScenariosScenarioIdCasesCaseSensitivityGridGet,
+);
+
 beforeEach(() => {
+  getTornado.mockResolvedValue(okResult(tornado()) as never);
+  getGrid.mockResolvedValue(okResult(sensitivityGrid()) as never);
   list.mockResolvedValue(okResult(scenarios()) as never);
   getSummary.mockResolvedValue(okResult(valuationSummary()) as never);
   getValuation.mockResolvedValue(okResult(valuation()) as never);
@@ -46,6 +66,37 @@ const renderView = (path?: string) => renderWithClient(<ValuationView ticker="AA
 const lastPath = (mock: typeof getValuation | typeof getInputs) => mock.mock.calls.at(-1)?.[0].path;
 
 describe("ValuationView", () => {
+  it("groups the picked case's results, sensitivity and inputs under its heading", async () => {
+    renderView("/c/AAPL/valuation?scenario=2&case=bear");
+    const group = await screen.findByRole("region", { name: "Bear case" });
+    expect(within(group).getByRole("heading", { level: 2, name: "Bear case" })).toBeInTheDocument();
+    expect(group).toHaveTextContent("Cycle scenario");
+    for (const name of ["Results", "Sensitivity", "Inputs"]) {
+      expect(await within(group).findByRole("region", { name })).toBeInTheDocument();
+    }
+    // The summary compares the cases, so it sits above the group, not in it.
+    const summary = await screen.findByRole("region", { name: "Summary" });
+    expect(group).not.toContainElement(summary);
+  });
+
+  it("shows the picked case's sensitivity between its results and its inputs", async () => {
+    renderView("/c/AAPL/valuation?scenario=2&case=bear");
+    const results = await screen.findByRole("region", { name: "Results" });
+    const sensitivity = await screen.findByRole("region", { name: "Sensitivity" });
+    const inputs = await screen.findByRole("region", { name: "Inputs" });
+    expect(
+      results.compareDocumentPosition(sensitivity) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      sensitivity.compareDocumentPosition(inputs) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(getTornado.mock.calls.at(-1)?.[0].path).toEqual({
+      ticker: "AAPL",
+      scenario_id: 2,
+      case: "bear",
+    });
+  });
+
   it("shows the summary, the picked case's results and its inputs, top to bottom", async () => {
     renderView();
     const summary = await screen.findByRole("region", { name: "Summary" });
