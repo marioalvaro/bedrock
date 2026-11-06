@@ -20,7 +20,7 @@ from bedrock.forecast.history import (
     forecast_years,
     opening_period,
 )
-from bedrock.forecast.resolve import DriverRow, resolve_drivers
+from bedrock.forecast.resolve import DriverRow, ResolvedDrivers, resolve_drivers
 from tests.forecast_data import fixture_history
 
 GROWTH = ScenarioSettings("growth")
@@ -35,7 +35,8 @@ def history(ticker: str) -> ForecastHistory:
     return fixture_history(ticker)
 
 
-def forecast(ticker: str, scenario: str, horizon: Horizon) -> ForecastStatements:
+def case_drivers(ticker: str, scenario: str, horizon: Horizon) -> ResolvedDrivers:
+    """The resolution of a case: Base defaults (DE: gross margin set), Bull and Bear offsets."""
     h = history(ticker)
     years = forecast_years(h, horizon.years)
     # DE has no cost of revenue from FY2018, so its Base sets gross margin.
@@ -54,14 +55,18 @@ def forecast(ticker: str, scenario: str, horizon: Horizon) -> ForecastStatements
             for y in years
         ]
     )
-    drivers = resolve_drivers(
+    return resolve_drivers(
         base_rows,
         own_rows if offsets else base_rows,
         default_drivers(h, GROWTH),
         years,
         is_base=offsets is None,
     )
-    return DriverModel().run(h, drivers, horizon, GROWTH)
+
+
+def forecast(ticker: str, scenario: str, horizon: Horizon) -> ForecastStatements:
+    drivers = case_drivers(ticker, scenario, horizon)
+    return DriverModel().run(history(ticker), drivers, horizon, GROWTH)
 
 
 @pytest.mark.parametrize("horizon", HORIZONS, ids=lambda h: f"{h.years}y{h.quarters}q")
