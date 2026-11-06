@@ -3,6 +3,7 @@ import type { CellValueChangedEvent } from "ag-grid-community";
 import { useCallback, useMemo, useState } from "react";
 
 import { companyErrorMessage } from "@/api/companies";
+import { usePutEngines } from "@/api/engines";
 import type {
   DriverRowIn,
   DriverRowOut,
@@ -39,7 +40,9 @@ import {
   periodName,
   toDriverRows,
   type DriverMode,
+  type EngineCode,
 } from "./driverCells";
+import { DriverEnginesSheet } from "./DriverEnginesSheet";
 import { columnDefs, forecastColumn, MODE_LABELS, type Handlers, type Row } from "./driverColumns";
 import { YearModesContext, type YearModes, type YearModeValue } from "./yearModes";
 
@@ -82,6 +85,9 @@ export function DriverGrid({
   });
   const { mutate: putRows } = usePutDrivers(ticker);
   const { mutate: putYearMode, isPending: modeSaving } = useSetYearMode(ticker, scenario.id);
+  const { mutate: putEngines, isPending: engineSaving } = usePutEngines(ticker, scenario.id);
+  // The driver whose Engines sheet is open.
+  const [inspecting, setInspecting] = useState<DriverRowOut | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   // The mode picked for a row with no own values (a row with own values has its stored kind).
   const [picked, setPicked] = useState<Record<string, DriverMode>>({});
@@ -146,8 +152,16 @@ export function DriverGrid({
         }
         send([driverReset(grid, driver)]);
       },
+      onEngine: (driver, engine: EngineCode) => {
+        setMessage(null);
+        putEngines([{ driver_code: driver.code, engine }], {
+          onError: (e) => setMessage(companyErrorMessage(e, "Could not change the engine.")),
+        });
+      },
+      onInspect: setInspecting,
+      engineSaving,
     };
-  }, [isBase, picked, send, grid]);
+  }, [isBase, picked, send, grid, putEngines, engineSaving]);
 
   const rows = useMemo<Row[]>(
     () => (grid ? toDriverRows(grid).map((row) => ({ ...row, edits: {} })) : []),
@@ -260,6 +274,17 @@ export function DriverGrid({
             </p>
           )}
         </>
+      )}
+      {inspecting && (
+        <DriverEnginesSheet
+          key={`${scenario.id}:${scenarioCase}:${inspecting.code}`}
+          ticker={ticker}
+          scenarioId={scenario.id}
+          scenarioCase={scenarioCase}
+          driver={inspecting}
+          scale={scale}
+          onClose={() => setInspecting(null)}
+        />
       )}
       <AlertDialog open={switching !== null} onOpenChange={(open) => !open && setSwitching(null)}>
         <AlertDialogContent>

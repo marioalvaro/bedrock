@@ -7,7 +7,10 @@ import {
   driverClear,
   driverEdit,
   driverReset,
+  engineOptions,
   forecastCell,
+  formatEngineError,
+  formatSeasonalIndex,
   formatDriverOffset,
   formatDriverValue,
   parseDriverText,
@@ -429,6 +432,15 @@ describe("year modes", () => {
       });
     });
 
+    it("keeps the STL explanation on a locked seasonal quarter", () => {
+      const row = driverRow({ values: ["0.468", "0.452"], sources: ["seasonal", "seasonal"] });
+      const cell = forecastCell(row, 0, "value", "M", quartersByYear);
+      expect(cell.locked).toBe(true);
+      expect(cell.title).toBe(
+        "FY26 value + the seasonal index (STL). FY26 is set annually. Switch it to By quarter to edit quarters.",
+      );
+    });
+
     it("leaves the quarters of a by-quarter year editable", () => {
       const quarters = quarterlyGrid();
       const cell = forecastCell(quarters.rows[1]!, 0, "value", "M", quarters);
@@ -498,5 +510,179 @@ describe("year modes", () => {
       expect(canReset(quarters, quarters.rows[1]!)).toBe(true);
       expect(canReset(quarters, quarters.rows[0]!)).toBe(false);
     });
+  });
+});
+
+describe("engine defaults (M6)", () => {
+  const grid = driverGrid();
+  const engineRow = (overrides: Parameters<typeof driverRow>[0] = {}) =>
+    driverRow({
+      code: "gross_margin",
+      values: ["0.4578", "0.4484"],
+      sources: ["engine", "engine"],
+      engine_used: "arima",
+      seasonal: true,
+      ...overrides,
+    });
+
+  it("shows an engine default muted, naming the engine and Auto's rule", () => {
+    const cell = forecastCell(engineRow(), 0, "value", "M", grid);
+    expect(cell.text).toBe("45.8%");
+    expect(cell.classes).toEqual(["text-muted-foreground"]);
+    expect(cell.title).toBe("Default: ARIMA forecast · Auto: lowest holdout error");
+    expect(cell.editText).toBe("45.78");
+  });
+
+  it("names an explicitly chosen engine without Auto's rule", () => {
+    const row = engineRow({ engine: "ets", engine_used: "ets" });
+    expect(forecastCell(row, 1, "value", "M", grid).title).toBe("Default: ETS forecast");
+  });
+
+  it("names the blend", () => {
+    const row = engineRow({ engine: "blend", engine_used: "blend" });
+    expect(forecastCell(row, 0, "value", "M", grid).title).toBe("Default: Blend forecast");
+  });
+
+  it("puts the engine note in place of Auto's rule", () => {
+    const row = engineRow({ engine_used: "blend", engine_note: "Auto: 9 years of history; blend" });
+    expect(forecastCell(row, 0, "value", "M", grid).title).toBe(
+      "Default: Blend forecast · Auto: 9 years of history; blend",
+    );
+  });
+
+  it("adds the note to a 3-year-mean default (Auto fell back)", () => {
+    const row = driverRow({ engine_note: "Auto: 6 years of history (needs 8); 3-year mean" });
+    expect(forecastCell(row, 0, "value", "M", grid).title).toBe(
+      "Default: mean of FY23–FY25 · Auto: 6 years of history (needs 8); 3-year mean",
+    );
+  });
+
+  it("titles a seasonal quarter by its year's value and the STL index", () => {
+    const quarters = quarterlyGrid();
+    const row = driverRow({ values: ["0.47", "0.46"], sources: ["seasonal", "seasonal"] });
+    const cell = forecastCell(row, 1, "value", "M", quarters);
+    expect(cell.text).toBe("46.0%");
+    expect(cell.classes).toEqual(["text-muted-foreground"]);
+    expect(cell.title).toBe("FY26 value + the seasonal index (STL)");
+  });
+});
+
+describe("cross-check (M6)", () => {
+  const grid = driverGrid();
+  const checked = (
+    unit: "pct" | "days" | "USD",
+    value: string,
+    p05: string,
+    p95: string,
+    outside: boolean,
+  ) =>
+    driverRow({
+      unit,
+      values: [value, value],
+      sources: ["own", "own"],
+      own: [value, value],
+      kind: "value",
+      check: [{ engine: "arima", p05, p95, outside }, null],
+    });
+
+  it("adds the range to the title of a value within it", () => {
+    const cell = forecastCell(
+      checked("pct", "0.45", "0.4186", "0.4970", false),
+      0,
+      "value",
+      "M",
+      grid,
+    );
+    expect(cell.classes).toEqual([]);
+    expect(cell.title).toBe("Set in this scenario · Within the ARIMA 90% range (41.9%–49.7%)");
+  });
+
+  it("marks a value outside the range", () => {
+    const cell = forecastCell(
+      checked("pct", "0.9", "0.4186", "0.4970", true),
+      0,
+      "value",
+      "M",
+      grid,
+    );
+    expect(cell.classes).toEqual(["cell-check-outside"]);
+    expect(cell.title).toBe("Set in this scenario · Outside the ARIMA 90% range (41.9%–49.7%)");
+  });
+
+  it("formats the range by the row's unit", () => {
+    expect(
+      forecastCell(checked("days", "70", "55.04", "64.96", true), 0, "value", "M", grid).title,
+    ).toBe("Set in this scenario · Outside the ARIMA 90% range (55.0–65.0)");
+    expect(
+      forecastCell(checked("USD", "1", "80000000000", "95500000000", false), 0, "value", "B", grid)
+        .title,
+    ).toBe("Set in this scenario · Within the ARIMA 90% range (80.0–95.5)");
+  });
+
+  it("checks an inherited or offset value too, and leaves a year without a check alone", () => {
+    const row = driverRow({
+      values: ["0.45", "0.46"],
+      sources: ["base", "base"],
+      check: [{ engine: "blend", p05: "0.42", p95: "0.50", outside: false }, null],
+    });
+    expect(forecastCell(row, 0, "value", "M", grid).title).toBe(
+      "Inherited from Base · Within the Blend 90% range (42.0%–50.0%)",
+    );
+    expect(forecastCell(row, 1, "value", "M", grid).title).toBe("Inherited from Base");
+    const offset = driverRow({
+      values: ["0.48", null],
+      sources: ["offset", "base"],
+      own: ["0.01", null],
+      kind: "offset",
+      check: [{ engine: "ets", p05: "0.42", p95: "0.47", outside: true }, null],
+    });
+    const cell = forecastCell(offset, 0, "offset", "M", grid);
+    expect(cell.classes).toEqual(["cell-check-outside"]);
+    expect(cell.title).toBe("Base + 1.0 pts = 48.0% · Outside the ETS 90% range (42.0%–47.0%)");
+  });
+});
+
+describe("engineOptions", () => {
+  it("lists Auto with its pick, Mean, ARIMA, ETS and Blend", () => {
+    expect(engineOptions(driverRow({ engine: "auto", engine_used: "ets" }))).toEqual([
+      { value: "auto", label: "Auto · ETS" },
+      { value: "mean", label: "Mean (3 yr)" },
+      { value: "arima", label: "ARIMA" },
+      { value: "ets", label: "ETS" },
+      { value: "blend", label: "Blend" },
+    ]);
+  });
+
+  it("adds STL for a seasonal driver", () => {
+    const labels = engineOptions(driverRow({ seasonal: true })).map((o) => o.label);
+    expect(labels.at(-1)).toBe("STL");
+    expect(labels).toHaveLength(6);
+  });
+
+  it("reads 'Auto · Mean' when Auto fell back to the mean", () => {
+    expect(engineOptions(driverRow({ engine: "auto", engine_used: "mean" }))[0]!.label).toBe(
+      "Auto · Mean",
+    );
+  });
+
+  it("reads plain 'Auto' when another engine is chosen (Auto's pick is not known)", () => {
+    expect(engineOptions(driverRow({ engine: "arima", engine_used: "arima" }))[0]!.label).toBe(
+      "Auto",
+    );
+  });
+});
+
+describe("engine sheet texts", () => {
+  it("shows a holdout error unsigned in the unit", () => {
+    expect(formatEngineError("0.0549612179", "pct", "M")).toBe("5.5 pts");
+    expect(formatEngineError("2.14", "days", "M")).toBe("2.1 days");
+    expect(formatEngineError("1500000000", "USD", "B")).toBe("1.5");
+    expect(formatEngineError(null, "pct", "M")).toBe("—");
+  });
+
+  it("signs a seasonal index with a true minus, zero without a sign", () => {
+    expect(formatSeasonalIndex("0.012", "pct", "M")).toBe("+1.2 pts");
+    expect(formatSeasonalIndex("-3", "days", "M")).toBe("\u22123.0 days");
+    expect(formatSeasonalIndex("-0.0003", "pct", "M")).toBe("0.0 pts");
   });
 });

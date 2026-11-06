@@ -69,8 +69,9 @@ export function modesOf(mode: "annual" | "quarterly"): DriverGridOut["year_modes
 
 /**
  * GET …/drivers of Base: 3 history years and 2 forecast years (kept small: jsdom renders only
- * about 10 grid rows, G25). Rows: revenue growth (default), gross margin (own value in FY2026),
- * tax rate (required, unset), receivable days (held flat in FY2027), buybacks (USD).
+ * about 10 grid rows, G25). Rows: revenue growth (default), gross margin (own value in FY2026;
+ * Auto picked ETS, STL allowed), tax rate (required, unset, no numeric default), receivable days
+ * (held flat in FY2027), buybacks (USD).
  */
 export function driverGrid(overrides: Partial<DriverGridOut> = {}): DriverGridOut {
   return {
@@ -102,6 +103,8 @@ export function driverGrid(overrides: Partial<DriverGridOut> = {}): DriverGridOu
         sources: ["own", "default"],
         own: ["0.47", null],
         kind: "value",
+        engine_used: "ets",
+        seasonal: true,
       }),
       driverRow({
         code: "tax_rate",
@@ -110,6 +113,7 @@ export function driverGrid(overrides: Partial<DriverGridOut> = {}): DriverGridOu
         history: [null, null, null],
         values: [null, null],
         sources: [null, null],
+        engine_used: null,
       }),
       driverRow({
         code: "receivable_days",

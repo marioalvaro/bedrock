@@ -45,13 +45,7 @@ export function formatDriverValue(value: string | null, unit: DriverUnit, scale:
 
 /** An offset on Base, signed: "+3.0 pts", "-2.5 days", "+2,000" (USD in the page scale). */
 export function formatDriverOffset(offset: string, unit: DriverUnit, scale: Scale): string {
-  const number = Number(offset);
-  let text: string;
-  if (unit === "pct") text = `${Math.abs(number * 100).toFixed(1)} pts`;
-  else if (unit === "days") text = `${Math.abs(number).toFixed(1)} days`;
-  else text = formatValue(String(Math.abs(number)), "USD", scale);
-  if (/^[0.,]+(?: |$)/.test(text)) return text; // rounds to zero: no sign
-  return `${number < 0 ? "-" : "+"}${text}`;
+  return signed(offset, unit, scale, "-");
 }
 
 /**
@@ -152,9 +146,12 @@ export function forecastCell(
       };
     }
     if (grid.freq === "quarterly" && year.mode === "annual") {
+      const sourced = sourcedCell(row, index, mode, scale, grid);
+      // A seasonal quarter keeps saying where its value comes from.
+      const origin = row.sources[index] === "seasonal" ? `${sourced.title}. ` : "";
       return {
-        ...sourcedCell(row, index, mode, scale, grid),
-        title: `${name} is set annually. Switch it to By quarter to edit quarters.`,
+        ...sourced,
+        title: `${origin}${name} is set annually. Switch it to By quarter to edit quarters.`,
         locked: true,
         note: name,
       };
@@ -163,7 +160,79 @@ export function forecastCell(
   return sourcedCell(row, index, mode, scale, grid);
 }
 
+export type EngineCode = DriverRowOut["engine"];
+type EngineName = NonNullable<DriverRowOut["engine_used"]>;
+
+const ENGINE_NAMES: Record<EngineName, string> = {
+  mean: "Mean",
+  arima: "ARIMA",
+  ets: "ETS",
+  blend: "Blend",
+};
+
+/** An engine's name in text: "ARIMA", "ETS", "Blend", "Mean". */
+export const engineName = (code: EngineName) => ENGINE_NAMES[code];
+
+export interface EngineOption {
+  value: EngineCode;
+  label: string;
+}
+
+/**
+ * The Engine select's options for `row`: Auto (with what it picked, "Auto · ETS", while Auto is the
+ * choice), Mean (3 yr), ARIMA, ETS, Blend and, for a seasonal driver, STL.
+ */
+export function engineOptions(row: DriverRowOut): EngineOption[] {
+  const picked =
+    row.engine === "auto" && row.engine_used ? ` · ${engineName(row.engine_used)}` : "";
+  const options: EngineOption[] = [
+    { value: "auto", label: `Auto${picked}` },
+    { value: "mean", label: "Mean (3 yr)" },
+    { value: "arima", label: "ARIMA" },
+    { value: "ets", label: "ETS" },
+    { value: "blend", label: "Blend" },
+  ];
+  if (row.seasonal) options.push({ value: "stl", label: "STL" });
+  return options;
+}
+
+// "Default: ARIMA forecast", then the engine note, or Auto's rule when Auto chose it.
+function engineTitle(row: DriverRowOut): string {
+  const name = row.engine_used ? engineName(row.engine_used) : "engine";
+  const tail = row.engine_note ?? (row.engine === "auto" ? "Auto: lowest holdout error" : null);
+  return `Default: ${name} forecast${tail ? ` · ${tail}` : ""}`;
+}
+
+// The cross-check of a set value against the engine's 90% band: the range in the title, and the
+// caution mark when the backend found the value outside it.
+function withCheck(
+  cell: ForecastCell,
+  row: DriverRowOut,
+  index: number,
+  scale: Scale,
+): ForecastCell {
+  const check = row.check[index] ?? null;
+  if (!check) return cell;
+  const range = `${formatDriverValue(check.p05, row.unit, scale)}–${formatDriverValue(check.p95, row.unit, scale)}`;
+  const verdict = check.outside ? "Outside" : "Within";
+  return {
+    ...cell,
+    classes: check.outside ? [...cell.classes, "cell-check-outside"] : cell.classes,
+    title: `${cell.title} · ${verdict} the ${engineName(check.engine)} 90% range (${range})`,
+  };
+}
+
 function sourcedCell(
+  row: DriverRowOut,
+  index: number,
+  mode: DriverMode,
+  scale: Scale,
+  grid: GridColumns,
+): ForecastCell {
+  return withCheck(uncheckedCell(row, index, mode, scale, grid), row, index, scale);
+}
+
+function uncheckedCell(
   row: DriverRowOut,
   index: number,
   mode: DriverMode,
@@ -199,7 +268,16 @@ function sourcedCell(
     return { text, classes: [MUTED, "italic"], title: "Inherited from Base", editText };
   }
   if (source === "default") {
-    return { text, classes: [MUTED], title: defaultTitle(row, grid), editText };
+    const note = row.engine_note ? ` · ${row.engine_note}` : "";
+    return { text, classes: [MUTED], title: defaultTitle(row, grid) + note, editText };
+  }
+  if (source === "engine") {
+    return { text, classes: [MUTED], title: engineTitle(row), editText };
+  }
+  if (source === "seasonal") {
+    const column = grid.forecast_periods[index];
+    const year = column ? periodName(column.fiscal_year, "FY") : "The year's";
+    return { text, classes: [MUTED], title: `${year} value + the seasonal index (STL)`, editText };
   }
   if (source === "year") {
     const column = grid.forecast_periods[index];
@@ -270,4 +348,29 @@ export function canReset(
 /** The PUT row that drops every own value of `row` in `grid`'s frequency (back to inherited or default). */
 export function driverReset(grid: Pick<DriverGridOut, "freq">, row: DriverRowOut): DriverRowIn {
   return driverClear(row.code, row.kind ?? "value", grid.freq);
+}
+
+// |x| in the unit: pct in points, days in days, USD in the page scale.
+function magnitude(number: number, unit: DriverUnit, scale: Scale): string {
+  if (unit === "pct") return `${Math.abs(number * 100).toFixed(1)} pts`;
+  if (unit === "days") return `${Math.abs(number).toFixed(1)} days`;
+  return formatValue(String(Math.abs(number)), "USD", scale);
+}
+
+/** An engine's holdout error (MAE) in the driver's unit, unsigned: "5.5 pts", "2.1 days"; null "—". */
+export function formatEngineError(mae: string | null, unit: DriverUnit, scale: Scale): string {
+  return mae === null ? DASH : magnitude(Number(mae), unit, scale);
+}
+
+/** A seasonal index, signed with a true minus: "+1.2 pts", "\u22123.0 days"; a zero after rounding unsigned. */
+export function formatSeasonalIndex(value: string, unit: DriverUnit, scale: Scale): string {
+  return signed(value, unit, scale, "\u2212");
+}
+
+// |x| in the unit with "+" or `minus`; a value that rounds to zero has no sign.
+function signed(value: string, unit: DriverUnit, scale: Scale, minus: string): string {
+  const number = Number(value);
+  const text = magnitude(number, unit, scale);
+  if (/^[0.,]+(?: |$)/.test(text)) return text;
+  return `${number < 0 ? minus : "+"}${text}`;
 }
