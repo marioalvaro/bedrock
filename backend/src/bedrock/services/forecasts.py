@@ -16,6 +16,7 @@ from bedrock.models.company import Company
 from bedrock.models.scenario import CASES, Scenario
 from bedrock.services.errors import UnknownLineItem
 from bedrock.services.scenarios import (
+    ScenarioDrivers,
     get_case,
     get_scenario,
     load_history,
@@ -33,8 +34,10 @@ __all__ = [
     "Forecast",
     "ForecastFreq",
     "LineItem",
+    "CaseRun",
     "compare",
     "forecast_table",
+    "run_case",
 ]
 
 ForecastFreq = Literal["annual", "quarterly"]
@@ -152,9 +155,18 @@ def compare(
     return Comparison(ordered, items, compared, built_from_quarters(session, scenario, history))
 
 
-def _run(
-    session: Session, scenario: Scenario, case: str, history: ForecastHistory
-) -> tuple[ForecastStatements, list[str]]:
+@dataclass(frozen=True)
+class CaseRun:
+    """A case's forecast with what it ran on (its settings and resolved drivers) and the
+    resolution's and model's warnings."""
+
+    statements: ForecastStatements
+    drivers: ScenarioDrivers
+    warnings: list[str]
+
+
+def run_case(session: Session, scenario: Scenario, case: str, history: ForecastHistory) -> CaseRun:
+    """Resolves the case's drivers and runs the driver model on them. Raises ForecastUnavailable."""
     drivers = resolve_case(session, scenario, case, history)
     statements = DriverModel().run(
         history,
@@ -162,7 +174,14 @@ def _run(
         FORECAST_HORIZON,
         drivers.settings,
     )
-    return statements, [*drivers.resolved.warnings, *statements.warnings]
+    return CaseRun(statements, drivers, [*drivers.resolved.warnings, *statements.warnings])
+
+
+def _run(
+    session: Session, scenario: Scenario, case: str, history: ForecastHistory
+) -> tuple[ForecastStatements, list[str]]:
+    run = run_case(session, scenario, case, history)
+    return run.statements, run.warnings
 
 
 def _line_items(codes: Sequence[str]) -> list[LineItem]:

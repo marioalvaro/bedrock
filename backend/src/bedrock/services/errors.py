@@ -142,6 +142,16 @@ class InvalidDrivers(Exception):
     offset on Base); the message says which. Nothing was written."""
 
 
+class InvalidValuationInput(Exception):
+    """A valuation-inputs PUT breaks a rule (unknown or repeated code, a value its kind cannot
+    parse, a bound, a choice not offered, a comps set that is not the company's); the message
+    says which. Nothing was written."""
+
+
+class InvalidSensitivity(Exception):
+    """A sensitivity request names an unknown or inapplicable input, or the same input twice."""
+
+
 class UnknownLineItem(Exception):
     """A requested line item code is not a canonical IS, BS or CF line."""
 
@@ -176,6 +186,8 @@ DOMAIN_ERRORS = (
     ScenarioConflict,
     InvalidScenario,
     InvalidDrivers,
+    InvalidValuationInput,
+    InvalidSensitivity,
     UnknownLineItem,
     ForecastUnavailable,
     UnknownTicker,

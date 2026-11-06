@@ -71,6 +71,14 @@ def ratio_inputs(session: Session, company: Company, freq: RatioFreq, basis: Bas
     return replace(inputs, prices=price_repo.closes(session, company.id))
 
 
+def company_caveat(company: Company, ratio_code: str) -> str | None:
+    """The company's caveat text for a ratio code (`ratios/caveats.yaml`), if it has one."""
+    for caveat in _caveats().get(company.ticker.upper(), ()):
+        if ratio_code in caveat.codes:
+            return caveat.text
+    return None
+
+
 @cache
 def _caveats() -> dict[str, tuple[Caveat, ...]]:
     return load_caveats()

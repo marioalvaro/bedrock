@@ -19,6 +19,7 @@ from bedrock.api.v1 import (
     scenarios,
     segments,
     statements,
+    valuation,
 )
 
 # Protected by default: a new router goes in `protected`, and only the routes that
@@ -45,6 +46,7 @@ protected.include_router(notes.router)
 protected.include_router(imports.router)
 protected.include_router(forecasts.router)
 protected.include_router(scenarios.router)
+protected.include_router(valuation.router)
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(public)
