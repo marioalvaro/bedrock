@@ -1,5 +1,6 @@
 """The ratio table of a followed company (FR-ANL-01..04)."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal
@@ -69,6 +70,25 @@ def ratio_inputs(session: Session, company: Company, freq: RatioFreq, basis: Bas
             tables[("IS", "quarterly")],
         )
     return replace(inputs, prices=price_repo.closes(session, company.id))
+
+
+def annual_ratios_from(
+    session: Session, company: Company, annual: Mapping[str, StatementTable]
+) -> RatioTable:
+    """`ratios(session, company, "annual", basis)` from annual IS, CF and BS tables the caller has
+    already loaded on that basis, untrimmed (`services/scenarios.py::load_history`'s), so a
+    valuation builds the statements once (NFR-02)."""
+    inputs = RatioInputs(annual["IS"], annual["CF"], annual["BS"])
+    inputs = replace(inputs, prices=price_repo.closes(session, company.id))
+    return compute_ratios(inputs, "annual", _caveats().get(company.ticker.upper(), ()))
+
+
+def company_caveat(company: Company, ratio_code: str) -> str | None:
+    """The company's caveat text for a ratio code (`ratios/caveats.yaml`), if it has one."""
+    for caveat in _caveats().get(company.ticker.upper(), ()):
+        if ratio_code in caveat.codes:
+            return caveat.text
+    return None
 
 
 @cache

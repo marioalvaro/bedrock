@@ -12,10 +12,13 @@ A walkthrough of every screen in the app, in the order you will probably use the
 7. [Segments and KPIs](#7-segments-and-kpis)
 8. [Comps](#8-comps)
 9. [Guidance](#9-guidance)
-10. [Notes](#10-notes)
-11. [Settings](#11-settings)
-12. [Keeping data fresh](#12-keeping-data-fresh)
-13. [Troubleshooting](#13-troubleshooting)
+10. [Scenarios](#10-scenarios)
+11. [Forecast](#11-forecast)
+12. [Valuation](#12-valuation)
+13. [Notes](#13-notes)
+14. [Settings](#14-settings)
+15. [Keeping data fresh](#15-keeping-data-fresh)
+16. [Troubleshooting](#16-troubleshooting)
 
 ---
 
@@ -127,7 +130,7 @@ Ratios by group (profitability, returns, liquidity, leverage, efficiency, cash f
 
 ### Quality
 
-Quality-of-earnings flags: accruals ratio, cash flow from operations against net income, receivables and inventory growing faster than revenue, goodwill as a share of assets, goodwill impairments, and stock-based compensation against revenue and cash flow. Each row shows its rule, and a period's value is highlighted when it crosses the warn or alert threshold (hover a value to see that period's levels). The thresholds are editable in [Settings](#11-settings), and so are your own rules.
+Quality-of-earnings flags: accruals ratio, cash flow from operations against net income, receivables and inventory growing faster than revenue, goodwill as a share of assets, goodwill impairments, and stock-based compensation against revenue and cash flow. Each row shows its rule, and a period's value is highlighted when it crosses the warn or alert threshold (hover a value to see that period's levels). The thresholds are editable in [Settings](#14-settings), and so are your own rules.
 
 Below the flags, **Off-balance-sheet items** is a log you keep by hand. Click **Add item** and choose a kind (lease, guarantee, VIE, purchase commitment or other), describe it, give an "as of" date and a source note.
 
@@ -336,7 +339,87 @@ When the period is reported, each entry gets a verdict: **Beat** (better than th
 
 If the company revises guidance, add another entry for the same metric and period: all are kept, and the one with the latest date counts in the summary. The top of the tab shows the counts and the **Hit rate** (beat plus in range, over all scored), overall and **by metric**.
 
-## 10. Notes
+## 10. Scenarios
+
+The **Scenarios** tab is where you write your forecast as **drivers**, the assumptions the model turns into statements. Forecast and Valuation read them.
+
+### Scenarios and cases
+
+A company starts with one scenario, **Main**, and you can add more (**New**, with a name and a revenue build). Every scenario has three cases:
+
+- **Base**: your central view. A driver you have not set takes a default, usually the mean of the last three actual years.
+- **Bull** and **Bear**: they follow Base. Out of the box, Bull is Base + 3 pts revenue growth and + 1 pt gross margin, and Bear is Base − 3 pts and − 1 pt.
+
+The toolbar has the scenario picker, **New**, **Rename**, **Delete** (not for Main), the **Base | Bull | Bear** toggle, **Reset <case>** (its drivers back to their defaults), the **K | M | B** scale, **Export** (CSV or Excel) and **Import**.
+
+The picked scenario and case are in the address (`?scenario=…&case=…`), and the Forecast and Valuation tabs use the same ones.
+
+### Revenue build
+
+Under the toolbar, pick how revenue is forecast; it applies to all three cases:
+
+- **Growth**: one revenue growth rate per year.
+- **Segments**: a growth rate per business or geographic segment (from the Segments tab).
+- **Volume × price**: a count KPI times a price KPI (add both on the Segments tab first).
+
+### The driver grid
+
+Drivers are grouped (Revenue, Costs, Below the line, Working capital, Investment, Financing, Shareholders). Actual years are muted and read-only; the 5 forecast years (`FY27E`, tinted) are editable.
+
+- Type a percent as `8` or `8%`, days as a number, amounts in the page scale. A cell commits when you leave it.
+- How a value looks tells you where it comes from: **plain** you set it; **muted** a default; **muted italic** inherited from Base. Hover for the source ("Default: mean of FY23–FY25", "Inherited from Base").
+- A red **Set** means the model needs a value there before it can forecast.
+- A row you changed has a **Reset** button that returns it to its default.
+- In Bull and Bear, each row has a **Mode**: **Value** (the case's own numbers) or **vs Base** (an offset, such as "+3.0 pts", that moves with Base).
+
+**Annual | Quarterly** switches the grid. The next 8 quarters can be set one by one: the **A | Q** switch in a year's header chooses whether that year is one annual value or four quarters. Returning a year to annual deletes its quarter values in all three cases, after a confirmation.
+
+**Import** previews a CSV or Excel file of drivers ("Revenue growth · FY27: 5.0% → 8.0%") before you apply it; start from **Export** to get the layout.
+
+### Compare
+
+Below the grid, **Compare** charts one line (Revenue by default) for Bull, Base and Bear, and lists the key lines of each case. A case that cannot run says why.
+
+## 11. Forecast
+
+The **Forecast** tab shows the three statements the drivers produce: the same grids as Income, Balance and Cash Flow, with the forecast periods tinted and labelled `E`.
+
+- Pick the scenario and case, the statement (**Income | Balance | Cash flow**) and **Annual | Quarterly**.
+- The **Integrity** panel under the grid checks every forecast period: the balance sheet balances, cash and retained earnings roll forward, and (for years built from quarters) Q1..Q4 add up to the year. "All checks pass" is what you want to see; a failing check shows the difference.
+- If a required driver is missing, the tab says "Set these drivers: …" with an **Open Scenarios** button that takes you to the same scenario and case.
+
+## 12. Valuation
+
+The **Valuation** tab turns a forecast into a value per share and compares it with the latest close. It reads top to bottom in two levels.
+
+### Target price by case
+
+The top card compares the scenario's three cases: a row per method (DCF, P/E, EV/EBITDA, …), a column each for **Bull**, **Base** and **Bear**, each cell the value per share above its upside against the price (green above, red below). The price and its date are on the right. The shaded column is the case picked in the toolbar, the one the rest of the page details.
+
+### The picked case
+
+Everything under the **<Case> case · <Scenario> scenario** heading is about that case.
+
+- **Target prices**: one tile per method, with the value per share in large type, its upside against the price, and what it rests on (the WACC, or a multiple and its year). A method that cannot value shows "—" and why.
+- **DCF (FCFF)**, in four steps:
+  1. **Discount rate**: the WACC and its parts (cost of equity = risk-free rate + beta × equity risk premium, after-tax cost of debt, and the debt and equity weights), or a rate you set directly.
+  2. **Free cash flow to firm**: NOPAT, D&A, the change in working capital and capex per forecast year, then the discount years, factor and present value. If the current fiscal year is under way, its first column is the rest of that year.
+  3. **Terminal value**: Gordon growth or an exit multiple of EBITDA, its present value, the other method's implied figure (a sanity check), and its share of enterprise value.
+  4. **Equity bridge**: enterprise value, less debt, plus cash and short-term investments, less minority interest, = equity value, ÷ shares = value per share.
+- **Multiples**: each target values a forecast year's metric at a multiple: P/E on net income, EV/EBITDA, P/FCF, EV/Sales. The multiple's source is shown under it. Own-history and peer multiples are trailing multiples applied to a forecast year, so read them as a cross-check.
+- **Sensitivity**:
+  - The **tornado** lists the inputs that move the DCF value per share most, at one step each: ±1 pt for a percentage driver, ±5 days, ±10 % for an amount, ±0.5 pt for the discount rate or terminal growth, ±1× for the exit multiple. Blue is the input one step lower, amber one step higher; hover a bar for both values. It shows the top 10; **Show all N** lists every input.
+  - The **grid** shows the value per share over two inputs, 5 × 5, the current value at the ringed center. Pick **Rows** and **Columns** from the same inputs. It starts on discount rate × terminal growth (or exit multiple).
+- **Inputs** are the valuation's own assumptions, per case:
+  - **Discount rate**: WACC or a direct rate. For WACC: risk-free rate, equity risk premium, beta, cost of debt, tax rate and debt weight. Cost of debt, tax rate and debt weight come from the forecast and the market until you set them; hover to see from where.
+  - **Terminal value**: Gordon growth or an exit multiple, and mid-year discounting.
+  - **Multiples**: per target, a source (**Off**, **Manual** with your multiple, **Own history** at a percentile, **Peer median** of a comps set from the Comps tab) and the forecast year it applies to.
+
+Inputs follow the same rules as drivers. Bull and Bear show Base's value (muted italic, "Inherited from Base") until you type their own. A field you set has a button to return it to Base's value (in Bull or Bear) or to the default (in Base). **Reset <Case> inputs** clears them all.
+
+All three cases revalue when you change a driver or an input, and the K | M | B scale applies to the tables.
+
+## 13. Notes
 
 The **Notes** tab is your thesis journal, in Markdown.
 
@@ -344,19 +427,19 @@ The **Notes** tab is your thesis journal, in Markdown.
 - Filter the list by subject, year or period.
 - A **marker** appears on any statement, ratio, capital or quality cell that has a note, and on a row whose line has notes. Click it to read them. A cell's side panel shows its notes too.
 
-## 11. Settings
+## 14. Settings
 
 **Quality-of-earnings thresholds**: each built-in rule has a **Warn** and an **Alert** level and a direction. Edit the numbers and save, or reset a rule to its default.
 
 **Custom rules**: write your own flag as a formula with `+ − × ÷`, brackets, `avg()`, `yoy()` and `prev()` over statement lines, metrics and ratios. Give it a label, a direction (above or below), a unit and the warn and alert levels. It then appears on every company's Quality tab next to the built-in rules. A warn or alert level may itself be a formula, for example `prev(sbc / revenue) + 2%`. An invalid formula is rejected with the position of the error. The **Formula reference** on the same page lists every name you can use.
 
-## 12. Keeping data fresh
+## 15. Keeping data fresh
 
 - **Refresh** (the button in a company's header, or `bedrock refresh AAPL` / `bedrock refresh --all`) loads only new filings and prices. A price failure is a warning; an EDGAR failure is an error. It also re-reads the mapping files.
 - A manual company refreshes prices only. Its statements change when you import.
 - Raw SEC responses are cached under `DATA_DIR/raw/edgar/`, and the database is the SQLite file in `DATA_DIR`. Back up that folder to back up the app.
 
-## 13. Troubleshooting
+## 16. Troubleshooting
 
 | Symptom | Cause and fix |
 |---|---|
@@ -367,4 +450,9 @@ The **Notes** tab is your thesis journal, in Markdown.
 | Import blocked with errors | Read the list: it gives the sheet, row and column. |
 | Balance sheet shows a mismatch after an import | The preview warned about it. Check that each period has total assets and the liabilities and equity lines, in the same scale. |
 | 503 when adding a company | `SEC_USER_AGENT` is not set in `.env`. |
+| Forecast or Valuation says "Set these drivers: …" | A required driver has no value in that case (DE needs a gross margin, for example). Click **Open Scenarios** and type one. |
+| A multiple target shows "fewer than 3 years of history" | Own history needs at least three priced years. Set a manual multiple or a peer median instead. |
+| No upside anywhere | No price is stored. Refresh the company. |
+| The DCF says the discount rate must exceed the growth | Terminal growth is at or above the discount rate. Lower the growth or raise the rate. |
+| The sensitivity grid says "Pick two different inputs" | Rows and Columns are the same input. |
 | Logged out unexpectedly | The session expired after `SESSION_IDLE_MINUTES` of inactivity. |

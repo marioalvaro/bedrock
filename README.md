@@ -4,7 +4,7 @@ A personal web app for deep fundamental analysis of a handful of US companies, s
 
 It is a single-user app: a FastAPI + SQLite backend and a React (Vite, TypeScript, Tailwind) SPA, in one repo.
 
-> **Status:** milestone M3 (Context) is in progress. M0 (scaffold), M1 (Data) and M2 (Analysis) are complete. Every planned M3 step (S1–S10d) is built; the manual browser checks that gate acceptance are still open. Forecasting, valuation models and backtesting (M4 onward) are not built yet.
+> **Status:** milestone M5 (Valuation) is built: every planned step (S1–S4) is done, and its acceptance checks (browser load times, a CI run) are still open. M0 (scaffold) through M4 (Forecast core) are complete. Statistical forecasts (M6), snapshots and backtesting (M7) and later milestones are not built yet.
 
 New to the app? Read the [tutorial](TUTORIAL.md), a walkthrough of every screen.
 
@@ -27,13 +27,17 @@ New to the app? Read the [tutorial](TUTORIAL.md), a walkthrough of every screen.
 - **Comps.** Named peer sets of followed companies, with peers suggested by SIC code and size. Compares current multiples and the latest TTM ratios against the peer median and range.
 - **Guidance log.** Enter a company's guidance (metric, period, low and high, date given). When the actual is reported it is scored beat, in range or miss on the reported or normalized basis, with a hit rate by metric.
 - **Notes.** A Markdown thesis journal. A note can link to a statement line, a ratio, a capital-allocation metric, a quality rule, or a period. Linked cells carry a marker that opens their notes.
+- **Scenarios and drivers.** Each company has scenarios (one default, plus your own), each with a Base, Bull and Bear case. A case is a set of drivers (revenue growth or a segment / volume × price build, margins, working-capital days, capex, buybacks, …) for 5 forecast years, by year or by quarter for the next 8 quarters. Defaults come from recent history. Bull and Bear follow Base, either with their own values or as offsets ("Base + 3 pts"). Drivers can be exported to and imported from CSV or Excel.
+- **Forecast.** The drivers build all three statements, accounting-consistent: the balance sheet balances, and cash and retained earnings roll forward. Q1..Q4 add up to each fiscal year. An integrity panel shows every check per period, and a comparison charts Bull, Base and Bear side by side.
+- **Valuation.** For each case: a DCF on free cash flow to the firm (a WACC from manual inputs or a direct rate; a Gordon-growth or exit-multiple terminal value, each with the other's implied figure; the bridge from EV to value per share). Next to it, multiple targets: P/E, EV/EBITDA, P/FCF or EV/Sales on a forecast year, with a manual multiple, a percentile of the company's own history or a peer median. Each method's target price and upside are shown against the latest close, and Bull, Base and Bear side by side. Inputs are set per case; Bull and Bear inherit Base's until they set their own.
+- **Sensitivity.** A tornado ranks every driver and the discount rate, terminal growth or exit multiple by how much one unit step moves the DCF value per share (±1 pt, ±5 days, ±10 %, ±0.5 pt, ±1×). A 5 × 5 grid shows the value over any two of those inputs.
 - **Company list** with price, market cap, P/E, EV/EBITDA and TTM revenue growth. Each stat is blank when an input is missing.
 
 The test companies are AAPL, MSFT, COST and DE.
 
 ### Company tabs
 
-Each company has these tabs: **Overview** (key stats, data gaps, adjustments, corporate actions), **Income**, **Balance**, **Cash Flow**, **Ratios**, **Quality**, **Capital**, **Segments**, **Comps**, **Guidance** and **Notes**. Settings holds the quality-of-earnings thresholds and custom rules.
+Each company has these tabs: **Overview** (key stats, data gaps, adjustments, corporate actions), **Income**, **Balance**, **Cash Flow**, **Ratios**, **Quality**, **Capital**, **Segments**, **Comps**, **Guidance**, **Valuation**, **Forecast**, **Scenarios** and **Notes**. Valuation, Forecast and Scenarios share the picked scenario and case (`?scenario=<id>&case=base|bull|bear`). Settings holds the quality-of-earnings thresholds and custom rules.
 
 ## API
 
@@ -83,6 +87,22 @@ Every route is under `/api/v1`. Interactive docs are at `/docs` on a running bac
 | `GET` `POST` | `/companies/{ticker}/notes` | session | List (filterable) or add notes |
 | `PUT` `DELETE` | `/companies/{ticker}/notes/{id}` | session | Edit or remove a note |
 | `GET` | `/companies/{ticker}/notes/links` | session | Which cells and subjects have notes, for the markers |
+| `GET` `POST` | `/companies/{ticker}/scenarios` | session | List the scenarios, or create one (name and revenue build); it starts from the default drivers |
+| `PUT` `DELETE` | `/companies/{ticker}/scenarios/{id}` | session | Rename or change the revenue build, or delete (not the default scenario) |
+| `GET` | `/companies/{ticker}/scenarios/{id}/years` | session | Whether each year of the quarterly span is set annually or by quarter |
+| `PUT` | `/companies/{ticker}/scenarios/{id}/years/{fiscal_year}/mode` | session | Body `{"mode": "annual"\|"quarterly"}`. Back to annual deletes the quarter values of all three cases. |
+| `GET` `PUT` | `/companies/{ticker}/scenarios/{id}/cases/{case}/drivers` | session | Query `freq=annual\|quarterly`. The case's driver grid with each value's source, or set rows of values or offsets. `case` is `base`, `bull` or `bear`. |
+| `POST` | `/companies/{ticker}/scenarios/{id}/cases/{case}/reset` | session | The case's drivers go back to their defaults (valuation inputs are left alone) |
+| `GET` | `/companies/{ticker}/scenarios/{id}/cases/{case}/drivers/export` | session | Query `format=csv\|xlsx`. Downloads the case's drivers. |
+| `POST` | `/companies/{ticker}/scenarios/{id}/cases/{case}/drivers/import` | session | Multipart `file`, `dry_run`. Previews or applies a driver file; `422` lists each error by row and column. |
+| `GET` | `/companies/{ticker}/scenarios/{id}/cases/{case}/forecast` | session | Query `type=IS\|BS\|CF`, `freq`. Actual and forecast periods with the integrity checks; `422` "Set these drivers: …" when a required driver is missing. |
+| `GET` | `/companies/{ticker}/scenarios/{id}/compare` | session | Query `freq`. The three cases' key lines side by side |
+| `GET` `PUT` | `/companies/{ticker}/scenarios/{id}/cases/{case}/valuation-inputs` | session | The case's valuation inputs with their sources (own, inherited from Base, default, derived), or set rows `{"code", "value"}`; `null` clears one. Every row is checked before anything is stored. |
+| `POST` | `/companies/{ticker}/scenarios/{id}/cases/{case}/valuation-inputs/reset` | session | Removes the case's own inputs |
+| `GET` | `/companies/{ticker}/scenarios/{id}/cases/{case}/valuation` | session | The DCF and multiple-target results, the bridge and the price. A method that cannot value carries its `error`; `422` when the forecast cannot run. |
+| `GET` | `/companies/{ticker}/scenarios/{id}/valuation` | session | Value per share and upside by method for Bull, Base and Bear |
+| `GET` | `/companies/{ticker}/scenarios/{id}/cases/{case}/sensitivity/tornado` | session | Each input's DCF value per share one step lower and higher, sorted by range |
+| `GET` | `/companies/{ticker}/scenarios/{id}/cases/{case}/sensitivity/grid` | session | Query `x`, `y` (input codes). The 5 × 5 DCF value per share; `422` for the same input twice or an unknown one. |
 | `GET` | `/qoe-rules` | session | QoE thresholds |
 | `PUT` `DELETE` | `/qoe-rules/{code}` | session | Override or reset a threshold |
 | `GET` `POST` | `/qoe-custom-rules` | session | List or add custom formula rules |

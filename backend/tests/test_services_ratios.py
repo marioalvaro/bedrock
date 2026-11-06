@@ -11,7 +11,8 @@ from bedrock.ratios.calculator import RatioInputs, compute_ratios
 from bedrock.ratios.caveats import load_caveats
 from bedrock.ratios.registry import RATIOS
 from bedrock.repositories import companies as companies_repo
-from bedrock.services.ratios import ratios
+from bedrock.services.ratios import annual_ratios_from, ratios
+from bedrock.services.scenarios import load_history
 from bedrock.services.statements import statement_tables
 from bedrock.statements import build
 from bedrock.statements.build import build_statement
@@ -151,3 +152,16 @@ def test_de_rows_carry_their_caveats_and_aapl_rows_none(db_session: Session) -> 
     assert expected
     assert {r.code: r.caveat for r in de_rows} == {code: expected.get(code) for code in CODES}
     assert all(r.caveat is None for r in aapl_rows)
+
+
+# --- annual ratios from loaded tables (the valuation's own-history multiples) ---------------
+
+
+def test_annual_ratios_from_loaded_tables_equal_the_annual_ratio_table(
+    db_session: Session, aapl: Company
+) -> None:
+    history = load_history(db_session, aapl)
+
+    from_history = annual_ratios_from(db_session, aapl, history.annual)
+
+    assert from_history == ratios(db_session, aapl, "annual", "normalized")

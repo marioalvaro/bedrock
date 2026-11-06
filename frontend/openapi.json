@@ -221,6 +221,50 @@
         "title": "Body_import_statements_api_v1_companies__ticker__imports_post",
         "type": "object"
       },
+      "BridgeOut": {
+        "properties": {
+          "cash": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Cash",
+            "type": "string"
+          },
+          "minority_interest": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Minority Interest",
+            "type": "string"
+          },
+          "net_claims": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Net Claims",
+            "type": "string"
+          },
+          "short_term_investments": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Short Term Investments",
+            "type": "string"
+          },
+          "temporary_equity": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Temporary Equity",
+            "type": "string"
+          },
+          "total_debt": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Total Debt",
+            "type": "string"
+          }
+        },
+        "required": [
+          "total_debt",
+          "cash",
+          "short_term_investments",
+          "minority_interest",
+          "temporary_equity",
+          "net_claims"
+        ],
+        "title": "BridgeOut",
+        "type": "object"
+      },
       "BuiltCellOut": {
         "description": "A parent cell the sum of a complete custom breakdown fills or changes.",
         "properties": {
@@ -1295,6 +1339,24 @@
         "title": "CompsSetOut",
         "type": "object"
       },
+      "CompsSetRefOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "CompsSetRefOut",
+        "type": "object"
+      },
       "ConceptClassificationOut": {
         "properties": {
           "codes": {
@@ -1409,6 +1471,143 @@
         "title": "CoverageOut",
         "type": "object"
       },
+      "DcfOut": {
+        "properties": {
+          "discount": {
+            "$ref": "#/components/schemas/DiscountOut"
+          },
+          "mid_year": {
+            "title": "Mid Year",
+            "type": "boolean"
+          },
+          "periods": {
+            "items": {
+              "$ref": "#/components/schemas/DcfPeriodOut"
+            },
+            "title": "Periods",
+            "type": "array"
+          },
+          "sum_present_value": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Sum Present Value",
+            "type": "string"
+          },
+          "terminal": {
+            "$ref": "#/components/schemas/TerminalOut"
+          },
+          "terminal_share": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terminal Share"
+          },
+          "valuation_date": {
+            "format": "date",
+            "title": "Valuation Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "valuation_date",
+          "discount",
+          "mid_year",
+          "periods",
+          "terminal",
+          "sum_present_value",
+          "terminal_share"
+        ],
+        "title": "DcfOut",
+        "type": "object"
+      },
+      "DcfPeriodOut": {
+        "properties": {
+          "capex": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Capex",
+            "type": "string"
+          },
+          "change_working_capital": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Change Working Capital",
+            "type": "string"
+          },
+          "d_and_a": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "D And A",
+            "type": "string"
+          },
+          "discount_factor": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Discount Factor",
+            "type": "string"
+          },
+          "end": {
+            "format": "date",
+            "title": "End",
+            "type": "string"
+          },
+          "fcff": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Fcff",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "nopat": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Nopat",
+            "type": "string"
+          },
+          "period_key": {
+            "title": "Period Key",
+            "type": "string"
+          },
+          "present_value": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Present Value",
+            "type": "string"
+          },
+          "start": {
+            "format": "date",
+            "title": "Start",
+            "type": "string"
+          },
+          "stub": {
+            "title": "Stub",
+            "type": "boolean"
+          },
+          "years": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Years",
+            "type": "string"
+          }
+        },
+        "required": [
+          "period_key",
+          "label",
+          "start",
+          "end",
+          "stub",
+          "nopat",
+          "d_and_a",
+          "change_working_capital",
+          "capex",
+          "fcff",
+          "years",
+          "discount_factor",
+          "present_value"
+        ],
+        "title": "DcfPeriodOut",
+        "type": "object"
+      },
       "DerivationInputOut": {
         "properties": {
           "code": {
@@ -1452,6 +1651,142 @@
           "inputs"
         ],
         "title": "DerivationOut",
+        "type": "object"
+      },
+      "DiscountOut": {
+        "properties": {
+          "after_tax_cost_of_debt": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Tax Cost Of Debt"
+          },
+          "beta": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Beta"
+          },
+          "cost_of_debt": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Of Debt"
+          },
+          "cost_of_equity": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Of Equity"
+          },
+          "debt_weight": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Debt Weight"
+          },
+          "equity_risk_premium": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Equity Risk Premium"
+          },
+          "equity_weight": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Equity Weight"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "rate": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Rate",
+            "type": "string"
+          },
+          "risk_free_rate": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Free Rate"
+          },
+          "tax_rate": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax Rate"
+          }
+        },
+        "required": [
+          "method",
+          "rate",
+          "cost_of_equity",
+          "after_tax_cost_of_debt",
+          "risk_free_rate",
+          "equity_risk_premium",
+          "beta",
+          "cost_of_debt",
+          "tax_rate",
+          "debt_weight",
+          "equity_weight"
+        ],
+        "title": "DiscountOut",
         "type": "object"
       },
       "DriverChangeOut": {
@@ -2366,6 +2701,88 @@
           "built_from_quarters"
         ],
         "title": "ForecastOut",
+        "type": "object"
+      },
+      "ForecastYearOut": {
+        "properties": {
+          "fiscal_year": {
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "index": {
+            "title": "Index",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "fiscal_year",
+          "label"
+        ],
+        "title": "ForecastYearOut",
+        "type": "object"
+      },
+      "GridAxisOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "anyOf": [
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "shifts": {
+            "items": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            "title": "Shifts",
+            "type": "array"
+          },
+          "step": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Step",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "label",
+          "unit",
+          "step",
+          "mode",
+          "shifts",
+          "points"
+        ],
+        "title": "GridAxisOut",
         "type": "object"
       },
       "GridPeriodOut": {
@@ -3318,119 +3735,6 @@
         "title": "MissingItemOut",
         "type": "object"
       },
-      "MultipleOut": {
-        "description": "One valuation ratio. `pct` values are fractions; `percentile` is 0..1 and the range is\nnull with fewer than three annual values (`n`).",
-        "properties": {
-          "caveat": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Caveat"
-          },
-          "code": {
-            "title": "Code",
-            "type": "string"
-          },
-          "current": {
-            "anyOf": [
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Current"
-          },
-          "label": {
-            "title": "Label",
-            "type": "string"
-          },
-          "max": {
-            "anyOf": [
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Max"
-          },
-          "median": {
-            "anyOf": [
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Median"
-          },
-          "min": {
-            "anyOf": [
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Min"
-          },
-          "n": {
-            "title": "N",
-            "type": "integer"
-          },
-          "percentile": {
-            "anyOf": [
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Percentile"
-          },
-          "unit": {
-            "enum": [
-              "pct",
-              "x",
-              "days",
-              "USD/shares",
-              "USD"
-            ],
-            "title": "Unit",
-            "type": "string"
-          }
-        },
-        "required": [
-          "code",
-          "label",
-          "unit",
-          "caveat",
-          "current",
-          "min",
-          "median",
-          "max",
-          "percentile",
-          "n"
-        ],
-        "title": "MultipleOut",
-        "type": "object"
-      },
       "MultiplesOut": {
         "properties": {
           "basis": {
@@ -3467,7 +3771,7 @@
           },
           "rows": {
             "items": {
-              "$ref": "#/components/schemas/MultipleOut"
+              "$ref": "#/components/schemas/bedrock__schemas__multiples__MultipleOut"
             },
             "title": "Rows",
             "type": "array"
@@ -5586,6 +5890,112 @@
         "title": "SegmentsOut",
         "type": "object"
       },
+      "SensitivityGridOut": {
+        "properties": {
+          "base_value": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Base Value",
+            "type": "string"
+          },
+          "case": {
+            "enum": [
+              "base",
+              "bull",
+              "bear"
+            ],
+            "title": "Case",
+            "type": "string"
+          },
+          "errors": {
+            "items": {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price"
+          },
+          "scenario_id": {
+            "title": "Scenario Id",
+            "type": "integer"
+          },
+          "upside": {
+            "items": {
+              "items": {
+                "anyOf": [
+                  {
+                    "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            "title": "Upside",
+            "type": "array"
+          },
+          "values": {
+            "items": {
+              "items": {
+                "anyOf": [
+                  {
+                    "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            "title": "Values",
+            "type": "array"
+          },
+          "x": {
+            "$ref": "#/components/schemas/GridAxisOut"
+          },
+          "y": {
+            "$ref": "#/components/schemas/GridAxisOut"
+          }
+        },
+        "required": [
+          "scenario_id",
+          "case",
+          "base_value",
+          "price",
+          "x",
+          "y",
+          "values",
+          "upside",
+          "errors"
+        ],
+        "title": "SensitivityGridOut",
+        "type": "object"
+      },
       "SourceOut": {
         "properties": {
           "concept": {
@@ -5736,6 +6146,99 @@
         "title": "StatementOut",
         "type": "object"
       },
+      "SummaryCaseOut": {
+        "properties": {
+          "case": {
+            "enum": [
+              "base",
+              "bull",
+              "bear"
+            ],
+            "title": "Case",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "errors": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "object"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "upside": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Upside",
+            "type": "object"
+          },
+          "value_per_share": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Value Per Share",
+            "type": "object"
+          }
+        },
+        "required": [
+          "case",
+          "label",
+          "value_per_share",
+          "upside",
+          "errors",
+          "error"
+        ],
+        "title": "SummaryCaseOut",
+        "type": "object"
+      },
+      "SummaryMethodOut": {
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label"
+        ],
+        "title": "SummaryMethodOut",
+        "type": "object"
+      },
       "TermOut": {
         "description": "One input of a ratio operand; a metric lists its own inputs as `children`.",
         "properties": {
@@ -5811,6 +6314,273 @@
           "children"
         ],
         "title": "TermOut",
+        "type": "object"
+      },
+      "TerminalOut": {
+        "properties": {
+          "base_ebitda": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Base Ebitda",
+            "type": "string"
+          },
+          "base_fcff": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Base Fcff",
+            "type": "string"
+          },
+          "discount_factor": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Discount Factor",
+            "type": "string"
+          },
+          "exit_multiple": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Multiple"
+          },
+          "growth": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Growth"
+          },
+          "implied_exit_multiple": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Implied Exit Multiple"
+          },
+          "implied_growth": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Implied Growth"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "present_value": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Present Value",
+            "type": "string"
+          },
+          "value": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Value",
+            "type": "string"
+          },
+          "years": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Years",
+            "type": "string"
+          }
+        },
+        "required": [
+          "method",
+          "growth",
+          "exit_multiple",
+          "base_fcff",
+          "base_ebitda",
+          "value",
+          "years",
+          "discount_factor",
+          "present_value",
+          "implied_exit_multiple",
+          "implied_growth"
+        ],
+        "title": "TerminalOut",
+        "type": "object"
+      },
+      "TornadoBarOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "high_change": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "High Change"
+          },
+          "high_value": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "High Value"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "low_change": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Low Change"
+          },
+          "low_value": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Low Value"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "range": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range"
+          },
+          "step": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Step",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "label",
+          "kind",
+          "unit",
+          "step",
+          "mode",
+          "low_value",
+          "high_value",
+          "low_change",
+          "high_change",
+          "range",
+          "error"
+        ],
+        "title": "TornadoBarOut",
+        "type": "object"
+      },
+      "TornadoOut": {
+        "properties": {
+          "bars": {
+            "items": {
+              "$ref": "#/components/schemas/TornadoBarOut"
+            },
+            "title": "Bars",
+            "type": "array"
+          },
+          "base_value": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Base Value",
+            "type": "string"
+          },
+          "case": {
+            "enum": [
+              "base",
+              "bull",
+              "bear"
+            ],
+            "title": "Case",
+            "type": "string"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price"
+          },
+          "scenario_id": {
+            "title": "Scenario Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scenario_id",
+          "case",
+          "base_value",
+          "price",
+          "bars"
+        ],
+        "title": "TornadoOut",
         "type": "object"
       },
       "UnmappedConceptOut": {
@@ -5912,6 +6682,469 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "ValuationInputIn": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "code",
+          "value"
+        ],
+        "title": "ValuationInputIn",
+        "type": "object"
+      },
+      "ValuationInputRowOut": {
+        "properties": {
+          "choices": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Choices"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "group": {
+            "title": "Group",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "own": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Own"
+          },
+          "source": {
+            "enum": [
+              "own",
+              "base",
+              "default",
+              "derived"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "code",
+          "label",
+          "group",
+          "unit",
+          "kind",
+          "choices",
+          "value",
+          "source",
+          "own",
+          "note"
+        ],
+        "title": "ValuationInputRowOut",
+        "type": "object"
+      },
+      "ValuationInputsIn": {
+        "additionalProperties": false,
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ValuationInputIn"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rows"
+        ],
+        "title": "ValuationInputsIn",
+        "type": "object"
+      },
+      "ValuationInputsOut": {
+        "properties": {
+          "case": {
+            "enum": [
+              "base",
+              "bull",
+              "bear"
+            ],
+            "title": "Case",
+            "type": "string"
+          },
+          "forecast_years": {
+            "items": {
+              "$ref": "#/components/schemas/ForecastYearOut"
+            },
+            "title": "Forecast Years",
+            "type": "array"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ValuationInputRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "scenario_id": {
+            "title": "Scenario Id",
+            "type": "integer"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "scenario_id",
+          "case",
+          "forecast_years",
+          "rows",
+          "warnings"
+        ],
+        "title": "ValuationInputsOut",
+        "type": "object"
+      },
+      "ValuationOut": {
+        "properties": {
+          "bridge": {
+            "$ref": "#/components/schemas/BridgeOut"
+          },
+          "case": {
+            "enum": [
+              "base",
+              "bull",
+              "bear"
+            ],
+            "title": "Case",
+            "type": "string"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price"
+          },
+          "price_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Date"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/ValuationResultOut"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "scenario_id": {
+            "title": "Scenario Id",
+            "type": "integer"
+          },
+          "shares": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shares"
+          },
+          "valuation_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valuation Date"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "scenario_id",
+          "case",
+          "price",
+          "price_date",
+          "valuation_date",
+          "shares",
+          "bridge",
+          "results",
+          "warnings"
+        ],
+        "title": "ValuationOut",
+        "type": "object"
+      },
+      "ValuationResultOut": {
+        "properties": {
+          "caveat": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caveat"
+          },
+          "dcf": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DcfOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "enterprise_value": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enterprise Value"
+          },
+          "equity_value": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Equity Value"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "multiple": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/bedrock__schemas__valuation__MultipleOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "upside": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upside"
+          },
+          "value_per_share": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Per Share"
+          }
+        },
+        "required": [
+          "key",
+          "method",
+          "label",
+          "enterprise_value",
+          "equity_value",
+          "value_per_share",
+          "upside",
+          "caveat",
+          "error",
+          "dcf",
+          "multiple"
+        ],
+        "title": "ValuationResultOut",
+        "type": "object"
+      },
+      "ValuationSummaryOut": {
+        "properties": {
+          "cases": {
+            "items": {
+              "$ref": "#/components/schemas/SummaryCaseOut"
+            },
+            "title": "Cases",
+            "type": "array"
+          },
+          "methods": {
+            "items": {
+              "$ref": "#/components/schemas/SummaryMethodOut"
+            },
+            "title": "Methods",
+            "type": "array"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price"
+          },
+          "price_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Date"
+          },
+          "scenario_id": {
+            "title": "Scenario Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scenario_id",
+          "price",
+          "price_date",
+          "methods",
+          "cases"
+        ],
+        "title": "ValuationSummaryOut",
+        "type": "object"
+      },
       "VintageOut": {
         "properties": {
           "accession_no": {
@@ -6006,6 +7239,200 @@
           "years"
         ],
         "title": "YearModesOut",
+        "type": "object"
+      },
+      "bedrock__schemas__multiples__MultipleOut": {
+        "description": "One valuation ratio. `pct` values are fractions; `percentile` is 0..1 and the range is\nnull with fewer than three annual values (`n`).",
+        "properties": {
+          "caveat": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caveat"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "current": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max"
+          },
+          "median": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median"
+          },
+          "min": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "percentile": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percentile"
+          },
+          "unit": {
+            "enum": [
+              "pct",
+              "x",
+              "days",
+              "USD/shares",
+              "USD"
+            ],
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "label",
+          "unit",
+          "caveat",
+          "current",
+          "min",
+          "median",
+          "max",
+          "percentile",
+          "n"
+        ],
+        "title": "MultipleOut",
+        "type": "object"
+      },
+      "bedrock__schemas__valuation__MultipleOut": {
+        "properties": {
+          "comps_set": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CompsSetRefOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fiscal_year": {
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "metric_label": {
+            "title": "Metric Label",
+            "type": "string"
+          },
+          "metric_value": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Metric Value",
+            "type": "string"
+          },
+          "multiple": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Multiple",
+            "type": "string"
+          },
+          "n": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N"
+          },
+          "percentile": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percentile"
+          },
+          "period_label": {
+            "title": "Period Label",
+            "type": "string"
+          },
+          "ratio_code": {
+            "title": "Ratio Code",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ratio_code",
+          "metric_label",
+          "fiscal_year",
+          "period_label",
+          "metric_value",
+          "multiple",
+          "source",
+          "percentile",
+          "n",
+          "comps_set"
+        ],
+        "title": "MultipleOut",
         "type": "object"
       }
     }
@@ -8908,6 +10335,426 @@
         ]
       }
     },
+    "/api/v1/companies/{ticker}/scenarios/{scenario_id}/cases/{case}/sensitivity/grid": {
+      "get": {
+        "operationId": "get_sensitivity_grid_api_v1_companies__ticker__scenarios__scenario_id__cases__case__sensitivity_grid_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scenario_id",
+            "required": true,
+            "schema": {
+              "title": "Scenario Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "case",
+            "required": true,
+            "schema": {
+              "enum": [
+                "base",
+                "bull",
+                "bear"
+              ],
+              "title": "Case",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sensitivity input code of the columns",
+            "in": "query",
+            "name": "x",
+            "required": true,
+            "schema": {
+              "description": "Sensitivity input code of the columns",
+              "title": "X",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sensitivity input code of the rows",
+            "in": "query",
+            "name": "y",
+            "required": true,
+            "schema": {
+              "description": "Sensitivity input code of the rows",
+              "title": "Y",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SensitivityGridOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Sensitivity Grid",
+        "tags": [
+          "valuation"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/scenarios/{scenario_id}/cases/{case}/sensitivity/tornado": {
+      "get": {
+        "operationId": "get_tornado_api_v1_companies__ticker__scenarios__scenario_id__cases__case__sensitivity_tornado_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scenario_id",
+            "required": true,
+            "schema": {
+              "title": "Scenario Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "case",
+            "required": true,
+            "schema": {
+              "enum": [
+                "base",
+                "bull",
+                "bear"
+              ],
+              "title": "Case",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TornadoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Tornado",
+        "tags": [
+          "valuation"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/scenarios/{scenario_id}/cases/{case}/valuation": {
+      "get": {
+        "operationId": "get_valuation_api_v1_companies__ticker__scenarios__scenario_id__cases__case__valuation_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scenario_id",
+            "required": true,
+            "schema": {
+              "title": "Scenario Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "case",
+            "required": true,
+            "schema": {
+              "enum": [
+                "base",
+                "bull",
+                "bear"
+              ],
+              "title": "Case",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValuationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Valuation",
+        "tags": [
+          "valuation"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/scenarios/{scenario_id}/cases/{case}/valuation-inputs": {
+      "get": {
+        "operationId": "get_valuation_inputs_api_v1_companies__ticker__scenarios__scenario_id__cases__case__valuation_inputs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scenario_id",
+            "required": true,
+            "schema": {
+              "title": "Scenario Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "case",
+            "required": true,
+            "schema": {
+              "enum": [
+                "base",
+                "bull",
+                "bear"
+              ],
+              "title": "Case",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValuationInputsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Valuation Inputs",
+        "tags": [
+          "valuation"
+        ]
+      },
+      "put": {
+        "operationId": "put_valuation_inputs_api_v1_companies__ticker__scenarios__scenario_id__cases__case__valuation_inputs_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scenario_id",
+            "required": true,
+            "schema": {
+              "title": "Scenario Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "case",
+            "required": true,
+            "schema": {
+              "enum": [
+                "base",
+                "bull",
+                "bear"
+              ],
+              "title": "Case",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValuationInputsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValuationInputsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Valuation Inputs",
+        "tags": [
+          "valuation"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/scenarios/{scenario_id}/cases/{case}/valuation-inputs/reset": {
+      "post": {
+        "operationId": "reset_valuation_inputs_api_v1_companies__ticker__scenarios__scenario_id__cases__case__valuation_inputs_reset_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scenario_id",
+            "required": true,
+            "schema": {
+              "title": "Scenario Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "case",
+            "required": true,
+            "schema": {
+              "enum": [
+                "base",
+                "bull",
+                "bear"
+              ],
+              "title": "Case",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValuationInputsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reset Valuation Inputs",
+        "tags": [
+          "valuation"
+        ]
+      }
+    },
     "/api/v1/companies/{ticker}/scenarios/{scenario_id}/compare": {
       "get": {
         "operationId": "compare_cases_api_v1_companies__ticker__scenarios__scenario_id__compare_get",
@@ -8987,6 +10834,57 @@
         "summary": "Compare Cases",
         "tags": [
           "forecasts"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/scenarios/{scenario_id}/valuation": {
+      "get": {
+        "operationId": "get_valuation_summary_api_v1_companies__ticker__scenarios__scenario_id__valuation_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scenario_id",
+            "required": true,
+            "schema": {
+              "title": "Scenario Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValuationSummaryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Valuation Summary",
+        "tags": [
+          "valuation"
         ]
       }
     },

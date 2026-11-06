@@ -20,6 +20,7 @@ import { ScenariosView } from "@/features/scenarios/ScenariosView";
 import { CASE_PARAM, SCENARIO_PARAM } from "@/features/scenarios/useScenarioParam";
 import { SegmentsView } from "@/features/segments/SegmentsView";
 import { StatementView } from "@/features/statements/StatementView";
+import { ValuationView } from "@/features/valuation/ValuationView";
 import { formatCompact, formatPrice, formatRelative } from "@/lib/format";
 import { useNow } from "@/lib/now";
 
@@ -38,6 +39,7 @@ const TABS: { slug: string; label: string; render: (company: CompanyListItem) =>
   { slug: "segments", label: "Segments", render: (c) => <SegmentsView ticker={c.ticker} /> },
   { slug: "comps", label: "Comps", render: (c) => <CompsView ticker={c.ticker} /> },
   { slug: "guidance", label: "Guidance", render: (c) => <GuidanceView ticker={c.ticker} /> },
+  { slug: "valuation", label: "Valuation", render: (c) => <ValuationView ticker={c.ticker} /> },
   {
     slug: "forecast",
     label: "Forecast",
@@ -49,7 +51,7 @@ const TABS: { slug: string; label: string; render: (company: CompanyListItem) =>
 
 // The tabs that share the picked scenario and case (`?scenario`, `?case`), so moving between them
 // keeps both.
-const SCENARIO_TABS = new Set(["forecast", "scenarios"]);
+const SCENARIO_TABS = new Set(["valuation", "forecast", "scenarios"]);
 
 function tabPath(ticker: string, slug: string, params: URLSearchParams): string {
   if (slug === "overview") return `/c/${ticker}`;

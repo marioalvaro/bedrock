@@ -7,7 +7,6 @@ import { Link } from "react-router";
 import { companyErrorMessage } from "@/api/companies";
 import type { ForecastOut } from "@/api/generated/types.gen";
 import {
-  CASES,
   ForecastUnavailable,
   forecastQueryOptions,
   scenariosQueryOptions,
@@ -21,6 +20,7 @@ import { ProvenanceLegend } from "@/components/ProvenanceLegend";
 import { UnitToggle } from "@/components/UnitToggle";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { ScenarioCasePicker } from "@/features/scenarios/ScenarioCasePicker";
 import {
   CASE_PARAM,
   SCENARIO_PARAM,
@@ -40,8 +40,6 @@ import { scaleLabel } from "@/lib/format";
 import { useScale, type Scale } from "@/lib/scale";
 
 import { IntegrityPanel } from "./IntegrityPanel";
-
-const SELECT = "border-input h-8 rounded-lg border bg-transparent px-2 text-sm";
 
 const STATEMENTS: { value: StatementType; label: string }[] = [
   { value: "IS", label: "Income" },
@@ -217,33 +215,13 @@ export function ForecastView({ ticker }: ForecastViewProps) {
   return (
     <div>
       <div className="border-border flex flex-wrap items-center gap-2 border-b px-4 py-2">
-        <select
-          aria-label="Scenario"
-          className={SELECT}
-          value={selected.id}
-          onChange={(e) => select(Number(e.target.value))}
-        >
-          {list.map((scenario) => (
-            <option key={scenario.id} value={scenario.id}>
-              {scenario.name}
-            </option>
-          ))}
-        </select>
-        <ToggleGroup
-          type="single"
-          variant="outline"
-          size="sm"
-          spacing={0}
-          aria-label="Case"
-          value={scenarioCase}
-          onValueChange={(value) => value && selectCase(value as ScenarioCase)}
-        >
-          {CASES.map(({ value, label }) => (
-            <ToggleGroupItem key={value} value={value}>
-              {label}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
+        <ScenarioCasePicker
+          list={list}
+          selected={selected}
+          select={select}
+          scenarioCase={scenarioCase}
+          selectCase={selectCase}
+        />
         <ToggleGroup
           type="single"
           variant="outline"

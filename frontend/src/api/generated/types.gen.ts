@@ -144,6 +144,36 @@ export type BodyImportStatementsApiV1CompaniesTickerImportsPost = {
 };
 
 /**
+ * BridgeOut
+ */
+export type BridgeOut = {
+    /**
+     * Cash
+     */
+    cash: string;
+    /**
+     * Minority Interest
+     */
+    minority_interest: string;
+    /**
+     * Net Claims
+     */
+    net_claims: string;
+    /**
+     * Short Term Investments
+     */
+    short_term_investments: string;
+    /**
+     * Temporary Equity
+     */
+    temporary_equity: string;
+    /**
+     * Total Debt
+     */
+    total_debt: string;
+};
+
+/**
  * BuiltCellOut
  *
  * A parent cell the sum of a complete custom breakdown fills or changes.
@@ -709,6 +739,20 @@ export type CompsSetOut = {
 };
 
 /**
+ * CompsSetRefOut
+ */
+export type CompsSetRefOut = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Name
+     */
+    name: string;
+};
+
+/**
  * ConceptClassificationOut
  */
 export type ConceptClassificationOut = {
@@ -777,6 +821,92 @@ export type CoverageOut = {
 };
 
 /**
+ * DcfOut
+ */
+export type DcfOut = {
+    discount: DiscountOut;
+    /**
+     * Mid Year
+     */
+    mid_year: boolean;
+    /**
+     * Periods
+     */
+    periods: Array<DcfPeriodOut>;
+    /**
+     * Sum Present Value
+     */
+    sum_present_value: string;
+    terminal: TerminalOut;
+    /**
+     * Terminal Share
+     */
+    terminal_share: string | null;
+    /**
+     * Valuation Date
+     */
+    valuation_date: string;
+};
+
+/**
+ * DcfPeriodOut
+ */
+export type DcfPeriodOut = {
+    /**
+     * Capex
+     */
+    capex: string;
+    /**
+     * Change Working Capital
+     */
+    change_working_capital: string;
+    /**
+     * D And A
+     */
+    d_and_a: string;
+    /**
+     * Discount Factor
+     */
+    discount_factor: string;
+    /**
+     * End
+     */
+    end: string;
+    /**
+     * Fcff
+     */
+    fcff: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Nopat
+     */
+    nopat: string;
+    /**
+     * Period Key
+     */
+    period_key: string;
+    /**
+     * Present Value
+     */
+    present_value: string;
+    /**
+     * Start
+     */
+    start: string;
+    /**
+     * Stub
+     */
+    stub: boolean;
+    /**
+     * Years
+     */
+    years: string;
+};
+
+/**
  * DerivationInputOut
  */
 export type DerivationInputOut = {
@@ -806,6 +936,56 @@ export type DerivationOut = {
      * Inputs
      */
     inputs: Array<DerivationInputOut>;
+};
+
+/**
+ * DiscountOut
+ */
+export type DiscountOut = {
+    /**
+     * After Tax Cost Of Debt
+     */
+    after_tax_cost_of_debt: string | null;
+    /**
+     * Beta
+     */
+    beta: string | null;
+    /**
+     * Cost Of Debt
+     */
+    cost_of_debt: string | null;
+    /**
+     * Cost Of Equity
+     */
+    cost_of_equity: string | null;
+    /**
+     * Debt Weight
+     */
+    debt_weight: string | null;
+    /**
+     * Equity Risk Premium
+     */
+    equity_risk_premium: string | null;
+    /**
+     * Equity Weight
+     */
+    equity_weight: string | null;
+    /**
+     * Method
+     */
+    method: string;
+    /**
+     * Rate
+     */
+    rate: string;
+    /**
+     * Risk Free Rate
+     */
+    risk_free_rate: string | null;
+    /**
+     * Tax Rate
+     */
+    tax_rate: string | null;
 };
 
 /**
@@ -1263,6 +1443,58 @@ export type ForecastOut = {
      * Warnings
      */
     warnings: Array<string>;
+};
+
+/**
+ * ForecastYearOut
+ */
+export type ForecastYearOut = {
+    /**
+     * Fiscal Year
+     */
+    fiscal_year: number;
+    /**
+     * Index
+     */
+    index: number;
+    /**
+     * Label
+     */
+    label: string;
+};
+
+/**
+ * GridAxisOut
+ */
+export type GridAxisOut = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Mode
+     */
+    mode: string;
+    /**
+     * Points
+     */
+    points: Array<string | null>;
+    /**
+     * Shifts
+     */
+    shifts: Array<string>;
+    /**
+     * Step
+     */
+    step: string;
+    /**
+     * Unit
+     */
+    unit: string;
 };
 
 /**
@@ -1832,55 +2064,6 @@ export type MissingItemOut = {
 };
 
 /**
- * MultipleOut
- *
- * One valuation ratio. `pct` values are fractions; `percentile` is 0..1 and the range is
- * null with fewer than three annual values (`n`).
- */
-export type MultipleOut = {
-    /**
-     * Caveat
-     */
-    caveat: string | null;
-    /**
-     * Code
-     */
-    code: string;
-    /**
-     * Current
-     */
-    current: string | null;
-    /**
-     * Label
-     */
-    label: string;
-    /**
-     * Max
-     */
-    max: string | null;
-    /**
-     * Median
-     */
-    median: string | null;
-    /**
-     * Min
-     */
-    min: string | null;
-    /**
-     * N
-     */
-    n: number;
-    /**
-     * Percentile
-     */
-    percentile: string | null;
-    /**
-     * Unit
-     */
-    unit: 'pct' | 'x' | 'days' | 'USD/shares' | 'USD';
-};
-
-/**
  * MultiplesOut
  */
 export type MultiplesOut = {
@@ -1899,7 +2082,7 @@ export type MultiplesOut = {
     /**
      * Rows
      */
-    rows: Array<MultipleOut>;
+    rows: Array<BedrockSchemasMultiplesMultipleOut>;
     /**
      * Ticker
      */
@@ -2978,6 +3161,42 @@ export type SegmentsOut = {
 };
 
 /**
+ * SensitivityGridOut
+ */
+export type SensitivityGridOut = {
+    /**
+     * Base Value
+     */
+    base_value: string;
+    /**
+     * Case
+     */
+    case: 'base' | 'bull' | 'bear';
+    /**
+     * Errors
+     */
+    errors: Array<Array<string | null>>;
+    /**
+     * Price
+     */
+    price: string | null;
+    /**
+     * Scenario Id
+     */
+    scenario_id: number;
+    /**
+     * Upside
+     */
+    upside: Array<Array<string | null>>;
+    /**
+     * Values
+     */
+    values: Array<Array<string | null>>;
+    x: GridAxisOut;
+    y: GridAxisOut;
+};
+
+/**
  * SourceOut
  */
 export type SourceOut = {
@@ -3064,6 +3283,56 @@ export type StatementOut = {
 };
 
 /**
+ * SummaryCaseOut
+ */
+export type SummaryCaseOut = {
+    /**
+     * Case
+     */
+    case: 'base' | 'bull' | 'bear';
+    /**
+     * Error
+     */
+    error: string | null;
+    /**
+     * Errors
+     */
+    errors: {
+        [key: string]: string;
+    };
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Upside
+     */
+    upside: {
+        [key: string]: string | null;
+    };
+    /**
+     * Value Per Share
+     */
+    value_per_share: {
+        [key: string]: string | null;
+    };
+};
+
+/**
+ * SummaryMethodOut
+ */
+export type SummaryMethodOut = {
+    /**
+     * Key
+     */
+    key: string;
+    /**
+     * Label
+     */
+    label: string;
+};
+
+/**
  * TermOut
  *
  * One input of a ratio operand; a metric lists its own inputs as `children`.
@@ -3105,6 +3374,136 @@ export type TermOut = {
      * Value
      */
     value: string | null;
+};
+
+/**
+ * TerminalOut
+ */
+export type TerminalOut = {
+    /**
+     * Base Ebitda
+     */
+    base_ebitda: string;
+    /**
+     * Base Fcff
+     */
+    base_fcff: string;
+    /**
+     * Discount Factor
+     */
+    discount_factor: string;
+    /**
+     * Exit Multiple
+     */
+    exit_multiple: string | null;
+    /**
+     * Growth
+     */
+    growth: string | null;
+    /**
+     * Implied Exit Multiple
+     */
+    implied_exit_multiple: string | null;
+    /**
+     * Implied Growth
+     */
+    implied_growth: string | null;
+    /**
+     * Method
+     */
+    method: string;
+    /**
+     * Present Value
+     */
+    present_value: string;
+    /**
+     * Value
+     */
+    value: string;
+    /**
+     * Years
+     */
+    years: string;
+};
+
+/**
+ * TornadoBarOut
+ */
+export type TornadoBarOut = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Error
+     */
+    error: string | null;
+    /**
+     * High Change
+     */
+    high_change: string | null;
+    /**
+     * High Value
+     */
+    high_value: string | null;
+    /**
+     * Kind
+     */
+    kind: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Low Change
+     */
+    low_change: string | null;
+    /**
+     * Low Value
+     */
+    low_value: string | null;
+    /**
+     * Mode
+     */
+    mode: string;
+    /**
+     * Range
+     */
+    range: string | null;
+    /**
+     * Step
+     */
+    step: string;
+    /**
+     * Unit
+     */
+    unit: string;
+};
+
+/**
+ * TornadoOut
+ */
+export type TornadoOut = {
+    /**
+     * Bars
+     */
+    bars: Array<TornadoBarOut>;
+    /**
+     * Base Value
+     */
+    base_value: string;
+    /**
+     * Case
+     */
+    case: 'base' | 'bull' | 'bear';
+    /**
+     * Price
+     */
+    price: string | null;
+    /**
+     * Scenario Id
+     */
+    scenario_id: number;
 };
 
 /**
@@ -3168,6 +3567,211 @@ export type ValidationError = {
      * Error Type
      */
     type: string;
+};
+
+/**
+ * ValuationInputIn
+ */
+export type ValuationInputIn = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Value
+     */
+    value: string | null;
+};
+
+/**
+ * ValuationInputRowOut
+ */
+export type ValuationInputRowOut = {
+    /**
+     * Choices
+     */
+    choices: Array<string> | null;
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Group
+     */
+    group: string;
+    /**
+     * Kind
+     */
+    kind: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Note
+     */
+    note: string | null;
+    /**
+     * Own
+     */
+    own: string | null;
+    /**
+     * Source
+     */
+    source: 'own' | 'base' | 'default' | 'derived';
+    /**
+     * Unit
+     */
+    unit: string | null;
+    /**
+     * Value
+     */
+    value: string | null;
+};
+
+/**
+ * ValuationInputsIn
+ */
+export type ValuationInputsIn = {
+    /**
+     * Rows
+     */
+    rows: Array<ValuationInputIn>;
+};
+
+/**
+ * ValuationInputsOut
+ */
+export type ValuationInputsOut = {
+    /**
+     * Case
+     */
+    case: 'base' | 'bull' | 'bear';
+    /**
+     * Forecast Years
+     */
+    forecast_years: Array<ForecastYearOut>;
+    /**
+     * Rows
+     */
+    rows: Array<ValuationInputRowOut>;
+    /**
+     * Scenario Id
+     */
+    scenario_id: number;
+    /**
+     * Warnings
+     */
+    warnings: Array<string>;
+};
+
+/**
+ * ValuationOut
+ */
+export type ValuationOut = {
+    bridge: BridgeOut;
+    /**
+     * Case
+     */
+    case: 'base' | 'bull' | 'bear';
+    /**
+     * Price
+     */
+    price: string | null;
+    /**
+     * Price Date
+     */
+    price_date: string | null;
+    /**
+     * Results
+     */
+    results: Array<ValuationResultOut>;
+    /**
+     * Scenario Id
+     */
+    scenario_id: number;
+    /**
+     * Shares
+     */
+    shares: string | null;
+    /**
+     * Valuation Date
+     */
+    valuation_date: string | null;
+    /**
+     * Warnings
+     */
+    warnings: Array<string>;
+};
+
+/**
+ * ValuationResultOut
+ */
+export type ValuationResultOut = {
+    /**
+     * Caveat
+     */
+    caveat: string | null;
+    dcf: DcfOut | null;
+    /**
+     * Enterprise Value
+     */
+    enterprise_value: string | null;
+    /**
+     * Equity Value
+     */
+    equity_value: string | null;
+    /**
+     * Error
+     */
+    error: string | null;
+    /**
+     * Key
+     */
+    key: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Method
+     */
+    method: string;
+    multiple: BedrockSchemasValuationMultipleOut | null;
+    /**
+     * Upside
+     */
+    upside: string | null;
+    /**
+     * Value Per Share
+     */
+    value_per_share: string | null;
+};
+
+/**
+ * ValuationSummaryOut
+ */
+export type ValuationSummaryOut = {
+    /**
+     * Cases
+     */
+    cases: Array<SummaryCaseOut>;
+    /**
+     * Methods
+     */
+    methods: Array<SummaryMethodOut>;
+    /**
+     * Price
+     */
+    price: string | null;
+    /**
+     * Price Date
+     */
+    price_date: string | null;
+    /**
+     * Scenario Id
+     */
+    scenario_id: number;
 };
 
 /**
@@ -3235,6 +3839,98 @@ export type YearModesOut = {
      * Years
      */
     years: Array<YearModeOut>;
+};
+
+/**
+ * MultipleOut
+ *
+ * One valuation ratio. `pct` values are fractions; `percentile` is 0..1 and the range is
+ * null with fewer than three annual values (`n`).
+ */
+export type BedrockSchemasMultiplesMultipleOut = {
+    /**
+     * Caveat
+     */
+    caveat: string | null;
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Current
+     */
+    current: string | null;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Max
+     */
+    max: string | null;
+    /**
+     * Median
+     */
+    median: string | null;
+    /**
+     * Min
+     */
+    min: string | null;
+    /**
+     * N
+     */
+    n: number;
+    /**
+     * Percentile
+     */
+    percentile: string | null;
+    /**
+     * Unit
+     */
+    unit: 'pct' | 'x' | 'days' | 'USD/shares' | 'USD';
+};
+
+/**
+ * MultipleOut
+ */
+export type BedrockSchemasValuationMultipleOut = {
+    comps_set: CompsSetRefOut | null;
+    /**
+     * Fiscal Year
+     */
+    fiscal_year: number;
+    /**
+     * Metric Label
+     */
+    metric_label: string;
+    /**
+     * Metric Value
+     */
+    metric_value: string;
+    /**
+     * Multiple
+     */
+    multiple: string;
+    /**
+     * N
+     */
+    n: number | null;
+    /**
+     * Percentile
+     */
+    percentile: string | null;
+    /**
+     * Period Label
+     */
+    period_label: string;
+    /**
+     * Ratio Code
+     */
+    ratio_code: string;
+    /**
+     * Source
+     */
+    source: string;
 };
 
 export type LoginApiV1AuthLoginPostData = {
@@ -5030,6 +5726,247 @@ export type ResetCaseApiV1CompaniesTickerScenariosScenarioIdCasesCaseResetPostRe
 
 export type ResetCaseApiV1CompaniesTickerScenariosScenarioIdCasesCaseResetPostResponse = ResetCaseApiV1CompaniesTickerScenariosScenarioIdCasesCaseResetPostResponses[keyof ResetCaseApiV1CompaniesTickerScenariosScenarioIdCasesCaseResetPostResponses];
 
+export type GetSensitivityGridApiV1CompaniesTickerScenariosScenarioIdCasesCaseSensitivityGridGetData = {
+    body?: never;
+    path: {
+        /**
+         * Scenario Id
+         */
+        scenario_id: number;
+        /**
+         * Case
+         */
+        case: 'base' | 'bull' | 'bear';
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query: {
+        /**
+         * X
+         *
+         * Sensitivity input code of the columns
+         */
+        x: string;
+        /**
+         * Y
+         *
+         * Sensitivity input code of the rows
+         */
+        y: string;
+    };
+    url: '/api/v1/companies/{ticker}/scenarios/{scenario_id}/cases/{case}/sensitivity/grid';
+};
+
+export type GetSensitivityGridApiV1CompaniesTickerScenariosScenarioIdCasesCaseSensitivityGridGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetSensitivityGridApiV1CompaniesTickerScenariosScenarioIdCasesCaseSensitivityGridGetError = GetSensitivityGridApiV1CompaniesTickerScenariosScenarioIdCasesCaseSensitivityGridGetErrors[keyof GetSensitivityGridApiV1CompaniesTickerScenariosScenarioIdCasesCaseSensitivityGridGetErrors];
+
+export type GetSensitivityGridApiV1CompaniesTickerScenariosScenarioIdCasesCaseSensitivityGridGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: SensitivityGridOut;
+};
+
+export type GetSensitivityGridApiV1CompaniesTickerScenariosScenarioIdCasesCaseSensitivityGridGetResponse = GetSensitivityGridApiV1CompaniesTickerScenariosScenarioIdCasesCaseSensitivityGridGetResponses[keyof GetSensitivityGridApiV1CompaniesTickerScenariosScenarioIdCasesCaseSensitivityGridGetResponses];
+
+export type GetTornadoApiV1CompaniesTickerScenariosScenarioIdCasesCaseSensitivityTornadoGetData = {
+    body?: never;
+    path: {
+        /**
+         * Scenario Id
+         */
+        scenario_id: number;
+        /**
+         * Case
+         */
+        case: 'base' | 'bull' | 'bear';
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/scenarios/{scenario_id}/cases/{case}/sensitivity/tornado';
+};
+
+export type GetTornadoApiV1CompaniesTickerScenariosScenarioIdCasesCaseSensitivityTornadoGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetTornadoApiV1CompaniesTickerScenariosScenarioIdCasesCaseSensitivityTornadoGetError = GetTornadoApiV1CompaniesTickerScenariosScenarioIdCasesCaseSensitivityTornadoGetErrors[keyof GetTornadoApiV1CompaniesTickerScenariosScenarioIdCasesCaseSensitivityTornadoGetErrors];
+
+export type GetTornadoApiV1CompaniesTickerScenariosScenarioIdCasesCaseSensitivityTornadoGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: TornadoOut;
+};
+
+export type GetTornadoApiV1CompaniesTickerScenariosScenarioIdCasesCaseSensitivityTornadoGetResponse = GetTornadoApiV1CompaniesTickerScenariosScenarioIdCasesCaseSensitivityTornadoGetResponses[keyof GetTornadoApiV1CompaniesTickerScenariosScenarioIdCasesCaseSensitivityTornadoGetResponses];
+
+export type GetValuationApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationGetData = {
+    body?: never;
+    path: {
+        /**
+         * Scenario Id
+         */
+        scenario_id: number;
+        /**
+         * Case
+         */
+        case: 'base' | 'bull' | 'bear';
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/scenarios/{scenario_id}/cases/{case}/valuation';
+};
+
+export type GetValuationApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetValuationApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationGetError = GetValuationApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationGetErrors[keyof GetValuationApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationGetErrors];
+
+export type GetValuationApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: ValuationOut;
+};
+
+export type GetValuationApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationGetResponse = GetValuationApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationGetResponses[keyof GetValuationApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationGetResponses];
+
+export type GetValuationInputsApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationInputsGetData = {
+    body?: never;
+    path: {
+        /**
+         * Scenario Id
+         */
+        scenario_id: number;
+        /**
+         * Case
+         */
+        case: 'base' | 'bull' | 'bear';
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/scenarios/{scenario_id}/cases/{case}/valuation-inputs';
+};
+
+export type GetValuationInputsApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationInputsGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetValuationInputsApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationInputsGetError = GetValuationInputsApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationInputsGetErrors[keyof GetValuationInputsApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationInputsGetErrors];
+
+export type GetValuationInputsApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationInputsGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: ValuationInputsOut;
+};
+
+export type GetValuationInputsApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationInputsGetResponse = GetValuationInputsApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationInputsGetResponses[keyof GetValuationInputsApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationInputsGetResponses];
+
+export type PutValuationInputsApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationInputsPutData = {
+    body: ValuationInputsIn;
+    path: {
+        /**
+         * Scenario Id
+         */
+        scenario_id: number;
+        /**
+         * Case
+         */
+        case: 'base' | 'bull' | 'bear';
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/scenarios/{scenario_id}/cases/{case}/valuation-inputs';
+};
+
+export type PutValuationInputsApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationInputsPutErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type PutValuationInputsApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationInputsPutError = PutValuationInputsApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationInputsPutErrors[keyof PutValuationInputsApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationInputsPutErrors];
+
+export type PutValuationInputsApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationInputsPutResponses = {
+    /**
+     * Successful Response
+     */
+    200: ValuationInputsOut;
+};
+
+export type PutValuationInputsApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationInputsPutResponse = PutValuationInputsApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationInputsPutResponses[keyof PutValuationInputsApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationInputsPutResponses];
+
+export type ResetValuationInputsApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationInputsResetPostData = {
+    body?: never;
+    path: {
+        /**
+         * Scenario Id
+         */
+        scenario_id: number;
+        /**
+         * Case
+         */
+        case: 'base' | 'bull' | 'bear';
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/scenarios/{scenario_id}/cases/{case}/valuation-inputs/reset';
+};
+
+export type ResetValuationInputsApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationInputsResetPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ResetValuationInputsApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationInputsResetPostError = ResetValuationInputsApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationInputsResetPostErrors[keyof ResetValuationInputsApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationInputsResetPostErrors];
+
+export type ResetValuationInputsApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationInputsResetPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: ValuationInputsOut;
+};
+
+export type ResetValuationInputsApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationInputsResetPostResponse = ResetValuationInputsApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationInputsResetPostResponses[keyof ResetValuationInputsApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationInputsResetPostResponses];
+
 export type CompareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGetData = {
     body?: never;
     path: {
@@ -5074,6 +6011,40 @@ export type CompareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGetRespons
 };
 
 export type CompareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGetResponse = CompareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGetResponses[keyof CompareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGetResponses];
+
+export type GetValuationSummaryApiV1CompaniesTickerScenariosScenarioIdValuationGetData = {
+    body?: never;
+    path: {
+        /**
+         * Scenario Id
+         */
+        scenario_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/scenarios/{scenario_id}/valuation';
+};
+
+export type GetValuationSummaryApiV1CompaniesTickerScenariosScenarioIdValuationGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetValuationSummaryApiV1CompaniesTickerScenariosScenarioIdValuationGetError = GetValuationSummaryApiV1CompaniesTickerScenariosScenarioIdValuationGetErrors[keyof GetValuationSummaryApiV1CompaniesTickerScenariosScenarioIdValuationGetErrors];
+
+export type GetValuationSummaryApiV1CompaniesTickerScenariosScenarioIdValuationGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: ValuationSummaryOut;
+};
+
+export type GetValuationSummaryApiV1CompaniesTickerScenariosScenarioIdValuationGetResponse = GetValuationSummaryApiV1CompaniesTickerScenariosScenarioIdValuationGetResponses[keyof GetValuationSummaryApiV1CompaniesTickerScenariosScenarioIdValuationGetResponses];
 
 export type GetYearModesApiV1CompaniesTickerScenariosScenarioIdYearsGetData = {
     body?: never;

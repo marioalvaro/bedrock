@@ -217,8 +217,13 @@ export function invalidateNoteViews(queryClient: QueryClient, ticker: string): P
   ).then(() => undefined);
 }
 
-/** A comps-set change moves the sets, every comparison and the suggestions (`in_set`). */
+/**
+ * A comps-set change moves the sets, every comparison and the suggestions (`in_set`), and the
+ * scenario views (the valuations' peer medians), whose refetch is started but not awaited: a
+ * summary values a scenario's three cases.
+ */
 export function invalidateCompsViews(queryClient: QueryClient, ticker: string): Promise<void> {
+  void queryClient.invalidateQueries({ queryKey: scenariosKey(ticker) });
   return Promise.all(
     [compsSetsKey(ticker), compsKey(ticker), peerSuggestionsKey(ticker)].map((queryKey) =>
       queryClient.invalidateQueries({ queryKey }),

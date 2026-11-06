@@ -32,6 +32,7 @@ from bedrock.models import (
     segment_series,
     segment_value,
     statement_import,
+    valuation_input,
 )
 from bedrock.models.base import Base
 
@@ -59,6 +60,7 @@ _MODELS = (
     segment_series,
     segment_value,
     statement_import,
+    valuation_input,
 )
 
 
@@ -1531,3 +1533,56 @@ def test_0013_downgrade_drops_the_table_and_keeps_the_driver_rows(
     with engine.begin() as connection:
         assert connection.execute(text("SELECT count(*) FROM driver_value")).scalar() == 1
         assert connection.execute(text("SELECT count(*) FROM company")).scalar() == 1
+
+
+def _valuation_row(connection: Connection, case_id: int, **cols: object) -> int:
+    row = {"case_id": case_id, "code": "beta", "value": "1.2", "updated_at": _NOW, **cols}
+    return _insert(connection, "valuation_input", **row)
+
+
+def test_0014_creates_the_valuation_input_table_with_its_unique_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        case_id = _scenario_with_case(connection, "AAA")
+        _valuation_row(connection, case_id)
+        _valuation_row(connection, case_id, code="beta2")
+    for bad in (
+        dict(code="beta"),  # the same code twice in a case
+        dict(code=None),  # NOT NULL
+        dict(case_id=999_999),  # no such case
+    ):
+        with pytest.raises(IntegrityError), engine.begin() as connection:
+            connection.execute(text("PRAGMA foreign_keys=ON"))
+            _valuation_row(connection, **{"case_id": case_id, **bad})
+
+
+def test_0014_inputs_go_with_their_scenario(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    with create_engine(database_url).begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+        case_id = _scenario_with_case(connection, "AAA")
+        _valuation_row(connection, case_id)
+        connection.execute(text("DELETE FROM scenario"))
+        assert connection.execute(text("SELECT count(*) FROM valuation_input")).scalar() == 0
+
+
+def test_0014_downgrade_drops_the_table_and_up_again_recreates_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        _valuation_row(connection, _scenario_with_case(connection, "AAA"))
+
+    _run_alembic(tmp_path, monkeypatch, ("downgrade", "0013"))
+    assert "valuation_input" not in inspect(engine).get_table_names()
+    with engine.begin() as connection:
+        assert connection.execute(text("SELECT count(*) FROM scenario_case")).scalar() == 1
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    assert "valuation_input" in inspect(engine).get_table_names()

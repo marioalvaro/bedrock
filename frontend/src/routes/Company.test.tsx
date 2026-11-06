@@ -14,6 +14,7 @@ import {
   getRatiosApiV1CompaniesTickerRatiosGet,
   getSegmentsApiV1CompaniesTickerSegmentsGet,
   getStatementApiV1CompaniesTickerStatementsGet,
+  getValuationSummaryApiV1CompaniesTickerScenariosScenarioIdValuationGet,
   listLinksApiV1CompaniesTickerNotesLinksGet,
   listNotesApiV1CompaniesTickerNotesGet,
   listScenariosApiV1CompaniesTickerScenariosGet,
@@ -50,6 +51,15 @@ vi.mock("@/api/generated/sdk.gen", () => ({
   ),
   compareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGet: vi.fn(() => new Promise(() => {})),
   getForecastApiV1CompaniesTickerScenariosScenarioIdCasesCaseForecastGet: vi.fn(
+    () => new Promise(() => {}),
+  ),
+  getValuationSummaryApiV1CompaniesTickerScenariosScenarioIdValuationGet: vi.fn(
+    () => new Promise(() => {}),
+  ),
+  getValuationApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationGet: vi.fn(
+    () => new Promise(() => {}),
+  ),
+  getValuationInputsApiV1CompaniesTickerScenariosScenarioIdCasesCaseValuationInputsGet: vi.fn(
     () => new Promise(() => {}),
   ),
 }));
@@ -242,7 +252,7 @@ describe("tabs", () => {
     expect(screen.getByRole("link", { name: "Notes" })).toHaveAttribute("aria-current", "page");
   });
 
-  it("lists the thirteen tabs in order, the analysis tabs after Cash Flow", async () => {
+  it("lists the fourteen tabs in order, the analysis tabs after Cash Flow", async () => {
     renderAt("/c/AAPL");
     await screen.findByRole("heading", { name: "AAPL" });
 
@@ -258,6 +268,7 @@ describe("tabs", () => {
       "Segments",
       "Comps",
       "Guidance",
+      "Valuation",
       "Forecast",
       "Scenarios",
       "Notes",
@@ -279,6 +290,10 @@ describe("tabs", () => {
     expect(screen.getByRole("link", { name: "Guidance" })).toHaveAttribute(
       "href",
       "/c/AAPL/guidance",
+    );
+    expect(screen.getByRole("link", { name: "Valuation" })).toHaveAttribute(
+      "href",
+      "/c/AAPL/valuation",
     );
     expect(screen.getByRole("link", { name: "Forecast" })).toHaveAttribute(
       "href",
@@ -307,9 +322,24 @@ describe("tabs", () => {
     expect(screen.getByRole("link", { name: "Forecast" })).toHaveAttribute("aria-current", "page");
   });
 
-  it("keeps the picked scenario and case on the Forecast and Scenarios links only", async () => {
+  it("routes /valuation to the picked scenario's valuation summary and marks the tab", async () => {
+    renderAt("/c/AAPL/valuation?scenario=2&case=bear");
+
+    await waitFor(() =>
+      expect(
+        getValuationSummaryApiV1CompaniesTickerScenariosScenarioIdValuationGet,
+      ).toHaveBeenCalledWith(expect.objectContaining({ path: { ticker: "AAPL", scenario_id: 2 } })),
+    );
+    expect(screen.getByRole("link", { name: "Valuation" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("keeps the picked scenario and case on the Valuation, Forecast and Scenarios links only", async () => {
     renderAt("/c/AAPL/scenarios?scenario=2&case=bull");
     await screen.findByRole("heading", { name: "AAPL" });
+    expect(screen.getByRole("link", { name: "Valuation" })).toHaveAttribute(
+      "href",
+      "/c/AAPL/valuation?scenario=2&case=bull",
+    );
     expect(screen.getByRole("link", { name: "Forecast" })).toHaveAttribute(
       "href",
       "/c/AAPL/forecast?scenario=2&case=bull",

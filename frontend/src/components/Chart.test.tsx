@@ -1,5 +1,8 @@
 import { act, render, screen } from "@testing-library/react";
 import type { EChartsOption } from "echarts";
+import { BarChart, LineChart } from "echarts/charts";
+import { MarkLineComponent } from "echarts/components";
+import * as echartsCore from "echarts/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { setTheme } from "@/lib/theme";
@@ -10,6 +13,13 @@ import { Chart } from "./Chart";
 vi.mock("echarts-for-react/esm/core", () => ({
   default: vi.fn(() => null),
 }));
+
+// The real `use`, spied, to see what the wrapper registers when it is imported.
+vi.mock("echarts/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("echarts/core")>();
+  return { ...actual, use: vi.fn(actual.use) };
+});
+const registered = vi.mocked(echartsCore.use).mock.calls.flat(2);
 
 const { default: EChartsCore } = await import("echarts-for-react/esm/core");
 const echarts = vi.mocked(EChartsCore);
@@ -150,5 +160,36 @@ describe("Chart", () => {
   it("labels the chart for assistive technology", () => {
     render(<Chart option={OPTION} ariaLabel="Revenue by scenario" />);
     expect(screen.getByRole("img", { name: "Revenue by scenario" })).toBeInTheDocument();
+  });
+
+  it("registers the line and bar charts and the mark line", () => {
+    expect(registered).toEqual(expect.arrayContaining([LineChart, BarChart, MarkLineComponent]));
+  });
+
+  it("keeps a horizontal bar option's series and paints its axes", () => {
+    const bars: EChartsOption = {
+      xAxis: { type: "value", name: "Change" },
+      yAxis: { type: "category", inverse: true, data: ["Discount rate", "Revenue growth"] },
+      series: [
+        { type: "bar", name: "Input lower", data: [-12, -5], markLine: { data: [{ xAxis: 0 }] } },
+        { type: "bar", name: "Input higher", data: [15, 6] },
+      ],
+    };
+    setTokens({ "--negative": "#aa0000", "--positive": "#00aa00" });
+    render(<Chart option={bars} ariaLabel="Tornado" colors={["--negative", "--positive"]} />);
+    const option = lastOption();
+    expect(option.series).toEqual(bars.series);
+    expect(option.color).toEqual(["#aa0000", "#00aa00"]);
+    expect(option.yAxis).toMatchObject({
+      type: "category",
+      inverse: true,
+      data: ["Discount rate", "Revenue growth"],
+      axisLabel: { color: "#777777" },
+    });
+    expect(option.xAxis).toMatchObject({
+      type: "value",
+      name: "Change",
+      splitLine: { lineStyle: { color: "#dddddd" } },
+    });
   });
 });
