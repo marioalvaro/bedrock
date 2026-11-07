@@ -268,6 +268,11 @@ def test_the_grid_has_the_documented_shape(aapl_client: TestClient) -> None:
         "kind",
         "rollup",
         "quarterly",
+        "engine",
+        "engine_used",
+        "engine_note",
+        "seasonal",
+        "check",
     }
     assert (growth["unit"], growth["kind"]) == ("pct", "offset")
     assert growth["quarterly"] is True  # quarter-capable (drivers.py `quarterly`)

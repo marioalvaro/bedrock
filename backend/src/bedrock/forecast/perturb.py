@@ -5,11 +5,10 @@ from dataclasses import replace
 from decimal import Decimal
 from typing import Literal
 
-from bedrock.forecast.drivers import Bounds, driver_def
+from bedrock.forecast.drivers import clamp, driver_def
 from bedrock.forecast.resolve import Resolved, ResolvedDrivers
 
 ShiftMode = Literal["add", "scale"]
-INWARD = Decimal("1e-6")  # how far inside an open bound a clamped value lands
 
 
 def shift(
@@ -19,7 +18,7 @@ def shift(
     by sign × step (`add`) or by the factor 1 + sign × step (`scale`), then clamped to the
     driver's bounds. `Flat` and `None` stay; sources stay. A follower of `code` does not move
     (its value is already resolved). Raises UnknownDriver."""
-    bounds = driver_def(code).bounds
+    driver_def(code)  # an unknown code raises before anything moves
 
     def moved(resolved: Resolved) -> Resolved:
         if not isinstance(resolved.value, Decimal):
@@ -27,7 +26,7 @@ def shift(
         value = (
             resolved.value + sign * step if mode == "add" else resolved.value * (1 + sign * step)
         )
-        return Resolved(_clamp(value, bounds), resolved.source)
+        return Resolved(clamp(code, value), resolved.source)
 
     return replace(
         drivers,
@@ -36,11 +35,3 @@ def shift(
             k: moved(v) if k[0] == code else v for k, v in drivers.quarter_values.items()
         },
     )
-
-
-def _clamp(value: Decimal, bounds: Bounds) -> Decimal:
-    if bounds.contains(value):
-        return value
-    if value <= bounds.low:
-        return bounds.low + INWARD if bounds.low_open else bounds.low
-    return bounds.high - INWARD if bounds.high_open else bounds.high

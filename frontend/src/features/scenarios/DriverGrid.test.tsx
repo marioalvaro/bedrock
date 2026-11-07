@@ -29,6 +29,8 @@ vi.mock("@/api/generated/sdk.gen", () => ({
   compareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGet: vi.fn(),
   getSegmentsApiV1CompaniesTickerSegmentsGet: vi.fn(),
   setYearModeApiV1CompaniesTickerScenariosScenarioIdYearsFiscalYearModePut: vi.fn(),
+  putEnginesApiV1CompaniesTickerScenariosScenarioIdEnginesPut: vi.fn(),
+  getDriverEnginesApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriverEnginesGet: vi.fn(),
 }));
 
 // The comparison has its own test file; here its chart only needs to render nothing.

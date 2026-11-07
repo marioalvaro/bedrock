@@ -14,3 +14,12 @@ class ForecastUnavailable(Exception):
 class ForecastIntegrityError(Exception):
     """A forecast failed one of its integrity checks (balance, cash or retained-earnings
     roll-forward, quarters summing to the year). Always a bug, never user input."""
+
+
+class EngineFailed(Exception):
+    """A statistical engine could not forecast a series (a fit that raised, a non-finite input or
+    output, too few values). Callers fall back to the M4 mean; never surfaced as a 500."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.message = message

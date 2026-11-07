@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from bedrock.forecast.drivers import Follows
+from bedrock.forecast.drivers import Follows, UnknownDriver
 from bedrock.forecast.errors import ForecastUnavailable
 from bedrock.forecast.history import (
     FLAT,
@@ -17,6 +17,7 @@ from bedrock.forecast.history import (
     ScenarioSettings,
     SeriesHistory,
     default_drivers,
+    driver_values,
     forecast_years,
     historical_drivers,
     historical_quarter_drivers,
@@ -459,3 +460,62 @@ def test_a_missing_quarter_between_two_gives_no_interest_rate() -> None:
     )
     got = historical_quarter_drivers(history, GROWTH)
     assert got[("interest_rate", "FY2025Q3")] is None
+
+
+# --- M6: a driver's value in every actual period (docs/erd/forecasting.md "Statistical engines
+# (M6)" → Defaults) ------------------------------------------------------------------------------
+
+
+def test_driver_values_cover_every_annual_period_in_order() -> None:
+    history = make_history(
+        {
+            2022: {"revenue": 100, "gross_profit": 40},
+            2023: {"revenue": 110},
+            2024: {"revenue": 121, "gross_profit": 60},
+            2025: {"revenue": 0, "gross_profit": 0},
+        }
+    )
+
+    growth = driver_values(history, GROWTH, "revenue_growth", "annual")
+    margin = driver_values(history, GROWTH, "gross_margin", "annual")
+
+    assert [p.key for p, _ in growth] == ["FY2022", "FY2023", "FY2024", "FY2025"]
+    assert [v for _, v in growth] == [None, D("0.1"), D("0.1"), D(-1)]
+    assert [v for _, v in margin] == [D("0.4"), None, D(60) / D(121), None]  # null rules kept
+
+
+def test_driver_values_go_beyond_the_five_history_years() -> None:
+    history = make_history({fy: {"revenue": 100 + fy} for fy in range(2010, 2026)})
+
+    values = driver_values(history, GROWTH, "revenue_growth", "annual")
+
+    assert len(values) == 16
+    assert values[0][1] is None and values[1][1] is not None
+
+
+def test_driver_values_cover_every_quarterly_period() -> None:
+    history = quarterly_history(FY2025Q2={**Q2_2025, **complete_sheet(50)})
+
+    values = dict(
+        (p.key, v) for p, v in driver_values(history, GROWTH, "revenue_growth", "quarterly")
+    )
+
+    assert list(values) == ["FY2024Q2", "FY2025Q1", "FY2025Q2"]
+    assert values == {"FY2024Q2": None, "FY2025Q1": None, "FY2025Q2": D("0.25")}
+
+
+def test_driver_values_of_an_annual_only_company_have_no_quarters() -> None:
+    history = make_history({2024: {"revenue": 1}, 2025: {"revenue": 2}})
+
+    assert driver_values(history, GROWTH, "gross_margin", "quarterly") == []
+
+
+def test_driver_values_of_a_policy_driver_are_all_null() -> None:
+    history = make_history({2024: {"revenue": 1}, 2025: {"revenue": 2}})
+
+    assert [v for _, v in driver_values(history, GROWTH, "min_cash", "annual")] == [None, None]
+
+
+def test_driver_values_reject_an_unknown_driver() -> None:
+    with pytest.raises(UnknownDriver):
+        driver_values(make_history({2025: {"revenue": 1}}), GROWTH, "nope", "annual")

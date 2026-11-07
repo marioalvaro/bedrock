@@ -10,6 +10,17 @@ from bedrock.forecast.resolve import Source
 
 
 @dataclass(frozen=True)
+class CheckBand:
+    """The cross-check of a manual value: the engine's 90% band for the year and whether the value
+    lies outside it (docs/erd/forecasting.md "API" → DriverGridOut)."""
+
+    engine: str
+    p05: Decimal
+    p95: Decimal
+    outside: bool
+
+
+@dataclass(frozen=True)
 class GridRow:
     """One driver of the grid. `history` is aligned with the grid's history years; `values`,
     `sources` and `own` with its forecast years. A value held flat is None with source
@@ -28,6 +39,13 @@ class GridRow:
     # aligned with the grid's forecast years: the annual figure of a year set by quarter, else None
     rollup: list[Decimal | None] = field(default_factory=list)
     quarterly: bool = False  # the driver can be set per quarter (`drivers.DriverDef.quarterly`)
+    engine: str = "auto"  # the scenario's engine choice for the driver
+    engine_used: str | None = None  # what produced the default: mean | arima | ets | blend
+    engine_note: str | None = None
+    seasonal: bool = False  # `stl` is allowed for the driver
+    # aligned with the forecast years (null throughout in the quarterly grid): None, or the
+    # engine's band for a year the user (or Base) set
+    check: list[CheckBand | None] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

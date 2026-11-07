@@ -12,6 +12,7 @@ import {
   getGuidanceApiV1CompaniesTickerGuidanceGet,
   getMappingGapsApiV1CompaniesTickerMappingGapsGet,
   getRatiosApiV1CompaniesTickerRatiosGet,
+  getSeasonalityApiV1CompaniesTickerSeasonalityGet,
   getSegmentsApiV1CompaniesTickerSegmentsGet,
   getStatementApiV1CompaniesTickerStatementsGet,
   getValuationSummaryApiV1CompaniesTickerScenariosScenarioIdValuationGet,
@@ -39,6 +40,7 @@ vi.mock("@/api/generated/sdk.gen", () => ({
   getFlagsApiV1CompaniesTickerFlagsGet: vi.fn(),
   getCapitalAllocationApiV1CompaniesTickerCapitalAllocationGet: vi.fn(),
   getSegmentsApiV1CompaniesTickerSegmentsGet: vi.fn(),
+  getSeasonalityApiV1CompaniesTickerSeasonalityGet: vi.fn(() => new Promise(() => {})),
   listNotesApiV1CompaniesTickerNotesGet: vi.fn(),
   listLinksApiV1CompaniesTickerNotesLinksGet: vi.fn(),
   listSetsApiV1CompaniesTickerCompsSetsGet: vi.fn(),
@@ -252,7 +254,7 @@ describe("tabs", () => {
     expect(screen.getByRole("link", { name: "Notes" })).toHaveAttribute("aria-current", "page");
   });
 
-  it("lists the fourteen tabs in order, the analysis tabs after Cash Flow", async () => {
+  it("lists the fifteen tabs in order, the analysis tabs after Cash Flow", async () => {
     renderAt("/c/AAPL");
     await screen.findByRole("heading", { name: "AAPL" });
 
@@ -266,6 +268,7 @@ describe("tabs", () => {
       "Quality",
       "Capital",
       "Segments",
+      "Seasonality",
       "Comps",
       "Guidance",
       "Valuation",
@@ -285,6 +288,10 @@ describe("tabs", () => {
     expect(screen.getByRole("link", { name: "Segments" })).toHaveAttribute(
       "href",
       "/c/AAPL/segments",
+    );
+    expect(screen.getByRole("link", { name: "Seasonality" })).toHaveAttribute(
+      "href",
+      "/c/AAPL/seasonality",
     );
     expect(screen.getByRole("link", { name: "Comps" })).toHaveAttribute("href", "/c/AAPL/comps");
     expect(screen.getByRole("link", { name: "Guidance" })).toHaveAttribute(
@@ -349,6 +356,10 @@ describe("tabs", () => {
       "/c/AAPL/scenarios?scenario=2&case=bull",
     );
     expect(screen.getByRole("link", { name: "Notes" })).toHaveAttribute("href", "/c/AAPL/notes");
+    expect(screen.getByRole("link", { name: "Seasonality" })).toHaveAttribute(
+      "href",
+      "/c/AAPL/seasonality",
+    );
   });
 
   it("carries a lone ?case without adding a ?scenario", async () => {
@@ -364,6 +375,7 @@ describe("tabs", () => {
     ["ratios", "Ratios", getRatiosApiV1CompaniesTickerRatiosGet],
     ["quality", "Quality", getFlagsApiV1CompaniesTickerFlagsGet],
     ["capital", "Capital", getCapitalAllocationApiV1CompaniesTickerCapitalAllocationGet],
+    ["seasonality", "Seasonality", getSeasonalityApiV1CompaniesTickerSeasonalityGet],
     ["comps", "Comps", listSetsApiV1CompaniesTickerCompsSetsGet],
     ["guidance", "Guidance", getGuidanceApiV1CompaniesTickerGuidanceGet],
     ["scenarios", "Scenarios", listScenariosApiV1CompaniesTickerScenariosGet],

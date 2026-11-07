@@ -8,6 +8,7 @@ from bedrock.forecast.drivers import DriverKind, RevenueMethod, Unit
 from bedrock.forecast.grid import YearModeValue
 from bedrock.forecast.resolve import Source
 from bedrock.models.scenario import Case, Scenario
+from bedrock.schemas.engines import EngineName, UsedName
 from bedrock.services.scenarios import (
     DriverGrid,
     DriverImportResult,
@@ -56,6 +57,15 @@ class ScenarioOut(BaseModel):
         return cls.model_validate(scenario, from_attributes=True)
 
 
+class CheckOut(BaseModel):
+    """The engine's 90% band for a year the user set, and whether the value lies outside it."""
+
+    engine: UsedName
+    p05: Decimal
+    p95: Decimal
+    outside: bool
+
+
 class DriverRowOut(BaseModel):
     """`history` is aligned with the grid's `history_years`; `values`, `sources` and `own` with
     its `forecast_years`. A value held flat is null with source `default`; a required driver
@@ -73,6 +83,12 @@ class DriverRowOut(BaseModel):
     kind: DriverKind | None
     rollup: list[Decimal | None]  # aligned with `forecast_years`; null for a year set annually
     quarterly: bool  # the driver can be set per quarter
+    engine: EngineName  # the scenario's engine choice for the driver
+    engine_used: UsedName | None  # what produced the default
+    engine_note: str | None
+    seasonal: bool  # `stl` is allowed
+    # aligned with `forecast_years` (null throughout in the quarterly grid)
+    check: list[CheckOut | None]
 
 
 class YearModeOut(BaseModel):
@@ -155,6 +171,14 @@ class DriverGridOut(BaseModel):
                     kind=r.kind,
                     rollup=r.rollup,
                     quarterly=r.quarterly,
+                    engine=r.engine,
+                    engine_used=r.engine_used,
+                    engine_note=r.engine_note,
+                    seasonal=r.seasonal,
+                    check=[
+                        None if c is None else CheckOut.model_validate(c, from_attributes=True)
+                        for c in r.check
+                    ],
                 )
                 for r in grid.rows
             ],

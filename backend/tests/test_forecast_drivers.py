@@ -7,8 +7,10 @@ import pytest
 
 from bedrock.forecast.drivers import (
     DRIVERS,
+    SEASONAL,
     UnknownDriver,
     check_bounds,
+    clamp,
     driver_def,
     drivers_for,
     quarter_share,
@@ -186,3 +188,51 @@ def test_a_quarter_takes_a_quarter_of_a_years_flow_amounts_only() -> None:
     assert quarter_share("buybacks") == Decimal("0.25")
     assert quarter_share("min_cash") == 1  # a floor at the quarter's end, not a flow
     assert quarter_share("segment_growth:7") == 1
+
+
+# --- M6: seasonal drivers and clamping (docs/erd/forecasting.md "Statistical engines (M6)") ------
+
+
+def test_the_seasonal_drivers_are_the_ratio_and_days_drivers_of_the_erd_in_catalog_order() -> None:
+    assert SEASONAL == (
+        "gross_margin",
+        "rnd_pct_revenue",
+        "sga_pct_revenue",
+        "other_opex_pct_revenue",
+        "d_and_a_pct_revenue",
+        "sbc_pct_revenue",
+        "other_nonoperating_pct_revenue",
+        "tax_rate",
+        "capex_pct_revenue",
+        "receivable_days",
+        "inventory_days",
+        "payable_days",
+    )
+    assert all(driver_def(c).unit in ("pct", "days") for c in SEASONAL)
+
+
+@pytest.mark.parametrize(
+    ("code", "value", "expected"),
+    [
+        ("gross_margin", "0.4", "0.4"),  # inside: unchanged
+        ("gross_margin", "1.5", "1"),  # closed bounds [-1, 1]
+        ("gross_margin", "-3", "-1"),
+        ("rnd_pct_revenue", "-0.01", "0"),
+        ("receivable_days", "900", "730"),
+        ("revenue_growth", "-1", "-0.999999"),  # open low bound (-1, 10]: lands 1e-6 inside
+        ("revenue_growth", "-2", "-0.999999"),
+        ("revenue_growth", "11", "10"),
+        ("buybacks", "1e16", "999999999999999.999999"),  # open high bound [0, 10^15)
+        ("share_change", "-1", "-0.999999"),
+    ],
+)
+def test_clamp_moves_a_value_into_its_drivers_bounds(code: str, value: str, expected: str) -> None:
+    clamped = clamp(code, Decimal(value))
+
+    assert clamped == Decimal(expected)
+    assert check_bounds(code, "value", clamped) is None
+
+
+def test_clamp_rejects_an_unknown_driver() -> None:
+    with pytest.raises(UnknownDriver):
+        clamp("nope", Decimal(0))

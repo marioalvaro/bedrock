@@ -1,5 +1,5 @@
 import type { CellClassParams, ColDef, ColGroupDef } from "ag-grid-community";
-import { RotateCcw } from "lucide-react";
+import { ChartLine, RotateCcw } from "lucide-react";
 
 import type { DriverGridOut, DriverRowOut, GridPeriodOut } from "@/api/generated/types.gen";
 import { scaleLabel } from "@/lib/format";
@@ -7,11 +7,13 @@ import type { Scale } from "@/lib/scale";
 
 import {
   canReset,
+  engineOptions,
   forecastCell,
   formatDriverValue,
   type DriverGridRow,
   type DriverMode,
   type DriverUnit,
+  type EngineCode,
 } from "./driverCells";
 import { YearGroupHeader, YearHeader } from "./YearModeSwitch";
 
@@ -41,15 +43,25 @@ export interface Handlers {
   modeOf: (driver: DriverRowOut) => DriverMode;
   onMode: (driver: DriverRowOut, mode: DriverMode) => void;
   onReset: (driver: DriverRowOut) => void;
+  onEngine: (driver: DriverRowOut, engine: EngineCode) => void;
+  onInspect: (driver: DriverRowOut) => void; // opens the driver's Engines sheet
+  engineSaving: boolean; // an engine PUT is running
 }
 
-/** The grid's columns: label, unit, Mode (Bull and Bear), history, then the forecast periods. */
+// A driver with a numeric default (`engine_used` set) can take an engine; one held flat, following
+// another driver or with no history cannot.
+const hasEngine = (driver: DriverRowOut) => driver.engine_used !== null;
+
+/**
+ * The grid's columns: label, unit, Engine (annual), Mode (Bull and Bear), history, then the
+ * forecast periods.
+ */
 export function columnDefs(
   grid: DriverGridOut,
   scale: Scale,
   isBase: boolean,
   editable: boolean,
-  { modeOf, onMode, onReset }: Handlers,
+  { modeOf, onMode, onReset, onEngine, onInspect, engineSaving }: Handlers,
 ): (ColDef<Row> | ColGroupDef<Row>)[] {
   const label: ColDef<Row> = {
     colId: "label",
@@ -63,10 +75,21 @@ export function columnDefs(
       return (
         <span className="flex min-w-0 items-center gap-1 pl-3" title={driver.label}>
           <span className="truncate">{driver.label}</span>
+          {grid.freq === "annual" && hasEngine(driver) && (
+            <button
+              type="button"
+              className="text-muted-foreground hover:text-foreground ml-auto shrink-0 cursor-pointer p-0.5"
+              aria-label={`${driver.label} engines`}
+              title="Compare the engines' forecasts"
+              onClick={() => onInspect(driver)}
+            >
+              <ChartLine className="size-3.5" />
+            </button>
+          )}
           {canReset(grid, driver) && (
             <button
               type="button"
-              className="text-muted-foreground hover:text-foreground ml-auto shrink-0 cursor-pointer p-0.5 disabled:cursor-default disabled:opacity-50"
+              className={`text-muted-foreground hover:text-foreground shrink-0 cursor-pointer p-0.5 disabled:cursor-default disabled:opacity-50 ${grid.freq === "annual" && hasEngine(driver) ? "" : "ml-auto"}`}
               aria-label={`Reset ${driver.label}`}
               disabled={!editable}
               title={`Drop this case's own ${grid.freq === "quarterly" ? "quarter " : ""}values`}
@@ -86,6 +109,33 @@ export function columnDefs(
     width: 110,
     cellClass: ["text-muted-foreground"],
     valueGetter: ({ data }) => (data?.type === "driver" ? unitHint(data.driver.unit, scale) : ""),
+  };
+
+  const engine: ColDef<Row> = {
+    colId: "engine",
+    headerName: "Engine",
+    width: 128,
+    cellRenderer: ({ data }: { data?: Row }) => {
+      if (data?.type !== "driver") return null;
+      const { driver } = data;
+      if (!hasEngine(driver)) return <span className="text-muted-foreground">—</span>;
+      return (
+        <select
+          aria-label={`${driver.label} engine`}
+          title="Applies to Base, Bull and Bear"
+          disabled={!editable || engineSaving}
+          className="h-6 max-w-full bg-transparent text-xs"
+          value={driver.engine}
+          onChange={(e) => onEngine(driver, e.target.value as EngineCode)}
+        >
+          {engineOptions(driver).map(({ value, label }) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
+      );
+    },
   };
 
   const mode: ColDef<Row> = {
@@ -193,6 +243,7 @@ export function columnDefs(
   return [
     label,
     unit,
+    ...(grid.freq === "annual" ? [engine] : []),
     ...(isBase ? [] : [mode]),
     ...history,
     ...(grid.freq === "quarterly" ? byYear() : forecast),
