@@ -169,6 +169,30 @@ export const compareQueryOptions = (ticker: string, id: number, freq: ForecastFr
     },
   });
 
+/**
+ * GET …/scenarios/{id}/compare on one line `code` (the Guidance chart's forecast bars). Under the
+ * scenario's key, so every scenario invalidation reaches it.
+ */
+export const forecastCompareQueryOptions = (
+  ticker: string,
+  id: number,
+  freq: ForecastFreq,
+  code: string,
+) =>
+  queryOptions<CompareOut>({
+    queryKey: [...scenariosKey(ticker), id, "compare", freq, "code", code],
+    queryFn: async () => {
+      const table = await unwrap(
+        compareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGet({
+          path: { ticker, scenario_id: id },
+          query: { freq, codes: code },
+        }),
+      );
+      if (!Array.isArray(table?.periods) || !Array.isArray(table?.cases)) throw unexpected();
+      return table;
+    },
+  });
+
 /** The download link of GET …/cases/{case}/drivers/export: a plain link, the browser saves the file. */
 export function driverExportUrl(
   ticker: string,

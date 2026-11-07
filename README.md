@@ -25,7 +25,7 @@ New to the app? Read the [tutorial](TUTORIAL.md), a walkthrough of every screen.
 - **Manual input.** Fill the gaps SEC leaves, or a whole company SEC does not cover, from an Excel or CSV template. A breakdown you add (for example a split of cost of revenue) becomes indented custom lines under its parent. See [Manual input](#manual-input).
 - **Segments and KPIs.** Business and geographic segments (revenue or operating income, with an "Unallocated" row that reconciles to the statement) and your own KPIs, typed into a grid or pasted or uploaded as CSV. On the annual view, one button fills FY from the four quarters.
 - **Comps.** Named peer sets of followed companies, with peers suggested by SIC code and size. Compares current multiples and the latest TTM ratios against the peer median and range.
-- **Guidance log.** Enter a company's guidance (metric, period, low and high, date given). When the actual is reported it is scored beat, in range or miss on the reported or normalized basis, with a hit rate by metric.
+- **Guidance log.** Enter a company's guidance (metric, period, low and high, date given). When the actual is reported it is scored beat, in range or miss on the reported or normalized basis, with a hit rate by metric. A bar chart compares, one metric at a time (annual or quarterly), the actuals of the last two years or four quarters against management guidance, the analyst consensus (its range as whiskers) and your own Base-case forecast.
 - **Notes.** A Markdown thesis journal. A note can link to a statement line, a ratio, a capital-allocation metric, a quality rule, or a period. Linked cells carry a marker that opens their notes.
 - **Scenarios and drivers.** Each company has scenarios (one default, plus your own), each with a Base, Bull and Bear case. A case is a set of drivers (revenue growth or a segment / volume × price build, margins, working-capital days, capex, buybacks, …) for 5 forecast years, by year or by quarter for the next 8 quarters. Defaults come from recent history. Bull and Bear follow Base, either with their own values or as offsets ("Base + 3 pts"). Drivers can be exported to and imported from CSV or Excel.
 - **Forecast.** The drivers build all three statements, accounting-consistent: the balance sheet balances, and cash and retained earnings roll forward. Q1..Q4 add up to each fiscal year. An integrity panel shows every check per period, and a comparison charts Bull, Base and Bear side by side.
@@ -82,6 +82,7 @@ Every route is under `/api/v1`. Interactive docs are at `/docs` on a running bac
 | `GET` | `/companies/{ticker}/peer-suggestions` | session | Followed companies ranked by SIC match, then size |
 | `GET` | `/companies/{ticker}/comps-sets/{id}/comparison` | session | Multiples and ratios against the peer median and range |
 | `GET` | `/companies/{ticker}/guidance/metrics` | session | The metrics guidance can be entered for |
+| `GET` | `/companies/{ticker}/guidance/history` | session | Every actual of one metric (`metric`, `basis`, `freq`), oldest first, for the Guidance chart |
 | `GET` `POST` | `/companies/{ticker}/guidance` | session | List (with verdicts and hit rate) or add guidance |
 | `PUT` `DELETE` | `/companies/{ticker}/guidance/{id}` | session | Edit or remove an entry |
 | `GET` `POST` | `/companies/{ticker}/notes` | session | List (filterable) or add notes |

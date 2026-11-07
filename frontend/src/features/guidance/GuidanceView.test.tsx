@@ -1,32 +1,51 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { EChartsOption } from "echarts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { CompareOut } from "@/api/generated/types.gen";
 import {
+  compareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGet,
   createEntryApiV1CompaniesTickerGuidancePost,
   deleteEntryApiV1CompaniesTickerGuidanceGuidanceIdDelete,
   getGuidanceApiV1CompaniesTickerGuidanceGet,
+  getHistoryApiV1CompaniesTickerGuidanceHistoryGet,
   listMetricsApiV1CompaniesTickerGuidanceMetricsGet,
+  listScenariosApiV1CompaniesTickerScenariosGet,
   updateEntryApiV1CompaniesTickerGuidanceGuidanceIdPut,
 } from "@/api/generated/sdk.gen";
+import { Chart } from "@/components/Chart";
 import { localIsoDate } from "@/lib/now";
 import { createQueryClient } from "@/lib/query-client";
 import { setScale } from "@/lib/scale";
 import { guidance, guidanceEntry, guidanceMetrics, guidanceWithConsensus } from "@/test/context";
 import { errorResult, okResult } from "@/test/responses";
+import { scenario, scenarios } from "@/test/scenarios";
 
 import { GuidanceView } from "./GuidanceView";
 
 vi.mock("@/api/generated/sdk.gen", () => ({
   getGuidanceApiV1CompaniesTickerGuidanceGet: vi.fn(),
+  getHistoryApiV1CompaniesTickerGuidanceHistoryGet: vi.fn(),
+  listScenariosApiV1CompaniesTickerScenariosGet: vi.fn(),
+  compareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGet: vi.fn(),
   listMetricsApiV1CompaniesTickerGuidanceMetricsGet: vi.fn(),
   createEntryApiV1CompaniesTickerGuidancePost: vi.fn(),
   updateEntryApiV1CompaniesTickerGuidanceGuidanceIdPut: vi.fn(),
   deleteEntryApiV1CompaniesTickerGuidanceGuidanceIdDelete: vi.fn(),
 }));
 
+vi.mock("@/components/Chart", () => ({ Chart: vi.fn(() => null) }));
+const chart = vi.mocked(Chart);
+const lastOption = () => chart.mock.calls.at(-1)![0].option as EChartsOption;
+const lastSeries = () => lastOption().series as { name: string; data: (number | null)[] }[];
+const seriesData = (name: string) => lastSeries().find((s) => s.name === name)?.data;
+
 const getGuidance = vi.mocked(getGuidanceApiV1CompaniesTickerGuidanceGet);
+const getHistory = vi.mocked(getHistoryApiV1CompaniesTickerGuidanceHistoryGet);
+const listScenarios = vi.mocked(listScenariosApiV1CompaniesTickerScenariosGet);
+const compareCases = vi.mocked(compareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGet);
 const listMetrics = vi.mocked(listMetricsApiV1CompaniesTickerGuidanceMetricsGet);
 const createEntry = vi.mocked(createEntryApiV1CompaniesTickerGuidancePost);
 const updateEntry = vi.mocked(updateEntryApiV1CompaniesTickerGuidanceGuidanceIdPut);
@@ -61,12 +80,39 @@ async function fill(metric: string, low: string, high: string) {
   await userEvent.type(screen.getByLabelText("High"), high);
 }
 
+// The default scenario's comparison on revenue: Base forecasts FY2025 at 410 B.
+function revenueForecast(): CompareOut {
+  const period = (fiscal_year: number, is_forecast: boolean) => ({
+    key: `FY${fiscal_year}`,
+    label: `FY${fiscal_year}`,
+    fiscal_year,
+    fiscal_period: "FY",
+    is_forecast,
+    period_start: "",
+    period_end: "",
+  });
+  return {
+    periods: [period(2024, false), period(2025, true)],
+    codes: [{ code: "revenue", label: "Revenue", unit: "USD" }],
+    cases: [
+      { case: "base", label: "Base", error: null, values: { revenue: ["1", "410000000000"] } },
+      { case: "bull", label: "Bull", error: null, values: { revenue: ["1", "999"] } },
+    ],
+    built_from_quarters: [],
+  };
+}
+
 const lastBody = () => createEntry.mock.calls.at(-1)![0]!.body as Record<string, unknown>;
 
 beforeEach(() => {
   setScale("M");
   getGuidance.mockResolvedValue(okResult(guidance()) as never);
+  getHistory.mockResolvedValue(
+    okResult({ metric: "revenue", basis: "reported", freq: "annual", points: [] }) as never,
+  );
   listMetrics.mockResolvedValue(okResult(guidanceMetrics()) as never);
+  listScenarios.mockResolvedValue(okResult([]) as never);
+  compareCases.mockResolvedValue(okResult(revenueForecast()) as never);
   createEntry.mockResolvedValue(okResult(guidanceEntry({ id: 9 }), 201) as never);
   updateEntry.mockResolvedValue(okResult(guidanceEntry({ id: 3 })) as never);
   deleteEntry.mockResolvedValue(okResult(null, 204) as never);
@@ -359,5 +405,153 @@ describe("GuidanceView analyst consensus", () => {
     await openForm();
     expect(screen.getByLabelText("Low")).toHaveValue("");
     expect(screen.getByLabelText("Source note")).toHaveValue("");
+  });
+});
+
+describe("GuidanceView actual vs predictions chart", () => {
+  it("charts annual reported revenue by default: actual and guidance midpoint", async () => {
+    await renderLoaded();
+    expect(screen.getByRole("heading", { name: "Actual vs predictions" })).toBeInTheDocument();
+    expect(chart.mock.calls.at(-1)![0].ariaLabel).toBe("Revenue: actual vs predictions, annual");
+    expect((lastOption().xAxis as { data: string[] }).data).toEqual(["FY2024"]);
+    expect(lastSeries().map((s) => s.name)).toEqual(["Actual", "Guidance"]);
+    expect(seriesData("Actual")).toEqual([391035000000]);
+    // The latest revision (id 3: 395–400 B), not the earlier one.
+    expect(seriesData("Guidance")).toEqual([397500000000]);
+  });
+
+  it("adds the earlier actuals of the metric from its history", async () => {
+    getHistory.mockResolvedValue(
+      okResult({
+        metric: "revenue",
+        basis: "reported",
+        freq: "annual",
+        points: [
+          { fiscal_year: 2022, fiscal_period: "FY", value: "394328000000" },
+          { fiscal_year: 2023, fiscal_period: "FY", value: "383285000000" },
+          { fiscal_year: 2024, fiscal_period: "FY", value: "391035000000" },
+        ],
+      }) as never,
+    );
+    await renderLoaded();
+    await waitFor(() =>
+      expect((lastOption().xAxis as { data: string[] }).data).toEqual([
+        "FY2022",
+        "FY2023",
+        "FY2024",
+      ]),
+    );
+    expect(getHistory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: { ticker: "AAPL" },
+        query: { metric: "revenue", basis: "reported", freq: "annual" },
+      }),
+    );
+    expect(seriesData("Actual")).toEqual([394328000000, 383285000000, 391035000000]);
+    expect(seriesData("Guidance")).toEqual([null, null, 397500000000]);
+  });
+
+  it("still charts the guided periods when the history cannot load", async () => {
+    getHistory.mockResolvedValue(errorResult(422, { detail: "Unknown KPI 'kpi:gone'" }) as never);
+    await renderLoaded();
+    expect((lastOption().xAxis as { data: string[] }).data).toEqual(["FY2024"]);
+  });
+
+  it("switches the metric", async () => {
+    await renderLoaded();
+    const select = screen.getByLabelText("Chart metric");
+    expect(
+      within(select)
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["Revenue", "Stores"]);
+    await userEvent.selectOptions(select, "Stores");
+    expect(getHistory).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        query: { metric: "kpi:stores", basis: "reported", freq: "annual" },
+      }),
+    );
+    expect((lastOption().xAxis as { data: string[] }).data).toEqual(["FY2025"]);
+    expect(seriesData("Actual")).toBeUndefined();
+    expect(seriesData("Guidance")).toEqual([905]);
+  });
+
+  it("switches to the quarters", async () => {
+    await renderLoaded();
+    await userEvent.click(screen.getByRole("radio", { name: "Quarterly" }));
+    expect(within(screen.getByLabelText("Chart metric")).getAllByRole("option")).toHaveLength(1);
+    expect(chart.mock.calls.at(-1)![0].ariaLabel).toBe(
+      "Gross margin: actual vs predictions, quarterly",
+    );
+    expect((lastOption().xAxis as { data: string[] }).data).toEqual(["Q4 FY2024"]);
+  });
+
+  it("says when a frequency has no guidance", async () => {
+    getGuidance.mockResolvedValue(
+      okResult(guidance({ entries: [guidanceEntry({ id: 3 })] })) as never,
+    );
+    await renderLoaded();
+    await userEvent.click(screen.getByRole("radio", { name: "Quarterly" }));
+    expect(screen.getByText("No quarterly guidance to chart.")).toBeInTheDocument();
+  });
+
+  it("draws the consensus beside the guidance", async () => {
+    getGuidance.mockResolvedValue(okResult(guidanceWithConsensus()) as never);
+    await renderLoaded();
+    expect((lastOption().xAxis as { data: string[] }).data).toEqual(["FY2024", "FY2026"]);
+    expect(seriesData("Consensus")).toEqual([null, 480001000000]);
+    expect(lastSeries().map((s) => s.name)).toEqual([
+      "Actual",
+      "Consensus",
+      "Guidance",
+      "Consensus range",
+    ]);
+  });
+
+  it("adds the default scenario's Base forecast as its own bars", async () => {
+    listScenarios.mockResolvedValue(
+      okResult([scenario({ id: 2, is_default: false }), scenario({ id: 5 })]) as never,
+    );
+    await renderLoaded();
+    await waitFor(() => expect(lastSeries().map((s) => s.name)).toContain("Forecast"));
+    expect(compareCases).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: { ticker: "AAPL", scenario_id: 5 },
+        query: { freq: "annual", codes: "revenue" },
+      }),
+    );
+    expect((lastOption().xAxis as { data: string[] }).data).toEqual(["FY2024", "FY2025"]);
+    const forecast = lastSeries().find((s) => s.name === "Forecast")!;
+    expect(forecast.data).toEqual([null, 410000000000]);
+  });
+
+  it("asks no forecast for a KPI, which a scenario does not forecast", async () => {
+    listScenarios.mockResolvedValue(okResult(scenarios()) as never);
+    await renderLoaded();
+    await waitFor(() => expect(compareCases).toHaveBeenCalled());
+    compareCases.mockClear();
+    await userEvent.selectOptions(screen.getByLabelText("Chart metric"), "Stores");
+    expect(lastSeries().map((s) => s.name)).toEqual(["Guidance"]);
+    expect(compareCases).not.toHaveBeenCalled();
+  });
+
+  it("charts without a forecast when the company has no scenario", async () => {
+    await renderLoaded();
+    await waitFor(() => expect(listScenarios).toHaveBeenCalled());
+    expect(compareCases).not.toHaveBeenCalled();
+    expect(lastSeries().map((s) => s.name)).toEqual(["Actual", "Guidance"]);
+  });
+
+  it("keeps the entries log last, under its own heading", async () => {
+    await renderLoaded();
+    const heading = screen.getByRole("heading", { name: "Actual vs predictions" });
+    const log = screen.getByRole("heading", { name: "Log" });
+    const entries = screen.getByRole("table", { name: "Entries" });
+    const byMetric = screen.getByRole("table", { name: "By metric" });
+    const follows = (a: Node, b: Node) =>
+      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(follows(heading, byMetric)).toBe(true);
+    expect(follows(byMetric, log)).toBe(true);
+    expect(follows(log, entries)).toBe(true);
   });
 });

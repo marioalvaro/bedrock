@@ -1421,7 +1421,7 @@
         "type": "object"
       },
       "ConsensusEstimateOut": {
-        "description": "Analysts' consensus range for a revenue or EPS period: the guidance form's defaults.",
+        "description": "Analysts' consensus range for a revenue or EPS period, placed on a fiscal period.",
         "properties": {
           "analysts": {
             "anyOf": [
@@ -3566,6 +3566,46 @@
         "title": "GuidanceEntryOut",
         "type": "object"
       },
+      "GuidanceHistoryOut": {
+        "description": "Every actual of one metric in one frequency, oldest first (the chart's earlier periods).",
+        "properties": {
+          "basis": {
+            "enum": [
+              "reported",
+              "normalized"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
+          "freq": {
+            "enum": [
+              "annual",
+              "quarterly"
+            ],
+            "title": "Freq",
+            "type": "string"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryPointOut"
+            },
+            "title": "Points",
+            "type": "array"
+          }
+        },
+        "required": [
+          "metric",
+          "basis",
+          "freq",
+          "points"
+        ],
+        "title": "GuidanceHistoryOut",
+        "type": "object"
+      },
       "GuidanceIn": {
         "description": "`low` and `high` are in the metric's units and the displayed sign convention of the\nstatements (capex guidance of 10-11 B is -11 B to -10 B); a point estimate has low = high.\n`direction` defaults from the metric.",
         "properties": {
@@ -3781,6 +3821,37 @@
           "label"
         ],
         "title": "HistoryPeriodOut",
+        "type": "object"
+      },
+      "HistoryPointOut": {
+        "properties": {
+          "fiscal_period": {
+            "enum": [
+              "FY",
+              "Q1",
+              "Q2",
+              "Q3",
+              "Q4"
+            ],
+            "title": "Fiscal Period",
+            "type": "string"
+          },
+          "fiscal_year": {
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "value": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fiscal_year",
+          "fiscal_period",
+          "value"
+        ],
+        "title": "HistoryPointOut",
         "type": "object"
       },
       "IgnoredCellOut": {
@@ -9271,6 +9342,85 @@
           }
         },
         "summary": "List Consensus",
+        "tags": [
+          "guidance"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/guidance/history": {
+      "get": {
+        "operationId": "get_history_api_v1_companies__ticker__guidance_history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "metric",
+            "required": true,
+            "schema": {
+              "title": "Metric",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "basis",
+            "required": false,
+            "schema": {
+              "default": "reported",
+              "enum": [
+                "reported",
+                "normalized"
+              ],
+              "title": "Basis",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "freq",
+            "required": false,
+            "schema": {
+              "default": "annual",
+              "enum": [
+                "annual",
+                "quarterly"
+              ],
+              "title": "Freq",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuidanceHistoryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get History",
         "tags": [
           "guidance"
         ]

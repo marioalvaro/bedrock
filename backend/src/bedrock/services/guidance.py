@@ -37,8 +37,10 @@ from bedrock.statements.build import StatementTable
 __all__ = [
     "GuidanceInput",
     "GuidanceLog",
+    "HistoryPoint",
     "LoggedEntry",
     "MetricChoice",
+    "actual_history",
     "create_entry",
     "delete_entry",
     "guidance_log",
@@ -51,6 +53,7 @@ YEAR_RANGE = (1000, 9999)  # four digits, as the segment import grammar
 _PERIOD_ORDER = {"FY": 0, "Q1": 1, "Q2": 2, "Q3": 3, "Q4": 4}
 
 Group = Literal["line", "ratio", "kpi"]
+Freq = Literal["annual", "quarterly"]
 # (code, fiscal_year, fiscal_period) -> value, for the lines of the statement tables read
 _LineValues = dict[tuple[str, int, str], Decimal | None]
 
@@ -76,6 +79,13 @@ class MetricChoice:
     unit: str
     default_direction: Direction
     quarterly: bool  # may be guided on a quarter
+
+
+@dataclass(frozen=True)
+class HistoryPoint:
+    fiscal_year: int
+    fiscal_period: str  # "FY" or "Q1".."Q4"
+    value: Decimal
 
 
 @dataclass(frozen=True)
@@ -159,6 +169,69 @@ def delete_entry(session: Session, company: Company, guidance_id: int) -> None:
     """Raises GuidanceNotFound for an unknown id, GuidanceLocked for a consensus entry."""
     repo.delete(session, _editable(session, company, guidance_id))
     session.commit()
+
+
+def actual_history(
+    session: Session, company: Company, metric: str, basis: Basis, freq: Freq
+) -> list[HistoryPoint]:
+    """Every actual of `metric` in `freq`, oldest first, read as the log reads an entry's actual
+    (so a guided period's value is its entry's actual); periods without a value are left out.
+    An unknown metric, or a quarter of a metric that cannot be guided on one, is
+    `InvalidGuidance`."""
+    choice = next((c for c in metric_choices(session, company) if c.metric == metric), None)
+    if choice is None:
+        what = "KPI" if metric.startswith(KPI_PREFIX) else "metric"
+        raise InvalidGuidance(f"Unknown {what} {metric!r}")
+    if freq == "quarterly" and not choice.quarterly:
+        raise InvalidGuidance(
+            f"{metric} has no quarterly actuals; a quarter takes statement lines, KPIs and the "
+            f"margins {sorted(QUARTER_RATIOS)}"
+        )
+    values: dict[tuple[int, str], Decimal | None]
+    if choice.group == "kpi":
+        code = metric.removeprefix(KPI_PREFIX)
+        values = {(y, p): v for (c, y, p), v in _kpi_values(session, company).items() if c == code}
+    elif freq == "annual":
+        inputs = ratios_service.ratio_inputs(session, company, "annual", basis)
+        if choice.group == "ratio":
+            table = compute_ratios(inputs, "annual")
+            row = next(r for r in table.rows if r.code == metric)
+            values = {
+                (p.fiscal_year, p.fiscal_period): v
+                for p, v in zip(table.periods, row.values, strict=True)
+            }
+        else:
+            lines = _line_values([inputs.income, inputs.cash_flow, inputs.balance])
+            values = {(y, p): v for (c, y, p), v in lines.items() if c == metric}
+    else:
+        tables = statement_tables(
+            session,
+            company,
+            [("IS", "quarterly"), ("CF", "quarterly"), ("BS", "quarterly")],
+            basis,
+        )
+        lines = _line_values(list(tables.values()))
+        periods = {(y, p) for (_, y, p) in lines}
+        if choice.group == "ratio":
+            values = {
+                (y, p): quarter_margin(
+                    metric,
+                    {
+                        code: lines.get((code, y, p))
+                        for code in ("revenue", *QUARTER_RATIOS[metric])
+                    },
+                )
+                for y, p in periods
+            }
+        else:
+            values = {(y, p): lines.get((metric, y, p)) for y, p in periods}
+    return [
+        HistoryPoint(year, period, value)
+        for (year, period), value in sorted(
+            values.items(), key=lambda item: (item[0][0], _PERIOD_ORDER[item[0][1]])
+        )
+        if value is not None and (period == "FY") == (freq == "annual")
+    ]
 
 
 def _logged(session: Session, company: Company, guidance_id: int) -> LoggedEntry:

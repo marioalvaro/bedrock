@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -9,6 +10,7 @@ from bedrock.models.company import Company
 from bedrock.schemas.guidance import (
     ConsensusEstimateOut,
     GuidanceEntryOut,
+    GuidanceHistoryOut,
     GuidanceIn,
     GuidanceOut,
     MetricChoiceOut,
@@ -33,6 +35,18 @@ def list_consensus(
     return [
         ConsensusEstimateOut.from_estimate(e) for e in consensus_service.consensus(session, company)
     ]
+
+
+@router.get("/companies/{ticker}/guidance/history")
+def get_history(
+    metric: str,
+    basis: Literal["reported", "normalized"] = "reported",
+    freq: Literal["annual", "quarterly"] = "annual",
+    company: Company = Depends(followed_company),
+    session: Session = Depends(get_session),
+) -> GuidanceHistoryOut:
+    points = service.actual_history(session, company, metric, basis, freq)
+    return GuidanceHistoryOut.from_points(metric, basis, freq, points)
 
 
 @router.get("/companies/{ticker}/guidance")

@@ -337,7 +337,11 @@ Click **Add guidance** and fill in:
 
 When the period is reported, each entry gets a verdict: **Beat** (better than the high end), **In range**, or **Miss** (worse than the low end), flipped for metrics where lower is better. The surprise is the actual against the midpoint. An entry with no actual yet is **Pending**.
 
-If the company revises guidance, add another entry for the same metric and period: all are kept, and the one with the latest date counts in the summary. The top of the tab shows the counts and the **Hit rate** (beat plus in range, over all scored), overall and **by metric**.
+If the company revises guidance, add another entry for the same metric and period: all are kept, and the one with the latest date counts in the summary.
+
+**Actual vs predictions** at the top of the tab charts one metric at a time: pick **Annual** or **Quarterly** and a metric from **Metric**. Each period has bars side by side for the **Actual**, the analyst **Consensus** (its low to high range drawn as whiskers), management **Guidance** (the middle of the range) and, for a statement line such as revenue or EPS, your own **Forecast** (the Base case of your default scenario). The chart starts two years (or four quarters) before the latest reported period and runs through every period guided or forecast after it. Hover a period to see each value and range with its verdict, Beat in green and Miss in red. Older periods and every revision stay in the **Log** at the bottom of the tab.
+
+The summary below the chart shows the counts and the **Hit rate** (beat plus in range, over all scored), overall and **by metric**.
 
 ## 10. Scenarios
 

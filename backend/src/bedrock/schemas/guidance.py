@@ -14,8 +14,10 @@ from bedrock.analysis.guidance import (
 )
 from bedrock.services.consensus import Estimate
 from bedrock.services.guidance import (
+    Freq,
     GuidanceInput,
     GuidanceLog,
+    HistoryPoint,
     LoggedEntry,
     MetricChoice,
 )
@@ -178,3 +180,34 @@ class ConsensusEstimateOut(BaseModel):
     @classmethod
     def from_estimate(cls, e: Estimate) -> "ConsensusEstimateOut":
         return cls(**e.__dict__)
+
+
+class HistoryPointOut(BaseModel):
+    fiscal_year: int
+    fiscal_period: FiscalPeriod
+    value: Decimal
+
+
+class GuidanceHistoryOut(BaseModel):
+    """Every actual of one metric in one frequency, oldest first (the chart's earlier periods)."""
+
+    metric: str
+    basis: Literal["reported", "normalized"]
+    freq: Literal["annual", "quarterly"]
+    points: list[HistoryPointOut]
+
+    @classmethod
+    def from_points(
+        cls, metric: str, basis: Basis, freq: Freq, points: list[HistoryPoint]
+    ) -> "GuidanceHistoryOut":
+        return cls(
+            metric=metric,
+            basis=basis,
+            freq=freq,
+            points=[
+                HistoryPointOut(
+                    fiscal_year=p.fiscal_year, fiscal_period=p.fiscal_period, value=p.value
+                )
+                for p in points
+            ],
+        )

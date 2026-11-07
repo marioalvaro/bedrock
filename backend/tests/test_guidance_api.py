@@ -17,6 +17,7 @@ API = "/api/v1"
 COMPANY = f"{API}/companies/AAPL"
 GUIDANCE = f"{COMPANY}/guidance"
 METRICS = f"{GUIDANCE}/metrics"
+HISTORY = f"{GUIDANCE}/history"
 BILLION = Decimal(1_000_000_000)
 
 REVENUE_FY2024 = Decimal(391_035_000_000)  # AAPL FY2024 10-K: net sales of 391,035 million
@@ -77,6 +78,7 @@ def _count(session: Session) -> int:
 def test_every_guidance_route_requires_a_session(client: TestClient) -> None:
     assert client.get(GUIDANCE).status_code == 401
     assert client.get(METRICS).status_code == 401
+    assert client.get(HISTORY, params={"metric": "revenue"}).status_code == 401
     assert client.post(GUIDANCE, json=ENTRY).status_code == 401
     assert client.put(f"{GUIDANCE}/1", json=ENTRY).status_code == 401
     assert client.delete(f"{GUIDANCE}/1").status_code == 401
@@ -85,6 +87,7 @@ def test_every_guidance_route_requires_a_session(client: TestClient) -> None:
 def test_an_unfollowed_ticker_is_a_404_on_every_route(authed_client: TestClient) -> None:
     assert authed_client.get(GUIDANCE).status_code == 404
     assert authed_client.get(METRICS).status_code == 404
+    assert authed_client.get(HISTORY, params={"metric": "revenue"}).status_code == 404
     assert authed_client.post(GUIDANCE, json=ENTRY).status_code == 404
     assert authed_client.put(f"{GUIDANCE}/1", json=ENTRY).status_code == 404
     assert authed_client.delete(f"{GUIDANCE}/1").status_code == 404
@@ -585,3 +588,102 @@ def test_a_consensus_entry_cannot_be_edited_or_deleted(
     assert remove.status_code == 409
     (kept,) = log(aapl_client)["entries"]
     assert (kept["id"], kept["low"], kept["source"]) == (consensus_id, "385000000000", "consensus")
+
+
+# --- actual history (the chart's earlier periods) ---------------------------------------------
+
+
+def history(client: TestClient, **params: str) -> dict[str, Any]:
+    response = client.get(HISTORY, params=params)
+    assert response.status_code == 200, response.text
+    body: dict[str, Any] = response.json()
+    return body
+
+
+def values_by_period(body: dict[str, Any]) -> dict[str, Decimal]:
+    return {
+        f"FY{p['fiscal_year']}" + ("" if p["fiscal_period"] == "FY" else p["fiscal_period"]): (
+            Decimal(p["value"])
+        )
+        for p in body["points"]
+    }
+
+
+def test_history_lists_every_annual_actual_oldest_first(aapl_client: TestClient) -> None:
+    body = history(aapl_client, metric="revenue", basis="reported", freq="annual")
+    assert (body["metric"], body["basis"], body["freq"]) == ("revenue", "reported", "annual")
+    points = body["points"]
+    assert len(points) > 5
+    assert all(p["fiscal_period"] == "FY" and p["value"] is not None for p in points)
+    years = [p["fiscal_year"] for p in points]
+    assert years == sorted(years) and len(set(years)) == len(years)
+    assert values_by_period(body)["FY2024"] == REVENUE_FY2024
+
+
+def test_history_defaults_to_reported_annual(aapl_client: TestClient) -> None:
+    body = history(aapl_client, metric="revenue")
+    assert (body["basis"], body["freq"]) == ("reported", "annual")
+
+
+def test_history_of_a_quarterly_line_matches_the_quarterly_table(aapl_client: TestClient) -> None:
+    body = history(aapl_client, metric="revenue", freq="quarterly")
+    keys = [(p["fiscal_year"], p["fiscal_period"]) for p in body["points"]]
+    assert all(period in {"Q1", "Q2", "Q3", "Q4"} for _, period in keys)
+    assert keys == sorted(keys)
+    expected = statement_value(aapl_client, "IS", "quarterly", "revenue", "FY2024Q3")
+    assert values_by_period(body)["FY2024Q3"] == expected
+
+
+def test_history_values_match_the_logs_actuals(aapl_client: TestClient) -> None:
+    annual = post(aapl_client, metric="gross_margin", low="0.4", high="0.45")
+    quarter = post(aapl_client, metric="gross_margin", fiscal_period="Q4", low="0.4", high="0.5")
+    yearly = values_by_period(history(aapl_client, metric="gross_margin"))
+    quarterly = values_by_period(history(aapl_client, metric="gross_margin", freq="quarterly"))
+    assert yearly["FY2024"] == Decimal(annual["actual"])
+    assert quarterly["FY2024Q4"] == Decimal(quarter["actual"])
+
+
+def test_history_of_a_kpi_reads_its_series_by_frequency(aapl_client: TestClient) -> None:
+    series = aapl_client.post(
+        f"{COMPANY}/segment-series",
+        json={"dimension": "kpi", "name": "Stores", "metric": "stores", "unit": "count"},
+    ).json()
+    values = {
+        "values": [
+            {"fiscal_year": 2024, "fiscal_period": "FY", "value": "535"},
+            {"fiscal_year": 2023, "fiscal_period": "FY", "value": "520"},
+            {"fiscal_year": 2024, "fiscal_period": "Q1", "value": "525"},
+        ]
+    }
+    assert aapl_client.put(
+        f"{COMPANY}/segment-series/{series['id']}/values", json=values
+    ).is_success
+    assert values_by_period(history(aapl_client, metric="kpi:stores")) == {
+        "FY2023": Decimal(520),
+        "FY2024": Decimal(535),
+    }
+    quarterly = history(aapl_client, metric="kpi:stores", freq="quarterly")
+    assert values_by_period(quarterly) == {"FY2024Q1": Decimal(525)}
+
+
+@pytest.mark.parametrize(
+    ("params", "needle"),
+    [
+        ({"metric": "nope"}, "nope"),
+        ({"metric": "kpi:gone"}, "KPI"),
+        ({"metric": "roe", "freq": "quarterly"}, "roe"),
+    ],
+)
+def test_history_of_an_unknown_or_unquarterly_metric_is_a_422(
+    aapl_client: TestClient, params: dict[str, str], needle: str
+) -> None:
+    response = aapl_client.get(HISTORY, params=params)
+    assert response.status_code == 422
+    assert needle in response.json()["detail"]
+
+
+def test_history_rejects_an_unknown_frequency_or_basis(aapl_client: TestClient) -> None:
+    assert (
+        aapl_client.get(HISTORY, params={"metric": "revenue", "freq": "monthly"}).status_code == 422
+    )
+    assert aapl_client.get(HISTORY, params={"metric": "revenue", "basis": "x"}).status_code == 422

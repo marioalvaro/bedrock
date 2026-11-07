@@ -33,6 +33,7 @@ import {
 } from "@/lib/format";
 import { useScale, type Scale } from "@/lib/scale";
 
+import { GuidanceChart } from "./GuidanceChart";
 import { GuidanceForm } from "./GuidanceForm";
 
 const VERDICTS: Record<GuidanceEntryOut["verdict"], { text: string; className?: string }> = {
@@ -99,8 +100,9 @@ interface GuidanceViewProps {
 }
 
 /**
- * The Guidance tab: the hit/miss summary of the latest entries, the counts per metric and every
- * entry with its actual, surprise and verdict (revisions muted); add, edit and delete. Analyst
+ * The Guidance tab: the actual-vs-predictions chart of one metric (annual or quarterly), the
+ * hit/miss summary of the latest entries, the counts per metric and, last, the log of every entry
+ * with its actual, surprise and verdict (revisions muted); add, edit and delete. Analyst
  * consensus entries (logged daily by the backend) are tagged, summarized apart and read-only. See
  * erd/workspace.md "Frontend (M3)".
  */
@@ -146,6 +148,7 @@ export function GuidanceView({ ticker }: GuidanceViewProps) {
       )}
       {data && data.entries.length > 0 && (
         <div className="space-y-4 py-3">
+          <GuidanceChart ticker={ticker} entries={data.entries} />
           {hasSource(data.entries, "management") && (
             <>
               <p className="px-4 text-sm">
@@ -164,6 +167,7 @@ export function GuidanceView({ ticker }: GuidanceViewProps) {
               <ByMetricTable label="Consensus by metric" rows={data.consensus_by_metric} />
             </>
           )}
+          <h2 className="border-border border-t px-4 pt-3 text-sm font-medium">Log</h2>
           <div className="overflow-x-auto px-2">
             <table aria-label="Entries" className={TABLE}>
               <thead>

@@ -797,7 +797,7 @@ export type ConceptClassificationOut = {
 /**
  * ConsensusEstimateOut
  *
- * Analysts' consensus range for a revenue or EPS period: the guidance form's defaults.
+ * Analysts' consensus range for a revenue or EPS period, placed on a fiscal period.
  */
 export type ConsensusEstimateOut = {
     /**
@@ -1889,6 +1889,30 @@ export type GuidanceEntryOut = {
 };
 
 /**
+ * GuidanceHistoryOut
+ *
+ * Every actual of one metric in one frequency, oldest first (the chart's earlier periods).
+ */
+export type GuidanceHistoryOut = {
+    /**
+     * Basis
+     */
+    basis: 'reported' | 'normalized';
+    /**
+     * Freq
+     */
+    freq: 'annual' | 'quarterly';
+    /**
+     * Metric
+     */
+    metric: string;
+    /**
+     * Points
+     */
+    points: Array<HistoryPointOut>;
+};
+
+/**
  * GuidanceIn
  *
  * `low` and `high` are in the metric's units and the displayed sign convention of the
@@ -2012,6 +2036,24 @@ export type HistoryPeriodOut = {
      * Label
      */
     label: string;
+};
+
+/**
+ * HistoryPointOut
+ */
+export type HistoryPointOut = {
+    /**
+     * Fiscal Period
+     */
+    fiscal_period: 'FY' | 'Q1' | 'Q2' | 'Q3' | 'Q4';
+    /**
+     * Fiscal Year
+     */
+    fiscal_year: number;
+    /**
+     * Value
+     */
+    value: string;
 };
 
 /**
@@ -5042,6 +5084,49 @@ export type ListConsensusApiV1CompaniesTickerGuidanceConsensusGetResponses = {
 };
 
 export type ListConsensusApiV1CompaniesTickerGuidanceConsensusGetResponse = ListConsensusApiV1CompaniesTickerGuidanceConsensusGetResponses[keyof ListConsensusApiV1CompaniesTickerGuidanceConsensusGetResponses];
+
+export type GetHistoryApiV1CompaniesTickerGuidanceHistoryGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query: {
+        /**
+         * Metric
+         */
+        metric: string;
+        /**
+         * Basis
+         */
+        basis?: 'reported' | 'normalized';
+        /**
+         * Freq
+         */
+        freq?: 'annual' | 'quarterly';
+    };
+    url: '/api/v1/companies/{ticker}/guidance/history';
+};
+
+export type GetHistoryApiV1CompaniesTickerGuidanceHistoryGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetHistoryApiV1CompaniesTickerGuidanceHistoryGetError = GetHistoryApiV1CompaniesTickerGuidanceHistoryGetErrors[keyof GetHistoryApiV1CompaniesTickerGuidanceHistoryGetErrors];
+
+export type GetHistoryApiV1CompaniesTickerGuidanceHistoryGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: GuidanceHistoryOut;
+};
+
+export type GetHistoryApiV1CompaniesTickerGuidanceHistoryGetResponse = GetHistoryApiV1CompaniesTickerGuidanceHistoryGetResponses[keyof GetHistoryApiV1CompaniesTickerGuidanceHistoryGetResponses];
 
 export type ListMetricsApiV1CompaniesTickerGuidanceMetricsGetData = {
     body?: never;
