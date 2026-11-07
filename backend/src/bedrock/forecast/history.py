@@ -183,6 +183,20 @@ def historical_quarter_drivers(
     }
 
 
+def driver_values(
+    history: ForecastHistory,
+    settings: ScenarioSettings,
+    code: str,
+    freq: Literal["annual", "quarterly"],
+) -> list[tuple[Period, Decimal | None]]:
+    """A driver's value in every period of that frequency's tables, oldest first, by its history
+    rule (a quarter as `historical_quarter_drivers` reads it); None where the rule gives none.
+    Raises UnknownDriver."""
+    d = driver_def(code)
+    reader = _Reader(history, settings, quarterly=freq == "quarterly")
+    return [(p, reader.value_at(d, p)) for p in reader.values.periods]
+
+
 def default_drivers(history: ForecastHistory, settings: ScenarioSettings) -> dict[str, Default]:
     """Each driver's default: the mean of its non-null values in the last DEFAULT_YEARS fiscal
     years, else its fallback (see `Default`)."""
@@ -323,6 +337,7 @@ __all__ = [
     "StatementValues",
     "days",
     "default_drivers",
+    "driver_values",
     "forecast_years",
     "historical_drivers",
     "historical_quarter_drivers",

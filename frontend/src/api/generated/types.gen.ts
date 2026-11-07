@@ -429,6 +429,30 @@ export type CellDetailOut = {
 };
 
 /**
+ * CheckOut
+ *
+ * The engine's 90% band for a year the user set, and whether the value lies outside it.
+ */
+export type CheckOut = {
+    /**
+     * Engine
+     */
+    engine: 'mean' | 'arima' | 'ets' | 'blend';
+    /**
+     * Outside
+     */
+    outside: boolean;
+    /**
+     * P05
+     */
+    p05: string;
+    /**
+     * P95
+     */
+    p95: string;
+};
+
+/**
  * CompanyCreate
  */
 export type CompanyCreate = {
@@ -1025,6 +1049,75 @@ export type DriverChangeOut = {
 };
 
 /**
+ * DriverEnginesOut
+ *
+ * The driver's whole consecutive run (`history`), the case's resolved values and sources per
+ * forecast year, each Tier 2 engine fit on the run, the M4 mean and the seasonal index.
+ */
+export type DriverEnginesOut = {
+    /**
+     * Driver Code
+     */
+    driver_code: string;
+    /**
+     * Engine
+     */
+    engine: 'auto' | 'mean' | 'arima' | 'ets' | 'blend' | 'stl';
+    /**
+     * Engines
+     */
+    engines: Array<EngineFitOut>;
+    /**
+     * Forecast Labels
+     */
+    forecast_labels: Array<string>;
+    /**
+     * Forecast Years
+     */
+    forecast_years: Array<number>;
+    /**
+     * History
+     */
+    history: Array<string>;
+    /**
+     * History Periods
+     */
+    history_periods: Array<HistoryPeriodOut>;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Mean
+     */
+    mean: string | null;
+    /**
+     * Note
+     */
+    note: string | null;
+    /**
+     * Seasonal
+     */
+    seasonal: Array<SeasonalIndexOut> | null;
+    /**
+     * Sources
+     */
+    sources: Array<'own' | 'offset' | 'base' | 'default' | 'year' | 'engine' | 'seasonal' | null>;
+    /**
+     * Unit
+     */
+    unit: 'pct' | 'days' | 'USD';
+    /**
+     * Used
+     */
+    used: 'mean' | 'arima' | 'ets' | 'blend' | null;
+    /**
+     * Values
+     */
+    values: Array<string | null>;
+};
+
+/**
  * DriverFileErrorsOut
  *
  * The 422 body of a driver file with errors.
@@ -1165,9 +1258,25 @@ export type DriverRowIn = {
  */
 export type DriverRowOut = {
     /**
+     * Check
+     */
+    check: Array<CheckOut | null>;
+    /**
      * Code
      */
     code: string;
+    /**
+     * Engine
+     */
+    engine: 'auto' | 'mean' | 'arima' | 'ets' | 'blend' | 'stl';
+    /**
+     * Engine Note
+     */
+    engine_note: string | null;
+    /**
+     * Engine Used
+     */
+    engine_used: 'mean' | 'arima' | 'ets' | 'blend' | null;
     /**
      * Group
      */
@@ -1197,9 +1306,13 @@ export type DriverRowOut = {
      */
     rollup: Array<string | null>;
     /**
+     * Seasonal
+     */
+    seasonal: boolean;
+    /**
      * Sources
      */
-    sources: Array<'own' | 'offset' | 'base' | 'default' | 'year' | null>;
+    sources: Array<'own' | 'offset' | 'base' | 'default' | 'year' | 'engine' | 'seasonal' | null>;
     /**
      * Unit
      */
@@ -1238,6 +1351,139 @@ export type DriversIn = {
      * Rows
      */
     rows: Array<DriverRowIn>;
+};
+
+/**
+ * EngineChoicesIn
+ *
+ * Each row sets one driver's engine (`auto` deletes the choice); drivers not listed are
+ * untouched.
+ */
+export type EngineChoicesIn = {
+    /**
+     * Rows
+     */
+    rows: Array<EngineRowIn>;
+};
+
+/**
+ * EngineChoicesOut
+ */
+export type EngineChoicesOut = {
+    /**
+     * Rows
+     */
+    rows: Array<EngineRowOut>;
+    /**
+     * Scenario Id
+     */
+    scenario_id: number;
+};
+
+/**
+ * EngineFitOut
+ *
+ * One engine's forecast on the whole run: the point and the 90% / 50% quantiles per forecast
+ * year (empty with `error` set when it could not fit).
+ */
+export type EngineFitOut = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Error
+     */
+    error: string | null;
+    /**
+     * Holdout Mae
+     */
+    holdout_mae: string | null;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Meta
+     */
+    meta: {
+        [key: string]: unknown;
+    };
+    /**
+     * P05
+     */
+    p05: Array<string>;
+    /**
+     * P25
+     */
+    p25: Array<string>;
+    /**
+     * P75
+     */
+    p75: Array<string>;
+    /**
+     * P95
+     */
+    p95: Array<string>;
+    /**
+     * Values
+     */
+    values: Array<string>;
+};
+
+/**
+ * EngineRowIn
+ */
+export type EngineRowIn = {
+    /**
+     * Driver Code
+     */
+    driver_code: string;
+    /**
+     * Engine
+     */
+    engine: 'auto' | 'mean' | 'arima' | 'ets' | 'blend' | 'stl';
+};
+
+/**
+ * EngineRowOut
+ *
+ * `engine` is the choice (`auto` when none is stored), `used` what produced the default (null
+ * for a driver with no numeric default), `seasonal` whether `stl` is allowed.
+ */
+export type EngineRowOut = {
+    /**
+     * Driver Code
+     */
+    driver_code: string;
+    /**
+     * Engine
+     */
+    engine: 'auto' | 'mean' | 'arima' | 'ets' | 'blend' | 'stl';
+    /**
+     * Group
+     */
+    group: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Note
+     */
+    note: string | null;
+    /**
+     * Seasonal
+     */
+    seasonal: boolean;
+    /**
+     * Unit
+     */
+    unit: 'pct' | 'days' | 'USD';
+    /**
+     * Used
+     */
+    used: 'mean' | 'arima' | 'ets' | 'blend' | null;
 };
 
 /**
@@ -1700,6 +1946,20 @@ export type HttpValidationError = {
      * Detail
      */
     detail?: Array<ValidationError>;
+};
+
+/**
+ * HistoryPeriodOut
+ */
+export type HistoryPeriodOut = {
+    /**
+     * Fiscal Year
+     */
+    fiscal_year: number;
+    /**
+     * Label
+     */
+    label: string;
 };
 
 /**
@@ -2916,6 +3176,126 @@ export type ScenarioSettingsIn = {
      * Volume Kpi
      */
     volume_kpi?: string | null;
+};
+
+/**
+ * SeasonalFactorOut
+ *
+ * `value` is the seasonal index in the line's unit; `pct` is it as a fraction of the mean
+ * trend of the last 12 quarters (null when that mean is 0).
+ */
+export type SeasonalFactorOut = {
+    /**
+     * Fiscal Period
+     */
+    fiscal_period: 'Q1' | 'Q2' | 'Q3' | 'Q4';
+    /**
+     * Pct
+     */
+    pct: number | null;
+    /**
+     * Value
+     */
+    value: number;
+};
+
+/**
+ * SeasonalIndexOut
+ */
+export type SeasonalIndexOut = {
+    /**
+     * Fiscal Period
+     */
+    fiscal_period: 'Q1' | 'Q2' | 'Q3' | 'Q4';
+    /**
+     * Value
+     */
+    value: string;
+};
+
+/**
+ * SeasonalityLineOut
+ */
+export type SeasonalityLineOut = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Label
+     */
+    label: string;
+};
+
+/**
+ * SeasonalityOut
+ *
+ * The components are floats over the line's latest consecutive run of quarters (statistics,
+ * for display only).
+ */
+export type SeasonalityOut = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Factors
+     */
+    factors: Array<SeasonalFactorOut>;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Lines
+     */
+    lines: Array<SeasonalityLineOut>;
+    /**
+     * Observed
+     */
+    observed: Array<number>;
+    /**
+     * Periods
+     */
+    periods: Array<SeasonalityPeriodOut>;
+    /**
+     * Residual
+     */
+    residual: Array<number>;
+    /**
+     * Seasonal
+     */
+    seasonal: Array<number>;
+    /**
+     * Strength
+     */
+    strength: number;
+    /**
+     * Trend
+     */
+    trend: Array<number>;
+    /**
+     * Unit
+     */
+    unit: string;
+};
+
+/**
+ * SeasonalityPeriodOut
+ */
+export type SeasonalityPeriodOut = {
+    /**
+     * Fiscal Period
+     */
+    fiscal_period: 'Q1' | 'Q2' | 'Q3' | 'Q4';
+    /**
+     * Fiscal Year
+     */
+    fiscal_year: number;
+    /**
+     * Label
+     */
+    label: string;
 };
 
 /**
@@ -5481,6 +5861,49 @@ export type UpdateScenarioApiV1CompaniesTickerScenariosScenarioIdPutResponses = 
 
 export type UpdateScenarioApiV1CompaniesTickerScenariosScenarioIdPutResponse = UpdateScenarioApiV1CompaniesTickerScenariosScenarioIdPutResponses[keyof UpdateScenarioApiV1CompaniesTickerScenariosScenarioIdPutResponses];
 
+export type GetDriverEnginesApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriverEnginesGetData = {
+    body?: never;
+    path: {
+        /**
+         * Scenario Id
+         */
+        scenario_id: number;
+        /**
+         * Case
+         */
+        case: 'base' | 'bull' | 'bear';
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    url: '/api/v1/companies/{ticker}/scenarios/{scenario_id}/cases/{case}/driver-engines';
+};
+
+export type GetDriverEnginesApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriverEnginesGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetDriverEnginesApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriverEnginesGetError = GetDriverEnginesApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriverEnginesGetErrors[keyof GetDriverEnginesApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriverEnginesGetErrors];
+
+export type GetDriverEnginesApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriverEnginesGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: DriverEnginesOut;
+};
+
+export type GetDriverEnginesApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriverEnginesGetResponse = GetDriverEnginesApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriverEnginesGetResponses[keyof GetDriverEnginesApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriverEnginesGetResponses];
+
 export type GetDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversGetData = {
     body?: never;
     path: {
@@ -6012,6 +6435,74 @@ export type CompareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGetRespons
 
 export type CompareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGetResponse = CompareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGetResponses[keyof CompareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGetResponses];
 
+export type GetEnginesApiV1CompaniesTickerScenariosScenarioIdEnginesGetData = {
+    body?: never;
+    path: {
+        /**
+         * Scenario Id
+         */
+        scenario_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/scenarios/{scenario_id}/engines';
+};
+
+export type GetEnginesApiV1CompaniesTickerScenariosScenarioIdEnginesGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetEnginesApiV1CompaniesTickerScenariosScenarioIdEnginesGetError = GetEnginesApiV1CompaniesTickerScenariosScenarioIdEnginesGetErrors[keyof GetEnginesApiV1CompaniesTickerScenariosScenarioIdEnginesGetErrors];
+
+export type GetEnginesApiV1CompaniesTickerScenariosScenarioIdEnginesGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: EngineChoicesOut;
+};
+
+export type GetEnginesApiV1CompaniesTickerScenariosScenarioIdEnginesGetResponse = GetEnginesApiV1CompaniesTickerScenariosScenarioIdEnginesGetResponses[keyof GetEnginesApiV1CompaniesTickerScenariosScenarioIdEnginesGetResponses];
+
+export type PutEnginesApiV1CompaniesTickerScenariosScenarioIdEnginesPutData = {
+    body: EngineChoicesIn;
+    path: {
+        /**
+         * Scenario Id
+         */
+        scenario_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/scenarios/{scenario_id}/engines';
+};
+
+export type PutEnginesApiV1CompaniesTickerScenariosScenarioIdEnginesPutErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type PutEnginesApiV1CompaniesTickerScenariosScenarioIdEnginesPutError = PutEnginesApiV1CompaniesTickerScenariosScenarioIdEnginesPutErrors[keyof PutEnginesApiV1CompaniesTickerScenariosScenarioIdEnginesPutErrors];
+
+export type PutEnginesApiV1CompaniesTickerScenariosScenarioIdEnginesPutResponses = {
+    /**
+     * Successful Response
+     */
+    200: EngineChoicesOut;
+};
+
+export type PutEnginesApiV1CompaniesTickerScenariosScenarioIdEnginesPutResponse = PutEnginesApiV1CompaniesTickerScenariosScenarioIdEnginesPutResponses[keyof PutEnginesApiV1CompaniesTickerScenariosScenarioIdEnginesPutResponses];
+
 export type GetValuationSummaryApiV1CompaniesTickerScenariosScenarioIdValuationGetData = {
     body?: never;
     path: {
@@ -6117,6 +6608,41 @@ export type SetYearModeApiV1CompaniesTickerScenariosScenarioIdYearsFiscalYearMod
 };
 
 export type SetYearModeApiV1CompaniesTickerScenariosScenarioIdYearsFiscalYearModePutResponse = SetYearModeApiV1CompaniesTickerScenariosScenarioIdYearsFiscalYearModePutResponses[keyof SetYearModeApiV1CompaniesTickerScenariosScenarioIdYearsFiscalYearModePutResponses];
+
+export type GetSeasonalityApiV1CompaniesTickerSeasonalityGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: {
+        /**
+         * Code
+         */
+        code?: string;
+    };
+    url: '/api/v1/companies/{ticker}/seasonality';
+};
+
+export type GetSeasonalityApiV1CompaniesTickerSeasonalityGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetSeasonalityApiV1CompaniesTickerSeasonalityGetError = GetSeasonalityApiV1CompaniesTickerSeasonalityGetErrors[keyof GetSeasonalityApiV1CompaniesTickerSeasonalityGetErrors];
+
+export type GetSeasonalityApiV1CompaniesTickerSeasonalityGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: SeasonalityOut;
+};
+
+export type GetSeasonalityApiV1CompaniesTickerSeasonalityGetResponse = GetSeasonalityApiV1CompaniesTickerSeasonalityGetResponses[keyof GetSeasonalityApiV1CompaniesTickerSeasonalityGetResponses];
 
 export type CreateSeriesApiV1CompaniesTickerSegmentSeriesPostData = {
     body: SegmentSeriesIn;

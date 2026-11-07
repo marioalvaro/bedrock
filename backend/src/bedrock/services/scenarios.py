@@ -2,7 +2,7 @@
 docs/erd/forecasting.md "Scenarios and cases", "API")."""
 
 from collections.abc import Collection, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Literal, get_args
@@ -28,11 +28,20 @@ from bedrock.forecast.drivers import (
     driver_def,
     segment_code,
 )
+from bedrock.forecast.engine_defaults import DriverEngines, EngineDefaults, EngineRow
 from bedrock.forecast.engines.driver import FORECAST_HORIZON, forecast_quarters
 from bedrock.forecast.errors import ForecastUnavailable
-from bedrock.forecast.grid import DriverGrid, GridPeriod, GridRow, YearMode, YearModeValue
+from bedrock.forecast.grid import (
+    CheckBand,
+    DriverGrid,
+    GridPeriod,
+    GridRow,
+    YearMode,
+    YearModeValue,
+)
 from bedrock.forecast.history import (
     FLAT,
+    Flat,
     ForecastHistory,
     ScenarioSettings,
     SeriesHistory,
@@ -56,6 +65,8 @@ from bedrock.models.scenario import (
 )
 from bedrock.repositories import scenarios as repo
 from bedrock.repositories import segments as segments_repo
+from bedrock.services import engines as engines_service
+from bedrock.services.engines import EngineChoices
 from bedrock.services.errors import (
     InvalidDriverFile,
     InvalidDrivers,
@@ -73,6 +84,7 @@ from bedrock.services.year_modes import (
 from bedrock.statements.build import Freq
 
 __all__ = [
+    "CaseDriverEngines",
     "DriverGrid",
     "DriverImportResult",
     "DriverRowInput",
@@ -86,12 +98,15 @@ __all__ = [
     "driver_grid",
     "ensure_defaults",
     "export_drivers",
+    "case_driver_engines",
     "get_case",
+    "get_engines",
     "get_scenario",
     "import_drivers",
     "list_scenarios",
     "load_history",
     "put_drivers",
+    "put_engines",
     "reset_case",
     "resolve_case",
     "set_year_mode",
@@ -150,6 +165,7 @@ class ScenarioDrivers:
     settings: ScenarioSettings
     resolved: ResolvedDrivers
     own: list[DriverValue]  # the case's stored rows, every year
+    engines: EngineDefaults  # what the scenario's engine choices set (empty maps for `mean`)
 
 
 def _naive_utc(moment: datetime) -> datetime:
@@ -576,6 +592,9 @@ def resolve_case(
     base = [] if is_base else [r for r in rows if r.case_id == cases["base"].id]
     if quarterly_years is None:
         quarterly_years = built_from_quarters(session, scenario, history)
+    engines = engines_service.engine_defaults_for(
+        history, settings, engines_service.engine_choices(session, scenario.id), years
+    )
     resolved = resolve_drivers(
         [_driver_row(r) for r in base],
         [_driver_row(r) for r in own],
@@ -583,8 +602,75 @@ def resolve_case(
         years,
         is_base,
         quarterly_years,
+        engines.values,
+        engines.seasonal,
     )
-    return ScenarioDrivers(settings, resolved, own)
+    resolved = replace(resolved, warnings=(*resolved.warnings, *engines.warnings))
+    return ScenarioDrivers(settings, resolved, own, engines)
+
+
+def _engine_context(
+    session: Session, company: Company, scenario_id: int
+) -> tuple[Scenario, ForecastHistory, ScenarioSettings, list[int]]:
+    scenario = get_scenario(session, company, scenario_id)
+    history = load_history(session, company)
+    return scenario, history, settings_of(scenario), forecast_years(history, FORECAST_HORIZON.years)
+
+
+def get_engines(session: Session, company: Company, scenario_id: int) -> EngineChoices:
+    """The scenario's engine choice per driver and what produced each default. Raises
+    ScenarioNotFound, and ForecastUnavailable when the company has no opening balance sheet."""
+    scenario, history, settings, years = _engine_context(session, company, scenario_id)
+    return engines_service.engine_choices_view(session, scenario, history, settings, years)
+
+
+def put_engines(
+    session: Session,
+    company: Company,
+    scenario_id: int,
+    rows: Sequence[tuple[str, str]],
+    now: datetime,
+) -> EngineChoices:
+    """Sets the given drivers' engines (`auto` deletes the row); the other drivers are untouched.
+    Raises ScenarioNotFound, ForecastUnavailable and InvalidEngineChoice (nothing written)."""
+    scenario, history, settings, years = _engine_context(session, company, scenario_id)
+    engines_service.put_engine_choices(session, scenario, history, settings, rows, _naive_utc(now))
+    return engines_service.engine_choices_view(session, scenario, history, settings, years)
+
+
+@dataclass(frozen=True)
+class CaseDriverEngines:
+    """One driver's engines on its whole run, with the case's resolved values and sources."""
+
+    label: str
+    unit: str
+    inspection: DriverEngines
+    forecast_years: list[int]
+    values: list[Decimal | None]
+    sources: list[str | None]
+
+
+def case_driver_engines(
+    session: Session, company: Company, scenario_id: int, case: str, code: str
+) -> CaseDriverEngines:
+    """Raises ScenarioNotFound, InvalidScenario (case), InvalidEngineChoice (a code outside the
+    scenario's method) and ForecastUnavailable (no opening balance sheet)."""
+    scenario, _ = get_case(session, company, scenario_id, case)
+    history = load_history(session, company)
+    drivers = resolve_case(session, scenario, case, history)
+    settings = drivers.settings
+    years = list(drivers.resolved.years)
+    inspection = engines_service.inspect_driver(session, scenario, history, settings, code, years)
+    definition = next(d for d in scenario_drivers(history, settings) if d.code == code)
+    resolved = [drivers.resolved.get(code, y) for y in years]
+    return CaseDriverEngines(
+        definition.label,
+        definition.unit,
+        inspection,
+        years,
+        [None if r.value is FLAT else r.value for r in resolved],
+        [r.source for r in resolved],
+    )
 
 
 def settings_of(scenario: Scenario) -> ScenarioSettings:
@@ -660,6 +746,7 @@ def _grid(
             continue
         resolved = [drivers.resolved.get(d.code, y, q) for y, q in columns]
         mine = [own.get((d.code, y, q)) for y, q in columns]
+        engine = drivers.engines.rows[d.code]
         rows.append(
             GridRow(
                 code=d.code,
@@ -673,6 +760,14 @@ def _grid(
                 kind=kinds.get(d.code),  # type: ignore[arg-type]  # checked by the schema
                 rollup=[figures.get((d.code, y)) for y in years],
                 quarterly=d.quarterly,
+                engine=engine.choice,
+                engine_used=engine.used,
+                engine_note=engine.note,
+                seasonal=engine.seasonal,
+                check=[
+                    None if freq == "quarterly" else _check(engine, y, r.value, r.source)
+                    for (y, _), r in zip(columns, resolved, strict=True)
+                ],
             )
         )
     warnings = list(drivers.resolved.warnings)
@@ -694,6 +789,18 @@ def _grid(
         modes,
         bool(history_quarters(history)),
     )
+
+
+def _check(
+    engine: EngineRow, year: int, value: Decimal | Flat | None, source: str | None
+) -> CheckBand | None:
+    """The engine's 90% band for a year whose value the user (or Base) set, else None."""
+    band = engine.band.get(year)
+    if band is None or engine.band_engine is None or source not in ("own", "offset", "base"):
+        return None
+    if not isinstance(value, Decimal):
+        return None
+    return CheckBand(engine.band_engine, band.p05, band.p95, value < band.p05 or value > band.p95)
 
 
 def _quarter_label(year: int, quarter: str, suffix: str) -> str:

@@ -7,11 +7,22 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Literal
 
-from bedrock.forecast.drivers import QUARTERS, DriverKind, Follows, check_bounds, quarter_share
+from bedrock.forecast.drivers import (
+    QUARTERS,
+    DriverKind,
+    Follows,
+    check_bounds,
+    clamp,
+    driver_def,
+    quarter_share,
+)
 from bedrock.forecast.history import FLAT, Default, Flat
 
-# `year`: a quarter that has no row takes its year's resolved value.
-Source = Literal["own", "offset", "base", "default", "year"]
+# `year`: a quarter that has no row takes its year's resolved value. `engine`: the default came
+# from a statistical engine (M6). `seasonal`: the year's value plus the driver's seasonal index.
+Source = Literal["own", "offset", "base", "default", "year", "engine", "seasonal"]
+EngineValues = Mapping[tuple[str, int], Decimal]  # (code, fiscal year) -> the engine's default
+SeasonalIndex = Mapping[str, Mapping[str, Decimal]]  # code -> Q1..Q4 -> the seasonal index
 Value = Decimal | None | Flat
 
 
@@ -100,6 +111,8 @@ def resolve_drivers(
     years: Sequence[int],
     is_base: bool,
     quarterly_years: Collection[int] = frozenset(),
+    engine_values: EngineValues | None = None,
+    seasonal: SeasonalIndex | None = None,
 ) -> ResolvedDrivers:
     """For each driver of `defaults` and forecast year: the scenario's `value` row → else Base's
     resolved value + the scenario's `offset` row → else Base's `value` row → else the default.
@@ -110,15 +123,22 @@ def resolve_drivers(
     quarter, Base's quarter row, the year's resolved value. In a year of `quarterly_years` (set by
     quarter, docs "Year modes") the quarters ignore every annual row, the case's and Base's: steps
     3 and 5 read the year as if it had none (the default, or what Base inherits), with that
-    source; the year's own value stays as stored. Raises ValueError for an offset on Base."""
+    source; the year's own value stays as stored. `engine_values` replace the default of their
+    (code, year), source `engine`. A code of `seasonal` adds its index to a quarter wherever the
+    quarter takes its year's value (steps 3 with an own annual value and 5, and the free step of a
+    year set by quarter; "Base's quarter" carries it too), source `seasonal`, clamped into the
+    bounds with a warning. With neither map the resolution is the M4 one. Raises ValueError for
+    an offset on Base."""
     if is_base and any(r.kind == "offset" for r in own_rows):
         raise ValueError("Base cannot hold an offset")
     wanted = tuple(years)
+    engine = engine_values or {}
+    pattern = seasonal or {}
     warnings: list[str] = []
     year_rows = [r for r in base_rows if r.fiscal_period == "FY"]
-    base = None if is_base else _resolve(year_rows, defaults, wanted, None, warnings)
+    base = None if is_base else _resolve(year_rows, defaults, wanted, None, warnings, engine)
     own_years = [r for r in own_rows if r.fiscal_period == "FY"]
-    values = _resolve(own_years, defaults, wanted, base, warnings)
+    values = _resolve(own_years, defaults, wanted, base, warnings, engine)
     by_quarter = frozenset(quarterly_years) & frozenset(wanted)
     if by_quarter:
         # the years as they resolve with no annual row in a year set by quarter
@@ -132,6 +152,7 @@ def resolve_drivers(
                 wanted,
                 None,
                 scratch,
+                engine,
             )
         )
         free = _resolve(
@@ -140,6 +161,7 @@ def resolve_drivers(
             wanted,
             free_base,
             scratch,
+            engine,
         )
         quarter_years = {**values, **{k: v for k, v in free.items() if k[1] in by_quarter}}
         quarter_base = (
@@ -159,6 +181,7 @@ def resolve_drivers(
         wanted,
         warnings,
         by_quarter,
+        pattern,
     )
     return ResolvedDrivers(
         tuple(defaults),
@@ -184,6 +207,7 @@ def _quarters(
     years: tuple[int, ...],
     warnings: list[str],
     by_quarter: frozenset[int],
+    pattern: SeasonalIndex,
 ) -> dict[tuple[str, int, str], Resolved]:
     """Every quarter of every forecast year, first rule that applies: (1) the scenario's value at
     the quarter → `own`; (2) its offset at the quarter → Base's quarter + the offset (`offset`);
@@ -191,11 +215,14 @@ def _quarters(
     → `base`; (5) the year's resolved value → `year`. "Base's quarter" is Base's row at the quarter
     else Base's year. A USD flow works in quarter amounts: a year's amount counts for a quarter
     × `quarter_share`, a quarter row as it is. In a year of `by_quarter` step 5 keeps the source
-    of the year's value (`default`, `base`): the year has no annual value of its own there."""
+    of the year's value (`default`, `base`): the year has no annual value of its own there. Where
+    a quarter takes its year's value (steps 3 and 5, Base's year as a baseline) a code of
+    `pattern` adds its seasonal index (`_seasonal`)."""
     resolved: dict[tuple[str, int, str], Resolved] = {}
     scratch: list[str] = []  # an annual offset on a flat line already warned at the year
     for code in defaults:
         share = quarter_share(code)
+        index = pattern.get(code)
         for year in years:
             annual = values[(code, year)]
             base_year = None if base is None else base[(code, year)]
@@ -206,8 +233,10 @@ def _quarters(
                     baseline = None
                 elif inherited is not None:
                     baseline = Resolved(inherited.value, "base")
-                else:
-                    baseline = _from_year(code, base_year)
+                else:  # Base's quarter as Base resolves it; a clamp warns in Base's own view
+                    baseline = _seasonal(
+                        code, year, period, _from_year(code, base_year), index, scratch
+                    )
                 annual_row = own_years.get((code, year))
                 if own is not None and own.kind == "value":
                     resolved[key] = Resolved(own.value, "own")
@@ -222,14 +251,38 @@ def _quarters(
                         f"{code} FY{year}", baseline.value, annual_row.value * share, scratch
                     )
                 elif annual_row is not None and annual_row.kind == "value":
-                    resolved[key] = Resolved(annual_row.value * share, "year")
+                    year_value = Resolved(annual_row.value * share, "year")
+                    resolved[key] = _seasonal(code, year, period, year_value, index, warnings)
                 elif baseline is not None and inherited is not None:
                     resolved[key] = baseline
                 elif year in by_quarter:
-                    resolved[key] = _share(code, annual)
+                    free = _share(code, annual)
+                    resolved[key] = _seasonal(code, year, period, free, index, warnings)
                 else:
-                    resolved[key] = _from_year(code, annual)
+                    year_value = _from_year(code, annual)
+                    resolved[key] = _seasonal(code, year, period, year_value, index, warnings)
     return resolved
+
+
+def _seasonal(
+    code: str,
+    year: int,
+    period: str,
+    taken: Resolved,
+    index: Mapping[str, Decimal] | None,
+    warnings: list[str],
+) -> Resolved:
+    """A quarter that takes its year's value (`taken`) plus the seasonal index of its quarter,
+    source `seasonal`, clamped into the driver's bounds with a warning; `taken` as it is with no
+    index or no number."""
+    if index is None or not isinstance(taken.value, Decimal):
+        return taken
+    value = taken.value + index[period]
+    inside = clamp(code, value)
+    if inside != value:
+        bounds = driver_def(code).bounds
+        warnings.append(f"{code} {period} FY{year}: the seasonal value is clamped to {bounds}")
+    return Resolved(inside, "seasonal")
 
 
 def _share(code: str, annual: Resolved) -> Resolved:
@@ -253,6 +306,7 @@ def _resolve(
     years: tuple[int, ...],
     base: Mapping[tuple[str, int], Resolved] | None,
     warnings: list[str],
+    engine: EngineValues,
 ) -> dict[tuple[str, int], Resolved]:
     stored = {(r.code, r.fiscal_year): r for r in rows if r.fiscal_year in years}
     values: dict[tuple[str, int], Resolved] = {}
@@ -269,6 +323,8 @@ def _resolve(
                 )
             elif inherited is not None and inherited.source == "own":
                 values[(code, year)] = Resolved(inherited.value, "base")
+            elif (code, year) in engine:
+                values[(code, year)] = Resolved(engine[(code, year)], "engine")
             elif isinstance(default, Follows):
                 follows.append((code, year, default))
             else:

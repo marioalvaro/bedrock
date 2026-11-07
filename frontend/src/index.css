@@ -90,6 +90,8 @@
   --flag-alert: oklch(0.6 0.22 25);
   --positive: oklch(0.5 0.14 150);
   --negative: oklch(0.55 0.21 27);
+  /* A manual driver value outside its engine's 90% range (M6 cross-check). */
+  --caution: oklch(0.68 0.16 70);
   --radius: 0.25rem;
   /* One duration for every expander (grid rows, <details>, sheets, dialogs). */
   --motion-fast: 140ms;
@@ -130,6 +132,7 @@
   --flag-alert: oklch(0.65 0.2 25);
   --positive: oklch(0.76 0.16 150);
   --negative: oklch(0.72 0.17 22);
+  --caution: oklch(0.78 0.15 75);
   --chart-1: oklch(0.72 0.13 250);
   --chart-2: oklch(0.8 0.14 75);
   --chart-3: oklch(0.75 0.14 150);
@@ -242,4 +245,12 @@ details[open] > :not(summary) {
 /* Forecast ("E") columns: tinted so estimates never read as actuals. */
 .cell-forecast {
   background-color: var(--forecast-tint);
+}
+
+/* A driver value outside its engine's 90% range: a dotted underline in the caution token. */
+.cell-check-outside {
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: var(--caution);
+  text-underline-offset: 3px;
 }

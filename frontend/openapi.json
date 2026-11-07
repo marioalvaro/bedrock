@@ -740,6 +740,43 @@
         "title": "CellDetailOut",
         "type": "object"
       },
+      "CheckOut": {
+        "description": "The engine's 90% band for a year the user set, and whether the value lies outside it.",
+        "properties": {
+          "engine": {
+            "enum": [
+              "mean",
+              "arima",
+              "ets",
+              "blend"
+            ],
+            "title": "Engine",
+            "type": "string"
+          },
+          "outside": {
+            "title": "Outside",
+            "type": "boolean"
+          },
+          "p05": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "P05",
+            "type": "string"
+          },
+          "p95": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "P95",
+            "type": "string"
+          }
+        },
+        "required": [
+          "engine",
+          "p05",
+          "p95",
+          "outside"
+        ],
+        "title": "CheckOut",
+        "type": "object"
+      },
       "CompanyCreate": {
         "properties": {
           "ticker": {
@@ -1878,6 +1915,187 @@
         "title": "DriverChangeOut",
         "type": "object"
       },
+      "DriverEnginesOut": {
+        "description": "The driver's whole consecutive run (`history`), the case's resolved values and sources per\nforecast year, each Tier 2 engine fit on the run, the M4 mean and the seasonal index.",
+        "properties": {
+          "driver_code": {
+            "title": "Driver Code",
+            "type": "string"
+          },
+          "engine": {
+            "enum": [
+              "auto",
+              "mean",
+              "arima",
+              "ets",
+              "blend",
+              "stl"
+            ],
+            "title": "Engine",
+            "type": "string"
+          },
+          "engines": {
+            "items": {
+              "$ref": "#/components/schemas/EngineFitOut"
+            },
+            "title": "Engines",
+            "type": "array"
+          },
+          "forecast_labels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Forecast Labels",
+            "type": "array"
+          },
+          "forecast_years": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Forecast Years",
+            "type": "array"
+          },
+          "history": {
+            "items": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            "title": "History",
+            "type": "array"
+          },
+          "history_periods": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryPeriodOut"
+            },
+            "title": "History Periods",
+            "type": "array"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "mean": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "seasonal": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SeasonalIndexOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seasonal"
+          },
+          "sources": {
+            "items": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "own",
+                    "offset",
+                    "base",
+                    "default",
+                    "year",
+                    "engine",
+                    "seasonal"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "unit": {
+            "enum": [
+              "pct",
+              "days",
+              "USD"
+            ],
+            "title": "Unit",
+            "type": "string"
+          },
+          "used": {
+            "anyOf": [
+              {
+                "enum": [
+                  "mean",
+                  "arima",
+                  "ets",
+                  "blend"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Used"
+          },
+          "values": {
+            "items": {
+              "anyOf": [
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Values",
+            "type": "array"
+          }
+        },
+        "required": [
+          "driver_code",
+          "label",
+          "unit",
+          "engine",
+          "used",
+          "note",
+          "history_periods",
+          "history",
+          "forecast_years",
+          "forecast_labels",
+          "values",
+          "sources",
+          "engines",
+          "mean",
+          "seasonal"
+        ],
+        "title": "DriverEnginesOut",
+        "type": "object"
+      },
       "DriverFileErrorsOut": {
         "description": "The 422 body of a driver file with errors.",
         "properties": {
@@ -2107,9 +2325,63 @@
       "DriverRowOut": {
         "description": "`history` is aligned with the grid's `history_years`; `values`, `sources` and `own` with\nits `forecast_years`. A value held flat is null with source `default`; a required driver\nnothing sets is null with source null. `own` is the case's stored value, or offset when\n`kind` is `offset`.",
         "properties": {
+          "check": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CheckOut"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Check",
+            "type": "array"
+          },
           "code": {
             "title": "Code",
             "type": "string"
+          },
+          "engine": {
+            "enum": [
+              "auto",
+              "mean",
+              "arima",
+              "ets",
+              "blend",
+              "stl"
+            ],
+            "title": "Engine",
+            "type": "string"
+          },
+          "engine_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engine Note"
+          },
+          "engine_used": {
+            "anyOf": [
+              {
+                "enum": [
+                  "mean",
+                  "arima",
+                  "ets",
+                  "blend"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engine Used"
           },
           "group": {
             "title": "Group",
@@ -2183,6 +2455,10 @@
             "title": "Rollup",
             "type": "array"
           },
+          "seasonal": {
+            "title": "Seasonal",
+            "type": "boolean"
+          },
           "sources": {
             "items": {
               "anyOf": [
@@ -2192,7 +2468,9 @@
                     "offset",
                     "base",
                     "default",
-                    "year"
+                    "year",
+                    "engine",
+                    "seasonal"
                   ],
                   "type": "string"
                 },
@@ -2240,7 +2518,12 @@
           "own",
           "kind",
           "rollup",
-          "quarterly"
+          "quarterly",
+          "engine",
+          "engine_used",
+          "engine_note",
+          "seasonal",
+          "check"
         ],
         "title": "DriverRowOut",
         "type": "object"
@@ -2301,6 +2584,249 @@
           "rows"
         ],
         "title": "DriversIn",
+        "type": "object"
+      },
+      "EngineChoicesIn": {
+        "additionalProperties": false,
+        "description": "Each row sets one driver's engine (`auto` deletes the choice); drivers not listed are\nuntouched.",
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/EngineRowIn"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rows"
+        ],
+        "title": "EngineChoicesIn",
+        "type": "object"
+      },
+      "EngineChoicesOut": {
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/EngineRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "scenario_id": {
+            "title": "Scenario Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scenario_id",
+          "rows"
+        ],
+        "title": "EngineChoicesOut",
+        "type": "object"
+      },
+      "EngineFitOut": {
+        "description": "One engine's forecast on the whole run: the point and the 90% / 50% quantiles per forecast\nyear (empty with `error` set when it could not fit).",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "holdout_mae": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holdout Mae"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "meta": {
+            "additionalProperties": true,
+            "title": "Meta",
+            "type": "object"
+          },
+          "p05": {
+            "items": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            "title": "P05",
+            "type": "array"
+          },
+          "p25": {
+            "items": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            "title": "P25",
+            "type": "array"
+          },
+          "p75": {
+            "items": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            "title": "P75",
+            "type": "array"
+          },
+          "p95": {
+            "items": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            "title": "P95",
+            "type": "array"
+          },
+          "values": {
+            "items": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            "title": "Values",
+            "type": "array"
+          }
+        },
+        "required": [
+          "code",
+          "label",
+          "values",
+          "p05",
+          "p25",
+          "p75",
+          "p95",
+          "holdout_mae",
+          "meta",
+          "error"
+        ],
+        "title": "EngineFitOut",
+        "type": "object"
+      },
+      "EngineRowIn": {
+        "additionalProperties": false,
+        "properties": {
+          "driver_code": {
+            "title": "Driver Code",
+            "type": "string"
+          },
+          "engine": {
+            "enum": [
+              "auto",
+              "mean",
+              "arima",
+              "ets",
+              "blend",
+              "stl"
+            ],
+            "title": "Engine",
+            "type": "string"
+          }
+        },
+        "required": [
+          "driver_code",
+          "engine"
+        ],
+        "title": "EngineRowIn",
+        "type": "object"
+      },
+      "EngineRowOut": {
+        "description": "`engine` is the choice (`auto` when none is stored), `used` what produced the default (null\nfor a driver with no numeric default), `seasonal` whether `stl` is allowed.",
+        "properties": {
+          "driver_code": {
+            "title": "Driver Code",
+            "type": "string"
+          },
+          "engine": {
+            "enum": [
+              "auto",
+              "mean",
+              "arima",
+              "ets",
+              "blend",
+              "stl"
+            ],
+            "title": "Engine",
+            "type": "string"
+          },
+          "group": {
+            "title": "Group",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "seasonal": {
+            "title": "Seasonal",
+            "type": "boolean"
+          },
+          "unit": {
+            "enum": [
+              "pct",
+              "days",
+              "USD"
+            ],
+            "title": "Unit",
+            "type": "string"
+          },
+          "used": {
+            "anyOf": [
+              {
+                "enum": [
+                  "mean",
+                  "arima",
+                  "ets",
+                  "blend"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Used"
+          }
+        },
+        "required": [
+          "driver_code",
+          "label",
+          "group",
+          "unit",
+          "engine",
+          "used",
+          "note",
+          "seasonal"
+        ],
+        "title": "EngineRowOut",
         "type": "object"
       },
       "FilingOut": {
@@ -3148,6 +3674,24 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HistoryPeriodOut": {
+        "properties": {
+          "fiscal_year": {
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fiscal_year",
+          "label"
+        ],
+        "title": "HistoryPeriodOut",
         "type": "object"
       },
       "IgnoredCellOut": {
@@ -5479,6 +6023,200 @@
           }
         },
         "title": "ScenarioSettingsIn",
+        "type": "object"
+      },
+      "SeasonalFactorOut": {
+        "description": "`value` is the seasonal index in the line's unit; `pct` is it as a fraction of the mean\ntrend of the last 12 quarters (null when that mean is 0).",
+        "properties": {
+          "fiscal_period": {
+            "enum": [
+              "Q1",
+              "Q2",
+              "Q3",
+              "Q4"
+            ],
+            "title": "Fiscal Period",
+            "type": "string"
+          },
+          "pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pct"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "fiscal_period",
+          "value",
+          "pct"
+        ],
+        "title": "SeasonalFactorOut",
+        "type": "object"
+      },
+      "SeasonalIndexOut": {
+        "properties": {
+          "fiscal_period": {
+            "enum": [
+              "Q1",
+              "Q2",
+              "Q3",
+              "Q4"
+            ],
+            "title": "Fiscal Period",
+            "type": "string"
+          },
+          "value": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fiscal_period",
+          "value"
+        ],
+        "title": "SeasonalIndexOut",
+        "type": "object"
+      },
+      "SeasonalityLineOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "label"
+        ],
+        "title": "SeasonalityLineOut",
+        "type": "object"
+      },
+      "SeasonalityOut": {
+        "description": "The components are floats over the line's latest consecutive run of quarters (statistics,\nfor display only).",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "factors": {
+            "items": {
+              "$ref": "#/components/schemas/SeasonalFactorOut"
+            },
+            "title": "Factors",
+            "type": "array"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/SeasonalityLineOut"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
+          "observed": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Observed",
+            "type": "array"
+          },
+          "periods": {
+            "items": {
+              "$ref": "#/components/schemas/SeasonalityPeriodOut"
+            },
+            "title": "Periods",
+            "type": "array"
+          },
+          "residual": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Residual",
+            "type": "array"
+          },
+          "seasonal": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Seasonal",
+            "type": "array"
+          },
+          "strength": {
+            "title": "Strength",
+            "type": "number"
+          },
+          "trend": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Trend",
+            "type": "array"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "label",
+          "unit",
+          "lines",
+          "periods",
+          "observed",
+          "trend",
+          "seasonal",
+          "residual",
+          "factors",
+          "strength"
+        ],
+        "title": "SeasonalityOut",
+        "type": "object"
+      },
+      "SeasonalityPeriodOut": {
+        "properties": {
+          "fiscal_period": {
+            "enum": [
+              "Q1",
+              "Q2",
+              "Q3",
+              "Q4"
+            ],
+            "title": "Fiscal Period",
+            "type": "string"
+          },
+          "fiscal_year": {
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fiscal_year",
+          "fiscal_period",
+          "label"
+        ],
+        "title": "SeasonalityPeriodOut",
         "type": "object"
       },
       "SegmentBlockOut": {
@@ -9874,6 +10612,80 @@
         ]
       }
     },
+    "/api/v1/companies/{ticker}/scenarios/{scenario_id}/cases/{case}/driver-engines": {
+      "get": {
+        "operationId": "get_driver_engines_api_v1_companies__ticker__scenarios__scenario_id__cases__case__driver_engines_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scenario_id",
+            "required": true,
+            "schema": {
+              "title": "Scenario Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "case",
+            "required": true,
+            "schema": {
+              "enum": [
+                "base",
+                "bull",
+                "bear"
+              ],
+              "title": "Case",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriverEnginesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Driver Engines",
+        "tags": [
+          "scenarios"
+        ]
+      }
+    },
     "/api/v1/companies/{ticker}/scenarios/{scenario_id}/cases/{case}/drivers": {
       "get": {
         "operationId": "get_drivers_api_v1_companies__ticker__scenarios__scenario_id__cases__case__drivers_get",
@@ -10837,6 +11649,116 @@
         ]
       }
     },
+    "/api/v1/companies/{ticker}/scenarios/{scenario_id}/engines": {
+      "get": {
+        "operationId": "get_engines_api_v1_companies__ticker__scenarios__scenario_id__engines_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scenario_id",
+            "required": true,
+            "schema": {
+              "title": "Scenario Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EngineChoicesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Engines",
+        "tags": [
+          "scenarios"
+        ]
+      },
+      "put": {
+        "operationId": "put_engines_api_v1_companies__ticker__scenarios__scenario_id__engines_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scenario_id",
+            "required": true,
+            "schema": {
+              "title": "Scenario Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EngineChoicesIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EngineChoicesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Engines",
+        "tags": [
+          "scenarios"
+        ]
+      }
+    },
     "/api/v1/companies/{ticker}/scenarios/{scenario_id}/valuation": {
       "get": {
         "operationId": "get_valuation_summary_api_v1_companies__ticker__scenarios__scenario_id__valuation_get",
@@ -11006,6 +11928,58 @@
         "summary": "Set Year Mode",
         "tags": [
           "scenarios"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/seasonality": {
+      "get": {
+        "operationId": "get_seasonality_api_v1_companies__ticker__seasonality_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "code",
+            "required": false,
+            "schema": {
+              "default": "revenue",
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeasonalityOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Seasonality",
+        "tags": [
+          "seasonality"
         ]
       }
     },

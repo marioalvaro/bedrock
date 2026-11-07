@@ -36,3 +36,19 @@ it("styles forecast values as plain text, not as derived italics", () => {
   expect(rule).toBeDefined();
   expect(rule).toMatch(/font-style:\s*normal/);
 });
+
+describe("cross-check mark (M6)", () => {
+  it("defines --caution in each theme with the ERD's values", () => {
+    expect(token(themes.light, "--caution")).toBe("oklch(0.68 0.16 70)");
+    expect(token(themes.dark, "--caution")).toBe("oklch(0.78 0.15 75)");
+  });
+
+  it("underlines a value outside the engine's range, dotted, in the token", () => {
+    const rule = css.match(/\n\.cell-check-outside\s*\{([^}]*)\}/)?.[1];
+    expect(rule).toBeDefined();
+    expect(rule).toMatch(/text-decoration-line:\s*underline/);
+    expect(rule).toMatch(/text-decoration-style:\s*dotted/);
+    expect(rule).toMatch(/text-decoration-color:\s*var\(--caution\)/);
+    expect(rule).toMatch(/text-underline-offset:\s*3px/);
+  });
+});

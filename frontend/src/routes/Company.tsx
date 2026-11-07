@@ -18,6 +18,7 @@ import { QualityView } from "@/features/quality/QualityView";
 import { RatiosView } from "@/features/ratios/RatiosView";
 import { ScenariosView } from "@/features/scenarios/ScenariosView";
 import { CASE_PARAM, SCENARIO_PARAM } from "@/features/scenarios/useScenarioParam";
+import { SeasonalityView } from "@/features/seasonality/SeasonalityView";
 import { SegmentsView } from "@/features/segments/SegmentsView";
 import { StatementView } from "@/features/statements/StatementView";
 import { ValuationView } from "@/features/valuation/ValuationView";
@@ -37,6 +38,11 @@ const TABS: { slug: string; label: string; render: (company: CompanyListItem) =>
   { slug: "quality", label: "Quality", render: (c) => <QualityView ticker={c.ticker} /> },
   { slug: "capital", label: "Capital", render: (c) => <CapitalView ticker={c.ticker} /> },
   { slug: "segments", label: "Segments", render: (c) => <SegmentsView ticker={c.ticker} /> },
+  {
+    slug: "seasonality",
+    label: "Seasonality",
+    render: (c) => <SeasonalityView ticker={c.ticker} />,
+  },
   { slug: "comps", label: "Comps", render: (c) => <CompsView ticker={c.ticker} /> },
   { slug: "guidance", label: "Guidance", render: (c) => <GuidanceView ticker={c.ticker} /> },
   { slug: "valuation", label: "Valuation", render: (c) => <ValuationView ticker={c.ticker} /> },

@@ -2,14 +2,17 @@
 {code: value} per period, so a test states its inputs and hand-computes what it expects."""
 
 from collections.abc import Mapping, Sequence
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from functools import cache
+
+from sqlalchemy.orm import Session
 
 from bedrock.forecast.drivers import drivers_for
 from bedrock.forecast.history import FLAT, Flat, ForecastHistory, SeriesHistory
 from bedrock.forecast.resolve import Resolved, ResolvedDrivers
 from bedrock.mapping.config import CanonicalItemDef, load_canonical_items
+from bedrock.repositories import engines as engines_repo
 from bedrock.statements.build import Row, StatementTable
 from bedrock.statements.fiscal_grid import period_dates
 from bedrock.statements.periods import Period
@@ -126,3 +129,16 @@ def resolved(
                 value if value is FLAT or isinstance(value, Decimal) else Decimal(value), "own"
             )
     return ResolvedDrivers(tuple(codes), tuple(by_year), values, (), frozenset())
+
+
+def choose_engines(session: Session, scenario_id: int, choices: Mapping[str, str]) -> None:
+    """Stores a scenario's engine choices (`mean`, `arima`, …; `auto` deletes the row), for tests
+    that assert a number computed from the M4 3-year mean: `choose_engines(s, id, {code: "mean"})`
+    pins the driver to it."""
+    engines_repo.put(
+        session,
+        scenario_id,
+        {c: None if e == "auto" else e for c, e in choices.items()},
+        datetime(2026, 11, 6),
+    )
+    session.commit()

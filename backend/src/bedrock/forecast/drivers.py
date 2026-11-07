@@ -320,6 +320,24 @@ _BY_CODE = {d.code: d for d in DRIVERS}
 # of the year's amount. `min_cash` is a floor at a period's end, not a flow.
 FLOW_AMOUNTS = frozenset({"debt_issued", "debt_repaid", "buybacks"})
 QUARTERS = ("Q1", "Q2", "Q3", "Q4")
+# The ratio and days drivers, which can take an STL seasonal pattern (M6, docs "Statistical engines
+# (M6)" → Engine choice). Growth drivers grow over the same quarter last year, so they carry no
+# pattern; USD flows and the other ratios are left out.
+SEASONAL = (
+    "gross_margin",
+    "rnd_pct_revenue",
+    "sga_pct_revenue",
+    "other_opex_pct_revenue",
+    "d_and_a_pct_revenue",
+    "sbc_pct_revenue",
+    "other_nonoperating_pct_revenue",
+    "tax_rate",
+    "capex_pct_revenue",
+    "receivable_days",
+    "inventory_days",
+    "payable_days",
+)
+INWARD = Decimal("1e-6")  # how far inside an open bound a clamped value lands
 
 
 def quarter_share(code: str) -> Decimal:
@@ -374,6 +392,17 @@ def check_bounds(code: str, kind: DriverKind, value: Decimal) -> str | None:
         return f"{name} must be a finite number"
     bounds = OFFSET_BOUNDS[d.unit] if kind == "offset" else d.bounds
     return None if bounds.contains(value) else f"{name} must be in {bounds}"
+
+
+def clamp(code: str, value: Decimal) -> Decimal:
+    """`value` moved into the driver's value bounds: onto a closed bound, or INWARD inside an
+    open one; unchanged when inside. Raises UnknownDriver."""
+    bounds = driver_def(code).bounds
+    if bounds.contains(value):
+        return value
+    if value <= bounds.low:
+        return bounds.low + INWARD if bounds.low_open else bounds.low
+    return bounds.high - INWARD if bounds.high_open else bounds.high
 
 
 def _plain(value: Decimal) -> str:

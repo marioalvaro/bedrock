@@ -142,6 +142,17 @@ class InvalidDrivers(Exception):
     offset on Base); the message says which. Nothing was written."""
 
 
+class InvalidEngineChoice(Exception):
+    """An engine PUT or inspection breaks a rule (unknown engine, a driver outside the scenario's
+    method, `stl` on a driver that is not seasonal, a driver twice); the message says which.
+    Nothing was written."""
+
+
+class InvalidSeasonality(Exception):
+    """A seasonality request cannot be answered (no quarterly history, an unknown line, a line with
+    fewer than 12 consecutive quarters); the message says which."""
+
+
 class InvalidValuationInput(Exception):
     """A valuation-inputs PUT breaks a rule (unknown or repeated code, a value its kind cannot
     parse, a bound, a choice not offered, a comps set that is not the company's); the message
@@ -186,6 +197,8 @@ DOMAIN_ERRORS = (
     ScenarioConflict,
     InvalidScenario,
     InvalidDrivers,
+    InvalidEngineChoice,
+    InvalidSeasonality,
     InvalidValuationInput,
     InvalidSensitivity,
     UnknownLineItem,

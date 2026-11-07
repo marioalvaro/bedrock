@@ -10,10 +10,12 @@ import {
   compareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGet,
   createScenarioApiV1CompaniesTickerScenariosPost,
   deleteScenarioApiV1CompaniesTickerScenariosScenarioIdDelete,
+  getDriverEnginesApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriverEnginesGet,
   getDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversGet,
   getSegmentsApiV1CompaniesTickerSegmentsGet,
   listScenariosApiV1CompaniesTickerScenariosGet,
   putDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversPut,
+  putEnginesApiV1CompaniesTickerScenariosScenarioIdEnginesPut,
   resetCaseApiV1CompaniesTickerScenariosScenarioIdCasesCaseResetPost,
   setYearModeApiV1CompaniesTickerScenariosScenarioIdYearsFiscalYearModePut,
   updateScenarioApiV1CompaniesTickerScenariosScenarioIdPut,
@@ -38,6 +40,10 @@ export const putDrivers = vi.mocked(
 );
 export const resetCase = vi.mocked(
   resetCaseApiV1CompaniesTickerScenariosScenarioIdCasesCaseResetPost,
+);
+export const putEngines = vi.mocked(putEnginesApiV1CompaniesTickerScenariosScenarioIdEnginesPut);
+export const getDriverEngines = vi.mocked(
+  getDriverEnginesApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriverEnginesGet,
 );
 export const compare = vi.mocked(compareCasesApiV1CompaniesTickerScenariosScenarioIdCompareGet);
 export const getSegments = vi.mocked(getSegmentsApiV1CompaniesTickerSegmentsGet);

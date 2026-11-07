@@ -13,6 +13,7 @@ from bedrock.models import (  # noqa: F401  ensure models are registered
     concept_mapping,
     corporate_action,
     custom_line,
+    driver_engine,
     driver_value,
     filing,
     guidance,
