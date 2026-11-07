@@ -138,7 +138,7 @@ describe("picker", () => {
     await userEvent.click(screen.getByRole("button", { name: "Delete" }));
     const dialog = await screen.findByRole("alertdialog");
     expect(dialog).toHaveTextContent("Delete Cycle?");
-    expect(dialog).toHaveTextContent("its Base, Bull and Bear cases");
+    expect(dialog).toHaveTextContent("its Bull, Base and Bear cases");
     list.mockResolvedValue(okResult(scenarios().slice(0, 1)) as never);
     await userEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
     expect(remove).toHaveBeenCalledWith({ path: { ticker: "AAPL", scenario_id: 2 } });
@@ -236,7 +236,7 @@ describe("settings", () => {
   it("says the settings apply to the three cases, and keeps them across a case switch", async () => {
     await renderLoaded();
     const form = screen.getByRole("form", { name: "Scenario settings" });
-    expect(form).toHaveTextContent("Applies to Base, Bull and Bear");
+    expect(form).toHaveTextContent("Applies to Bull, Base and Bear");
     await userEvent.selectOptions(screen.getByLabelText("Revenue build"), "segments");
     await userEvent.click(screen.getByRole("radio", { name: "Bull" }));
     expect(screen.getByLabelText("Revenue build")).toHaveValue("segments"); // the draft stays
@@ -384,14 +384,14 @@ describe("new scenario", () => {
 describe("case toggle", () => {
   const radio = (name: string) => screen.getByRole("radio", { name });
 
-  it("offers Base, Bull and Bear, Base picked by default", async () => {
+  it("offers Bull, Base and Bear, Base picked by default", async () => {
     await renderLoaded();
     const group = screen.getByRole("radiogroup", { name: "Case" });
     expect(
       within(group)
         .getAllByRole("radio")
         .map((r) => r.textContent),
-    ).toEqual(["Base", "Bull", "Bear"]);
+    ).toEqual(["Bull", "Base", "Bear"]);
     expect(radio("Base")).toBeChecked();
   });
 

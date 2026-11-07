@@ -45,7 +45,7 @@ export const driverEnginesQueryOptions = (
   });
 
 /**
- * PUT …/scenarios/{id}/engines: the rows' engine choices, shared by Base, Bull and Bear. Not
+ * PUT …/scenarios/{id}/engines: the rows' engine choices, shared by Bull, Base and Bear. Not
  * optimistic (the reply has no grid); on success every scenario view of the company is
  * invalidated, since every case's drivers, forecasts, comparison and valuations move.
  */

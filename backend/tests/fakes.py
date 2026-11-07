@@ -16,6 +16,8 @@ from bedrock.ingest.protocol import (
     EdgarPayload,
     PricePayload,
     PriceRow,
+    SeriesPayload,
+    SourceUnavailable,
     SplitRow,
     UnknownTicker,
 )
@@ -114,3 +116,32 @@ class FakePrices:
             rows=[r for r in rows if since is None or r.date > since],
             splits=list(_splits(company.ticker)),
         )
+
+
+class FakeMarket:
+    """Fixed market series: a 10-year yield of 4.25 %, an ERP of 4.41 % and five S&P 500
+    month-ends. `fail` names the calls (`risk_free`, `erp`, `index`) that raise."""
+
+    def __init__(self, fail: tuple[str, ...] = ()) -> None:
+        self.fail = fail
+        self.calls: list[str] = []
+
+    def _call(self, name: str) -> None:
+        self.calls.append(name)
+        if name in self.fail:
+            raise SourceUnavailable(f"{name} is down")
+
+    def risk_free(self, today: date) -> SeriesPayload:
+        self._call("risk_free")
+        rows = [(date(2026, 10, 7), Decimal("4.2")), (date(2026, 10, 8), Decimal("4.25"))]
+        return SeriesPayload("^TNX", "10-year Treasury yield", "daily", "yfinance", rows)
+
+    def erp(self, today: date) -> SeriesPayload:
+        self._call("erp")
+        rows = [(date(2026, 10, 1), Decimal("4.41"))]
+        return SeriesPayload("DAMODARAN_ERP", "Damodaran implied ERP", "monthly", "damodaran", rows)
+
+    def index(self, today: date) -> SeriesPayload:
+        self._call("index")
+        rows = [(date(2026, m, 1), Decimal(6000 + 10 * m)) for m in range(6, 11)]
+        return SeriesPayload("^GSPC", "S&P 500", "monthly", "yfinance", rows)

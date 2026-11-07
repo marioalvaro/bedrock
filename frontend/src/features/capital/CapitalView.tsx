@@ -271,6 +271,7 @@ export function CapitalView({ ticker }: CapitalViewProps) {
           rowData={rows}
           columnDefs={columns}
           getRowId={(row) => row.id}
+          getRowClass={(row) => (row.isSub ? "row-sub" : undefined)}
           onCellClicked={openCell}
         />
       )}

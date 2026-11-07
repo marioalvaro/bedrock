@@ -155,7 +155,7 @@ interface ScenariosViewProps {
 
 /**
  * The Scenarios tab: pick, create, rename and delete scenarios, set a scenario's revenue build,
- * and pick one of its three cases (Base, Bull, Bear) to edit its drivers against the actual
+ * and pick one of its three cases (Bull, Base, Bear) to edit its drivers against the actual
  * history, reset it or compare the three.
  */
 export function ScenariosView({ ticker }: ScenariosViewProps) {
@@ -333,7 +333,7 @@ export function ScenariosView({ ticker }: ScenariosViewProps) {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete {deleting?.name}?</AlertDialogTitle>
             <AlertDialogDescription>
-              The scenario, its Base, Bull and Bear cases and their drivers are removed. The other
+              The scenario, its Bull, Base and Bear cases and their drivers are removed. The other
               scenarios stay as they are.
             </AlertDialogDescription>
           </AlertDialogHeader>

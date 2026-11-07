@@ -254,27 +254,43 @@ describe("tabs", () => {
     expect(screen.getByRole("link", { name: "Notes" })).toHaveAttribute("aria-current", "page");
   });
 
-  it("lists the fifteen tabs in order, the analysis tabs after Cash Flow", async () => {
+  it("lists the fifteen tabs in order, in four groups after the overview", async () => {
     renderAt("/c/AAPL");
     await screen.findByRole("heading", { name: "AAPL" });
 
-    const links = within(screen.getByRole("navigation")).getAllByRole("link");
+    const nav = screen.getByRole("navigation");
+    const links = within(nav).getAllByRole("link");
     expect(links.map((link) => link.textContent)).toEqual([
       "Overview",
       "Income",
       "Balance",
       "Cash Flow",
-      "Ratios",
-      "Quality",
-      "Capital",
       "Segments",
+      "Ratios",
+      "Capital",
+      "Quality",
       "Seasonality",
       "Comps",
       "Guidance",
-      "Valuation",
       "Forecast",
       "Scenarios",
+      "Valuation",
       "Notes",
+    ]);
+    // Statements | analysis | forward-looking | notes, each group after a divider.
+    const groups = within(nav)
+      .getAllByRole("group")
+      .map((group) =>
+        within(group)
+          .getAllByRole("link")
+          .map((link) => link.textContent),
+      );
+    expect(groups).toEqual([
+      ["Overview"],
+      ["Income", "Balance", "Cash Flow", "Segments"],
+      ["Ratios", "Capital", "Quality", "Seasonality", "Comps"],
+      ["Guidance", "Forecast", "Scenarios", "Valuation"],
+      ["Notes"],
     ]);
     expect(screen.getByRole("link", { name: "Ratios" })).toHaveAttribute("href", "/c/AAPL/ratios");
     expect(screen.getByRole("link", { name: "Quality" })).toHaveAttribute(

@@ -18,6 +18,7 @@ from bedrock.models import (  # noqa: F401  ensure models are registered
     filing,
     guidance,
     imported_fact,
+    macro,
     note,
     off_balance_item,
     price_daily,

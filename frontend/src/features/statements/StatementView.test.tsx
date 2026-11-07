@@ -299,6 +299,28 @@ describe("StatementView", () => {
       expect(screen.getAllByRole("gridcell", { name: "YoY" })[0]).toHaveClass("italic");
     });
 
+    it("tints the YoY row as a sub-row of its line, pinned label included", async () => {
+      renderView();
+      await userEvent.click(await screen.findByRole("button", { name: "YoY" }));
+
+      const subRows = [...document.querySelectorAll("[row-id$=':yoy']")];
+      expect(subRows.length).toBeGreaterThan(0);
+      for (const el of subRows) expect(el).toHaveClass("row-sub");
+      const lines = [...document.querySelectorAll("[row-id]")].filter(
+        (el) => !el.getAttribute("row-id")!.includes(":"),
+      );
+      for (const el of lines) expect(el).not.toHaveClass("row-sub");
+    });
+
+    it("tints the common-size row as a sub-row too", async () => {
+      renderView();
+      await userEvent.click(await screen.findByRole("button", { name: "Common size" }));
+
+      const subRows = [...document.querySelectorAll("[row-id$=':common_size']")];
+      expect(subRows.length).toBeGreaterThan(0);
+      for (const el of subRows) expect(el).toHaveClass("row-sub");
+    });
+
     it("leaves a missing growth figure neutral", async () => {
       renderView();
       await userEvent.click(await screen.findByRole("button", { name: "YoY" }));

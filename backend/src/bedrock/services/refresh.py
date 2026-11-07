@@ -7,11 +7,10 @@ from bedrock.ingest.parse import parse_companyfacts
 from bedrock.ingest.protocol import CompanyRef, SourceUnavailable
 from bedrock.ingest.sources import Sources
 from bedrock.repositories import companies as companies_repo
-from bedrock.repositories import corporate_actions as actions_repo
 from bedrock.repositories import facts as facts_repo
-from bedrock.repositories import prices as prices_repo
 from bedrock.services.errors import CompanyNotFound
 from bedrock.services.mappings import sync_mappings
+from bedrock.services.prices import update_prices
 
 
 @dataclass(frozen=True)
@@ -49,15 +48,8 @@ def refresh_company(
         new_prices = 0
         new_splits = 0
         try:
-            since = prices_repo.last_date(session, company.id)
-            # Nothing can be newer than today, and the source rejects a start date after "now".
-            if since is None or since < now.astimezone(UTC).date():
-                quotes = sources.prices.fetch(CompanyRef(company.ticker, company.cik), since)
-                new_prices = prices_repo.insert_new(session, company.id, quotes.rows)
-                # The split history comes with every price fetch (full history, a handful of
-                # rows), so it is skipped with it when prices are already current today; a split
-                # effective today is picked up by the next day's refresh.
-                new_splits = actions_repo.insert_new(session, company.id, quotes.splits)
+            update = update_prices(session, sources.prices, company, now)
+            new_prices, new_splits = update.new_prices, update.new_splits
         except SourceUnavailable as error:
             warnings.append(f"prices and splits not updated: {error}")
 

@@ -204,6 +204,18 @@ describe("CapitalView", () => {
       "net_share_change",
     ];
 
+    it("tints the % rows as sub-rows of their line", async () => {
+      subset(WITH_PCT_A);
+      renderView();
+      await waitFor(() => expect(rowIds()).toEqual(WITH_PCT_A));
+      await userEvent.click(percentToggle());
+
+      const subs = [...document.querySelectorAll("[row-id*=':']")];
+      expect(subs.length).toBeGreaterThan(0);
+      for (const el of subs) expect(el).toHaveClass("row-sub");
+      expect(row("capex")).not.toHaveClass("row-sub");
+    });
+
     it.each([{ codes: WITH_PCT_A }, { codes: WITH_PCT_B }])(
       "adds two sub-rows under each row with percentages, and none under the others (#$#)",
       async ({ codes }) => {

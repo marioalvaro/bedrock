@@ -321,6 +321,9 @@ export function StatementView({ ticker, cik, type }: StatementViewProps) {
           rowData={rows}
           columnDefs={columns}
           getRowId={(row) => row.id}
+          getRowClass={(row) =>
+            row.kind === "yoy" || row.kind === "common_size" ? "row-sub" : undefined
+          }
           onCellClicked={({ data: row, column }) => {
             const period = data.periods.find((p) => p.key === column.getColId());
             if (!row || !period || !canExplain(row, period)) return;

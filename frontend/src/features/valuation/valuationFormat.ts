@@ -185,6 +185,12 @@ const CHOICES: Record<string, string> = {
   manual: "Manual",
   own_history: "Own history",
   peer_median: "Peer median",
+  // own-history lookback
+  "3": "3 years",
+  "4": "4 years",
+  "5": "5 years",
+  "10": "10 years",
+  all: "All years",
 };
 
 export const choiceLabel = (value: string): string => CHOICES[value] ?? value;
@@ -253,6 +259,7 @@ export function targetFields(source: string | null) {
   return {
     multiple: source === "manual",
     percentile: source === "own_history",
+    lookback: source === "own_history",
     year: source !== null && source !== "off",
   };
 }

@@ -2,7 +2,7 @@
 "Inputs", "Market data", "Multiple targets"), on the recorded AAPL, MSFT and COST fixtures."""
 
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -16,6 +16,7 @@ from bedrock.models.company import Company
 from bedrock.models.scenario import Scenario
 from bedrock.models.valuation_input import ValuationInput
 from bedrock.repositories import companies as companies_repo
+from bedrock.repositories import macro as macro_repo
 from bedrock.repositories import prices as price_repo
 from bedrock.services import comps as comps_service
 from bedrock.services import ratios as ratios_service
@@ -258,6 +259,62 @@ def test_own_history_needs_three_years_of_priced_ratios(db_session: Session, aap
     assert pe.details.source == "own_history" and pe.details.percentile == D("0.5")
     assert pe.details.n is not None and pe.details.n >= 3
     assert pe.value_per_share is not None
+
+
+def test_own_history_looks_back_five_years_by_default_and_as_far_as_the_lookback(
+    db_session: Session, aapl: Company
+) -> None:
+    scenario = _main(db_session, aapl)
+    ends = [p.end for p in ratios_service.ratios(db_session, aapl, "annual", "normalized").periods]
+    assert len(ends) >= 7
+    rows = [PriceRow(end, D(100 + 20 * i), D(100 + 20 * i), 1) for i, end in enumerate(ends[-7:])]
+    price_repo.insert_new(db_session, aapl.id, rows)
+    db_session.commit()
+
+    def n(lookback: str | None) -> int | None:
+        _put(db_session, aapl, "base", pe_lookback=lookback)
+        pe = _result(svc.case_valuation(db_session, aapl, scenario.id, "base"), "multiple:pe")
+        assert isinstance(pe.details, MultipleDetails)
+        return pe.details.n
+
+    assert _inputs(db_session, aapl, "base")["pe_lookback"].value == "5"
+    assert n(None) == 5
+    assert n("3") == 3
+    assert n("all") == 7
+
+
+def test_stored_market_data_sets_the_discount_defaults_and_an_own_value_still_wins(
+    db_session: Session, aapl: Company
+) -> None:
+    scenario = _main(db_session, aapl)
+    at = datetime(2026, 11, 7, tzinfo=UTC)
+    macro_repo.upsert(
+        db_session, "^TNX", "T", "daily", "yfinance", [(date(2026, 11, 6), D("4.25"))], at
+    )
+    macro_repo.upsert(
+        db_session,
+        "DAMODARAN_ERP",
+        "E",
+        "monthly",
+        "damodaran",
+        [(date(2026, 11, 1), D("4.41"))],
+        at,
+    )
+    db_session.commit()
+
+    rows = _inputs(db_session, aapl, "base")
+    assert (rows["risk_free_rate"].value, rows["risk_free_rate"].source) == ("0.0425", "default")
+    assert (rows["equity_risk_premium"].value, rows["equity_risk_premium"].source) == (
+        "0.0441",
+        "default",
+    )
+    assert rows["beta"].value == "1"  # one year of recorded prices: too short for a beta
+
+    dcf = svc.case_valuation(db_session, aapl, scenario.id, "base").results[0]
+    assert dcf.details.discount.risk_free_rate == D("0.0425")  # type: ignore[union-attr]
+
+    _put(db_session, aapl, "base", risk_free_rate="0.05")
+    assert _inputs(db_session, aapl, "base")["risk_free_rate"].value == "0.05"
 
 
 @pytest.mark.parametrize("call", ["case", "summary"])

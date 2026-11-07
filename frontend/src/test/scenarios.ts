@@ -278,7 +278,7 @@ function forecastPeriod(year: number, quarter?: number): PeriodOut {
   };
 }
 
-/** GET …/scenarios/1/compare (annual): revenue and EPS for Base, Bull and Bear; Bear cannot run. */
+/** GET …/scenarios/1/compare (annual): revenue and EPS for Bull, Base and Bear; Bear cannot run. */
 export function comparison(overrides: Partial<CompareOut> = {}): CompareOut {
   return {
     periods: [forecastPeriod(2026), forecastPeriod(2027)],

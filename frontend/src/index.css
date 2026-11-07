@@ -179,6 +179,26 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* A sub-row (YoY, common size, % of CFO/FCF): a child figure of the line above, on a faint tint
+   so it never reads as a line of its own. */
+.ag-row.row-sub {
+  background-color: color-mix(in oklch, var(--muted) 55%, var(--background));
+  font-size: 12px;
+}
+
+/* A section heading (Profitability, DuPont…): a muted band under a rule, inside the same grid. */
+.ag-row.row-heading {
+  background-color: var(--muted);
+  border-top: 1px solid var(--border);
+  font-weight: 600;
+}
+
+/* macOS overlay scrollbars: AG Grid lays the horizontal one over the last row (absolute,
+   bottom 0), which hides that row while swiping. Keep it in flow, under the rows. */
+.ag-body-horizontal-scroll.ag-scrollbar-invisible {
+  position: relative;
+}
+
 /* An opened <details> fades its body in instead of snapping. */
 details[open] > :not(summary) {
   animation: expand-in var(--motion-fast) ease-out;

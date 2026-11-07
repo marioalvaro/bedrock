@@ -67,11 +67,13 @@ def percentile(values: Sequence[Decimal], p: Decimal) -> Decimal:
 
 
 def own_history_reference(
-    values: Sequence[Decimal | None], p: Decimal, label: str
+    values: Sequence[Decimal | None], p: Decimal, label: str, lookback: int | None = None
 ) -> MultipleReference:
-    """The `p` percentile of a ratio's annual values, nulls and values ≤ 0 left out; an error
-    with fewer than MIN_HISTORY values."""
-    found = [v for v in values if v is not None and v > 0]
+    """The `p` percentile of a ratio's annual values (oldest first) over the latest `lookback`
+    fiscal years (None: all), nulls and values ≤ 0 left out; a year without a value still counts
+    against the window. An error with fewer than MIN_HISTORY values."""
+    window = values if lookback is None else values[-lookback:]
+    found = [v for v in window if v is not None and v > 0]
     if len(found) < MIN_HISTORY:
         return MultipleReference(
             None,

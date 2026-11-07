@@ -204,7 +204,7 @@ function MultiplesPanel({
       <table aria-label="Multiple targets" className="text-sm">
         <thead>
           <tr className="text-muted-foreground">
-            {["Target", "Source", "Multiple", "Percentile", "Year"].map((name) => (
+            {["Target", "Source", "Multiple", "Percentile", "Lookback", "Year"].map((name) => (
               <th key={name} scope="col" className="px-2 py-1 text-left font-normal">
                 {name}
               </th>
@@ -222,6 +222,7 @@ function MultiplesPanel({
                 {cell(`${code}_source`, true)}
                 {cell(`${code}_multiple`, fields.multiple)}
                 {cell(`${code}_percentile`, fields.percentile)}
+                {cell(`${code}_lookback`, fields.lookback)}
                 {cell(`${code}_year`, fields.year)}
               </tr>
             );

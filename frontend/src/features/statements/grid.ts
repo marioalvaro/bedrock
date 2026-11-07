@@ -96,7 +96,8 @@ function subRow(
     code: line.code,
     label,
     parentLabel: line.label,
-    depth: line.depth + 1,
+    // At the line's own depth: one level in, it would line up with the line's breakdown.
+    depth: line.depth,
     unit: "%",
     kind,
     values: byPeriod(keys, values),

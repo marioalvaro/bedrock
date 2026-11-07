@@ -76,7 +76,7 @@ describe("toGridRows", () => {
       kind: "yoy",
       label: "YoY",
       unit: "%",
-      depth: 1,
+      depth: 0, // revenue's own depth
       values: { FY2023: null, FY2024: "0.020219" },
     });
   });
@@ -106,10 +106,13 @@ describe("toGridRows", () => {
     ]);
   });
 
-  it("indents a sub-row one level below its line", () => {
-    const rows = toGridRows(incomeStatement(), { ...OPEN, yoy: true });
+  it("keeps a sub-row at its line's depth, so it never reads as part of the breakdown", () => {
+    // User 2026-11-07: under an expanded parent, a YoY one level in lined up with the children.
+    const rows = toGridRows(incomeStatement(), { ...OPEN, yoy: true, commonSize: true });
+    const line = rows.find((row) => row.id === "cost_of_revenue")!;
 
-    expect(rows.find((row) => row.id === "cost_of_revenue:yoy")?.depth).toBe(2);
+    expect(rows.find((row) => row.id === "cost_of_revenue:yoy")?.depth).toBe(line.depth);
+    expect(rows.find((row) => row.id === "cost_of_revenue:common_size")?.depth).toBe(line.depth);
   });
 
   it("labels a common-size sub-row with the row it divides by", () => {

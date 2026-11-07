@@ -312,7 +312,7 @@ export function DriverGrid({
             </AlertDialogTitle>
             <AlertDialogDescription>
               {returning && periodName(returning.fiscal_year, "FY")} returns to its annual values.
-              The quarter values of Base, Bull and Bear are deleted.
+              The quarter values of Bull, Base and Bear are deleted.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

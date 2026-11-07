@@ -3,8 +3,14 @@ from dataclasses import dataclass
 from bedrock.core.config import Settings
 from bedrock.ingest.cache import RawCache
 from bedrock.ingest.http import RateLimitedClient
-from bedrock.ingest.protocol import EdgarLike, PricesLike, SourceNotConfigured
+from bedrock.ingest.protocol import (
+    EdgarLike,
+    MarketLike,
+    PricesLike,
+    SourceNotConfigured,
+)
 from bedrock.ingest.sources.edgar import EdgarSource
+from bedrock.ingest.sources.market import MarketSource
 from bedrock.ingest.sources.yfinance import YFinanceSource
 
 
@@ -12,6 +18,8 @@ from bedrock.ingest.sources.yfinance import YFinanceSource
 class Sources:
     edgar: EdgarLike
     prices: PricesLike
+    # The market series behind the valuation defaults; None (tests) fetches nothing.
+    market: MarketLike | None = None
 
 
 def build_sources(settings: Settings) -> Sources:
@@ -27,4 +35,5 @@ def build_sources(settings: Settings) -> Sources:
     return Sources(
         edgar=EdgarSource(edgar_client, RawCache(settings.data_dir)),
         prices=YFinanceSource(),
+        market=MarketSource(settings.fred_api_key),
     )

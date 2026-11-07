@@ -1,13 +1,20 @@
 """refresh_company: the use-case behind `POST /companies/{ticker}/refresh` and `bedrock refresh`."""
 
-from datetime import UTC, datetime
+from dataclasses import replace
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from bedrock.ingest.parse import parse_companyfacts
-from bedrock.ingest.protocol import CompanyRef, SourceNotConfigured, SourceUnavailable
+from bedrock.ingest.protocol import (
+    CompanyRef,
+    PricePayload,
+    PriceRow,
+    SourceNotConfigured,
+    SourceUnavailable,
+)
 from bedrock.ingest.sources import Sources
 from bedrock.models.canonical_item import CanonicalItem
 from bedrock.models.company import Company
@@ -130,7 +137,8 @@ def test_the_ticker_is_case_insensitive(db_session: Session) -> None:
     assert db_session.execute(select(Company.ticker)).scalar_one() == "AAPL"
 
 
-def test_prices_are_asked_for_only_what_follows_the_last_stored_day(db_session: Session) -> None:
+def test_prices_are_asked_for_from_the_last_stored_day_on(db_session: Session) -> None:
+    # The last stored day is fetched again: during the session it was a provisional close.
     prices = FakePrices()
     follow(db_session, FakeEdgar(), "AAPL")
     refresh_company(db_session, _sources(prices=prices), "AAPL", NOW)
@@ -138,21 +146,41 @@ def test_prices_are_asked_for_only_what_follows_the_last_stored_day(db_session: 
 
     refresh_company(db_session, _sources(prices=prices), "AAPL", NOW)
 
-    assert prices.calls == [None, last]
+    assert prices.calls == [None, last - timedelta(days=1)]
 
 
-def test_prices_are_not_asked_for_when_the_last_stored_day_is_today(db_session: Session) -> None:
-    # yfinance fails for a start date after "now", and there is nothing newer to fetch anyway.
-    prices = FakePrices()
+class MovingPrices(FakePrices):
+    """The recorded prices, with the last day's close moved: a later quote of the same day."""
+
+    def fetch(self, company: CompanyRef, since: date | None) -> PricePayload:
+        payload = super().fetch(company, since)
+        last = max(r.date for r in _all_rows())
+        rows = [
+            replace(r, close=r.close + 1, adj_close=r.adj_close + 1) if r.date == last else r
+            for r in payload.rows
+        ]
+        return replace(payload, rows=rows)
+
+
+def _all_rows() -> list[PriceRow]:
+    return FakePrices().fetch(AAPL, None).rows
+
+
+def test_a_later_refresh_the_same_day_updates_that_day_s_close(db_session: Session) -> None:
     follow(db_session, FakeEdgar(), "AAPL")
-    refresh_company(db_session, _sources(prices=prices), "AAPL", NOW)
-    last = max(r.date for r in FakePrices().fetch(AAPL, None).rows)
-    same_day = datetime(last.year, last.month, last.day, 20, 0, tzinfo=UTC)
+    refresh_company(db_session, _sources(), "AAPL", NOW)
+    last = max(_all_rows(), key=lambda r: r.date)
+    same_day = datetime(last.date.year, last.date.month, last.date.day, 20, 0, tzinfo=UTC)
 
-    result = refresh_company(db_session, _sources(prices=prices), "AAPL", same_day)
+    result = refresh_company(db_session, _sources(prices=MovingPrices()), "AAPL", same_day)
 
-    assert prices.calls == [None]
+    stored = db_session.get(PriceDaily, (_company_id(db_session), last.date))
+    assert stored is not None and stored.close == last.close + 1
     assert result.new_prices == 0 and result.warnings == []
+
+
+def _company_id(session: Session) -> int:
+    return session.execute(select(Company.id)).scalar_one()
 
 
 def test_refresh_stores_the_split_history(db_session: Session) -> None:
@@ -178,17 +206,3 @@ def test_splits_come_with_every_price_fetch_and_a_second_refresh_adds_none(
 
     assert prices.calls[1] is not None  # an incremental fetch still carries the full history
     assert again.new_splits == 0
-
-
-def test_splits_are_not_asked_for_when_prices_are_current_today(db_session: Session) -> None:
-    # The splits ride on the price fetch, which is skipped when the last stored day is today.
-    follow(db_session, FakeEdgar(), "AAPL")
-    refresh_company(db_session, _sources(), "AAPL", NOW)
-    last = max(r.date for r in FakePrices().fetch(AAPL, None).rows)
-    same_day = datetime(last.year, last.month, last.day, 20, 0, tzinfo=UTC)
-    prices = FakePrices()
-
-    result = refresh_company(db_session, _sources(prices=prices), "AAPL", same_day)
-
-    assert prices.calls == []
-    assert result.new_splits == 0

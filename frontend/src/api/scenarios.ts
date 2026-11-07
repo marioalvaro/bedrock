@@ -36,8 +36,8 @@ export type DriverFileFormat = "csv" | "xlsx";
 
 /** The three cases of every scenario, in display order. */
 export const CASES: { value: ScenarioCase; label: string }[] = [
-  { value: "base", label: "Base" },
   { value: "bull", label: "Bull" },
+  { value: "base", label: "Base" },
   { value: "bear", label: "Bear" },
 ];
 
@@ -144,7 +144,7 @@ export const forecastQueryOptions = (
   });
 
 /**
- * GET …/scenarios/{id}/compare on the API's default codes: the scenario's Base, Bull and Bear.
+ * GET …/scenarios/{id}/compare on the API's default codes: the scenario's Bull, Base and Bear.
  * Rejects a 200 of the wrong shape.
  */
 export const compareQueryOptions = (ticker: string, id: number, freq: ForecastFreq) =>

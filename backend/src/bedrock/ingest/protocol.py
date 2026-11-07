@@ -74,3 +74,25 @@ class EdgarLike(DataSource[EdgarPayload], Protocol):
 
 class PricesLike(DataSource[PricePayload], Protocol):
     """What the services need from the price source: `YFinanceSource`, or a test double."""
+
+
+@dataclass(frozen=True)
+class SeriesPayload:
+    """One market series as fetched: `(date, value)` rows oldest first, values as published."""
+
+    series_id: str
+    title: str
+    frequency: str  # daily | monthly
+    source: str  # fred | yfinance | damodaran
+    rows: list[tuple[date, Decimal]]
+
+
+class MarketLike(Protocol):
+    """What the services need for the market defaults: `MarketSource`, or a test double. Each
+    call raises SourceUnavailable on its own failure."""
+
+    def risk_free(self, today: date) -> SeriesPayload: ...
+
+    def erp(self, today: date) -> SeriesPayload: ...
+
+    def index(self, today: date) -> SeriesPayload: ...

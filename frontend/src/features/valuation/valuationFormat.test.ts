@@ -300,10 +300,30 @@ describe("display rules", () => {
       { code: "p_fcf", label: "P/FCF" },
       { code: "ev_sales", label: "EV/Sales" },
     ]);
-    expect(targetFields("off")).toEqual({ multiple: false, percentile: false, year: false });
-    expect(targetFields("manual")).toEqual({ multiple: true, percentile: false, year: true });
-    expect(targetFields("own_history")).toEqual({ multiple: false, percentile: true, year: true });
-    expect(targetFields("peer_median")).toEqual({ multiple: false, percentile: false, year: true });
+    expect(targetFields("off")).toEqual({
+      multiple: false,
+      percentile: false,
+      lookback: false,
+      year: false,
+    });
+    expect(targetFields("manual")).toEqual({
+      multiple: true,
+      percentile: false,
+      lookback: false,
+      year: true,
+    });
+    expect(targetFields("own_history")).toEqual({
+      multiple: false,
+      percentile: true,
+      lookback: true,
+      year: true,
+    });
+    expect(targetFields("peer_median")).toEqual({
+      multiple: false,
+      percentile: false,
+      lookback: false,
+      year: true,
+    });
   });
 });
 

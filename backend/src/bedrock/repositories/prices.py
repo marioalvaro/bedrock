@@ -54,3 +54,31 @@ def insert_new(session: Session, company_id: int, rows: Sequence[PriceRow]) -> i
     if fresh:
         session.execute(insert(PriceDaily), fresh)
     return len(fresh)
+
+
+def upsert(session: Session, company_id: int, rows: Sequence[PriceRow]) -> int:
+    """Store the rows, a stored date taking the new close (today's provisional close moves
+    during the session); returns how many dates were new."""
+    if not rows:
+        return 0
+    first = min(r.date for r in rows)
+    stmt = select(PriceDaily).where(PriceDaily.company_id == company_id, PriceDaily.date >= first)
+    known = {p.date: p for p in session.execute(stmt).scalars()}
+    fresh = []
+    for r in rows:
+        stored = known.get(r.date)
+        if stored is None:
+            fresh.append(r)
+        else:
+            stored.close, stored.adj_close, stored.volume = r.close, r.adj_close, r.volume
+    return insert_new(session, company_id, fresh)
+
+
+def adj_closes(session: Session, company_id: int, since: date) -> list[tuple[date, Decimal]]:
+    """The stored `(date, adj_close)` from `since` on, oldest first (beta's total returns)."""
+    stmt = (
+        select(PriceDaily.date, PriceDaily.adj_close)
+        .where(PriceDaily.company_id == company_id, PriceDaily.date >= since)
+        .order_by(PriceDaily.date)
+    )
+    return [(row.date, plain(row.adj_close)) for row in session.execute(stmt)]

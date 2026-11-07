@@ -18,6 +18,8 @@ InputSource = Literal["own", "base", "default", "derived"]
 
 D = Decimal
 SOURCES = ("off", "manual", "own_history", "peer_median")
+# How many of the latest fiscal years an own-history multiple reads, or all of them.
+LOOKBACKS = ("3", "4", "5", "10", "all")
 # multiple target code -> (label, default source)
 TARGETS: dict[str, tuple[str, str]] = {
     "pe": ("P/E", "own_history"),
@@ -108,6 +110,11 @@ INPUTS: tuple[InputDef, ...] = (
     *(
         InputDef(f"{m}_percentile", f"{label} percentile", _MULTIPLES, "pct", "number",
                  bounds=_pct("0", "1"), default=D("0.5"))
+        for m, (label, _) in TARGETS.items()
+    ),
+    *(
+        InputDef(f"{m}_lookback", f"{label} lookback", _MULTIPLES, None, "choice",
+                 LOOKBACKS, default="5")
         for m, (label, _) in TARGETS.items()
     ),
     *(
@@ -278,10 +285,13 @@ def resolve_inputs(
     own_rows: Mapping[str, str],
     is_base: bool,
     derived: Mapping[str, DerivedValue],
+    defaults: Mapping[str, InputValue] | None = None,
 ) -> ResolvedInputs:
-    """Each input: the case's own row → (Bull, Bear) Base's row → the default, or the derived
-    value for a derived default (a derived value that `follows` an input takes its resolved
-    value). Rows are stored texts by code. Raises InvalidInput for a row that does not parse."""
+    """Each input: the case's own row → (Bull, Bear) Base's row → the default (a market default
+    from `defaults` before the catalog's), or the derived value for a derived default (a derived
+    value that `follows` an input takes its resolved value). Rows are stored texts by code.
+    Raises InvalidInput for a row that does not parse."""
+    defaults = defaults or {}
     rows: list[ResolvedInput] = []
     resolved: dict[str, InputValue | None] = {}
     for d in INPUTS:
@@ -294,7 +304,7 @@ def resolve_inputs(
             value = resolved.get(found.follows) if found.follows is not None else found.value
             row = ResolvedInput(d.code, value, "derived", found.note)
         else:
-            row = ResolvedInput(d.code, d.default, "default")
+            row = ResolvedInput(d.code, defaults.get(d.code, d.default), "default")
         resolved[d.code] = row.value
         rows.append(row)
     return ResolvedInputs(tuple(rows))

@@ -249,3 +249,31 @@ def test_own_history_needs_three_values() -> None:
     assert own_history_reference([D(10), None, D(20)], D("0.5"), "P/E") == MultipleReference(
         None, "own_history", percentile=D("0.5"), n=2, error="P/E: fewer than 3 years of history"
     )
+
+
+def test_own_history_looks_back_over_the_latest_fiscal_years_only() -> None:
+    # Oldest to newest: the 3-year window is [40, 50, 60], whatever came before.
+    values = [D(10), D(20), D(30), D(40), D(50), D(60)]
+    assert own_history_reference(values, D("0.5"), "P/E", lookback=3) == MultipleReference(
+        D(50), "own_history", percentile=D("0.5"), n=3
+    )
+    assert own_history_reference(values, D("0.5"), "P/E", lookback=None).n == 6
+
+
+def test_a_year_without_a_multiple_still_counts_against_the_lookback() -> None:
+    # The window is the last 4 fiscal years; one has no multiple, so 3 values remain.
+    values = [D(10), D(20), None, D(30), D(40)]
+    ref = own_history_reference(values, D("0.5"), "P/E", lookback=4)
+    assert ref.n == 3 and ref.value == D(30)
+
+
+def test_a_lookback_longer_than_the_history_uses_all_of_it() -> None:
+    values = [D(10), D(20), D(30)]
+    assert own_history_reference(values, D("0.5"), "P/E", lookback=10).n == 3
+
+
+def test_a_short_lookback_window_can_leave_too_few_values() -> None:
+    values = [D(10), D(20), D(30), D(-1), D(40)]
+    ref = own_history_reference(values, D("0.5"), "P/E", lookback=3)
+    assert ref.value is None and ref.n == 2
+    assert ref.error == "P/E: fewer than 3 years of history"

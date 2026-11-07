@@ -22,6 +22,7 @@ from bedrock.repositories import prices as price_repo
 from bedrock.repositories import scenarios as scenarios_repo
 from bedrock.repositories import valuation_inputs as repo
 from bedrock.services import comps as comps_service
+from bedrock.services import market as market_service
 from bedrock.services import ratios as ratios_service
 from bedrock.services.errors import CompsSetNotFound, InvalidValuationInput
 from bedrock.services.forecasts import CaseRun, run_case
@@ -164,6 +165,8 @@ class _Context:
         self.close = price_repo.latest_close(session, company.id)
         self.shares = balance_sheet_shares(self.history.quarterly["BS"], self.history.annual["BS"])
         self.cases = scenarios_repo.cases_of(session, scenario.id)
+        # The market's discount defaults (risk-free rate, ERP, beta), the same for every case.
+        self.market_defaults = market_service.discount_defaults(session, company)
         self._ratios: RatioTable | None = None
         self._comparisons: dict[int, Any] = {}
 
@@ -378,7 +381,7 @@ def _state(context: _Context, case: str) -> CaseState:
     else:
         resolved = run.drivers.resolved
         derived = derive(resolved, resolved.years[0], market)
-    inputs = resolve_inputs(base, own, case == "base", derived)
+    inputs = resolve_inputs(base, own, case == "base", derived, context.market_defaults)
     forecast = None if run is None else valuation_forecast(run.statements, run.drivers.resolved)
     return CaseState(scenario, case, context.history, run, forecast, inputs, market, error)
 
@@ -422,7 +425,9 @@ def _own_history(
     row = next((r for r in context.ratios().rows if r.code == code), None)
     percentile = inputs.get(f"{code}_percentile")
     assert isinstance(percentile, Decimal)
-    return own_history_reference([] if row is None else row.values, percentile, label)
+    lookback = inputs.get(f"{code}_lookback")
+    years = None if lookback in (None, "all") else int(str(lookback))
+    return own_history_reference([] if row is None else row.values, percentile, label, years)
 
 
 def _peer_median(

@@ -22,6 +22,7 @@ from bedrock.models import (
     filing,
     guidance,
     imported_fact,
+    macro,
     note,
     off_balance_item,
     price_daily,
@@ -50,6 +51,7 @@ _MODELS = (
     filing,
     guidance,
     imported_fact,
+    macro,
     note,
     off_balance_item,
     price_daily,
@@ -1654,3 +1656,59 @@ def test_0015_downgrade_drops_the_table_and_up_again_recreates_it(
 
     _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
     assert "driver_engine_choice" in inspect(engine).get_table_names()
+
+
+def _macro_series(connection: Connection, series_id: str = "DGS10") -> None:
+    connection.execute(
+        text(
+            "INSERT INTO macro_series (series_id, title, frequency, source, fetched_at) "
+            "VALUES (:id, 'T', 'daily', 'fred', '2026-11-07 12:00:00')"
+        ),
+        {"id": series_id},
+    )
+
+
+def _macro_observation(
+    connection: Connection, series_id: str = "DGS10", day: str = "2026-11-06"
+) -> None:
+    connection.execute(
+        text("INSERT INTO macro_observation (series_id, date, value) VALUES (:id, :day, 4.2)"),
+        {"id": series_id, "day": day},
+    )
+
+
+def test_0016_creates_the_macro_tables_with_their_keys(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        _macro_series(connection)
+        _macro_observation(connection)
+    for bad in (
+        lambda c: _macro_series(c),  # the same series twice
+        lambda c: _macro_observation(c),  # the same date twice
+        lambda c: _macro_observation(c, series_id="NOPE"),  # no such series
+    ):
+        with pytest.raises(IntegrityError), engine.begin() as connection:
+            connection.execute(text("PRAGMA foreign_keys=ON"))
+            bad(connection)
+
+
+def test_0016_observations_go_with_their_series_and_downgrade_drops_both(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+        _macro_series(connection)
+        _macro_observation(connection)
+        connection.execute(text("DELETE FROM macro_series"))
+        assert connection.execute(text("SELECT count(*) FROM macro_observation")).scalar() == 0
+
+    _run_alembic(tmp_path, monkeypatch, ("downgrade", "0015"))
+    names = inspect(engine).get_table_names()
+    assert "macro_series" not in names and "macro_observation" not in names
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    assert "macro_observation" in inspect(engine).get_table_names()

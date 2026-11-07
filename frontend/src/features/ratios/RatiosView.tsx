@@ -263,6 +263,7 @@ export function RatiosView({ ticker }: RatiosViewProps) {
             rowData={rows}
             columnDefs={columns}
             getRowId={(row) => row.id}
+            getRowClass={(row) => (row.heading ? "row-heading" : undefined)}
             onCellClicked={openCell}
           />
           {notes.length > 0 && (

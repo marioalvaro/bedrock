@@ -57,6 +57,15 @@ function targetRows(code: string, label: string, source: string): ValuationInput
       value: "0.5",
     }),
     inputRow({
+      code: `${code}_lookback`,
+      label: `${label} lookback`,
+      group: "Multiples",
+      unit: null,
+      kind: "choice",
+      choices: ["3", "4", "5", "10", "all"],
+      value: "5",
+    }),
+    inputRow({
       code: `${code}_year`,
       label: `${label} year`,
       group: "Multiples",

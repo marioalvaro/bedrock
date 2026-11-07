@@ -38,6 +38,7 @@ def settings(tmp_path: Path) -> Settings:
         session_idle_minutes=720,
         cookie_secure=False,
         static_dir=None,
+        scheduled_refresh=False,
     )
 
 
@@ -82,6 +83,7 @@ def _followed_db(
             session_idle_minutes=720,
             cookie_secure=False,
             static_dir=None,
+            scheduled_refresh=False,
         )
         app = create_app(settings=built, sources=Sources(edgar=FakeEdgar(), prices=FakePrices()))
         with TestClient(app) as seeding:

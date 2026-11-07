@@ -79,7 +79,7 @@ describe("engine column", () => {
     const select = engineSelect("Gross margin");
     expect(select).toHaveValue("auto");
     expect(select.selectedOptions[0]).toHaveTextContent("Auto · ETS");
-    expect(select).toHaveAttribute("title", "Applies to Base, Bull and Bear");
+    expect(select).toHaveAttribute("title", "Applies to Bull, Base and Bear");
   });
 
   it("offers STL only to a seasonal driver", async () => {
