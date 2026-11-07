@@ -10,6 +10,12 @@ from typing import Any, ClassVar
 
 import pandas as pd
 
+from bedrock.analysis.consensus import (
+    ConsensusRow,
+    EpsHistoryRow,
+    history_from_frame,
+    rows_from_frames,
+)
 from bedrock.ingest.protocol import (
     CompanyProfile,
     CompanyRef,
@@ -145,3 +151,37 @@ class FakeMarket:
         self._call("index")
         rows = [(date(2026, m, 1), Decimal(6000 + 10 * m)) for m in range(6, 11)]
         return SeriesPayload("^GSPC", "S&P 500", "monthly", "yfinance", rows)
+
+
+class FakeConsensus:
+    """Yahoo's recorded AAPL consensus frames (tests/fixtures/consensus); other tickers have none.
+    `raises` fails both calls; `rows` replaces what `fetch` serves (and empties the history)."""
+
+    def __init__(
+        self, raises: Exception | None = None, rows: list[ConsensusRow] | None = None
+    ) -> None:
+        self.raises = raises
+        self.rows = rows  # served for every ticker instead of the recorded frames
+        self.calls: list[str] = []
+
+    def fetch(self, company: CompanyRef) -> list[ConsensusRow]:
+        self.calls.append(company.ticker)
+        if self.raises is not None:
+            raise self.raises
+        if self.rows is not None:
+            return list(self.rows)
+        revenue = FIXTURES / "consensus" / f"{company.ticker}_revenue_estimate.csv"
+        earnings = FIXTURES / "consensus" / f"{company.ticker}_earnings_estimate.csv"
+        if not revenue.is_file() or not earnings.is_file():
+            return []
+        return rows_from_frames(
+            pd.read_csv(revenue, index_col="period"), pd.read_csv(earnings, index_col="period")
+        )
+
+    def history(self, company: CompanyRef) -> list[EpsHistoryRow]:
+        if self.raises is not None:
+            raise self.raises
+        path = FIXTURES / "consensus" / f"{company.ticker}_earnings_history.csv"
+        if self.rows is not None or not path.is_file():
+            return []
+        return history_from_frame(pd.read_csv(path, index_col="quarter"))

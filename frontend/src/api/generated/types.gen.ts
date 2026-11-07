@@ -795,6 +795,46 @@ export type ConceptClassificationOut = {
 };
 
 /**
+ * ConsensusEstimateOut
+ *
+ * Analysts' consensus range for a revenue or EPS period: the guidance form's defaults.
+ */
+export type ConsensusEstimateOut = {
+    /**
+     * Analysts
+     */
+    analysts: number | null;
+    /**
+     * As Of
+     */
+    as_of: string;
+    /**
+     * Avg
+     */
+    avg: string | null;
+    /**
+     * Fiscal Period
+     */
+    fiscal_period: string;
+    /**
+     * Fiscal Year
+     */
+    fiscal_year: number;
+    /**
+     * High
+     */
+    high: string;
+    /**
+     * Low
+     */
+    low: string;
+    /**
+     * Metric
+     */
+    metric: string;
+};
+
+/**
  * CorporateActionOut
  */
 export type CorporateActionOut = {
@@ -1823,6 +1863,10 @@ export type GuidanceEntryOut = {
      */
     metric: string;
     /**
+     * Source
+     */
+    source: 'management' | 'consensus';
+    /**
      * Source Note
      */
     source_note: string | null;
@@ -1892,12 +1936,20 @@ export type GuidanceIn = {
 
 /**
  * GuidanceOut
+ *
+ * `summary` and `by_metric` count management guidance; `consensus_summary` and
+ * `consensus_by_metric` the analyst consensus, kept apart.
  */
 export type GuidanceOut = {
     /**
      * By Metric
      */
     by_metric: Array<MetricSummaryOut>;
+    /**
+     * Consensus By Metric
+     */
+    consensus_by_metric: Array<MetricSummaryOut>;
+    consensus_summary: GuidanceSummaryOut;
     /**
      * Entries
      */
@@ -4958,6 +5010,38 @@ export type CreateEntryApiV1CompaniesTickerGuidancePostResponses = {
 };
 
 export type CreateEntryApiV1CompaniesTickerGuidancePostResponse = CreateEntryApiV1CompaniesTickerGuidancePostResponses[keyof CreateEntryApiV1CompaniesTickerGuidancePostResponses];
+
+export type ListConsensusApiV1CompaniesTickerGuidanceConsensusGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/guidance/consensus';
+};
+
+export type ListConsensusApiV1CompaniesTickerGuidanceConsensusGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListConsensusApiV1CompaniesTickerGuidanceConsensusGetError = ListConsensusApiV1CompaniesTickerGuidanceConsensusGetErrors[keyof ListConsensusApiV1CompaniesTickerGuidanceConsensusGetErrors];
+
+export type ListConsensusApiV1CompaniesTickerGuidanceConsensusGetResponses = {
+    /**
+     * Response List Consensus Api V1 Companies  Ticker  Guidance Consensus Get
+     *
+     * Successful Response
+     */
+    200: Array<ConsensusEstimateOut>;
+};
+
+export type ListConsensusApiV1CompaniesTickerGuidanceConsensusGetResponse = ListConsensusApiV1CompaniesTickerGuidanceConsensusGetResponses[keyof ListConsensusApiV1CompaniesTickerGuidanceConsensusGetResponses];
 
 export type ListMetricsApiV1CompaniesTickerGuidanceMetricsGetData = {
     body?: never;

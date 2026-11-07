@@ -1,7 +1,10 @@
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, ClassVar, Protocol, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, Protocol, TypeVar
+
+if TYPE_CHECKING:
+    from bedrock.analysis.consensus import ConsensusRow, EpsHistoryRow
 
 P = TypeVar("P", covariant=True)
 
@@ -96,3 +99,12 @@ class MarketLike(Protocol):
     def erp(self, today: date) -> SeriesPayload: ...
 
     def index(self, today: date) -> SeriesPayload: ...
+
+
+class ConsensusLike(Protocol):
+    """What the services need for the analyst consensus: `YFinanceConsensus`, or a test double.
+    Raises SourceUnavailable."""
+
+    def fetch(self, company: CompanyRef) -> "list[ConsensusRow]": ...
+
+    def history(self, company: CompanyRef) -> "list[EpsHistoryRow]": ...

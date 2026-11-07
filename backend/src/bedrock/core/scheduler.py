@@ -1,5 +1,6 @@
 """The scheduled refresh (docs/erd/data.md "Scheduled refresh"): every followed company's prices
-hourly in US market hours and once after the close, and the market series once a day. Never
+hourly in US market hours and once after the close, and the market series and the analyst
+consensus once a day. Never
 EDGAR: filings change a few times a year and stay behind the Refresh button."""
 
 import asyncio
@@ -12,9 +13,13 @@ from pathlib import Path
 from typing import IO
 from zoneinfo import ZoneInfo
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from bedrock.ingest.protocol import SourceUnavailable
 from bedrock.ingest.sources import Sources
+from bedrock.models.company import Company
+from bedrock.services import consensus as consensus_service
 from bedrock.services import market as market_service
 from bedrock.services.prices import refresh_all_prices
 
@@ -63,14 +68,30 @@ class ScheduledRun:
 def run_scheduled_refresh(
     session_factory: Callable[[], Session], sources: Sources, now: datetime
 ) -> ScheduledRun:
-    """One run: every company's prices, then the market series when a day has passed."""
+    """One run: every company's prices, then, when a day has passed, the market series and every
+    company's analyst consensus (a failing company is a warning; its stored rows are kept)."""
     with session_factory() as session:
         prices = refresh_all_prices(session, sources, now)
         run = ScheduledRun(new_prices=prices.new_prices, warnings=list(prices.warnings))
-        if sources.market is not None and market_service.market_due(session, now):
-            run.warnings += market_service.refresh_market(session, sources, now)
-            run.market_refreshed = True
+        if sources.market is None or not market_service.market_due(session, now):
+            return run
+        run.warnings += market_service.refresh_market(session, sources, now)
+        run.market_refreshed = True
+        if sources.consensus is not None:
+            run.warnings += _refresh_all_consensus(session, sources, now)
     return run
+
+
+def _refresh_all_consensus(session: Session, sources: Sources, now: datetime) -> list[str]:
+    assert sources.consensus is not None
+    warnings: list[str] = []
+    for company in session.execute(select(Company).order_by(Company.ticker)).scalars().all():
+        try:
+            consensus_service.refresh_consensus(session, sources.consensus, company, now)
+        except SourceUnavailable as error:
+            session.rollback()
+            warnings.append(f"{company.ticker}: consensus not updated: {error}")
+    return warnings
 
 
 async def refresh_loop(

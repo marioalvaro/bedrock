@@ -6,7 +6,14 @@ from sqlalchemy.orm import Session
 from bedrock.api.deps import get_clock, get_session
 from bedrock.api.v1.statements import followed_company
 from bedrock.models.company import Company
-from bedrock.schemas.guidance import GuidanceEntryOut, GuidanceIn, GuidanceOut, MetricChoiceOut
+from bedrock.schemas.guidance import (
+    ConsensusEstimateOut,
+    GuidanceEntryOut,
+    GuidanceIn,
+    GuidanceOut,
+    MetricChoiceOut,
+)
+from bedrock.services import consensus as consensus_service
 from bedrock.services import guidance as service
 
 router = APIRouter(tags=["guidance"])
@@ -17,6 +24,15 @@ def list_metrics(
     company: Company = Depends(followed_company), session: Session = Depends(get_session)
 ) -> list[MetricChoiceOut]:
     return [MetricChoiceOut.from_choice(c) for c in service.metric_choices(session, company)]
+
+
+@router.get("/companies/{ticker}/guidance/consensus")
+def list_consensus(
+    company: Company = Depends(followed_company), session: Session = Depends(get_session)
+) -> list[ConsensusEstimateOut]:
+    return [
+        ConsensusEstimateOut.from_estimate(e) for e in consensus_service.consensus(session, company)
+    ]
 
 
 @router.get("/companies/{ticker}/guidance")

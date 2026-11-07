@@ -13,7 +13,7 @@ import {
 import { localIsoDate } from "@/lib/now";
 import { createQueryClient } from "@/lib/query-client";
 import { setScale } from "@/lib/scale";
-import { guidance, guidanceEntry, guidanceMetrics } from "@/test/context";
+import { guidance, guidanceEntry, guidanceMetrics, guidanceWithConsensus } from "@/test/context";
 import { errorResult, okResult } from "@/test/responses";
 
 import { GuidanceView } from "./GuidanceView";
@@ -305,5 +305,59 @@ describe("GuidanceView form", () => {
     await waitFor(() =>
       expect(deleteEntry).toHaveBeenCalledWith({ path: { ticker: "AAPL", guidance_id: 3 } }),
     );
+  });
+});
+
+describe("GuidanceView analyst consensus", () => {
+  beforeEach(() => {
+    getGuidance.mockResolvedValue(okResult(guidanceWithConsensus()) as never);
+  });
+
+  async function renderBoth() {
+    renderView();
+    await waitFor(() => expect(entryRow(7)).not.toBeNull());
+  }
+
+  it("tags a consensus entry", async () => {
+    await renderBoth();
+    expect(within(entryRow(7)).getByText("Consensus")).toBeVisible();
+    expect(within(entryRow(3)).queryByText("Consensus")).toBeNull();
+  });
+
+  it("offers no edit or delete on a consensus entry", async () => {
+    await renderBoth();
+    expect(within(entryRow(7)).queryByRole("button", { name: /^Edit/ })).toBeNull();
+    expect(within(entryRow(7)).queryByRole("button", { name: /^Delete/ })).toBeNull();
+    expect(within(entryRow(3)).getByRole("button", { name: /^Edit/ })).toBeVisible();
+  });
+
+  it("summarizes management guidance and analyst consensus apart", async () => {
+    await renderBoth();
+    expect(screen.getByText("Management guidance")).toBeVisible();
+    expect(
+      screen.getByText("1 beat · 0 in range · 0 miss · 0 pending · hit rate 100%"),
+    ).toBeVisible();
+    expect(screen.getByText("Analyst consensus")).toBeVisible();
+    expect(screen.getByText("0 beat · 0 in range · 0 miss · 1 pending · hit rate —")).toBeVisible();
+  });
+
+  it("lists the consensus counts per metric in their own table", async () => {
+    await renderBoth();
+    const table = screen.getByRole("table", { name: "Consensus by metric" });
+    expect(within(table).getByRole("row", { name: /Revenue/ })).toHaveTextContent("Revenue0001—");
+  });
+
+  it("shows no consensus summary without consensus entries", async () => {
+    getGuidance.mockResolvedValue(okResult(guidance()) as never);
+    await renderLoaded();
+    expect(screen.queryByText("Analyst consensus")).toBeNull();
+    expect(screen.queryByRole("table", { name: "Consensus by metric" })).toBeNull();
+  });
+
+  it("does not pre-fill the form from the consensus", async () => {
+    await renderBoth();
+    await openForm();
+    expect(screen.getByLabelText("Low")).toHaveValue("");
+    expect(screen.getByLabelText("Source note")).toHaveValue("");
   });
 });

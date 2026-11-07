@@ -1420,6 +1420,73 @@
         "title": "ConceptClassificationOut",
         "type": "object"
       },
+      "ConsensusEstimateOut": {
+        "description": "Analysts' consensus range for a revenue or EPS period: the guidance form's defaults.",
+        "properties": {
+          "analysts": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analysts"
+          },
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "avg": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg"
+          },
+          "fiscal_period": {
+            "title": "Fiscal Period",
+            "type": "string"
+          },
+          "fiscal_year": {
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "high": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "High",
+            "type": "string"
+          },
+          "low": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Low",
+            "type": "string"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          }
+        },
+        "required": [
+          "metric",
+          "fiscal_year",
+          "fiscal_period",
+          "low",
+          "avg",
+          "high",
+          "analysts",
+          "as_of"
+        ],
+        "title": "ConsensusEstimateOut",
+        "type": "object"
+      },
       "CorporateActionOut": {
         "properties": {
           "effective_date": {
@@ -3417,6 +3484,14 @@
             "title": "Metric",
             "type": "string"
           },
+          "source": {
+            "enum": [
+              "management",
+              "consensus"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
           "source_note": {
             "anyOf": [
               {
@@ -3480,6 +3555,7 @@
           "direction",
           "given_on",
           "source_note",
+          "source",
           "actual",
           "verdict",
           "surprise",
@@ -3589,6 +3665,7 @@
         "type": "object"
       },
       "GuidanceOut": {
+        "description": "`summary` and `by_metric` count management guidance; `consensus_summary` and\n`consensus_by_metric` the analyst consensus, kept apart.",
         "properties": {
           "by_metric": {
             "items": {
@@ -3596,6 +3673,16 @@
             },
             "title": "By Metric",
             "type": "array"
+          },
+          "consensus_by_metric": {
+            "items": {
+              "$ref": "#/components/schemas/MetricSummaryOut"
+            },
+            "title": "Consensus By Metric",
+            "type": "array"
+          },
+          "consensus_summary": {
+            "$ref": "#/components/schemas/GuidanceSummaryOut"
           },
           "entries": {
             "items": {
@@ -3616,7 +3703,9 @@
           "ticker",
           "entries",
           "summary",
-          "by_metric"
+          "by_metric",
+          "consensus_summary",
+          "consensus_by_metric"
         ],
         "title": "GuidanceOut",
         "type": "object"
@@ -9136,6 +9225,52 @@
           }
         },
         "summary": "Create Entry",
+        "tags": [
+          "guidance"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/guidance/consensus": {
+      "get": {
+        "operationId": "list_consensus_api_v1_companies__ticker__guidance_consensus_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ConsensusEstimateOut"
+                  },
+                  "title": "Response List Consensus Api V1 Companies  Ticker  Guidance Consensus Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Consensus",
         "tags": [
           "guidance"
         ]

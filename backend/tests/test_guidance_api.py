@@ -1,6 +1,7 @@
 """The guidance log through the API (FR-ANL-09), on the recorded AAPL fixtures."""
 
 from collections.abc import Callable
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -9,6 +10,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from bedrock.models.company import Company
 from bedrock.models.guidance import Guidance
 
 API = "/api/v1"
@@ -132,6 +134,7 @@ def test_the_created_entry_carries_every_field(aapl_client: TestClient) -> None:
         "direction",
         "given_on",
         "source_note",
+        "source",
         "actual",
         "verdict",
         "surprise",
@@ -508,3 +511,77 @@ def test_the_quarterly_flag_matches_what_a_quarter_accepts(aapl_client: TestClie
                 GUIDANCE, json={**ENTRY, "metric": metric["metric"], "fiscal_period": period}
             )
             assert response.status_code == (201 if accepted else 422), (metric, response.text)
+
+
+# --- consensus entries (docs/erd/analysis.md "Consensus guidance") ---------------------------
+
+
+def _consensus_entry(session: Session, **override: Any) -> int:
+    """A consensus entry as the daily refresh writes it (there is no route that creates one)."""
+    company = session.execute(select(Company).where(Company.ticker == "AAPL")).scalar_one()
+    fields: dict[str, Any] = {
+        "metric": "revenue",
+        "fiscal_year": 2024,
+        "fiscal_period": "FY",
+        "low": Decimal("385000000000"),
+        "high": Decimal("386000000000"),
+        "basis": "reported",
+        "direction": "higher",
+        "given_on": date(2024, 2, 1),
+        "source_note": "Analyst consensus (Yahoo, 30 analysts, as of 2024-02-01)",
+        "source": "consensus",
+        "created_at": datetime(2024, 2, 1),
+        "updated_at": datetime(2024, 2, 1),
+        **override,
+    }
+    row = Guidance(company_id=company.id, **fields)
+    session.add(row)
+    session.commit()
+    return row.id
+
+
+def test_a_posted_entry_is_management_guidance(aapl_client: TestClient) -> None:
+    assert post(aapl_client)["source"] == "management"
+
+
+def test_consensus_and_management_are_summarized_apart(
+    aapl_client: TestClient, db_session: Session
+) -> None:
+    post(aapl_client)  # 380-390 B: FY2024's 391 B beats it
+    consensus_id = _consensus_entry(db_session)  # 385-386 B, given later: also a beat
+
+    body = log(aapl_client)
+    by_id = {e["id"]: e for e in body["entries"]}
+    assert by_id[consensus_id]["source"] == "consensus"
+    assert all(e["latest"] for e in body["entries"])  # one record each
+    assert (body["summary"]["beat"], body["summary"]["pending"]) == (1, 0)
+    assert (body["consensus_summary"]["beat"], body["consensus_summary"]["pending"]) == (1, 0)
+    assert [m["metric"] for m in body["by_metric"]] == ["revenue"]
+    assert [m["metric"] for m in body["consensus_by_metric"]] == ["revenue"]
+
+
+def test_without_consensus_entries_the_consensus_summary_is_empty(aapl_client: TestClient) -> None:
+    post(aapl_client)
+    body = log(aapl_client)
+    assert body["consensus_summary"] == {
+        "beat": 0,
+        "in_range": 0,
+        "miss": 0,
+        "pending": 0,
+        "hit_rate": None,
+    }
+    assert body["consensus_by_metric"] == []
+
+
+def test_a_consensus_entry_cannot_be_edited_or_deleted(
+    aapl_client: TestClient, db_session: Session
+) -> None:
+    consensus_id = _consensus_entry(db_session)
+
+    edit = aapl_client.put(f"{GUIDANCE}/{consensus_id}", json=ENTRY)
+    remove = aapl_client.delete(f"{GUIDANCE}/{consensus_id}")
+
+    assert edit.status_code == 409 and "consensus" in edit.json()["detail"].lower()
+    assert remove.status_code == 409
+    (kept,) = log(aapl_client)["entries"]
+    assert (kept["id"], kept["low"], kept["source"]) == (consensus_id, "385000000000", "consensus")

@@ -17,6 +17,7 @@ from bedrock.analysis.guidance import (
     GuidanceEntry,
     GuidanceResult,
     GuidanceSummary,
+    Source,
     evaluate,
     quarter_margin,
     summarize,
@@ -29,7 +30,7 @@ from bedrock.repositories import guidance as repo
 from bedrock.repositories import segments as segments_repo
 from bedrock.services import ratios as ratios_service
 from bedrock.services.adjustments import AMOUNT_LIMIT
-from bedrock.services.errors import GuidanceNotFound, InvalidGuidance
+from bedrock.services.errors import GuidanceLocked, GuidanceNotFound, InvalidGuidance
 from bedrock.services.statements import canonical_items, statement_tables
 from bedrock.statements.build import StatementTable
 
@@ -88,8 +89,9 @@ class LoggedEntry:
 @dataclass(frozen=True)
 class GuidanceLog:
     entries: list[LoggedEntry]  # by fiscal year, period (FY first), metric, given_on, id
-    summary: GuidanceSummary
-    labels: dict[str, str]  # metric -> label, for `summary.by_metric`
+    summary: GuidanceSummary  # management guidance
+    consensus_summary: GuidanceSummary  # analyst consensus, kept apart
+    labels: dict[str, str]  # metric -> label, for both summaries' `by_metric`
 
 
 def metric_choices(session: Session, company: Company) -> list[MetricChoice]:
@@ -143,8 +145,8 @@ def update_entry(
     session: Session, company: Company, guidance_id: int, data: GuidanceInput, now: datetime
 ) -> LoggedEntry:
     """Replaces the entry's fields under the rules of `create_entry`. Raises GuidanceNotFound
-    for an unknown id (or another company's)."""
-    stored = _stored(session, company, guidance_id)
+    for an unknown id (or another company's), GuidanceLocked for a consensus entry."""
+    stored = _editable(session, company, guidance_id)
     _validate(session, company, data)
     for name, value in _fields(data).items():
         setattr(stored, name, value)
@@ -154,7 +156,8 @@ def update_entry(
 
 
 def delete_entry(session: Session, company: Company, guidance_id: int) -> None:
-    repo.delete(session, _stored(session, company, guidance_id))
+    """Raises GuidanceNotFound for an unknown id, GuidanceLocked for a consensus entry."""
+    repo.delete(session, _editable(session, company, guidance_id))
     session.commit()
 
 
@@ -185,7 +188,12 @@ def _log(session: Session, company: Company, stored: Sequence[Guidance]) -> Guid
             )
         )
     labels = {e.stored.metric: e.label for e in entries}
-    return GuidanceLog(entries, summarize(results), labels)
+    return GuidanceLog(
+        entries,
+        summarize(r for r in results if r.entry.source == "management"),
+        summarize(r for r in results if r.entry.source == "consensus"),
+        labels,
+    )
 
 
 def _entry(stored: Guidance) -> GuidanceEntry:
@@ -199,6 +207,7 @@ def _entry(stored: Guidance) -> GuidanceEntry:
         basis=cast(Basis, stored.basis),
         direction=cast(Direction, stored.direction),
         given_on=stored.given_on,
+        source=cast(Source, stored.source),
     )
 
 
@@ -333,6 +342,16 @@ def _stored(session: Session, company: Company, guidance_id: int) -> Guidance:
     stored = repo.get(session, company.id, guidance_id)
     if stored is None:
         raise GuidanceNotFound(str(guidance_id))
+    return stored
+
+
+def _editable(session: Session, company: Company, guidance_id: int) -> Guidance:
+    stored = _stored(session, company, guidance_id)
+    if stored.source == "consensus":
+        raise GuidanceLocked(
+            "Analyst consensus entries are logged by the daily refresh and cannot be edited or "
+            "deleted"
+        )
     return stored
 
 

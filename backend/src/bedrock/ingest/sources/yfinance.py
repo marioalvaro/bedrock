@@ -5,6 +5,12 @@ from typing import ClassVar, cast
 import pandas as pd
 import yfinance as yf
 
+from bedrock.analysis.consensus import (
+    ConsensusRow,
+    EpsHistoryRow,
+    history_from_frame,
+    rows_from_frames,
+)
 from bedrock.ingest.protocol import CompanyRef, PricePayload, PriceRow, SourceUnavailable, SplitRow
 
 # yfinance prices are float32-derived; four places keeps the cents and drops the noise.
@@ -53,3 +59,24 @@ def _splits(series: pd.Series) -> list[SplitRow]:
         for day, ratio in series.sort_index().items()
         if float(ratio) != 0
     ]
+
+
+class YFinanceConsensus:
+    """Yahoo's analyst consensus: the `revenue_estimate` and `earnings_estimate` frames, and the
+    `earnings_history` of past quarters."""
+
+    def fetch(self, company: CompanyRef) -> list[ConsensusRow]:
+        try:
+            ticker = yf.Ticker(company.ticker)
+            return rows_from_frames(ticker.revenue_estimate, ticker.earnings_estimate)
+        except Exception as error:
+            raise SourceUnavailable(f"yfinance consensus {company.ticker}: {error}") from error
+
+    def history(self, company: CompanyRef) -> list[EpsHistoryRow]:
+        """Yahoo's `earnings_history`: the EPS average before each of the last reports."""
+        try:
+            return history_from_frame(yf.Ticker(company.ticker).earnings_history)
+        except Exception as error:
+            raise SourceUnavailable(
+                f"yfinance earnings history {company.ticker}: {error}"
+            ) from error

@@ -16,6 +16,7 @@ from bedrock.models import (
     comps_member,
     comps_set,
     concept_mapping,
+    consensus_estimate,
     corporate_action,
     custom_line,
     driver_value,
@@ -45,6 +46,7 @@ _MODELS = (
     comps_member,
     comps_set,
     concept_mapping,
+    consensus_estimate,
     corporate_action,
     custom_line,
     driver_value,
@@ -1712,3 +1714,82 @@ def test_0016_observations_go_with_their_series_and_downgrade_drops_both(
     assert "macro_series" not in names and "macro_observation" not in names
     _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
     assert "macro_observation" in inspect(engine).get_table_names()
+
+
+def _consensus(connection: Connection, company_id: int, period: str = "0y") -> None:
+    connection.execute(
+        text(
+            "INSERT INTO consensus_estimate (company_id, period, metric, low, avg, high, analysts,"
+            " year_ago_revenue, fetched_at) VALUES (:company, :period, 'revenue', 1, 2, 3, 4, 5,"
+            " '2026-11-07 12:00:00')"
+        ),
+        {"company": company_id, "period": period},
+    )
+
+
+def test_0017_creates_the_consensus_table_and_downgrade_drops_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+        owner = _company(connection, "AAA")
+        other = _company(connection, "BBB")
+        _consensus(connection, owner)
+        _consensus(connection, owner, period="+1y")
+        _consensus(connection, other)
+    with pytest.raises(IntegrityError), engine.begin() as connection:
+        _consensus(connection, owner)  # the same (company, period, metric) twice
+    with engine.begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+        connection.execute(text("DELETE FROM company WHERE id = :id"), {"id": owner})
+        assert connection.execute(text("SELECT count(*) FROM consensus_estimate")).scalar() == 1
+
+    _run_alembic(tmp_path, monkeypatch, ("downgrade", "0016"))
+    assert "consensus_estimate" not in inspect(engine).get_table_names()
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    assert "consensus_estimate" in inspect(engine).get_table_names()
+
+
+def _guidance_row(connection: Connection, company_id: int, **cols: object) -> int:
+    row = {
+        "company_id": company_id,
+        "metric": "revenue",
+        "fiscal_year": 2026,
+        "fiscal_period": "FY",
+        "low": 1,
+        "high": 2,
+        "basis": "reported",
+        "direction": "higher",
+        "given_on": "2026-11-07",
+        "created_at": "2026-11-07 12:00:00",
+        "updated_at": "2026-11-07 12:00:00",
+        **cols,
+    }
+    return _insert(connection, "guidance", **row)
+
+
+def test_0018_tags_existing_guidance_as_management_and_checks_the_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0017"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        owner = _company(connection, "AAA")
+        _guidance_row(connection, owner)
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    with engine.begin() as connection:
+        assert connection.execute(text("SELECT source FROM guidance")).scalars().all() == [
+            "management"
+        ]
+        _guidance_row(connection, owner, source="consensus")
+    with pytest.raises(IntegrityError), engine.begin() as connection:
+        _guidance_row(connection, owner, source="rumour")
+
+    _run_alembic(tmp_path, monkeypatch, ("downgrade", "0017"))
+    columns = {c["name"] for c in inspect(engine).get_columns("guidance")}
+    assert "source" not in columns
+    with engine.connect() as connection:
+        assert connection.execute(text("SELECT count(*) FROM guidance")).scalar() == 2

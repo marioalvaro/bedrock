@@ -86,6 +86,11 @@ class InvalidGuidance(Exception):
     """The guidance entry breaks a rule (metric, period, range); the message says which."""
 
 
+class GuidanceLocked(Exception):
+    """The entry is analyst consensus, logged by the daily refresh: it cannot be edited or
+    deleted."""
+
+
 class NoteNotFound(Exception):
     """No note with this id on the company (another company's id counts as unknown)."""
 
@@ -188,6 +193,7 @@ DOMAIN_ERRORS = (
     InvalidCompsSet,
     GuidanceNotFound,
     InvalidGuidance,
+    GuidanceLocked,
     InvalidNote,
     InvalidImport,
     InvalidStatementImport,

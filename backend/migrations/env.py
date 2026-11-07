@@ -11,6 +11,7 @@ from bedrock.models import (  # noqa: F401  ensure models are registered
     comps_member,
     comps_set,
     concept_mapping,
+    consensus_estimate,
     corporate_action,
     custom_line,
     driver_engine,

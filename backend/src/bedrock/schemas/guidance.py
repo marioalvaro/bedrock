@@ -4,7 +4,15 @@ from typing import Literal
 
 from pydantic import BaseModel, field_validator
 
-from bedrock.analysis.guidance import Basis, Direction, MetricSummary, Verdict
+from bedrock.analysis.guidance import (
+    Basis,
+    Direction,
+    GuidanceSummary,
+    MetricSummary,
+    Source,
+    Verdict,
+)
+from bedrock.services.consensus import Estimate
 from bedrock.services.guidance import (
     GuidanceInput,
     GuidanceLog,
@@ -63,6 +71,7 @@ class GuidanceEntryOut(BaseModel):
     direction: Direction
     given_on: date
     source_note: str | None
+    source: Source  # `consensus` entries are read-only
     actual: Decimal | None
     verdict: Verdict
     surprise: Decimal | None
@@ -92,6 +101,7 @@ class GuidanceEntryOut(BaseModel):
             direction=r.entry.direction,
             given_on=g.given_on,
             source_note=g.source_note,
+            source=r.entry.source,
             actual=r.actual,
             verdict=r.verdict,
             surprise=r.surprise,
@@ -111,6 +121,12 @@ class GuidanceSummaryOut(BaseModel):
     pending: int
     hit_rate: Decimal | None
 
+    @classmethod
+    def from_totals(cls, s: GuidanceSummary) -> "GuidanceSummaryOut":
+        return cls(
+            beat=s.beat, in_range=s.in_range, miss=s.miss, pending=s.pending, hit_rate=s.hit_rate
+        )
+
 
 class MetricSummaryOut(GuidanceSummaryOut):
     metric: str
@@ -122,23 +138,43 @@ class MetricSummaryOut(GuidanceSummaryOut):
 
 
 class GuidanceOut(BaseModel):
+    """`summary` and `by_metric` count management guidance; `consensus_summary` and
+    `consensus_by_metric` the analyst consensus, kept apart."""
+
     ticker: str
     entries: list[GuidanceEntryOut]  # by fiscal year, period (FY first), metric, given_on
     summary: GuidanceSummaryOut
     by_metric: list[MetricSummaryOut]  # by metric code
+    consensus_summary: GuidanceSummaryOut
+    consensus_by_metric: list[MetricSummaryOut]  # by metric code
 
     @classmethod
     def from_log(cls, ticker: str, log: GuidanceLog) -> "GuidanceOut":
-        s = log.summary
+        def by_metric(s: GuidanceSummary) -> list[MetricSummaryOut]:
+            return [MetricSummaryOut.from_summary(m, log.labels[m.metric]) for m in s.by_metric]
+
         return cls(
             ticker=ticker,
             entries=[GuidanceEntryOut.from_logged(e) for e in log.entries],
-            summary=GuidanceSummaryOut(
-                beat=s.beat,
-                in_range=s.in_range,
-                miss=s.miss,
-                pending=s.pending,
-                hit_rate=s.hit_rate,
-            ),
-            by_metric=[MetricSummaryOut.from_summary(m, log.labels[m.metric]) for m in s.by_metric],
+            summary=GuidanceSummaryOut.from_totals(log.summary),
+            by_metric=by_metric(log.summary),
+            consensus_summary=GuidanceSummaryOut.from_totals(log.consensus_summary),
+            consensus_by_metric=by_metric(log.consensus_summary),
         )
+
+
+class ConsensusEstimateOut(BaseModel):
+    """Analysts' consensus range for a revenue or EPS period, placed on a fiscal period."""
+
+    metric: str
+    fiscal_year: int
+    fiscal_period: str
+    low: Decimal
+    avg: Decimal | None
+    high: Decimal
+    analysts: int | None
+    as_of: date
+
+    @classmethod
+    def from_estimate(cls, e: Estimate) -> "ConsensusEstimateOut":
+        return cls(**e.__dict__)
