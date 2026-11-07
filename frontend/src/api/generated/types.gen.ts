@@ -3274,6 +3274,10 @@ export type SeasonalityOut = {
      * Trend
      */
     trend: Array<number>;
+    /**
+     * Unit
+     */
+    unit: string;
 };
 
 /**

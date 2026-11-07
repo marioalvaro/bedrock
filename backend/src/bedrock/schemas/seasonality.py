@@ -31,6 +31,7 @@ class SeasonalityOut(BaseModel):
 
     code: str
     label: str
+    unit: str
     lines: list[SeasonalityLineOut]
     periods: list[SeasonalityPeriodOut]
     observed: list[float]
@@ -45,6 +46,7 @@ class SeasonalityOut(BaseModel):
         return cls(
             code=view.code,
             label=view.label,
+            unit=view.unit,
             lines=[SeasonalityLineOut(code=x.code, label=x.label) for x in view.lines],
             periods=[
                 SeasonalityPeriodOut(

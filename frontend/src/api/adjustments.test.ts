@@ -256,7 +256,7 @@ describe("mutations", () => {
 });
 
 describe("invalidateAdjustmentViews", () => {
-  it("invalidates the ticker's statements, cells, adjustments, ratios, guidance and comps only", async () => {
+  it("invalidates the ticker's statements, cells, adjustments, ratios, guidance, comps, scenarios and seasonality only", async () => {
     const { queryClient } = setup();
     const aapl = companyKey("AAPL");
     const stale = [
@@ -270,6 +270,7 @@ describe("invalidateAdjustmentViews", () => {
       [...aapl, "scenarios"],
       [...aapl, "scenarios", 1, "forecast", "IS", "annual"],
       [...aapl, "scenarios", "compare", "annual"],
+      [...aapl, "seasonality", "revenue"],
     ];
     const fresh = [
       aapl,
@@ -286,6 +287,7 @@ describe("invalidateAdjustmentViews", () => {
       [...companyKey("MSFT"), "statements", "IS", "annual", "total", "reported"],
       adjustmentsKey("MSFT"),
       [...companyKey("MSFT"), "scenarios"],
+      [...companyKey("MSFT"), "seasonality", "revenue"],
     ];
     for (const key of [...stale, ...fresh]) queryClient.setQueryData(key, {});
 

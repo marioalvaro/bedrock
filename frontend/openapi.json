@@ -6168,11 +6168,16 @@
             },
             "title": "Trend",
             "type": "array"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
           }
         },
         "required": [
           "code",
           "label",
+          "unit",
           "lines",
           "periods",
           "observed",

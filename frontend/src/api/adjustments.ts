@@ -4,6 +4,7 @@ import { companyKey } from "@/api/companies";
 import { compsKey, guidanceKey } from "@/api/context";
 import { ApiError, unwrap } from "@/api/errors";
 import { scenariosKey } from "@/api/scenarios";
+import { seasonalityKey } from "@/api/seasonality";
 import {
   createAdjustmentApiV1CompaniesTickerAdjustmentsPost,
   deleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDelete,
@@ -55,8 +56,9 @@ export const corporateActionsQueryOptions = (ticker: string) =>
 /**
  * Marks stale everything an adjustment change can move for `ticker`: its statements (every
  * type, frequency and basis), cell details, the adjustments list, the ratios, the guidance log,
- * the comps comparisons and the scenarios (forecasts anchor on the normalized history). Nothing
- * else (the company header, the list, the mapping gaps) is touched.
+ * the comps comparisons, the scenarios (forecasts anchor on the normalized history) and the
+ * seasonality (it decomposes the normalized quarters). Nothing else (the company header, the
+ * list, the mapping gaps) is touched.
  */
 export function invalidateAdjustmentViews(queryClient: QueryClient, ticker: string): Promise<void> {
   const prefixes = [
@@ -67,6 +69,7 @@ export function invalidateAdjustmentViews(queryClient: QueryClient, ticker: stri
     guidanceKey(ticker),
     compsKey(ticker),
     scenariosKey(ticker),
+    seasonalityKey(ticker),
   ];
   return Promise.all(prefixes.map((queryKey) => queryClient.invalidateQueries({ queryKey }))).then(
     () => undefined,

@@ -39,6 +39,7 @@ class Factor:
 class Seasonality:
     code: str
     label: str
+    unit: str  # the line's canonical unit: "USD", "USD/shares", "shares"
     lines: list[SeasonalLine]
     periods: list[Period]
     observed: list[float]
@@ -78,6 +79,7 @@ def decomposition(session: Session, company: Company, code: str = DEFAULT_LINE) 
     return Seasonality(
         code,
         row.label,
+        row.unit,
         available,
         periods,
         parts.observed,

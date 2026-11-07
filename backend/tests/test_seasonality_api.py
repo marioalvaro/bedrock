@@ -110,3 +110,18 @@ def test_a_company_with_no_quarterly_history_is_a_422(db_session: Session) -> No
 
     with pytest.raises(InvalidSeasonality, match="No quarterly history"):
         decomposition(db_session, empty, "revenue")
+
+
+@pytest.mark.parametrize(
+    ("code", "unit"),
+    [("revenue", "USD"), ("eps_diluted", "USD/shares"), ("shares_diluted", "shares")],
+)
+def test_the_payload_carries_the_line_unit(
+    seed_db: Callable[..., None], authed_client: TestClient, code: str, unit: str
+) -> None:
+    # The page scales USD and share counts (K | M | B) but not EPS, so it needs the line's unit.
+    seed_db("COST")
+
+    body = _ok(_get(authed_client, "COST", code=code))
+
+    assert body["unit"] == unit
