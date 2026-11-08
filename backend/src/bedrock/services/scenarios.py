@@ -3,7 +3,7 @@ docs/erd/forecasting.md "Scenarios and cases", "API")."""
 
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Literal, get_args
 
@@ -172,13 +172,14 @@ def _naive_utc(moment: datetime) -> datetime:
     return moment.astimezone(UTC).replace(tzinfo=None) if moment.tzinfo else moment
 
 
-def load_history(session: Session, company: Company) -> ForecastHistory:
+def load_history(session: Session, company: Company, as_of: date | None = None) -> ForecastHistory:
     """The company's normalized annual and quarterly IS/BS/CF tables (untrimmed, one load), its
-    segment and KPI series with their FY values, and its latest fiscal year end."""
+    segment and KPI series with their FY values, and its latest fiscal year end. With `as_of`, the
+    history as known on that date; segment values have no date, so it has no series."""
     freqs: tuple[Freq, ...] = ("annual", "quarterly")
     wanted = [(s, f) for f in freqs for s in STATEMENTS]
-    tables = statement_tables(session, company, wanted, "normalized")
-    series = segments_repo.list_series(session, company.id)
+    tables = statement_tables(session, company, wanted, "normalized", as_of=as_of)
+    series = [] if as_of is not None else segments_repo.list_series(session, company.id)
     fy_values: dict[int, dict[int, Decimal]] = {s.id: {} for s in series}
     quarter_values: dict[int, dict[tuple[int, str], Decimal]] = {s.id: {} for s in series}
     for v in segments_repo.list_values(session, list(fy_values)):

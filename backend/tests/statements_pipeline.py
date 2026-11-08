@@ -190,6 +190,13 @@ def latest_10k_facts(ticker: str) -> pd.DataFrame:
     )
 
 
+def ten_k_dates(ticker: str) -> list[date]:
+    """The filing dates of the fixture's 10-Ks, like `annual_filing_dates`."""
+    with gzip.open(FIXTURES / f"{ticker}.json.gz", "rt") as handle:
+        parsed = parse_companyfacts(json.load(handle))
+    return sorted({f.filed_at for f in parsed.filings if f.form == "10-K"})
+
+
 @dataclass(frozen=True)
 class FixtureSplit:
     effective_date: date
@@ -208,13 +215,20 @@ def fixture_splits(ticker: str) -> list[FixtureSplit]:
         ]
 
 
+def _filed_by(frame: pd.DataFrame, as_of: date | None) -> pd.DataFrame:
+    """The same cut as `services/statements.py::_filed_by`; keep the two alike."""
+    return frame if as_of is None else frame[frame["filed_at"] <= as_of]
+
+
 @cache
-def run_pipeline(ticker: str) -> Pipeline:
+def run_pipeline(ticker: str, as_of: date | None = None) -> Pipeline:
+    """With `as_of`, only the filings filed on or before it (docs/erd/accountability.md
+    "Point-in-time history"): facts and cover-page shares. Splits are not cut."""
     items = load_canonical_items(DEFAULT_ITEMS_PATH)
     overrides = load_overrides(DEFAULT_OVERRIDES_DIR, ticker, items)
     excludes = load_excludes(DEFAULT_OVERRIDES_DIR, ticker, items)
     mappings = mapping_frame(items, overrides, excludes)
-    facts = fact_frame(ticker, mappings)
+    facts = _filed_by(fact_frame(ticker, mappings), as_of)
     latest = select_vintage(facts, snapshot=balance_snapshot(mappings))
     canonical = split_adjust(map_facts(latest, mappings, items), fixture_splits(ticker))
     identities = load_identities(DEFAULT_ITEMS_PATH, items)
@@ -222,7 +236,7 @@ def run_pipeline(ticker: str) -> Pipeline:
     rules = Rules(
         tuple(identities),
         filings_tagging_nci(facts, mappings),
-        split_adjust(cover_shares(ticker), splits),
+        split_adjust(_filed_by(cover_shares(ticker), as_of), splits),
     )
     return Pipeline(
         items=items,

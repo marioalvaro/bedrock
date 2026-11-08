@@ -2,6 +2,7 @@
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 from functools import cache
 from typing import Literal
@@ -149,9 +150,10 @@ class StatementInputs:
         return self.canonical.empty and no_imports
 
 
-def load_inputs(session: Session, company: Company) -> StatementInputs:
-    """Everything the engine needs for a full statement build of the company."""
-    return _load(session, company)
+def load_inputs(session: Session, company: Company, as_of: date | None = None) -> StatementInputs:
+    """Everything the engine needs for a full statement build of the company, as known on `as_of`
+    (docs/erd/accountability.md "Point-in-time history"); None is today."""
+    return _load(session, company, as_of=as_of)
 
 
 def build_statements(
@@ -178,18 +180,28 @@ def statement_tables(
     wanted: Sequence[tuple[str, Freq]],
     basis: Basis = "reported",
     common_size_base: CommonSizeBase = "total",
+    as_of: date | None = None,
 ) -> dict[tuple[str, Freq], StatementTable]:
     """Every requested (statement, freq) table on `basis`, untrimmed, from one load of the
     company's facts (and one read of its adjustments when `normalized`) and one solve of its
     cells (`statements/build.py::build_tables`), keyed in request order. `common_size_base`
     applies to every table. A company with no facts gives empty tables. Raises ValueError for a
-    TTM balance sheet."""
+    TTM balance sheet. With `as_of`, only what was known on that date counts (`_load`, and the
+    adjustments created by then)."""
     if ("BS", "ttm") in wanted:
         raise ValueError("TTM is only defined for flow statements, not the balance sheet")
-    loaded = _load(session, company)
+    loaded = _load(session, company, as_of=as_of)
     if loaded.empty:
         return {(s, f): StatementTable(s, f, [], [], None, []) for s, f in wanted}
-    adjustments = adjustments_repo.list_for(session, company.id) if basis == "normalized" else []
+    adjustments = (
+        [
+            a
+            for a in adjustments_repo.list_for(session, company.id)
+            if as_of is None or a.created_at.date() <= as_of
+        ]
+        if basis == "normalized"
+        else []
+    )
     return build_tables(
         loaded.canonical, loaded.lines, wanted, common_size_base, adjustments, loaded.rules
     )
@@ -294,14 +306,20 @@ def _cover_shares(session: Session, company: Company) -> Decimal | None:
 
 
 def _load(
-    session: Session, company: Company, codes: frozenset[str] | None = None
+    session: Session,
+    company: Company,
+    codes: frozenset[str] | None = None,
+    as_of: date | None = None,
 ) -> StatementInputs:
+    """`as_of` cuts the facts and cover-page shares by `filed_at` (before the vintage and the NCI
+    rule read them) and the imported values by import date. Splits, mappings and custom-line
+    definitions are not cut (a custom line defined later simply has no values at the date)."""
     items = canonical_items()
     mappings = mappings_repo.mappings_for(session, company.id)
     if codes is not None:
         mappings = mappings[mappings["canonical_code"].isin(codes)]
     wanted = set(zip(mappings["taxonomy"], mappings["concept"], strict=True))
-    facts = facts_repo.load_facts(session, company.id, wanted)
+    facts = _filed_by(facts_repo.load_facts(session, company.id, wanted), as_of)
     # Always the balance-date snapshot: a later filing can restate one total and not the others.
     latest = select_vintage(facts, snapshot=balance_snapshot(mappings))
     actions = actions_repo.list_for(session, company.id)
@@ -309,7 +327,7 @@ def _load(
     # Only the NCI rule runs on a subset of the codes: an identity would read a line that was not
     # loaded as empty and solve it, and the cover-page count would fill a line that was not
     # loaded either.
-    stored = _stored_imports(session, company)
+    stored = _stored_imports(session, company, as_of)
     # Custom lines are not among the key-stat lines either.
     rows = imports_repo.list_lines(session, company.id) if codes is None else []
     custom = tuple(custom_items(items, rows))
@@ -320,7 +338,7 @@ def _load(
     rules = Rules(
         canonical_identities() if codes is None else (),
         filings_tagging_nci(facts, mappings),
-        split_adjust(facts_repo.load_cover_shares(session, company.id), actions)
+        split_adjust(_filed_by(facts_repo.load_cover_shares(session, company.id), as_of), actions)
         if codes is None
         else None,
         imported.newest,
@@ -330,8 +348,19 @@ def _load(
     return StatementInputs(items, mappings, facts, canonical, rules, tuple(stored), custom)
 
 
-def _stored_imports(session: Session, company: Company) -> list[StoredValue]:
-    imports = {i.id: i for i in imports_repo.list_imports(session, company.id)}
+def _filed_by(frame: pd.DataFrame, as_of: date | None) -> pd.DataFrame:
+    """The rows of a frame with a `filed_at` column filed on or before `as_of`."""
+    return frame if as_of is None else frame[frame["filed_at"] <= as_of]
+
+
+def _stored_imports(
+    session: Session, company: Company, as_of: date | None = None
+) -> list[StoredValue]:
+    imports = {
+        i.id: i
+        for i in imports_repo.list_imports(session, company.id)
+        if as_of is None or i.imported_at.date() <= as_of
+    }
     return [
         StoredValue(
             f.import_id,
@@ -345,6 +374,7 @@ def _stored_imports(session: Session, company: Company) -> list[StoredValue]:
             f.value,
         )
         for f in imports_repo.list_facts(session, company.id)
+        if f.import_id in imports
     ]
 
 

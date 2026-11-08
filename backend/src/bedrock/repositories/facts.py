@@ -4,7 +4,7 @@ from decimal import Decimal
 from typing import Any, NamedTuple
 
 import pandas as pd
-from sqlalchemy import Select, insert, select, tuple_
+from sqlalchemy import Select, func, insert, select, tuple_
 from sqlalchemy.orm import Session
 
 from bedrock.ingest.parse import ParsedFacts
@@ -127,6 +127,23 @@ def load_latest_annual_facts(session: Session, company_id: int) -> pd.DataFrame:
     if filing_id is None:
         return _frame([])
     return _frame(session.execute(_joined().where(RawFact.filing_id == filing_id)).all())
+
+
+def annual_filing_dates(session: Session, company_id: int) -> list[date]:
+    """The distinct filing dates of the company's 10-Ks (amendments left out), ascending."""
+    stmt = (
+        select(Filing.filed_at)
+        .where(Filing.company_id == company_id, Filing.form == "10-K")
+        .distinct()
+        .order_by(Filing.filed_at)
+    )
+    return list(session.execute(stmt).scalars())
+
+
+def latest_filing_date(session: Session, company_id: int) -> date | None:
+    """The date of the company's newest filing of any form; None with no filings."""
+    stmt = select(func.max(Filing.filed_at)).where(Filing.company_id == company_id)
+    return session.execute(stmt).scalar_one_or_none()
 
 
 def load_cover_shares(session: Session, company_id: int) -> pd.DataFrame:

@@ -103,9 +103,10 @@ def complete_sheet(revenue: int = 100) -> dict[str, int]:
     }
 
 
-def fixture_history(ticker: str) -> ForecastHistory:
-    """The recorded company's history (no adjustments, so normalized = reported; no segments)."""
-    pipeline = run_pipeline(ticker)
+def fixture_history(ticker: str, as_of: date | None = None) -> ForecastHistory:
+    """The recorded company's history (no adjustments, so normalized = reported; no segments), as
+    known on `as_of` when given."""
+    pipeline = run_pipeline(ticker, as_of)
     periods = pipeline.annual["IS"].periods
     return ForecastHistory(
         annual=pipeline.annual,

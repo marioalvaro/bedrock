@@ -43,7 +43,7 @@ def split_adjust(canonical: pd.DataFrame, actions: Sequence[Split]) -> pd.DataFr
         factor = _product(applied)
         factors.append(factor)
         dates.append(tuple(a.effective_date for a in applied))
-        values.append(_adjust(r["value"], r["unit"], factor))
+        values.append(adjust(r["value"], r["unit"], factor))
     out["reported_value"] = pd.Series(canonical["value"].tolist(), index=out.index, dtype="object")
     out["split_factor"] = pd.Series(factors, index=out.index, dtype="object")
     out["split_dates"] = pd.Series(dates, index=out.index, dtype="object")
@@ -68,7 +68,9 @@ def _product(actions: Sequence[Split]) -> Decimal:
     return factor
 
 
-def _adjust(value: Decimal, unit: str, factor: Decimal) -> Decimal:
+def adjust(value: Decimal, unit: str, factor: Decimal) -> Decimal:
+    """`value` restated by a split factor: shares multiplied, per-share amounts divided (to 10
+    decimal places). A USD value only ever comes with a factor of 1."""
     if factor == 1:
         return value
     if unit == SHARES:
