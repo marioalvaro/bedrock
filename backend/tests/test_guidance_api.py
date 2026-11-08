@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from bedrock.models.company import Company
 from bedrock.models.guidance import Guidance
+from bedrock.statements import build
 
 API = "/api/v1"
 COMPANY = f"{API}/companies/AAPL"
@@ -687,3 +688,26 @@ def test_history_rejects_an_unknown_frequency_or_basis(aapl_client: TestClient) 
         aapl_client.get(HISTORY, params={"metric": "revenue", "freq": "monthly"}).status_code == 422
     )
     assert aapl_client.get(HISTORY, params={"metric": "revenue", "basis": "x"}).status_code == 422
+
+
+# --- cost ------------------------------------------------------------------------------------
+
+
+def test_the_log_builds_the_statements_once_per_basis(
+    aapl_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for basis in ("reported", "normalized"):
+        post(aapl_client, basis=basis)  # FY revenue: the annual tables
+        post(aapl_client, basis=basis, fiscal_period="Q3", low="1", high="2")  # a quarter
+    before = log(aapl_client)
+    calls: list[int] = []
+    real = build.solve_cells
+
+    def counting(*args, **kwargs):  # type: ignore[no-untyped-def]  # a spy on the real solver
+        calls.append(1)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(build, "solve_cells", counting)
+
+    assert log(aapl_client) == before
+    assert len(calls) == 2  # one solve per basis, annual and quarterly tables together

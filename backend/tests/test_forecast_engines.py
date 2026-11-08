@@ -282,6 +282,21 @@ def test_the_registry_lists_the_engines_in_order() -> None:
     assert [e.label for e in registry.ENGINES.values()] == ["ARIMA", "ETS", "Blend"]
 
 
+def test_engines_with_a_fit_route_the_blends_parts_through_it() -> None:
+    calls: list[str] = []
+
+    def counting(code: str, data: SeriesInput, horizon: int) -> ForecastResult:
+        calls.append(code)
+        return registry.fit(code, data, horizon)
+
+    engines = registry.engines_with(counting)
+    blended = engines["blend"].forecast(ar1(), H, {})
+
+    assert list(engines) == ["arima", "ets", "blend"]
+    assert calls == ["arima", "ets"]
+    assert blended.point.equals(run("blend", ar1()).point)
+
+
 def test_an_unknown_engine_is_a_key_error() -> None:
     with pytest.raises(KeyError):
         registry.fit("prophet", ar1(), 3)

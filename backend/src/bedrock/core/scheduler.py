@@ -58,6 +58,29 @@ def next_run(now: datetime) -> datetime:
         day += timedelta(days=1)
 
 
+LAST_RUN_FILE = "scheduler.last_run"
+
+
+def startup_due(last_run: datetime | None, now: datetime) -> bool:
+    """Whether the run at startup is needed: never run, or a run time has come since the last
+    run. A restart or a dev reload inside the same slot then re-pulls nothing."""
+    return last_run is None or next_run(last_run) <= now
+
+
+def read_last_run(data_dir: Path) -> datetime | None:
+    """When the last run finished (`<data_dir>/scheduler.last_run`); None when the file is missing
+    or unreadable, so the startup run happens."""
+    try:
+        when = datetime.fromisoformat((data_dir / LAST_RUN_FILE).read_text().strip())
+    except (OSError, ValueError):
+        return None
+    return when if when.tzinfo is not None else None
+
+
+def write_last_run(data_dir: Path, when: datetime) -> None:
+    (data_dir / LAST_RUN_FILE).write_text(when.isoformat())
+
+
 @dataclass
 class ScheduledRun:
     new_prices: dict[str, int] = field(default_factory=dict)
@@ -98,15 +121,23 @@ async def refresh_loop(
     session_factory: Callable[[], Session],
     sources: Sources,
     clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+    data_dir: Path | None = None,
 ) -> None:
-    """Run once at startup (prices may be days old), then at each `next_run`. A failing run is
-    logged and the loop goes on."""
+    """Run once at startup (prices may be days old) unless no run time has passed since the last
+    run recorded in `data_dir`, then at each `next_run`. A run that finishes is recorded; a
+    failing run is logged and the loop goes on."""
+    first = True
     while True:
-        try:
-            run = await asyncio.to_thread(run_scheduled_refresh, session_factory, sources, clock())
-            for warning in run.warnings:
-                log.warning("scheduled refresh: %s", warning)
-        except Exception:
-            log.exception("scheduled refresh failed")
+        if not first or data_dir is None or startup_due(read_last_run(data_dir), clock()):
+            try:
+                at = clock()
+                run = await asyncio.to_thread(run_scheduled_refresh, session_factory, sources, at)
+                for warning in run.warnings:
+                    log.warning("scheduled refresh: %s", warning)
+                if data_dir is not None:
+                    write_last_run(data_dir, at)
+            except Exception:
+                log.exception("scheduled refresh failed")
+        first = False
         delay = (next_run(clock()) - clock()).total_seconds()
         await asyncio.sleep(max(delay, 1.0))

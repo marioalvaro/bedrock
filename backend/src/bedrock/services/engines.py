@@ -69,7 +69,8 @@ def _fit(
     code: str, freq: str, first: str, values: tuple[float, ...], horizon: int
 ) -> ForecastResult:
     index = pd.period_range(first, periods=len(values), freq=freq)
-    return registry.fit(code, SeriesInput(pd.Series(values, index=index, dtype=float)), horizon)
+    data = SeriesInput(pd.Series(values, index=index, dtype=float))
+    return _MEMO_ENGINES[code].forecast(data, horizon, {})
 
 
 def memo_fit(code: str, data: SeriesInput, horizon: int) -> ForecastResult:
@@ -84,6 +85,10 @@ def memo_fit(code: str, data: SeriesInput, horizon: int) -> ForecastResult:
         tuple(float(v) for v in data.values),
         horizon,
     )
+
+
+# The blend's parts go through the memo too, so a blend reuses Auto's ARIMA and ETS fits.
+_MEMO_ENGINES = registry.engines_with(memo_fit)
 
 
 def fit_cache_info() -> Any:

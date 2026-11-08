@@ -1,6 +1,7 @@
 """The scheduled refresh (docs/erd/data.md "Scheduled refresh"): when it runs, and what a run
 does. The asyncio loop that sleeps between runs is a thin shell around these two."""
 
+import asyncio
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -11,7 +12,17 @@ from fastapi import FastAPI
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from bedrock.core.scheduler import acquire_scheduler_lock, next_run, run_scheduled_refresh
+from bedrock.core import scheduler
+from bedrock.core.scheduler import (
+    ScheduledRun,
+    acquire_scheduler_lock,
+    next_run,
+    read_last_run,
+    refresh_loop,
+    run_scheduled_refresh,
+    startup_due,
+    write_last_run,
+)
 from bedrock.ingest.protocol import SourceUnavailable
 from bedrock.ingest.sources import Sources
 from bedrock.models.consensus_estimate import ConsensusEstimate
@@ -123,3 +134,75 @@ def test_only_one_process_holds_the_scheduler_lock(tmp_path: Path) -> None:
     again = acquire_scheduler_lock(tmp_path)
     assert again is not None
     again.close()
+
+
+# --- the startup run (a dev reload or a restart re-pulls nothing a run already has) ----------
+
+
+@pytest.mark.parametrize(
+    ("last_run", "now", "due"),
+    [
+        (None, ny(2026, 11, 9, 10, 50), True),  # never run
+        (ny(2026, 11, 9, 10, 30), ny(2026, 11, 9, 10, 50), False),  # no slot since the last run
+        (ny(2026, 11, 9, 10, 30), ny(2026, 11, 9, 11, 30), True),  # the 11:30 slot has come
+        (ny(2026, 11, 13, 16, 15), ny(2026, 11, 14, 12, 0), False),  # Friday close → Saturday
+        (ny(2026, 11, 13, 16, 15), ny(2026, 11, 16, 9, 45), True),  # missed Monday's open
+    ],
+)
+def test_the_startup_run_is_due_once_a_slot_has_passed_since_the_last_run(
+    last_run: datetime | None, now: datetime, due: bool
+) -> None:
+    assert startup_due(last_run, now) is due
+
+
+def test_the_last_run_round_trips_and_a_missing_or_bad_file_is_none(tmp_path: Path) -> None:
+    assert read_last_run(tmp_path) is None
+    when = datetime(2026, 11, 9, 15, 30, tzinfo=UTC)
+
+    write_last_run(tmp_path, when)
+
+    assert read_last_run(tmp_path) == when
+    (tmp_path / "scheduler.last_run").write_text("not a time")
+    assert read_last_run(tmp_path) is None
+
+
+class _Stop(Exception):
+    """Ends the loop at its first sleep."""
+
+
+def _run_loop_once(
+    monkeypatch: pytest.MonkeyPatch, data_dir: Path, now: datetime
+) -> list[datetime]:
+    runs: list[datetime] = []
+
+    def fake_run(session_factory: Any, sources: Any, at: datetime) -> ScheduledRun:
+        runs.append(at)
+        return ScheduledRun()
+
+    async def stop(delay: float) -> None:
+        raise _Stop
+
+    monkeypatch.setattr(scheduler, "run_scheduled_refresh", fake_run)
+    monkeypatch.setattr(scheduler.asyncio, "sleep", stop)
+    with pytest.raises(_Stop):
+        asyncio.run(refresh_loop(lambda: None, None, lambda: now, data_dir))  # type: ignore[arg-type]
+    return runs
+
+
+def test_the_loop_skips_the_startup_run_when_no_slot_has_passed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    write_last_run(tmp_path, ny(2026, 11, 9, 10, 30))
+
+    assert _run_loop_once(monkeypatch, tmp_path, ny(2026, 11, 9, 10, 50)) == []
+    assert read_last_run(tmp_path) == ny(2026, 11, 9, 10, 30)
+
+
+def test_the_loop_runs_at_startup_when_a_slot_has_passed_and_records_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    write_last_run(tmp_path, ny(2026, 11, 9, 10, 30))
+    now = ny(2026, 11, 9, 11, 40)
+
+    assert _run_loop_once(monkeypatch, tmp_path, now) == [now]
+    assert read_last_run(tmp_path) == now

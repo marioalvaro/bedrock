@@ -12,6 +12,8 @@ from typing import Protocol
 
 import pandas as pd
 
+from bedrock.statements.records import records
+
 SHARES = "shares"
 PER_SHARE = "USD/shares"
 _PLACES = Decimal(1).scaleb(-10)  # 10 decimal places
@@ -36,7 +38,7 @@ def split_adjust(canonical: pd.DataFrame, actions: Sequence[Split]) -> pd.DataFr
     factors: list[Decimal] = []
     dates: list[tuple[date, ...]] = []
     values: list[Decimal] = []
-    for r in canonical.to_dict("records"):
+    for r in records(canonical):
         applied = _applied(r["filed_at"], ordered) if r["unit"] in (SHARES, PER_SHARE) else []
         factor = _product(applied)
         factors.append(factor)

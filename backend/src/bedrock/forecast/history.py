@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 from enum import Enum
+from functools import cached_property
 from typing import Literal
 
 from bedrock.forecast.drivers import (
@@ -66,6 +67,16 @@ class ForecastHistory:
     segment_series: tuple[SeriesHistory, ...]
     latest_fy_end: date | None
 
+    # Every value of the tables by (code, period key), built on first use and shared: a request
+    # reads them in each forecast run (a tornado runs the driver model ~40 times). Read-only.
+    @cached_property
+    def annual_values(self) -> "StatementValues":
+        return StatementValues(self.annual)
+
+    @cached_property
+    def quarterly_values(self) -> "StatementValues":
+        return StatementValues(self.quarterly)
+
 
 @dataclass(frozen=True)
 class ScenarioSettings:
@@ -97,9 +108,9 @@ class StatementValues:
 def opening_period(history: ForecastHistory) -> Period:
     """The latest quarter (the latest FY for a company with no quarters) whose balance sheet has
     its totals and whose revenue is not null. Raises ForecastUnavailable."""
-    values = StatementValues(history.quarterly)
+    values = history.quarterly_values
     if not values.periods:
-        values = StatementValues(history.annual)
+        values = history.annual_values
     for period in reversed(values.periods):
         if all(values.get(code, period.key) is not None for code in OPENING_TOTALS):
             return period
@@ -116,13 +127,13 @@ def forecast_years(history: ForecastHistory, horizon_years: int) -> list[int]:
 
 def history_years(history: ForecastHistory) -> list[int]:
     """The last HISTORY_YEARS actual fiscal years, oldest first."""
-    return [p.fiscal_year for p in StatementValues(history.annual).periods][-HISTORY_YEARS:]
+    return [p.fiscal_year for p in history.annual_values.periods][-HISTORY_YEARS:]
 
 
 def history_quarters(history: ForecastHistory) -> list[Period]:
     """The last QUARTER_HISTORY actual quarters, up to the opening period, oldest first; none for
     a company with no quarterly statements."""
-    quarters = StatementValues(history.quarterly).periods
+    quarters = history.quarterly_values.periods
     if not quarters:
         return []
     opening = opening_period(history)
@@ -214,7 +225,7 @@ class _Reader:
         self.history = history
         self.settings = settings
         self.quarterly = quarterly
-        self.values = StatementValues(history.quarterly if quarterly else history.annual)
+        self.values = history.quarterly_values if quarterly else history.annual_values
         self.by_year = {p.fiscal_year: p for p in self.values.periods}
         self.order = {p.key: i for i, p in enumerate(self.values.periods)}
         self.series = {s.id: s for s in history.segment_series}

@@ -34,6 +34,7 @@ from bedrock.statements.periods import (
     annual_periods,
     quarterly_periods,
 )
+from bedrock.statements.records import records
 from bedrock.statements.rules import (
     BALANCE_FLOOR,
     BALANCE_RELATIVE,
@@ -63,7 +64,7 @@ class _Index:
 
     def __init__(self, frame: pd.DataFrame) -> None:
         self._by_end: dict[tuple[str, date], list[_Fact]] = defaultdict(list)
-        for r in frame.to_dict("records"):  # plain dicts: pandas-stubs types itertuples loosely
+        for r in records(frame):  # plain dicts, read by column (the build's hot loop)
             start: date | None = None if pd.isna(r["period_start"]) else r["period_start"]
             ref = FactRef(
                 r["taxonomy"],

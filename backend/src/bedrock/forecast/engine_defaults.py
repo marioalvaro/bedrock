@@ -17,7 +17,6 @@ from bedrock.forecast.errors import EngineFailed
 from bedrock.forecast.history import (
     ForecastHistory,
     ScenarioSettings,
-    StatementValues,
     default_drivers,
     driver_values,
     scenario_drivers,
@@ -203,7 +202,7 @@ class _Context:
         self.history = history
         self.settings = settings
         self.fit = fit
-        annual = StatementValues(history.annual).periods
+        annual = history.annual_values.periods
         self.last_fy = annual[-1].fiscal_year if annual else None
         self.years = [y for y in years if self.last_fy is not None and y > self.last_fy]
         self.horizon = 0 if not self.years else max(self.years) - (self.last_fy or 0)

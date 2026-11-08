@@ -307,10 +307,23 @@ def _actuals(
     for basis in bases:
         mine = [g for g in stored if g.basis == basis and g.metric in catalogue]
         mine = [g for g in mine if catalogue[g.metric].group != "kpi"]
-        if any(g.fiscal_period == "FY" for g in mine):
-            inputs = ratios_service.ratio_inputs(session, company, "annual", basis)
-            lines = _line_values([inputs.income, inputs.cash_flow, inputs.balance])
-            table = compute_ratios(inputs, "annual")
+        annual = any(g.fiscal_period == "FY" for g in mine)
+        quarterly = any(g.fiscal_period != "FY" for g in mine)
+        if not (annual or quarterly):
+            continue
+        # One build of the statements per basis, the annual and quarterly tables together.
+        freqs: list[Freq] = []
+        if annual:
+            freqs.append("annual")
+        if quarterly:
+            freqs.append("quarterly")
+        built = statement_tables(
+            session, company, [(s, f) for f in freqs for s in ("IS", "CF", "BS")], basis
+        )
+        if annual:
+            by_statement = {s: built[(s, "annual")] for s in ("IS", "CF", "BS")}
+            lines = _line_values(list(by_statement.values()))
+            table = ratios_service.annual_ratios_from(session, company, by_statement)
             ratio_values: _LineValues = {
                 (row.code, p.fiscal_year, p.fiscal_period): v
                 for row in table.rows
@@ -322,13 +335,8 @@ def _actuals(
                     actuals[(basis, g.metric, g.fiscal_year, "FY")] = source.get(
                         (g.metric, g.fiscal_year, "FY")
                     )
-        if any(g.fiscal_period != "FY" for g in mine):
-            tables = statement_tables(
-                session,
-                company,
-                [("IS", "quarterly"), ("CF", "quarterly"), ("BS", "quarterly")],
-                basis,
-            )
+        if quarterly:
+            tables = {s: built[(s, "quarterly")] for s in ("IS", "CF", "BS")}
             lines = _line_values(list(tables.values()))
             for g in mine:
                 if g.fiscal_period == "FY":

@@ -30,7 +30,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         else None
     )
     if lock is not None:
-        refresher = asyncio.create_task(refresh_loop(app.state.session_factory, app.state.sources))
+        refresher = asyncio.create_task(
+            refresh_loop(
+                app.state.session_factory,
+                app.state.sources,
+                data_dir=app.state.settings.data_dir,
+            )
+        )
     try:
         yield
     finally:

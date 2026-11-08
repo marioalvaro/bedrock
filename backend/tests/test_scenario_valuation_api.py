@@ -1,7 +1,6 @@
 """A case's valuation and a scenario's three-case summary through the API (FR-VAL-01..03,
 docs/erd/valuation.md "API"), on the recorded AAPL, MSFT and DE fixtures."""
 
-import time
 from collections.abc import Callable
 from decimal import Decimal
 from typing import Any
@@ -9,6 +8,9 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from bedrock.statements import build
+
+from .spies import count_calls
 from .valuation_api import case_url, main_id, ok, put_inputs, scenarios_url, set_gross_margin
 
 D = Decimal
@@ -181,14 +183,19 @@ def test_another_company_s_scenario_is_a_404(client: TestClient) -> None:
     assert client.get(f"{scenarios_url('AAPL')}/{msft}/valuation").status_code == 404
 
 
-def test_each_valuation_request_answers_within_two_seconds(client: TestClient) -> None:
+def test_each_valuation_request_builds_the_statements_once(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The cost as work done, not wall-clock time (G42): the summary values three cases on one
+    # build of the statements, like a single case.
     main = main_id(client)
     manual_targets(client, main)
+    solves = count_calls(monkeypatch, build, "solve_cells")
 
     for url in (
         case_url("AAPL", main, "base", "valuation"),
         f"{scenarios_url('AAPL')}/{main}/valuation",
     ):
-        started = time.perf_counter()
+        solves.clear()
         ok(client.get(url))
-        assert time.perf_counter() - started < 2
+        assert len(solves) == 1, url

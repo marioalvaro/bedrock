@@ -1,13 +1,16 @@
 """The tornado and the 2-D grid of a case's DCF value per share through the API (FR-VAL-04,
 docs/erd/valuation.md "Sensitivity", "API"), on the recorded AAPL and MSFT fixtures."""
 
-import time
 from collections.abc import Callable
 from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
 
+from bedrock.forecast.engines.driver import DriverModel
+from bedrock.statements import build
+
+from .spies import count_calls
 from .valuation_api import case_url, main_id, ok, put_inputs
 
 D = Decimal
@@ -44,11 +47,8 @@ def test_the_routes_require_a_session(client: TestClient) -> None:
 def test_the_tornado_ranks_the_inputs_by_their_effect_on_the_dcf_value(client: TestClient) -> None:
     main = main_id(client)
 
-    started = time.perf_counter()
     body = ok(client.get(tornado_url(main)))
-    elapsed = time.perf_counter() - started
 
-    assert elapsed < 2
     assert (body["scenario_id"], body["case"]) == (main, "base")
     assert D(body["base_value"]) == base_value(client, main)
     bars = body["bars"]
@@ -67,6 +67,44 @@ def test_the_tornado_ranks_the_inputs_by_their_effect_on_the_dcf_value(client: T
     assert (margin["kind"], margin["unit"], margin["mode"]) == ("driver", "pct", "add")
 
 
+def test_the_tornado_builds_the_statements_once_and_reruns_the_model_per_driver_move(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The cost of a tornado as work done, not wall-clock time (G42): one build of the statements,
+    # and two driver-model runs per driver bar on top of the base forecast's.
+    main = main_id(client)
+    solves = count_calls(monkeypatch, build, "solve_cells")
+    runs = count_calls(monkeypatch, DriverModel, "run")
+    ok(client.get(case_url("AAPL", main, "base", "valuation")))
+    base_runs = len(runs)
+    solves.clear()
+    runs.clear()
+
+    bars = ok(client.get(tornado_url(main)))["bars"]
+
+    drivers = [b for b in bars if b["kind"] == "driver"]
+    assert drivers
+    assert len(solves) == 1
+    assert len(runs) == base_runs + 2 * len(drivers)
+
+
+def test_a_grid_over_two_valuation_inputs_reruns_no_model(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    main = main_id(client)
+    solves = count_calls(monkeypatch, build, "solve_cells")
+    runs = count_calls(monkeypatch, DriverModel, "run")
+    ok(client.get(case_url("AAPL", main, "base", "valuation")))
+    base_runs = len(runs)
+    solves.clear()
+    runs.clear()
+
+    ok(client.get(grid_url(main), params={"x": "discount_rate", "y": "terminal_growth"}))
+
+    assert len(solves) == 1
+    assert len(runs) == base_runs
+
+
 def test_the_exit_multiple_replaces_terminal_growth_when_it_is_the_terminal_method(
     client: TestClient,
 ) -> None:
@@ -80,11 +118,9 @@ def test_the_exit_multiple_replaces_terminal_growth_when_it_is_the_terminal_meth
 
 def test_the_grid_center_is_the_base_value(client: TestClient) -> None:
     main = main_id(client)
-    started = time.perf_counter()
 
     body = ok(client.get(grid_url(main), params={"x": "discount_rate", "y": "terminal_growth"}))
 
-    assert time.perf_counter() - started < 2
     assert D(body["base_value"]) == base_value(client, main)
     assert len(body["values"]) == 5 and all(len(r) == 5 for r in body["values"])
     assert D(body["values"][2][2]) == D(body["base_value"])
