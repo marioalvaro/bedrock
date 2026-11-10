@@ -6,6 +6,7 @@ from bedrock.core.config import load_settings
 from bedrock.core.db import make_engine
 from bedrock.models import (  # noqa: F401  ensure models are registered
     adjustment,
+    audit_log,
     canonical_item,
     company,
     comps_member,
@@ -17,6 +18,7 @@ from bedrock.models import (  # noqa: F401  ensure models are registered
     driver_engine,
     driver_value,
     filing,
+    forecast_run,
     guidance,
     imported_fact,
     macro,

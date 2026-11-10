@@ -5,7 +5,7 @@ from collections.abc import Mapping
 from datetime import date
 from decimal import Decimal
 
-from bedrock.backtest.snapshot import ValueRow, run_meta, value_rows
+from bedrock.backtest.snapshot import ValueRow, read_meta, run_meta, value_rows
 from bedrock.forecast.engine_defaults import Band, EngineRow
 from bedrock.forecast.engines.driver import ForecastStatements, Opening
 from bedrock.forecast.history import FLAT, ScenarioSettings
@@ -163,3 +163,12 @@ def test_run_meta_round_trips_as_json_with_sorted_keys() -> None:
     }
     keys = list(json.loads(text))
     assert keys == sorted(keys)
+
+
+def test_read_meta_gives_back_the_settings_and_warnings_of_a_run() -> None:
+    settings = ScenarioSettings("segments", "business")
+
+    meta = read_meta(run_meta(settings, {}, ["careful"]))
+
+    assert meta.settings == settings
+    assert meta.warnings == ["careful"]

@@ -168,7 +168,7 @@ class ScenarioDrivers:
     engines: EngineDefaults  # what the scenario's engine choices set (empty maps for `mean`)
 
 
-def _naive_utc(moment: datetime) -> datetime:
+def naive_utc(moment: datetime) -> datetime:
     return moment.astimezone(UTC).replace(tzinfo=None) if moment.tzinfo else moment
 
 
@@ -207,7 +207,7 @@ def ensure_defaults(session: Session, company: Company, now: datetime) -> None:
     if repo.list_for(session, company.id):
         return
     history = load_history(session, company)  # before the first write: no lock held
-    stamp = _naive_utc(now)
+    stamp = naive_utc(now)
     try:
         main = repo.add(
             session,
@@ -264,7 +264,7 @@ def create_scenario(
     ensure_defaults(session, company, now)
     default = _default_scenario(session, company)
     name = _check_name(session, company, data.name or "", None)
-    stamp = _naive_utc(now)
+    stamp = naive_utc(now)
     scenario = _copy(default, name, stamp)
     _apply(scenario, data)
     _check_settings(session, company, scenario)
@@ -292,7 +292,7 @@ def update_scenario(
     except InvalidScenario:
         session.rollback()
         raise
-    stamp = _naive_utc(now)
+    stamp = naive_utc(now)
     scenario.updated_at = stamp
     after = (scenario.revenue_method, scenario.segment_dimension)
     if after[0] == "segments" and after != before:
@@ -320,7 +320,7 @@ def reset_case(
     scenario, kase = get_case(session, company, scenario_id, case)
     history = load_history(session, company)
     forecast_years(history, FORECAST_HORIZON.years)
-    stamp = _naive_utc(now)
+    stamp = naive_utc(now)
     repo.delete_all_rows(session, kase.id)
     repo.add_rows(
         session, _case_rows(kase, _default_rows(case, settings_of(scenario), history), stamp)
@@ -368,7 +368,7 @@ def set_year_mode(
         raise InvalidScenario(f"FY{fiscal_year} is not in the quarterly span")
     if (mode == "quarterly") == (fiscal_year in built_from_quarters(session, scenario, history)):
         return year_modes_of(session, scenario, history)  # already so: nothing to write
-    stamp = _naive_utc(now)
+    stamp = naive_utc(now)
     cases = repo.cases_of(session, scenario.id)
     if mode == "quarterly":
         # every case is resolved before the first write: the fills read the rows as they are now
@@ -635,7 +635,7 @@ def put_engines(
     """Sets the given drivers' engines (`auto` deletes the row); the other drivers are untouched.
     Raises ScenarioNotFound, ForecastUnavailable and InvalidEngineChoice (nothing written)."""
     scenario, history, settings, years = _engine_context(session, company, scenario_id)
-    engines_service.put_engine_choices(session, scenario, history, settings, rows, _naive_utc(now))
+    engines_service.put_engine_choices(session, scenario, history, settings, rows, naive_utc(now))
     return engines_service.engine_choices_view(session, scenario, history, settings, years)
 
 
@@ -833,7 +833,7 @@ def put_drivers(
     if any(r.freq == "quarterly" for r in rows) and not history_quarters(history):
         raise ForecastUnavailable("No quarterly history")
     allowed = {d.code: d for d in scenario_drivers(history, settings)}
-    stamp = _naive_utc(now)
+    stamp = naive_utc(now)
     seen: set[tuple[str, str]] = set()
     new: list[DriverValue] = []
     stores: dict[int, bool] = {}
@@ -957,7 +957,7 @@ def import_drivers(
     if dry_run:
         return DriverImportResult(result.changes, None)
     if result.rows:
-        stamp = _naive_utc(now)
+        stamp = naive_utc(now)
         new = [
             DriverValue(
                 case_id=kase.id,

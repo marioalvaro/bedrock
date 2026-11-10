@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 
 from bedrock.api.deps import require_session
 from bedrock.api.v1 import (
+    accountability,
     adjustments,
     auth,
     companies,
@@ -48,6 +49,7 @@ protected.include_router(imports.router)
 protected.include_router(forecasts.router)
 protected.include_router(scenarios.router)
 protected.include_router(seasonality.router)
+protected.include_router(accountability.router)
 protected.include_router(valuation.router)
 
 api_router = APIRouter(prefix="/api/v1")

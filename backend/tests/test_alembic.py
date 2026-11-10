@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from bedrock.core.config import load_settings
 from bedrock.models import (
     adjustment,
+    audit_log,
     canonical_item,
     company,
     comps_member,
@@ -21,6 +22,7 @@ from bedrock.models import (
     custom_line,
     driver_value,
     filing,
+    forecast_run,
     guidance,
     imported_fact,
     macro,
@@ -41,6 +43,7 @@ from bedrock.models.base import Base
 # Importing registers every table on Base.metadata, so the drift test below sees them all.
 _MODELS = (
     adjustment,
+    audit_log,
     canonical_item,
     company,
     comps_member,
@@ -51,6 +54,7 @@ _MODELS = (
     custom_line,
     driver_value,
     filing,
+    forecast_run,
     guidance,
     imported_fact,
     macro,
@@ -1793,3 +1797,195 @@ def test_0018_tags_existing_guidance_as_management_and_checks_the_source(
     assert "source" not in columns
     with engine.connect() as connection:
         assert connection.execute(text("SELECT count(*) FROM guidance")).scalar() == 2
+
+
+_ACCOUNTABILITY_TABLES = {
+    "forecast_snapshot",
+    "forecast_run",
+    "forecast_value",
+    "valuation_run",
+    "audit_log",
+}
+
+
+def _snapshot(connection: Connection, company_id: int, scenario_id: int | None) -> int:
+    return _insert(
+        connection,
+        "forecast_snapshot",
+        company_id=company_id,
+        scenario_id=scenario_id,
+        scenario_name="Main",
+        created_at=_NOW,
+    )
+
+
+def _stored_run(connection: Connection, company_id: int, **cols: object) -> int:
+    row = {
+        "company_id": company_id,
+        "kind": "backtest",
+        "method": "auto",
+        "as_of_date": "2024-11-01",
+        "created_at": _NOW,
+        "engines_json": "{}",
+        **cols,
+    }
+    names = ", ".join(f'"{k}"' for k in row)  # `case` is a keyword
+    marks = ", ".join(f":{k}" for k in row)
+    result = connection.execute(text(f"INSERT INTO forecast_run ({names}) VALUES ({marks})"), row)
+    return int(result.lastrowid)
+
+
+def _stored_value(connection: Connection, run_id: int, **cols: object) -> None:
+    row = {
+        "forecast_run_id": run_id,
+        "kind": "line",
+        "code": "revenue",
+        "fiscal_year": 2025,
+        "fiscal_period": "FY",
+        "horizon": 1,
+        "point": "1.5",
+        **cols,
+    }
+    _insert(connection, "forecast_value", **row)
+
+
+def _valuation(connection: Connection, run_id: int, **cols: object) -> None:
+    row = {
+        "forecast_run_id": run_id,
+        "method_code": "dcf",
+        "label": "DCF",
+        "inputs_json": "{}",
+        **cols,
+    }
+    _insert(connection, "valuation_run", **row)
+
+
+def _audit(connection: Connection, company_id: int) -> None:
+    _insert(
+        connection,
+        "audit_log",
+        company_id=company_id,
+        entity="driver",
+        entity_id=1,
+        field="gross_margin|2027|FY",
+        label="Gross margin FY27",
+        action="edit",
+        changed_at=_NOW,
+    )
+
+
+def _seed_accountability(connection: Connection) -> tuple[int, int]:
+    """A company with a scenario, a snapshot with a run, a value and a valuation, and an audit
+    row; returns (company id, scenario id)."""
+    _scenario_with_case(connection, "AAA")
+    company_id = int(connection.execute(text("SELECT id FROM company")).scalar_one())
+    scenario_id = _scenario_id(connection)
+    snapshot_id = _snapshot(connection, company_id, scenario_id)
+    run_id = _stored_run(
+        connection,
+        company_id,
+        kind="snapshot",
+        method=None,
+        snapshot_id=snapshot_id,
+        case="base",
+    )
+    _stored_value(connection, run_id)
+    _valuation(connection, run_id)
+    _audit(connection, company_id)
+    return company_id, scenario_id
+
+
+def _count(connection: Connection, table: str) -> int:
+    return int(connection.execute(text(f"SELECT count(*) FROM {table}")).scalar_one())
+
+
+def test_0019_creates_the_accountability_tables_with_their_keys_and_checks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    inspector = inspect(engine)
+    assert _ACCOUNTABILITY_TABLES <= set(inspector.get_table_names())
+    assert inspector.get_pk_constraint("forecast_value")["constrained_columns"] == [
+        "forecast_run_id",
+        "kind",
+        "code",
+        "fiscal_year",
+        "fiscal_period",
+    ]
+    assert ["company_id", "created_at"] in [
+        i["column_names"] for i in inspector.get_indexes("forecast_snapshot")
+    ]
+    assert ["company_id", "id"] in [i["column_names"] for i in inspector.get_indexes("audit_log")]
+    assert ["company_id"] in [i["column_names"] for i in inspector.get_indexes("filing")]
+    with engine.begin() as connection:
+        company_id, _ = _seed_accountability(connection)
+        run_id = _stored_run(connection, company_id)
+        _stored_value(connection, run_id)
+    for table, bad in (
+        ("run", dict(kind="live", as_of_date="2020-02-02")),
+        ("run", dict(kind="snapshot", case="worst", method=None, as_of_date="2020-01-01")),
+        ("run", dict(as_of_date=None)),
+        ("run", dict(method=None, as_of_date="2020-03-03")),  # a backtest run names its method
+        ("run", dict(kind="snapshot", as_of_date="2020-04-04")),  # a snapshot run names its case
+        ("run", dict(company_id=999_999, as_of_date="2020-01-01")),
+        ("run", dict(as_of_date="2024-11-01")),  # one run per origin and method
+        ("value", dict()),  # the primary key
+        ("value", dict(kind="ratio")),
+        ("value", dict(code="cash", point=None)),
+        ("value", dict(code="cash", forecast_run_id=999_999)),
+    ):
+        with pytest.raises(IntegrityError), engine.begin() as connection:
+            connection.execute(text("PRAGMA foreign_keys=ON"))
+            if table == "run":
+                _stored_run(connection, **{"company_id": company_id, **bad})  # type: ignore[arg-type]
+            else:
+                _stored_value(connection, **{"run_id": run_id, **bad})  # type: ignore[arg-type]
+
+
+def test_0019_a_company_delete_cascades_to_every_table(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    with create_engine(database_url).begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+        _seed_accountability(connection)
+        assert all(_count(connection, t) == 1 for t in _ACCOUNTABILITY_TABLES)
+        connection.execute(text("DELETE FROM company"))
+        assert all(_count(connection, t) == 0 for t in _ACCOUNTABILITY_TABLES)
+
+
+def test_0019_deleting_a_scenario_keeps_the_snapshot_without_its_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    with create_engine(database_url).begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+        _seed_accountability(connection)
+        connection.execute(text("DELETE FROM scenario"))
+        kept = connection.execute(
+            text("SELECT scenario_id, scenario_name FROM forecast_snapshot")
+        ).one()
+        assert tuple(kept) == (None, "Main")
+        assert _count(connection, "forecast_run") == 1
+        assert _count(connection, "forecast_value") == 1
+
+
+def test_0019_downgrade_drops_only_the_new_tables_and_up_again_recreates_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        _seed_accountability(connection)
+    before = set(inspect(engine).get_table_names())
+
+    _run_alembic(tmp_path, monkeypatch, ("downgrade", "0018"))
+    inspector = inspect(engine)
+    assert before - set(inspector.get_table_names()) == _ACCOUNTABILITY_TABLES
+    assert ["company_id"] not in [i["column_names"] for i in inspector.get_indexes("filing")]
+    with engine.begin() as connection:
+        assert _count(connection, "scenario") == 1
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    assert _ACCOUNTABILITY_TABLES <= set(inspect(engine).get_table_names())

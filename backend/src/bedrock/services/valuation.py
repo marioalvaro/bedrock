@@ -113,6 +113,7 @@ class CaseValuation:
     valuation_date: date | None
     caveats: dict[str, str]  # by result key
     warnings: list[str]
+    inputs: ResolvedInputs
 
 
 @dataclass(frozen=True)
@@ -405,6 +406,7 @@ def _valued(context: _Context, state: CaseState) -> CaseValuation:
         valuation_date=getattr(details, "valuation_date", None),
         caveats=caveats,
         warnings=state.run.warnings,
+        inputs=state.inputs,
     )
 
 

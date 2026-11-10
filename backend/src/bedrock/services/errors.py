@@ -164,6 +164,18 @@ class InvalidValuationInput(Exception):
     says which. Nothing was written."""
 
 
+class SnapshotNotFound(Exception):
+    """No snapshot with this id on the company (another company's id counts as unknown)."""
+
+
+class InvalidSnapshot(Exception):
+    """A snapshot's note breaks a rule; the message says which. Nothing was written."""
+
+
+class InvalidBacktest(Exception):
+    """The company cannot be back-tested (no 10-K to start from); the message says why."""
+
+
 class InvalidSensitivity(Exception):
     """A sensitivity request names an unknown or inapplicable input, or the same input twice."""
 
@@ -207,6 +219,9 @@ DOMAIN_ERRORS = (
     InvalidSeasonality,
     InvalidValuationInput,
     InvalidSensitivity,
+    SnapshotNotFound,
+    InvalidSnapshot,
+    InvalidBacktest,
     UnknownLineItem,
     ForecastUnavailable,
     UnknownTicker,
@@ -246,6 +261,8 @@ def user_message(error: Exception) -> str:
             return f"No such import: {error}"
         case ScenarioNotFound():
             return f"No such scenario: {error}"
+        case SnapshotNotFound():
+            return f"No such snapshot: {error}"
         case ForecastUnavailable():
             return error.detail
         case CompanyExists():

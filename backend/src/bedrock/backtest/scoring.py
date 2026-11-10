@@ -119,7 +119,7 @@ def score_run(
         if actual is None:
             continue
         unit = units[row.code]
-        forecast = _today(row.point, unit, factor)
+        forecast = in_todays_shares(row.point, unit, factor)
         band = _band(row, ranges, case)
         scored.append(
             Scored(
@@ -133,7 +133,9 @@ def score_run(
                 None if actual == 0 else (forecast - actual) / abs(actual),
                 None
                 if band is None
-                else _today(band[0], unit, factor) <= actual <= _today(band[1], unit, factor),
+                else in_todays_shares(band[0], unit, factor)
+                <= actual
+                <= in_todays_shares(band[1], unit, factor),
             )
         )
     return scored
@@ -172,7 +174,7 @@ def _band(
     return None if case != "base" or ranges is None else ranges.get(_key(row))
 
 
-def _today(value: Decimal, unit: str, factor: Decimal) -> Decimal:
+def in_todays_shares(value: Decimal, unit: str, factor: Decimal) -> Decimal:
     """`value` in today's shares. Only a share or per-share value changes with a split (`adjust`
     would divide a USD one)."""
     return adjust(value, unit, factor) if unit in (SHARES, PER_SHARE) else value

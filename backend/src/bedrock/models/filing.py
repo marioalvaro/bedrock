@@ -1,6 +1,6 @@
 from datetime import date
 
-from sqlalchemy import Date, ForeignKey, Integer, String
+from sqlalchemy import Date, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from bedrock.models.base import Base
@@ -8,6 +8,7 @@ from bedrock.models.base import Base
 
 class Filing(Base):
     __tablename__ = "filing"
+    __table_args__ = (Index("ix_filing_company_id", "company_id"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     company_id: Mapped[int] = mapped_column(

@@ -74,6 +74,21 @@ def run_meta(
     )
 
 
+@dataclass(frozen=True)
+class RunMeta:
+    settings: ScenarioSettings
+    warnings: list[str]
+
+
+def read_meta(text: str) -> RunMeta:
+    """What `run_meta` stored and scoring needs: the run's settings and warnings."""
+    meta = json.loads(text)
+    settings = ScenarioSettings(
+        meta["revenue_method"], meta["segment_dimension"], meta["volume_kpi"], meta["price_kpi"]
+    )
+    return RunMeta(settings, list(meta["warnings"]))
+
+
 def _line_rows(
     statements: ForecastStatements, codes: Sequence[str], periods: Sequence[Period]
 ) -> list[ValueRow]:
