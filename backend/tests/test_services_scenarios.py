@@ -353,9 +353,9 @@ def test_another_company_s_scenario_is_not_found(
     with pytest.raises(ScenarioNotFound):
         update_scenario(db_session, aapl, other.id, SettingsInput(name="X"), NOW)
     with pytest.raises(ScenarioNotFound):
-        delete_scenario(db_session, aapl, other.id)
+        delete_scenario(db_session, aapl, other.id, NOW)
     with pytest.raises(ScenarioNotFound):
-        delete_scenario(db_session, aapl, 999_999)
+        delete_scenario(db_session, aapl, 999_999, NOW)
     with pytest.raises(ScenarioNotFound):
         reset_case(db_session, aapl, other.id, "bull", NOW)
 
@@ -364,7 +364,7 @@ def test_the_default_scenario_cannot_be_deleted(db_session: Session, aapl: Compa
     main = _main(db_session, aapl)
 
     with pytest.raises(ScenarioConflict, match="The default scenario cannot be deleted"):
-        delete_scenario(db_session, aapl, main.id)
+        delete_scenario(db_session, aapl, main.id, NOW)
 
 
 def test_deleting_a_scenario_deletes_its_cases_and_driver_rows(
@@ -378,7 +378,7 @@ def test_deleting_a_scenario_deletes_its_cases_and_driver_rows(
         - len(_rows(db_session, extra, "bear"))
     )
 
-    delete_scenario(db_session, aapl, extra.id)
+    delete_scenario(db_session, aapl, extra.id, NOW)
 
     assert [s.name for s in list_scenarios(db_session, aapl, NOW)] == ["Main"]
     assert _case_names(db_session, extra) == set()

@@ -21,6 +21,7 @@ from bedrock.repositories import comps as comps_repo
 from bedrock.repositories import prices as price_repo
 from bedrock.repositories import scenarios as scenarios_repo
 from bedrock.repositories import valuation_inputs as repo
+from bedrock.services import audit as audit_service
 from bedrock.services import comps as comps_service
 from bedrock.services import market as market_service
 from bedrock.services import ratios as ratios_service
@@ -215,19 +216,60 @@ def put_valuation_inputs(
     scenario, kase = get_case(session, company, scenario_id, case)
     values = _checked(session, company, rows)
     stamp = now.astimezone(UTC).replace(tzinfo=None) if now.tzinfo else now
+    before = _own_inputs(session, kase.id)
     repo.put_rows(session, kase.id, values, stamp)
+    _record_inputs(session, company, scenario, kase, "edit", before, stamp)
     session.commit()
     return valuation_inputs(session, company, scenario_id, case)
 
 
 def reset_valuation_inputs(
-    session: Session, company: Company, scenario_id: int, case: str
+    session: Session, company: Company, scenario_id: int, case: str, now: datetime
 ) -> InputsView:
     """Deletes every stored input of the case (it inherits Base or the defaults again)."""
-    _, kase = get_case(session, company, scenario_id, case)
+    scenario, kase = get_case(session, company, scenario_id, case)
+    before = _own_inputs(session, kase.id)
     repo.delete_all(session, kase.id)
+    stamp = now.astimezone(UTC).replace(tzinfo=None) if now.tzinfo else now
+    _record_inputs(session, company, scenario, kase, "reset", before, stamp)
     session.commit()
     return valuation_inputs(session, company, scenario_id, case)
+
+
+def _own_inputs(session: Session, case_id: int) -> dict[str, str | None]:
+    return {r.code: r.value for r in repo.list_rows(session, [case_id])}
+
+
+def _describe_input(code: str) -> tuple[str, str | None]:
+    """(label, unit) of a stored input; a code the catalog no longer has keeps its code."""
+    try:
+        definition = input_def(code)
+    except InvalidInput:
+        return code, None
+    return definition.label, definition.unit
+
+
+def _record_inputs(
+    session: Session,
+    company: Company,
+    scenario: Scenario,
+    kase: ScenarioCase,
+    action: str,
+    before: dict[str, str | None],
+    stamp: datetime,
+) -> None:
+    audit_service.record(
+        session,
+        company.id,
+        "valuation_input",
+        kase.id,
+        audit_service.case_scope(scenario.name, kase.case),
+        action,
+        before,
+        _own_inputs(session, kase.id),
+        _describe_input,
+        stamp,
+    )
 
 
 def _checked(

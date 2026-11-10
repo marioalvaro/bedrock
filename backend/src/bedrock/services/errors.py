@@ -172,6 +172,14 @@ class InvalidSnapshot(Exception):
     """A snapshot's note breaks a rule; the message says which. Nothing was written."""
 
 
+class AuditRowNotFound(Exception):
+    """No audit row with this id on the company (another company's id counts as unknown)."""
+
+
+class InvalidAuditRow(Exception):
+    """An audit row's rationale breaks a rule; the message says which. Nothing was written."""
+
+
 class InvalidBacktest(Exception):
     """The company cannot be back-tested (no 10-K to start from); the message says why."""
 
@@ -219,6 +227,8 @@ DOMAIN_ERRORS = (
     InvalidSeasonality,
     InvalidValuationInput,
     InvalidSensitivity,
+    AuditRowNotFound,
+    InvalidAuditRow,
     SnapshotNotFound,
     InvalidSnapshot,
     InvalidBacktest,
@@ -263,6 +273,8 @@ def user_message(error: Exception) -> str:
             return f"No such scenario: {error}"
         case SnapshotNotFound():
             return f"No such snapshot: {error}"
+        case AuditRowNotFound():
+            return f"No such audit row: {error}"
         case ForecastUnavailable():
             return error.detail
         case CompanyExists():

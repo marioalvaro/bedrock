@@ -1,9 +1,15 @@
 from datetime import datetime
+from typing import Literal
 
 from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from bedrock.models.base import Base
+
+AuditEntity = Literal[
+    "driver", "year_mode", "engine_choice", "valuation_input", "scenario", "adjustment"
+]
+AuditAction = Literal["create", "edit", "delete", "import", "reset", "mode"]
 
 
 class AuditLog(Base):

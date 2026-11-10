@@ -1,6 +1,6 @@
 """Normalization adjustments of a followed company: CRUD with validation."""
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -11,6 +11,8 @@ from bedrock.mapping.config import is_adjustable
 from bedrock.models.adjustment import CATEGORIES, Adjustment
 from bedrock.models.company import Company
 from bedrock.repositories import adjustments as repo
+from bedrock.repositories.numeric import plain
+from bedrock.services import audit as audit_service
 from bedrock.services.errors import AdjustmentNotFound, InvalidAdjustment
 from bedrock.services.statements import canonical_items, fiscal_periods
 from bedrock.statements.normalize import AppliedAdjustment
@@ -93,6 +95,8 @@ def create_adjustment(
         ),
     )
     adjustment_id = added.id
+    session.refresh(added)
+    _record(session, added, "create", {}, _audited(added), stamp)
     session.commit()
     return _reloaded(session, company, adjustment_id)
 
@@ -102,16 +106,73 @@ def update_adjustment(
 ) -> Adjustment:
     stored = _stored(session, company, adjustment_id)
     _validate(session, company, data)
+    before = _audited_edit(stored)
     for name, value in _fields(data).items():
         setattr(stored, name, value)
-    stored.updated_at = _naive_utc(now)
+    stamp = _naive_utc(now)
+    stored.updated_at = stamp
+    session.flush()
+    session.refresh(stored)
+    _record(session, stored, "edit", before, _audited_edit(stored), stamp)
     session.commit()
     return _reloaded(session, company, adjustment_id)
 
 
-def delete_adjustment(session: Session, company: Company, adjustment_id: int) -> None:
-    repo.delete(session, _stored(session, company, adjustment_id))
+def delete_adjustment(
+    session: Session, company: Company, adjustment_id: int, now: datetime
+) -> None:
+    stored = _stored(session, company, adjustment_id)
+    _record(session, stored, "delete", _audited(stored), {}, _naive_utc(now))
+    repo.delete(session, stored)
     session.commit()
+
+
+def _period_label(adjustment: Adjustment) -> str:
+    year = f"FY{adjustment.fiscal_year % 100:02d}"
+    return year if adjustment.fiscal_period == "FY" else f"{adjustment.fiscal_period} {year}"
+
+
+def _audited(adjustment: Adjustment) -> dict[str, str | None]:
+    """The fields the audit trail logs of an adjustment."""
+    return {
+        "amount": format(plain(adjustment.amount), "f"),
+        "category": adjustment.category,
+        "reason": adjustment.reason,
+    }
+
+
+def _audited_edit(adjustment: Adjustment) -> dict[str, str | None]:
+    """As `_audited`, with where it applies: an edit can move it to another line or period. On a
+    create or a delete the row's label already says both."""
+    return {
+        **_audited(adjustment),
+        "line": adjustment.canonical_code,
+        "period": _period_label(adjustment),
+    }
+
+
+def _record(
+    session: Session,
+    adjustment: Adjustment,
+    action: str,
+    before: Mapping[str, str | None],
+    after: Mapping[str, str | None],
+    stamp: datetime,
+) -> None:
+    name = f"{label_of(adjustment.canonical_code)} {_period_label(adjustment)}"
+    audit_service.record(
+        session,
+        adjustment.company_id,
+        "adjustment",
+        adjustment.id,
+        None,
+        action,
+        before,
+        after,
+        lambda field: (f"{name} {field}", "USD" if field == "amount" else None),
+        stamp,
+        rationale=adjustment.reason,
+    )
 
 
 def _reloaded(session: Session, company: Company, adjustment_id: int) -> Adjustment:

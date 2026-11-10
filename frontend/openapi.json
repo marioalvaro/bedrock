@@ -122,6 +122,171 @@
         "title": "AdjustmentOut",
         "type": "object"
       },
+      "AuditPageOut": {
+        "properties": {
+          "next_before_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Before Id"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/AuditRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rows",
+          "next_before_id"
+        ],
+        "title": "AuditPageOut",
+        "type": "object"
+      },
+      "AuditRationaleIn": {
+        "additionalProperties": false,
+        "properties": {
+          "rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale"
+          }
+        },
+        "required": [
+          "rationale"
+        ],
+        "title": "AuditRationaleIn",
+        "type": "object"
+      },
+      "AuditRowOut": {
+        "description": "One changed field. A null `old_value` or `new_value` means absent (a driver or input with\nno stored value of its own).",
+        "properties": {
+          "action": {
+            "enum": [
+              "create",
+              "edit",
+              "delete",
+              "import",
+              "reset",
+              "mode"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "changed_at": {
+            "format": "date-time",
+            "title": "Changed At",
+            "type": "string"
+          },
+          "entity": {
+            "enum": [
+              "driver",
+              "year_mode",
+              "engine_choice",
+              "valuation_input",
+              "scenario",
+              "adjustment"
+            ],
+            "title": "Entity",
+            "type": "string"
+          },
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "new_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Value"
+          },
+          "old_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Old Value"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          }
+        },
+        "required": [
+          "id",
+          "entity",
+          "scope",
+          "field",
+          "label",
+          "unit",
+          "old_value",
+          "new_value",
+          "action",
+          "rationale",
+          "changed_at"
+        ],
+        "title": "AuditRowOut",
+        "type": "object"
+      },
       "AuthStatus": {
         "properties": {
           "authenticated": {
@@ -9589,6 +9754,161 @@
         "summary": "Update Adjustment",
         "tags": [
           "adjustments"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/audit": {
+      "get": {
+        "operationId": "list_audit_api_v1_companies__ticker__audit_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "entity",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "driver",
+                    "year_mode",
+                    "engine_choice",
+                    "valuation_input",
+                    "scenario",
+                    "adjustment"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entity"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditPageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Audit",
+        "tags": [
+          "accountability"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/audit/{row_id}": {
+      "patch": {
+        "operationId": "set_audit_rationale_api_v1_companies__ticker__audit__row_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "row_id",
+            "required": true,
+            "schema": {
+              "title": "Row Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuditRationaleIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditRowOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Audit Rationale",
+        "tags": [
+          "accountability"
         ]
       }
     },

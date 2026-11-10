@@ -1,18 +1,23 @@
 from datetime import datetime
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from bedrock.api.deps import get_clock, get_session
 from bedrock.api.v1.statements import followed_company
+from bedrock.models.audit_log import AuditEntity
 from bedrock.models.company import Company
 from bedrock.schemas.accountability import (
+    AuditPageOut,
+    AuditRationaleIn,
+    AuditRowOut,
     BacktestOut,
     SnapshotDetailOut,
     SnapshotIn,
     SnapshotListOut,
     SnapshotOut,
 )
+from bedrock.services import audit as audit_service
 from bedrock.services import backtest as backtest_service
 from bedrock.services import snapshots as snapshots_service
 
@@ -61,3 +66,27 @@ def get_backtest(
     company: Company = Depends(followed_company), session: Session = Depends(get_session)
 ) -> BacktestOut:
     return BacktestOut.from_view(backtest_service.backtest_view(session, company))
+
+
+@router.get("/companies/{ticker}/audit")
+def list_audit(
+    entity: AuditEntity | None = None,
+    limit: int = Query(100, ge=1, le=500),
+    before_id: int | None = None,
+    company: Company = Depends(followed_company),
+    session: Session = Depends(get_session),
+) -> AuditPageOut:
+    return AuditPageOut.from_view(
+        audit_service.page_view(session, company, entity, limit, before_id)
+    )
+
+
+@router.patch("/companies/{ticker}/audit/{row_id}")
+def set_audit_rationale(
+    row_id: int,
+    body: AuditRationaleIn,
+    company: Company = Depends(followed_company),
+    session: Session = Depends(get_session),
+) -> AuditRowOut:
+    row = audit_service.set_rationale(session, company, row_id, body.rationale)
+    return AuditRowOut.model_validate(row)

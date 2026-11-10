@@ -12,6 +12,7 @@ from bedrock.forecast.errors import ForecastUnavailable
 from bedrock.ingest.protocol import SourceNotConfigured, SourceUnavailable, UnknownTicker
 from bedrock.services.errors import (
     AdjustmentNotFound,
+    AuditRowNotFound,
     CellNotFound,
     CompanyExists,
     CompanyNotFound,
@@ -21,6 +22,7 @@ from bedrock.services.errors import (
     GuidanceNotFound,
     ImportNotFound,
     InvalidAdjustment,
+    InvalidAuditRow,
     InvalidBacktest,
     InvalidCompsSet,
     InvalidCustomRule,
@@ -88,6 +90,8 @@ _STATUS: dict[type[Exception], int] = {
     SnapshotNotFound: 404,
     InvalidSnapshot: 422,
     InvalidBacktest: 422,
+    AuditRowNotFound: 404,
+    InvalidAuditRow: 422,
     UnknownLineItem: 422,
     ForecastUnavailable: 422,
     SourceNotConfigured: 503,

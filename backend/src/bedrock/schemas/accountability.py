@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from bedrock.models.audit_log import AuditAction, AuditEntity
+from bedrock.services.audit import AuditPage
 from bedrock.services.backtest import BacktestView
 from bedrock.services.snapshots import SnapshotDetail, SnapshotList, SnapshotView
 
@@ -160,3 +162,40 @@ class BacktestOut(BaseModel):
     @classmethod
     def from_view(cls, view: BacktestView) -> "BacktestOut":
         return cls.model_validate(view)
+
+
+class AuditRowOut(BaseModel):
+    """One changed field. A null `old_value` or `new_value` means absent (a driver or input with
+    no stored value of its own)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    entity: AuditEntity
+    scope: str | None
+    field: str
+    label: str
+    unit: str | None
+    old_value: str | None
+    new_value: str | None
+    action: AuditAction
+    rationale: str | None
+    changed_at: datetime
+
+
+class AuditPageOut(BaseModel):
+    rows: list[AuditRowOut]
+    next_before_id: int | None
+
+    @classmethod
+    def from_view(cls, view: AuditPage) -> "AuditPageOut":
+        return cls(
+            rows=[AuditRowOut.model_validate(r) for r in view.rows],
+            next_before_id=view.next_before_id,
+        )
+
+
+class AuditRationaleIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    rationale: str | None  # blank or null clears it

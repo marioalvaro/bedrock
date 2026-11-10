@@ -132,7 +132,7 @@ def test_reset_clears_only_that_case(db_session: Session, aapl: Company) -> None
     _put(db_session, aapl, "base", beta="1.2")
     _put(db_session, aapl, "bull", beta="1.5", terminal_growth="0.02")
 
-    view = svc.reset_valuation_inputs(db_session, aapl, scenario.id, "bull")
+    view = svc.reset_valuation_inputs(db_session, aapl, scenario.id, "bull", NOW)
 
     assert all(r.own is None for r in view.rows)
     assert {r.code: r.source for r in view.rows}["beta"] == "base"
@@ -216,7 +216,7 @@ def test_deleting_a_scenario_deletes_its_inputs(db_session: Session, aapl: Compa
     svc.put_valuation_inputs(db_session, aapl, other.id, "base", [("beta", "1.3")], NOW)
     assert db_session.scalar(select(func.count()).select_from(ValuationInput)) == 1
 
-    delete_scenario(db_session, aapl, other.id)
+    delete_scenario(db_session, aapl, other.id, NOW)
 
     assert db_session.scalar(select(func.count()).select_from(ValuationInput)) == 0
 

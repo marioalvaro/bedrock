@@ -84,6 +84,83 @@ export type AdjustmentOut = {
 };
 
 /**
+ * AuditPageOut
+ */
+export type AuditPageOut = {
+    /**
+     * Next Before Id
+     */
+    next_before_id: number | null;
+    /**
+     * Rows
+     */
+    rows: Array<AuditRowOut>;
+};
+
+/**
+ * AuditRationaleIn
+ */
+export type AuditRationaleIn = {
+    /**
+     * Rationale
+     */
+    rationale: string | null;
+};
+
+/**
+ * AuditRowOut
+ *
+ * One changed field. A null `old_value` or `new_value` means absent (a driver or input with
+ * no stored value of its own).
+ */
+export type AuditRowOut = {
+    /**
+     * Action
+     */
+    action: 'create' | 'edit' | 'delete' | 'import' | 'reset' | 'mode';
+    /**
+     * Changed At
+     */
+    changed_at: string;
+    /**
+     * Entity
+     */
+    entity: 'driver' | 'year_mode' | 'engine_choice' | 'valuation_input' | 'scenario' | 'adjustment';
+    /**
+     * Field
+     */
+    field: string;
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * New Value
+     */
+    new_value: string | null;
+    /**
+     * Old Value
+     */
+    old_value: string | null;
+    /**
+     * Rationale
+     */
+    rationale: string | null;
+    /**
+     * Scope
+     */
+    scope: string | null;
+    /**
+     * Unit
+     */
+    unit: string | null;
+};
+
+/**
  * AuthStatus
  */
 export type AuthStatus = {
@@ -5139,6 +5216,83 @@ export type UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutRespon
 };
 
 export type UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutResponse = UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutResponses[keyof UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutResponses];
+
+export type ListAuditApiV1CompaniesTickerAuditGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: {
+        /**
+         * Entity
+         */
+        entity?: 'driver' | 'year_mode' | 'engine_choice' | 'valuation_input' | 'scenario' | 'adjustment' | null;
+        /**
+         * Limit
+         */
+        limit?: number;
+        /**
+         * Before Id
+         */
+        before_id?: number | null;
+    };
+    url: '/api/v1/companies/{ticker}/audit';
+};
+
+export type ListAuditApiV1CompaniesTickerAuditGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListAuditApiV1CompaniesTickerAuditGetError = ListAuditApiV1CompaniesTickerAuditGetErrors[keyof ListAuditApiV1CompaniesTickerAuditGetErrors];
+
+export type ListAuditApiV1CompaniesTickerAuditGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: AuditPageOut;
+};
+
+export type ListAuditApiV1CompaniesTickerAuditGetResponse = ListAuditApiV1CompaniesTickerAuditGetResponses[keyof ListAuditApiV1CompaniesTickerAuditGetResponses];
+
+export type SetAuditRationaleApiV1CompaniesTickerAuditRowIdPatchData = {
+    body: AuditRationaleIn;
+    path: {
+        /**
+         * Row Id
+         */
+        row_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/audit/{row_id}';
+};
+
+export type SetAuditRationaleApiV1CompaniesTickerAuditRowIdPatchErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SetAuditRationaleApiV1CompaniesTickerAuditRowIdPatchError = SetAuditRationaleApiV1CompaniesTickerAuditRowIdPatchErrors[keyof SetAuditRationaleApiV1CompaniesTickerAuditRowIdPatchErrors];
+
+export type SetAuditRationaleApiV1CompaniesTickerAuditRowIdPatchResponses = {
+    /**
+     * Successful Response
+     */
+    200: AuditRowOut;
+};
+
+export type SetAuditRationaleApiV1CompaniesTickerAuditRowIdPatchResponse = SetAuditRationaleApiV1CompaniesTickerAuditRowIdPatchResponses[keyof SetAuditRationaleApiV1CompaniesTickerAuditRowIdPatchResponses];
 
 export type GetBacktestApiV1CompaniesTickerBacktestGetData = {
     body?: never;
