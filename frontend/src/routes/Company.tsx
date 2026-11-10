@@ -8,6 +8,7 @@ import { ApiError } from "@/api/errors";
 import type { CompanyListItem } from "@/api/generated/types.gen";
 import type { StatementType } from "@/api/statements";
 import { Button } from "@/components/ui/button";
+import { BacktestView } from "@/features/backtest/BacktestView";
 import { CapitalView } from "@/features/capital/CapitalView";
 import { CompsView } from "@/features/comps/CompsView";
 import { ForecastView } from "@/features/forecast/ForecastView";
@@ -57,6 +58,7 @@ const TAB_GROUPS: Tab[][] = [
     { slug: "forecast", label: "Forecast", render: (c) => <ForecastView ticker={c.ticker} /> },
     { slug: "scenarios", label: "Scenarios", render: (c) => <ScenariosView ticker={c.ticker} /> },
     { slug: "valuation", label: "Valuation", render: (c) => <ValuationView ticker={c.ticker} /> },
+    { slug: "backtest", label: "Backtest", render: (c) => <BacktestView ticker={c.ticker} /> },
   ],
   [{ slug: "notes", label: "Notes", render: (c) => <NotesView ticker={c.ticker} /> }],
 ];

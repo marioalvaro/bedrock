@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { Download, Upload } from "lucide-react";
+import { Camera, Download, Upload } from "lucide-react";
 import { useState } from "react";
+import { Link } from "react-router";
 
+import { useCreateSnapshot } from "@/api/accountability";
 import { companyErrorMessage } from "@/api/companies";
 import type { ScenarioOut } from "@/api/generated/types.gen";
 import {
@@ -149,6 +151,69 @@ function NameForm({ ticker, mode, defaultName, onDone }: NameFormProps) {
   );
 }
 
+interface SnapshotDialogProps {
+  ticker: string;
+  scenario: ScenarioOut;
+  onClose: () => void;
+}
+
+/** Freezes the scenario's three cases, with an optional note. */
+function SnapshotDialog({ ticker, scenario, onClose }: SnapshotDialogProps) {
+  const create = useCreateSnapshot(ticker, scenario.id);
+  const [note, setNote] = useState("");
+
+  return (
+    <AlertDialog open onOpenChange={(open) => !open && onClose()}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Snapshot {scenario.name}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {create.isSuccess ? (
+              <>
+                Saved. <Link to={`/c/${ticker}/backtest?view=snapshots`}>View the snapshots</Link>
+              </>
+            ) : (
+              "Base, Bull and Bear are saved as they stand, and scored as actuals arrive. A snapshot cannot be changed."
+            )}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        {!create.isSuccess && (
+          <form
+            id="snapshot-form"
+            className="space-y-1"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!create.isPending) create.mutate(note.trim() || null);
+            }}
+          >
+            <Label htmlFor="snapshot-note">Note</Label>
+            <Input
+              id="snapshot-note"
+              maxLength={500}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+            />
+          </form>
+        )}
+        {create.isError && (
+          <p role="alert" className="text-destructive text-xs">
+            {companyErrorMessage(create.error, "Could not save the snapshot.")}
+          </p>
+        )}
+        <AlertDialogFooter>
+          <AlertDialogCancel>{create.isSuccess ? "Close" : "Cancel"}</AlertDialogCancel>
+          {!create.isSuccess && (
+            // Not an AlertDialogAction, which closes the dialog before the result is known.
+            <Button type="submit" form="snapshot-form" disabled={create.isPending}>
+              Save
+            </Button>
+          )}
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
 interface ScenariosViewProps {
   ticker: string;
 }
@@ -169,6 +234,7 @@ export function ScenariosView({ ticker }: ScenariosViewProps) {
   const [resetting, setResetting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [snapshotting, setSnapshotting] = useState(false);
   const [freq, setFreq] = useState<ForecastFreq>("annual");
 
   if (isPending) return <p className="text-muted-foreground p-4 text-sm">Loading…</p>;
@@ -272,6 +338,9 @@ export function ScenariosView({ ticker }: ScenariosViewProps) {
         </Button>
         <UnitToggle />
         <div className="ml-auto flex flex-wrap gap-2">
+          <Button type="button" size="sm" variant="outline" onClick={() => setSnapshotting(true)}>
+            <Camera /> Snapshot
+          </Button>
           <Button asChild size="sm" variant="outline">
             <a href={driverExportUrl(ticker, selected.id, scenarioCase, "csv")} download>
               <Download /> Export CSV
@@ -328,6 +397,13 @@ export function ScenariosView({ ticker }: ScenariosViewProps) {
         scale={scale}
         onClose={() => setImporting(false)}
       />
+      {snapshotting && (
+        <SnapshotDialog
+          ticker={ticker}
+          scenario={selected}
+          onClose={() => setSnapshotting(false)}
+        />
+      )}
       <AlertDialog open={deleting !== null} onOpenChange={(open) => !open && setDeleting(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
