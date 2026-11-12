@@ -738,3 +738,74 @@ def test_is_adjustable_follows_the_erd_rules() -> None:
         "shares_outstanding",
     ):  # fmt: skip
         assert code not in adjustable, code
+
+
+# --- M7b S2: lines a standard introduced (docs/erd/data-coverage.md, "Coverage semantics") ----
+
+
+def test_starts_with_standard_defaults_to_false_and_reads_true(tmp_path: Path) -> None:
+    text = VALID.replace(
+        "concepts: [CostOfRevenue]", "concepts: [CostOfRevenue]\n  starts_with_standard: true"
+    )
+
+    items = {i.code: i for i in load_canonical_items(write(tmp_path, text))}
+
+    assert items["cost_of_revenue"].starts_with_standard is True
+    assert items["revenue"].starts_with_standard is False
+
+
+@pytest.mark.parametrize("value", ['"yes"', "1", "null"])
+def test_starts_with_standard_must_be_a_bool(tmp_path: Path, value: str) -> None:
+    text = VALID.replace(
+        "concepts: [CostOfRevenue]", f"concepts: [CostOfRevenue]\n  starts_with_standard: {value}"
+    )
+
+    error = fail_with(tmp_path, text)
+
+    assert error.code == "cost_of_revenue"
+    assert "starts_with_standard" in str(error)
+
+
+def test_starts_with_standard_is_rejected_on_a_computed_item(tmp_path: Path) -> None:
+    text = VALID.replace(
+        "derive: revenue - cost_of_revenue",
+        "derive: revenue - cost_of_revenue\n  starts_with_standard: true",
+    )
+
+    assert fail_with(tmp_path, text).code == "gross_profit"
+
+
+def test_starts_with_standard_is_rejected_on_a_residual(tmp_path: Path) -> None:
+    text = """
+- code: other_current_assets
+  statement: BS
+  label: Other
+  kind: instant
+  unit: USD
+  sign: 1
+  residual: true
+  derive: total_current_assets - cash
+  starts_with_standard: true
+- code: cash
+  statement: BS
+  label: Cash
+  kind: instant
+  unit: USD
+  sign: 1
+- code: total_current_assets
+  statement: BS
+  label: TCA
+  kind: instant
+  unit: USD
+  sign: 1
+"""
+    assert fail_with(tmp_path, text).code == "other_current_assets"
+
+
+def test_shipped_items_mark_the_two_lease_lines_as_starting_with_a_standard() -> None:
+    items = load_canonical_items(DEFAULT_ITEMS_PATH)
+
+    assert {i.code for i in items if i.starts_with_standard} == {
+        "operating_lease_rou",
+        "operating_lease_liabilities_noncurrent",
+    }

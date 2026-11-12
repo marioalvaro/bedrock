@@ -695,9 +695,26 @@
         "type": "object"
       },
       "CauseCountsOut": {
+        "description": "Empty cells by cause, in the order a cell takes them (docs/erd/data-coverage.md).",
         "properties": {
+          "annual_only": {
+            "title": "Annual Only",
+            "type": "integer"
+          },
+          "extension_unclassified": {
+            "title": "Extension Unclassified",
+            "type": "integer"
+          },
+          "included_in": {
+            "title": "Included In",
+            "type": "integer"
+          },
           "no_filing_data": {
             "title": "No Filing Data",
+            "type": "integer"
+          },
+          "not_applicable": {
+            "title": "Not Applicable",
             "type": "integer"
           },
           "not_reported": {
@@ -715,8 +732,12 @@
         },
         "required": [
           "no_filing_data",
+          "not_applicable",
+          "included_in",
           "structural",
           "rule_rejected",
+          "annual_only",
+          "extension_unclassified",
           "not_reported"
         ],
         "title": "CauseCountsOut",
@@ -1800,6 +1821,18 @@
             ],
             "title": "Fraction"
           },
+          "fraction_applicable": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fraction Applicable"
+          },
           "freq": {
             "enum": [
               "annual",
@@ -1824,6 +1857,7 @@
           "cells",
           "filled",
           "fraction",
+          "fraction_applicable",
           "by_provenance",
           "empty_by_cause"
         ],

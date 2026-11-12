@@ -412,6 +412,7 @@ def test_mapping_gaps_carry_coverage_and_rule_warnings(aapl_client: TestClient) 
         "cells",
         "filled",
         "fraction",
+        "fraction_applicable",
         "by_provenance",
         "empty_by_cause",
     }
@@ -424,11 +425,20 @@ def test_mapping_gaps_carry_coverage_and_rule_warnings(aapl_client: TestClient) 
     }
     assert set(income["empty_by_cause"]) == {
         "no_filing_data",
+        "not_applicable",
+        "included_in",
         "structural",
         "rule_rejected",
+        "annual_only",
+        "extension_unclassified",
         "not_reported",
     }
     assert isinstance(income["fraction"], str)
+    assert Decimal(income["fraction"]) <= Decimal(income["fraction_applicable"])
+    # M7b S2: the quarterly tables read the annual one (`annual_only`), the balance sheet's
+    # lease lines start with ASC 842 (`not_applicable`)
+    assert sum(c["empty_by_cause"]["annual_only"] for c in coverage if c["freq"] == "quarterly")
+    assert coverage[2]["empty_by_cause"]["not_applicable"] > 0  # BS annual
     assert income["cells"] == income["filled"] + sum(income["empty_by_cause"].values())
     assert income["filled"] == sum(income["by_provenance"].values())
     assert gaps["rule_warnings"]

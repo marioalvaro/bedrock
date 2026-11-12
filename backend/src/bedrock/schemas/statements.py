@@ -246,9 +246,15 @@ class ProvenanceCountsOut(BaseModel):
 
 
 class CauseCountsOut(BaseModel):
-    no_filing_data: int  # the statement has no data at all in the period
+    """Empty cells by cause, in the order a cell takes them (docs/erd/data-coverage.md)."""
+
+    no_filing_data: int  # no anchor of the statement has a value in the period
+    not_applicable: int  # a rule proves the line cannot exist in the period
+    included_in: int  # the value is inside another line (M7b S4)
     structural: int  # the company maps no concept to the line and it has no formula
     rule_rejected: int  # a rule produced a value that a guard refused
+    annual_only: int  # quarterly: the year has a value and none of its quarters has
+    extension_unclassified: int  # an unclassified filing line in the item's block (M7b S7)
     not_reported: int  # everything else
 
 
@@ -257,8 +263,10 @@ class CoverageOut(BaseModel):
     freq: Literal["annual", "quarterly"]
     cells: int
     filled: int
-    # filled / (cells - no_filing_data) as a fraction; null when there is nothing to cover
+    # strict: filled / (cells - no_filing_data) as a fraction; null when there is nothing to cover
     fraction: Decimal | None
+    # filled / (cells - no_filing_data - not_applicable - included_in); null likewise
+    fraction_applicable: Decimal | None
     by_provenance: ProvenanceCountsOut
     empty_by_cause: CauseCountsOut
 
@@ -319,6 +327,7 @@ class MappingGapsOut(BaseModel):
                     cells=c.cells,
                     filled=c.filled,
                     fraction=c.fraction,
+                    fraction_applicable=c.fraction_applicable,
                     by_provenance=ProvenanceCountsOut(**c.by_provenance),
                     empty_by_cause=CauseCountsOut(**c.empty_by_cause),
                 )

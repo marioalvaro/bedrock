@@ -337,6 +337,7 @@ items:
   concepts:
     - us-gaap:OperatingLeaseRightOfUseAsset
   residual: false
+  starts_with_standard: true
 - code: goodwill
   statement: BS
   label: Goodwill
@@ -483,6 +484,7 @@ items:
   concepts:
     - us-gaap:OperatingLeaseLiabilityNoncurrent
   residual: false
+  starts_with_standard: true
 - code: other_noncurrent_liabilities
   statement: BS
   label: Other non-current liabilities

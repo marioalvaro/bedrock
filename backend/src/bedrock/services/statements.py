@@ -263,7 +263,10 @@ def mapping_gaps(session: Session, company: Company) -> MappingGaps:
         unmapped_concepts=unmapped_concepts(
             latest_10k, loaded.mappings, candidate_index(), concept_triage()
         ),
-        coverage=[table_coverage(t, loaded.items, mapped, warnings) for t in tables.values()],
+        coverage=[
+            table_coverage(t, loaded.items, mapped, warnings, annual=annual[t.statement])
+            for t in tables.values()
+        ],
         rule_warnings=[
             LabelledWarning(w, by_code[w.code].label, by_code[w.code].unit) for w in warnings
         ],

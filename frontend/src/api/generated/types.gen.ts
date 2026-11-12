@@ -392,12 +392,30 @@ export type CapitalRowOut = {
 
 /**
  * CauseCountsOut
+ *
+ * Empty cells by cause, in the order a cell takes them (docs/erd/data-coverage.md).
  */
 export type CauseCountsOut = {
+    /**
+     * Annual Only
+     */
+    annual_only: number;
+    /**
+     * Extension Unclassified
+     */
+    extension_unclassified: number;
+    /**
+     * Included In
+     */
+    included_in: number;
     /**
      * No Filing Data
      */
     no_filing_data: number;
+    /**
+     * Not Applicable
+     */
+    not_applicable: number;
     /**
      * Not Reported
      */
@@ -1004,6 +1022,10 @@ export type CoverageOut = {
      * Fraction
      */
     fraction: string | null;
+    /**
+     * Fraction Applicable
+     */
+    fraction_applicable: string | null;
     /**
      * Freq
      */

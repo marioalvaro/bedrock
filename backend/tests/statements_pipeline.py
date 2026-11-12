@@ -30,6 +30,7 @@ from bedrock.mapping.config import (
 )
 from bedrock.mapping.mapper import CANONICAL_COLUMNS, map_facts
 from bedrock.mapping.vintage import balance_snapshot, select_vintage
+from bedrock.services.coverage import CompanyCoverage, coverage_of, evidence_concepts
 from bedrock.statements.build import StatementTable, build_statement
 from bedrock.statements.cells import SolvedCells, solve_cells
 from bedrock.statements.imports import StoredValue, company_calendar, imported_frames
@@ -269,3 +270,50 @@ def solve_with_imports(
     rules = replace(base.rules, imported=frames.newest, imported_vintages=frames.vintages)
     calendar = company_calendar(canonical, rules.imported)
     return solve_cells(canonical, base.items, calendar, rules), calendar
+
+
+@cache
+def all_facts(ticker: str) -> pd.DataFrame:
+    """Every fact of the fixture (any concept, every vintage), joined to its filing."""
+    with gzip.open(FIXTURES / f"{ticker}.json.gz", "rt") as handle:
+        parsed = parse_companyfacts(json.load(handle))
+    filings = {f.accession_no: f for f in parsed.filings}
+    rows = [
+        {
+            "taxonomy": f.taxonomy,
+            "concept": f.concept,
+            "unit": f.unit,
+            "period_start": f.period_start,
+            "period_end": f.period_end,
+            "value": f.value,
+            "accession_no": f.accession_no,
+            "form": filings[f.accession_no].form,
+            "filed_at": filings[f.accession_no].filed_at,
+        }
+        for f in parsed.facts
+    ]
+    return pd.DataFrame(rows, columns=FACT_COLUMNS).astype(
+        {"period_start": "object", "period_end": "object", "value": "object", "filed_at": "object"}
+    )
+
+
+@cache
+def fixture_coverage(ticker: str) -> CompanyCoverage:
+    """What `services/coverage.py::company_coverage` returns for the followed fixture company."""
+    pipeline = run_pipeline(ticker)
+    tables = {(s, "annual"): pipeline.annual[s] for s in STATEMENTS} | {
+        (s, "quarterly"): pipeline.quarterly[s] for s in STATEMENTS
+    }
+    every = all_facts(ticker)
+    return coverage_of(
+        tuple(pipeline.items),
+        pipeline.mappings,
+        tables,
+        every[
+            [
+                key in evidence_concepts(pipeline.mappings)
+                for key in zip(every["taxonomy"], every["concept"], strict=True)
+            ]
+        ],
+        latest_10k_facts(ticker),
+    )

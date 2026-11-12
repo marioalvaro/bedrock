@@ -50,6 +50,9 @@ class CanonicalItemDef:
     # M3 S10c: a child line the user added in an import (`code` is `custom:<slug>`, `parent` a
     # canonical leaf or another custom line); it has no concept, formula or adjustment
     custom: bool = False
+    # M7b S2: a line an accounting standard introduced (ASC 842 leases); its cells before the
+    # company's first value are `not_applicable` in coverage, not gaps
+    starts_with_standard: bool = False
 
 
 # Memo lines whose charge sits inside another line: adjust that line instead.
@@ -322,6 +325,15 @@ def _item(entry: Any) -> CanonicalItemDef:
     concepts = entry.get("concepts") or []
     if not isinstance(concepts, list) or not all(isinstance(c, str) for c in concepts):
         raise MappingConfigError("concepts must be a list of strings", code)
+    starts_with_standard = entry.get("starts_with_standard", False)
+    if not isinstance(starts_with_standard, bool):
+        raise MappingConfigError(
+            f"starts_with_standard must be true or false, got {starts_with_standard!r}", code
+        )
+    if starts_with_standard and (entry.get("residual") or entry.get("derive") is not None):
+        raise MappingConfigError(
+            "starts_with_standard is for a reported line, not a residual or a computed one", code
+        )
     return CanonicalItemDef(
         code=code,
         statement=entry["statement"],
@@ -334,6 +346,7 @@ def _item(entry: Any) -> CanonicalItemDef:
         derive=entry.get("derive"),
         residual=bool(entry.get("residual", False)),
         rolls_into=_rolls_into(code, entry.get("rolls_into")),
+        starts_with_standard=starts_with_standard,
     )
 
 
