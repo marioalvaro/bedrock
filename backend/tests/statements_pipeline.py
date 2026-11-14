@@ -27,6 +27,7 @@ from bedrock.mapping.config import (
     load_excludes,
     load_identities,
     load_overrides,
+    parse_formula,
     signed_members,
 )
 from bedrock.mapping.mapper import CANONICAL_COLUMNS, map_facts
@@ -239,13 +240,33 @@ def _filed_by(frame: pd.DataFrame, as_of: date | None) -> pd.DataFrame:
     return frame if as_of is None else frame[frame["filed_at"] <= as_of]
 
 
+def _without(items: list[CanonicalItemDef], codes: frozenset[str]) -> list[CanonicalItemDef]:
+    """The items less `codes`, each formula's term for a dropped code taken out."""
+
+    def formula(text: str | None) -> str | None:
+        if text is None:
+            return None
+        terms = [(sign, code) for sign, code in parse_formula(text) if code not in codes]
+        head = terms[0][1] if terms[0][0] > 0 else f"-{terms[0][1]}"
+        return " ".join([head, *(f"{'-' if sign < 0 else '+'} {code}" for sign, code in terms[1:])])
+
+    return [replace(i, derive=formula(i.derive)) for i in items if i.code not in codes]
+
+
 @cache
-def run_pipeline(ticker: str, as_of: date | None = None) -> Pipeline:
+def run_pipeline(
+    ticker: str, as_of: date | None = None, drop_codes: frozenset[str] = frozenset()
+) -> Pipeline:
     """With `as_of`, only the filings filed on or before it (docs/erd/accountability.md
-    "Point-in-time history"): facts and cover-page shares. Splits are not cut."""
-    items = load_canonical_items(DEFAULT_ITEMS_PATH)
-    overrides = load_overrides(DEFAULT_OVERRIDES_DIR, ticker, items)
-    excludes = load_excludes(DEFAULT_OVERRIDES_DIR, ticker, items)
+    "Point-in-time history"): facts and cover-page shares. Splits are not cut. With `drop_codes`,
+    the statements as built without those items (M7b S5: the history before the new rows); the
+    company's overrides still load against every item."""
+    all_items = load_canonical_items(DEFAULT_ITEMS_PATH)
+    overrides = load_overrides(DEFAULT_OVERRIDES_DIR, ticker, all_items)
+    excludes = load_excludes(DEFAULT_OVERRIDES_DIR, ticker, all_items)
+    items = _without(all_items, drop_codes)
+    overrides = {c: v for c, v in overrides.items() if c not in drop_codes}
+    excludes = {c: v for c, v in excludes.items() if c not in drop_codes}
     mappings = mapping_frame(items, overrides, excludes)
     facts = _filed_by(fact_frame(ticker, mappings), as_of)
     latest = select_vintage(facts, snapshot=balance_snapshot(mappings))

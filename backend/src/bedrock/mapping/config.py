@@ -58,10 +58,18 @@ class CanonicalItemDef:
     # M7b S4: the combined entries of `concepts` (docs/erd/data-coverage.md "Combined lines"), each
     # as (entry, the canonical codes whose amount is inside it); empty when there are none
     covers: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    # M7b S5: the residual a new row is added back into for the forecast (docs/erd/data-coverage.md
+    # "New canonical rows"), so the forecast keeps reading the residual it read before the row
+    forecast_fold: str | None = None
+    # M7b S5 (user, 2026-11-14): a line every company has. Coverage counts its empty cells as gaps
+    # even when the company never reports it; another line with no value in any period is
+    # `not_applicable` (statements/coverage.py)
+    required: bool = False
 
 
-# Memo lines whose charge sits inside another line: adjust that line instead.
-MEMO_CODES = frozenset({"goodwill_impairment"})
+# Memo lines, never adjusted: a charge that sits inside another line (adjust that line instead), and
+# M7b S5's supplemental cash disclosures, which no statement total holds.
+MEMO_CODES = frozenset({"goodwill_impairment", "cash_taxes_paid", "cash_interest_paid"})
 
 # Lines that only feed an identity (R7): a company that does not report them has left nothing out,
 # so Data gaps does not list them.
@@ -387,6 +395,12 @@ def _item(entry: Any) -> CanonicalItemDef:
         raise MappingConfigError(
             "starts_with_standard is for a reported line, not a residual or a computed one", code
         )
+    forecast_fold = _forecast_fold(code, entry)
+    required = entry.get("required", False)
+    if not isinstance(required, bool):
+        raise MappingConfigError(f"required must be true or false, got {required!r}", code)
+    if required and entry.get("residual"):
+        raise MappingConfigError("required is for a line coverage counts, not a residual", code)
     return CanonicalItemDef(
         code=code,
         statement=entry["statement"],
@@ -401,7 +415,26 @@ def _item(entry: Any) -> CanonicalItemDef:
         residual=bool(entry.get("residual", False)),
         rolls_into=_rolls_into(code, entry.get("rolls_into")),
         starts_with_standard=starts_with_standard,
+        forecast_fold=forecast_fold,
+        required=required,
     )
+
+
+def _forecast_fold(code: str, entry: dict[str, Any]) -> str | None:
+    """The item's `forecast_fold`: a code, on a reported line (no `derive`) with a parent; the
+    target is checked against the other items in `_validate`."""
+    target = entry.get("forecast_fold")
+    if target is None:
+        return None
+    if not isinstance(target, str) or not re.fullmatch(_CODE, target):
+        raise MappingConfigError(f"forecast_fold must be a code, got {target!r}", code)
+    if entry.get("residual") or entry.get("derive") is not None:
+        raise MappingConfigError("forecast_fold is for a reported line, not a computed one", code)
+    if entry.get("parent") is None:
+        raise MappingConfigError(
+            "forecast_fold needs a row with a parent (a memo row has none)", code
+        )
+    return target
 
 
 def _concept_entries(
@@ -608,6 +641,21 @@ def _validate(items: list[CanonicalItemDef]) -> None:
                     raise MappingConfigError(
                         f"covers {target!r}, which is not of the same kind", item.code
                     )
+
+    for item in items:
+        if item.forecast_fold is None:
+            continue
+        residual = by_code.get(item.forecast_fold)
+        if residual is None or not residual.residual or residual.statement != item.statement:
+            raise MappingConfigError(
+                f"forecast_fold {item.forecast_fold!r} is not a residual of the same statement",
+                item.code,
+            )
+        if item.code not in {c for _, c in parse_formula(residual.derive or "")}:
+            raise MappingConfigError(
+                f"forecast_fold {item.forecast_fold!r}: its formula does not hold the row",
+                item.code,
+            )
 
     for item in items:  # walk each parent chain: a cycle never reaches a root
         seen = {item.code}

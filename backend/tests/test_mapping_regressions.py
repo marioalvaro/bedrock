@@ -1220,7 +1220,14 @@ def test_the_lease_leaves_the_residual_it_sat_in_so_the_subtotals_still_foot() -
             for total, parts in (
                 (
                     "total_noncurrent_liabilities",
-                    ("long_term_debt", "operating_lease_liabilities_noncurrent"),
+                    (
+                        "long_term_debt",
+                        "operating_lease_liabilities_noncurrent",
+                        # M7b S5: the new rows the residual now leaves out
+                        "deferred_revenue_noncurrent",
+                        "deferred_tax_liabilities",
+                        "pension_liabilities",
+                    ),
                 ),
             ):
                 assert rows[total][i] is not None
@@ -1419,3 +1426,93 @@ def test_a_company_reporting_payables_alone_keeps_its_plain_line() -> None:
     pipeline = run_pipeline("AAPL")
     row = next(r for r in pipeline.annual["CF"].rows if r.code == "change_payables")
     assert all(mark is None for mark in row.combined_with)
+
+
+# --- M7b S5: new canonical rows (docs/erd/data-coverage.md "New canonical rows") ------------
+
+NEW_ROWS: list[tuple[str, str, str, Decimal]] = [
+    # interest_income <- InvestmentIncomeInterest: WMT "Interest income" in the "Interest:" block,
+    # printed as a deduction. 10-Ks FY2025 (0000104169-25-000021), FY2026 (0000104169-26-000055).
+    ("WMT", "interest_income", "FY2023", usd(254)),
+    ("WMT", "interest_income", "FY2024", usd(546)),
+    ("WMT", "interest_income", "FY2025", usd(483)),
+    # deferred_tax_assets <- DeferredIncomeTaxAssetsNet: JNJ "Deferred taxes on income" (assets).
+    # 10-Ks FY2023 (0000200406-24-000013), FY2024 (0000200406-25-000038), FY2025 (0000200406-26-000016).
+    ("JNJ", "deferred_tax_assets", "FY2022", usd(8_947)),
+    ("JNJ", "deferred_tax_assets", "FY2023", usd(9_279)),
+    ("JNJ", "deferred_tax_assets", "FY2024", usd(10_461)),
+    # deferred_tax_liabilities <- DeferredIncomeTaxLiabilitiesNet: MSFT "Deferred income taxes".
+    # 10-Ks FY2024 (0000950170-24-087843), FY2025 (0000950170-25-100235), FY2026 (0001193125-26-323660).
+    ("MSFT", "deferred_tax_liabilities", "FY2023", usd(433)),
+    ("MSFT", "deferred_tax_liabilities", "FY2024", usd(2_618)),
+    ("MSFT", "deferred_tax_liabilities", "FY2025", usd(2_835)),
+    # ... <- DeferredTaxLiabilitiesNoncurrent, ranked first: AAPL FY2015 10-K (0001193125-15-356351)
+    # "Deferred tax liabilities" (the net tag is 15,120 and 16,260, the position with the current
+    # "Deferred tax assets" of 4,318 and 5,546 netted in).
+    ("AAPL", "deferred_tax_liabilities", "FY2014", usd(20_259)),
+    ("AAPL", "deferred_tax_liabilities", "FY2015", usd(24_062)),
+    # deferred_revenue_noncurrent <- ContractWithCustomerLiabilityNoncurrent: MSFT "Long-term
+    # unearned revenue" (10-Ks as above).
+    ("MSFT", "deferred_revenue_noncurrent", "FY2023", usd(2_912)),
+    ("MSFT", "deferred_revenue_noncurrent", "FY2024", usd(2_602)),
+    ("MSFT", "deferred_revenue_noncurrent", "FY2025", usd(2_710)),
+    # pension_liabilities <- DefinedBenefitPensionPlanLiabilitiesNoncurrent +
+    # OtherPostretirementDefinedBenefitPlanLiabilitiesNoncurrent: BA "Accrued pension plan
+    # liability, net" + "Accrued retiree health care". 10-Ks FY2023 (0000012927-24-000010), FY2024
+    # (0000012927-25-000015), FY2025 (0001628280-26-004357).
+    ("BA", "pension_liabilities", "FY2022", usd(6_141 + 2_503)),
+    ("BA", "pension_liabilities", "FY2023", usd(6_516 + 2_233)),
+    ("BA", "pension_liabilities", "FY2024", usd(5_997 + 2_176)),
+    # cash_taxes_paid <- IncomeTaxesPaidNet: AAPL "Cash paid for income taxes, net" (FY2025 10-K,
+    # 0000320193-25-000079).
+    ("AAPL", "cash_taxes_paid", "FY2023", usd(18_679)),
+    ("AAPL", "cash_taxes_paid", "FY2024", usd(26_102)),
+    ("AAPL", "cash_taxes_paid", "FY2025", usd(43_369)),
+    # cash_interest_paid <- InterestPaidNet: COST "Cash paid during the year for: Interest". 10-Ks
+    # FY2025 (0000909832-25-000101), FY2026 (0000909832-26-000093).
+    ("COST", "cash_interest_paid", "FY2023", usd(125)),
+    ("COST", "cash_interest_paid", "FY2024", usd(129)),
+    ("COST", "cash_interest_paid", "FY2025", usd(106)),
+]
+
+
+@pytest.mark.parametrize(("ticker", "code", "period", "expected"), NEW_ROWS)
+def test_a_new_row_gives_the_10k_figure(
+    ticker: str, code: str, period: str, expected: Decimal
+) -> None:
+    assert mapped(ticker, code, period) == expected
+    assert provenance_of(ticker, code, period) == "reported"
+
+
+COMBINED_DEFERRED_TAXES: list[tuple[str, str, Decimal]] = [
+    # deferred_tax_liabilities <- DeferredIncomeTaxesAndOtherLiabilitiesNoncurrent (combined): NKE
+    # "Deferred income taxes and other liabilities", 10-Ks FY2024 (0000320187-24-000044), FY2025
+    # (0000320187-25-000047), FY2026 (0000320187-26-000088); WMT "Deferred income taxes and other",
+    # 10-Ks FY2024 (0000104169-24-000056), FY2025, FY2026 (as above).
+    ("NKE", "FY2023", usd(2_558)),
+    ("NKE", "FY2024", usd(2_618)),
+    ("NKE", "FY2025", usd(2_289)),
+    ("WMT", "FY2023", usd(14_688)),
+    ("WMT", "FY2024", usd(14_629)),
+    ("WMT", "FY2025", usd(14_398)),
+]
+
+
+@pytest.mark.parametrize(("ticker", "period", "expected"), COMBINED_DEFERRED_TAXES)
+def test_deferred_income_taxes_and_other_is_the_combined_deferred_tax_line(
+    ticker: str, period: str, expected: Decimal
+) -> None:
+    pipeline = run_pipeline(ticker)
+    table = pipeline.annual["BS"]
+    row = next(r for r in table.rows if r.code == "deferred_tax_liabilities")
+    at = [p.key for p in table.periods].index(period)
+
+    assert row.values[at] == expected
+    assert row.combined_with[at] == ()  # combined with lines inside the residual, no row
+
+
+def test_deere_finance_interest_is_not_interest_income() -> None:
+    # Deere's InvestmentIncomeInterest is its finance arm's interest earned, inside revenue
+    # ("Finance and interest income"): excluded in its override, so the line stays empty.
+    assert mapped("DE", "interest_income", "FY2020") is None
+    assert mapped("DE", "interest_income", "FY2022") is None

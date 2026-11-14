@@ -471,6 +471,20 @@ def test_a_quarter_span_from_an_opening_q2_builds_its_year_from_quarters() -> No
     ]
 
 
+@pytest.mark.parametrize("code", ["cash_taxes_paid", "cash_interest_paid"])
+def test_a_memo_cash_line_is_not_forecast_in_a_year_built_from_quarters(code: str) -> None:
+    """M7b S5: the supplemental cash lines have no driver, so a year built from actual and forecast
+    quarters must not show the actual quarters alone as the year's figure."""
+    quarters = {k: dict(v) for k, v in QUARTERS.items()}
+    quarters["FY2026Q1"][code] = 30
+    quarters["FY2026Q2"][code] = 35
+
+    out = run(quarterly_company(quarters), {2026: DRIVERS_2026, 2027: DRIVERS_2026}, quarters=2)
+
+    assert out.get(code, "FY2026Q3") is None
+    assert out.get(code, "FY2026") is None
+
+
 def test_an_opening_q4_builds_the_next_year_from_four_forecast_quarters() -> None:
     quarters = {k: v for k, v in QUARTERS.items() if k.startswith("FY2025")}
     out = run(quarterly_company(quarters), {2026: DRIVERS_2026, 2027: DRIVERS_2026})

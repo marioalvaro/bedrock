@@ -21,8 +21,9 @@ ITEMS = [
     item("revenue"),
     item("cost_of_revenue", parent="gross_profit"),
     item("gross_profit", derive="revenue - cost_of_revenue"),
-    item("rnd"),
-    item("ebit"),  # nothing maps it and it has no formula: the company excludes every concept
+    # `required` (M7b S5): lines with no value in any period that must still count as gaps here
+    replace(item("rnd"), required=True),
+    replace(item("ebit"), required=True),  # nothing maps it, no formula: every concept excluded
     item("other_operating_expenses", residual=True, derive="gross_profit - rnd"),
     item("cash", "BS", kind="instant"),
     item("shares_issued", "BS", kind="instant", unit="shares"),
@@ -359,11 +360,68 @@ def test_not_applicable_follows_the_first_value_of_each_table() -> None:
     assert result.causes[("lease", "FY2024Q1")] == "not_reported"
 
 
-def test_a_company_without_any_lease_value_has_no_not_applicable_cell() -> None:
+def test_a_company_without_any_lease_value_has_a_lease_line_that_is_not_applicable() -> None:
+    # M7b S5 (user, 2026-11-14): a line the company never reports is not applicable
     result = table_coverage(s2_table("BS", "annual", lease=False), S2_ITEMS, S2_MAPPED, ())
 
-    assert result.empty_by_cause["not_applicable"] == 0
-    assert result.causes[("lease", "FY2022")] == "not_reported"
+    assert result.causes[("lease", "FY2022")] == "not_applicable"
+    assert result.causes[("lease", "FY2021")] == "no_filing_data"  # still first
+
+
+# --- M7b S5 (user, 2026-11-14): a line with no value in any period is not applicable, unless the
+# item is `required` (a line every company has) ------------------------------------------------
+
+ALL_YEARS = {"FY2021", "FY2022", "FY2023", "FY2024"}
+
+
+def test_a_line_never_reported_in_any_period_is_not_applicable() -> None:
+    annual = blank(s2_table("IS", "annual"), "rnd", ALL_YEARS)
+
+    result = table_coverage(annual, S2_ITEMS, S2_MAPPED, ())
+
+    assert {result.causes[("rnd", key)] for key in ALL_YEARS} == {"not_applicable"}
+    assert result.fraction_applicable == Decimal("1.000000")  # revenue, every year
+    assert result.fraction == Decimal("0.500000")  # strict still counts the empty line
+
+
+def test_a_required_line_never_reported_is_still_a_gap() -> None:
+    items = [replace(i, required=True) if i.code == "rnd" else i for i in S2_ITEMS]
+    annual = blank(s2_table("IS", "annual"), "rnd", ALL_YEARS)
+
+    result = table_coverage(annual, items, S2_MAPPED, ())
+
+    assert {result.causes[("rnd", key)] for key in ALL_YEARS} == {"not_reported"}
+
+
+def test_a_line_with_one_value_keeps_its_gaps() -> None:
+    result = table_coverage(s2_table("IS", "annual"), S2_ITEMS, S2_MAPPED, ())
+
+    assert result.causes[("rnd", "FY2022")] == "not_reported"  # rnd has FY2023
+
+
+def test_a_quarterly_line_with_annual_values_is_not_never_reported() -> None:
+    annual = s2_table("IS", "annual")
+    quarterly = s2_table("IS", "quarterly")
+    keys = {p.key for p in quarterly.periods}
+    quarterly = blank(quarterly, "rnd", keys)
+
+    with_annual = table_coverage(quarterly, S2_ITEMS, S2_MAPPED, (), annual=annual)
+    never = table_coverage(
+        quarterly, S2_ITEMS, S2_MAPPED, (), annual=blank(annual, "rnd", ALL_YEARS)
+    )
+
+    assert with_annual.causes[("rnd", "FY2023Q1")] == "annual_only"
+    assert with_annual.causes[("rnd", "FY2022Q1")] == "not_reported"
+    assert {never.causes[("rnd", key)] for key in keys} == {"not_applicable"}
+
+
+def test_a_never_reported_line_keeps_a_rule_rejection() -> None:
+    annual = blank(s2_table("IS", "annual"), "rnd", ALL_YEARS)
+
+    result = table_coverage(annual, S2_ITEMS, S2_MAPPED, (warning("rnd", "FY2022"),))
+
+    assert result.causes[("rnd", "FY2022")] == "rule_rejected"
+    assert result.causes[("rnd", "FY2021")] == "not_applicable"
 
 
 def test_a_line_without_the_flag_is_never_not_applicable() -> None:
@@ -395,8 +453,10 @@ def test_a_year_with_one_quarter_is_not_annual_only() -> None:
 
 def test_annual_only_needs_the_annual_table() -> None:
     quarterly = blank(s2_table("IS", "quarterly"), "rnd", {f"FY2023Q{n}" for n in (1, 2, 3, 4)})
+    # required: without the annual table the quarterly row alone would read as never reported
+    items = [replace(i, required=True) if i.code == "rnd" else i for i in S2_ITEMS]
 
-    result = table_coverage(quarterly, S2_ITEMS, S2_MAPPED, ())
+    result = table_coverage(quarterly, items, S2_MAPPED, ())
 
     assert result.empty_by_cause["annual_only"] == 0
     assert result.causes[("rnd", "FY2023Q1")] == "not_reported"
@@ -472,49 +532,42 @@ def test_the_applicable_fraction_is_never_below_the_strict_one(seed: int) -> Non
         assert result.fraction <= result.fraction_applicable <= Decimal(1)
 
 
-# S2 moves the strict fraction only through the anchor rule: the cells and filled counts are those
-# of M3 S9, and only the balance sheet's first year (comparatives of the other statements, no
-# balance sheet) becomes `no_filing_data`. (strict before S2, strict now, no_filing_data now)
-STRICT_AFTER_ANCHORS = {
-    ("AAPL", "BS", "annual"): ("0.833882", "0.874138", 28),
-    ("AAPL", "BS", "quarterly"): ("0.827905", "0.851131", 62),
-    ("MSFT", "BS", "annual"): ("0.896382", "0.934820", 25),
-    ("MSFT", "BS", "quarterly"): ("0.891493", "0.925225", 84),
-    ("COST", "BS", "quarterly"): ("0.800347", "0.834012", 93),
-    ("DE", "BS", "annual"): ("0.572368", "0.600000", 28),
-}
-STRICT_BEFORE = {
-    ("AAPL", "IS", "annual"): "0.950139",
-    ("AAPL", "CF", "annual"): "0.927318",
-    ("AAPL", "IS", "quarterly"): "0.918458",
-    ("AAPL", "CF", "quarterly"): "0.910127",
-    ("MSFT", "IS", "annual"): "0.963989",
-    ("MSFT", "CF", "annual"): "0.849624",
-    ("MSFT", "IS", "quarterly"): "0.947368",
-    ("MSFT", "CF", "quarterly"): "0.835317",
-    ("COST", "IS", "annual"): "0.880886",
-    ("COST", "BS", "annual"): "0.830592",
-    ("COST", "CF", "annual"): "0.867168",
-    ("COST", "IS", "quarterly"): "0.874269",
-    ("COST", "CF", "quarterly"): "0.804233",
-    ("DE", "IS", "annual"): "0.803324",
-    ("DE", "CF", "annual"): "0.934837",
-    ("DE", "IS", "quarterly"): "0.791830",
-    ("DE", "BS", "quarterly"): "0.593284",
-    ("DE", "CF", "quarterly"): "0.914712",
-}
-
-
-# M7b S4: Deere's "Accounts payable and accrued expenses" fills `change_payables` as a combined
-# line in every year (19 annual cells, the quarters derived from them). Nothing else moves.
-STRICT_AFTER_S4 = {
-    ("DE", "CF", "annual"): "0.982456",
-    ("DE", "CF", "quarterly"): "0.962331",
+# The strict fraction of every table of the four companies, and its no_filing_data cells, pinned.
+# It has moved three times (docs/erd/data-coverage.md, the "What S<n> built" blocks): S2's anchor
+# rule (the balance sheet's first year, comparatives only, became no_filing_data); S4's combined
+# fill of Deere's `change_payables`; and S5's seven new rows, which add their cells to every table
+# of their statement while a company that never reports one leaves all of them empty. The cells of
+# the rows that existed before do not change (`test_mapping_baseline_guard.py`).
+STRICT = {  # (ticker, statement, freq): (strict fraction, no_filing_data cells)
+    ("AAPL", "IS", "annual"): ("0.902632", 0),
+    ("AAPL", "BS", "annual"): ("0.815951", 32),
+    ("AAPL", "CF", "annual"): ("0.908467", 0),
+    ("AAPL", "IS", "quarterly"): ("0.872535", 0),
+    ("AAPL", "BS", "quarterly"): ("0.787611", 70),
+    ("AAPL", "CF", "quarterly"): ("0.889161", 0),
+    ("MSFT", "IS", "annual"): ("0.915789", 0),
+    ("MSFT", "BS", "annual"): ("0.890076", 29),
+    ("MSFT", "CF", "annual"): ("0.819222", 0),
+    ("MSFT", "IS", "quarterly"): ("0.900000", 0),
+    ("MSFT", "BS", "quarterly"): ("0.880208", 96),
+    ("MSFT", "CF", "quarterly"): ("0.762681", 0),
+    ("COST", "IS", "annual"): ("0.836842", 0),
+    ("COST", "BS", "annual"): ("0.770468", 0),
+    ("COST", "CF", "annual"): ("0.876430", 0),
+    ("COST", "IS", "quarterly"): ("0.830556", 0),
+    ("COST", "BS", "quarterly"): ("0.750704", 105),
+    ("COST", "CF", "quarterly"): ("0.816425", 0),
+    ("DE", "IS", "annual"): ("0.763158", 0),
+    ("DE", "BS", "annual"): ("0.570552", 32),
+    ("DE", "CF", "annual"): ("0.979405", 0),
+    ("DE", "IS", "quarterly"): ("0.752239", 0),
+    ("DE", "BS", "quarterly"): ("0.565506", 0),
+    ("DE", "CF", "quarterly"): ("0.878650", 0),
 }
 
 
 @pytest.mark.parametrize("ticker", TICKERS)
-def test_the_strict_fraction_moves_only_through_the_anchor_rule(ticker: str) -> None:
+def test_the_strict_fraction_of_every_table_is_pinned(ticker: str) -> None:
     pipeline = run_pipeline(ticker)
     mapped = set(pipeline.mappings["canonical_code"])
 
@@ -523,17 +576,11 @@ def test_the_strict_fraction_moves_only_through_the_anchor_rule(ticker: str) -> 
             result = table_coverage(
                 t, pipeline.items, mapped, t.rule_warnings, annual=pipeline.annual[statement]
             )
-            key = (ticker, statement, freq)
-            if key in STRICT_AFTER_ANCHORS:
-                _, now, no_data = STRICT_AFTER_ANCHORS[key]
-                assert (result.fraction, result.empty_by_cause["no_filing_data"]) == (
-                    Decimal(now),
-                    no_data,
-                ), key
-            else:
-                expected = STRICT_AFTER_S4.get(key, STRICT_BEFORE[key])
-                assert result.fraction == Decimal(expected), key
-                assert result.empty_by_cause["no_filing_data"] == 0, key
+            now, no_data = STRICT[(ticker, statement, freq)]
+            assert (result.fraction, result.empty_by_cause["no_filing_data"]) == (
+                Decimal(now),
+                no_data,
+            ), (ticker, statement, freq)
 
 
 def test_the_fixtures_have_lease_years_before_asc_842_and_annual_only_quarters() -> None:
@@ -549,6 +596,7 @@ def test_the_fixtures_have_lease_years_before_asc_842_and_annual_only_quarters()
     assert {code for (code, _), cause in lease.items() if cause == "not_applicable"} == {
         "operating_lease_rou",
         "operating_lease_liabilities_noncurrent",
+        "pension_liabilities",  # M7b S5: Apple reports no defined benefit plan line in any year
     }
     assert quarters.empty_by_cause["annual_only"] > 0
 

@@ -27,6 +27,7 @@ codes:
   DebtProceeds: debt_issued
   DebtRepayments: debt_repaid
   DeferredIncomeTaxCF: deferred_taxes
+  DeferredRevenueNonCurrent: deferred_revenue_noncurrent
   DeferredRevenueCurrent: deferred_revenue_current
   DepreciationAmortizationCF: d_and_a
   EarningsPerShareBasic: eps_basic
@@ -36,6 +37,7 @@ codes:
   GrossProfit: gross_profit
   IntangibleAssets: intangibles
   InterestExpense: interest_expense
+  InterestIncome: interest_income
   Inventories: inventory
   InvestmentProceeds: sales_maturities_of_investments
   InvestmentPurchases: purchases_of_investments
@@ -50,6 +52,7 @@ codes:
   OperatingIncomeLoss: operating_income
   OperatingLeaseNonCurrentDebtEquivalent: operating_lease_liabilities_noncurrent
   OperatingLeaseRightOfUseAsset: operating_lease_rou
+  PensionObligations: pension_liabilities
   PlantPropertyEquipmentNet: ppe_net
   PretaxIncomeLoss: pretax_income
   ProceedsFromMaturitiesOfInvestments: sales_maturities_of_investments
@@ -105,11 +108,10 @@ unmapped:
   DeferredCompensationNonCurrent: "inside other noncurrent liabilities"
   DeferredIncomeTaxExpense: "tax-note components (federal, state), not the cash-flow add-back"
   DeferredPolicyAcquisitionCosts: "insurance-specific"
-  DeferredRevenueNonCurrent: "noncurrent deferred revenue, no canonical line"
   DeferredTaxCurrentAssets: "deferred-tax detail, no canonical line"
   DeferredTaxCurrentLiabilities: "deferred-tax detail, no canonical line"
-  DeferredTaxNonCurrentLiabilities: "deferred-tax detail, no canonical line"
-  DeferredTaxNoncurrentAssets: "deferred-tax detail, no canonical line"
+  DeferredTaxNonCurrentLiabilities: "groups every tax-note component (gross balances, carryforwards); the balance-sheet line deferred_tax_liabilities is mapped by its defaults (M7b S5)"
+  DeferredTaxNoncurrentAssets: "groups every tax-note component (gross balances, carryforwards); the balance-sheet line deferred_tax_assets is mapped by its defaults (M7b S5)"
   DefinedBenefitPlanAssets: "pension note detail"
   DefinedBenefitPlanObligations: "pension note detail"
   DefiniteLivedOperatingProvisions(DecommissioningEtc): "provisions, inside other noncurrent liabilities"
@@ -149,9 +151,8 @@ unmapped:
   IncomeTaxReceivable: "inside other assets"
   IncomeTaxes: "mixes tax expense, taxes paid and deferred-tax detail; income_tax needs the expense line"
   IntangibleAssetsGross: "gross of amortization; intangibles is net"
-  InterestAndDividendIncome: "inside other non-operating income"
+  InterestAndDividendIncome: "interest and dividends together, wider than interest_income (M7b S5)"
   InterestExpenseDeposits: "bank-specific"
-  InterestIncome: "inside other non-operating income"
   InvestmentsEquityMethod: "inside other noncurrent assets"
   LaborExpenses: "an expense detail, no canonical line"
   LicensingRevenue: "a revenue breakdown, no canonical line"
@@ -201,7 +202,6 @@ unmapped:
   PaymentsOfDebtIssuanceCosts: "inside other financing"
   PensionAndRetirementAdjustments: "other comprehensive income detail"
   PensionExpense: "pension detail, no canonical line"
-  PensionObligations: "inside other noncurrent liabilities"
   PolicyBenefitsAndClaims: "insurance-specific"
   PreferredDividendExpense: "preferred dividends, no canonical line"
   PreferredStock: "inside other equity"

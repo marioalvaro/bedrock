@@ -1203,3 +1203,28 @@ def test_one_put_can_hold_an_annual_and_a_quarterly_row_of_the_same_driver(
     twice = DriverRowInput("tax_rate", "value", [(annual_year, D("0.2"))])
     with pytest.raises(InvalidDrivers, match="tax_rate is given twice"):
         put_drivers(db_session, aapl, main.id, "bull", [annual, twice], NOW)
+
+
+def test_the_history_a_forecast_reads_folds_the_new_rows_into_their_residuals(
+    db_session: Session, aapl: Company
+) -> None:
+    """M7b S5: `deferred_tax_liabilities` (and the other folded rows) are added back into
+    `other_noncurrent_liabilities`, so the forecast reads the residual it read before the row."""
+    from bedrock.services.statements import statement_tables
+
+    history = load_history(db_session, aapl)
+    shown = statement_tables(db_session, aapl, [("BS", "annual")], "normalized")[("BS", "annual")]
+
+    codes = {r.code for t in history.annual.values() for r in t.rows}
+    assert "deferred_tax_liabilities" not in codes and "interest_income" not in codes
+    assert {"cash_taxes_paid", "cash_interest_paid"} <= codes  # memo rows stay
+    key = "FY2015"
+    row = {r.code: r.values[[p.key for p in shown.periods].index(key)] for r in shown.rows}
+    folded = history.annual_values.get("other_noncurrent_liabilities", key)
+    assert row["deferred_tax_liabilities"] is not None
+    assert folded == (
+        row["other_noncurrent_liabilities"]
+        + row["deferred_tax_liabilities"]
+        + (row["deferred_revenue_noncurrent"] or 0)
+        + (row["pension_liabilities"] or 0)
+    )

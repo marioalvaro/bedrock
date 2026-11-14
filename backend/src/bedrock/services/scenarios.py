@@ -46,6 +46,7 @@ from bedrock.forecast.history import (
     ScenarioSettings,
     SeriesHistory,
     default_drivers,
+    fold_rows,
     forecast_years,
     historical_drivers,
     historical_quarter_drivers,
@@ -76,7 +77,7 @@ from bedrock.services.errors import (
     ScenarioConflict,
     ScenarioNotFound,
 )
-from bedrock.services.statements import statement_tables
+from bedrock.services.statements import canonical_items, statement_tables
 from bedrock.services.year_modes import (
     built_from_quarters,
     check_mode_rules,
@@ -198,9 +199,11 @@ def load_history(session: Session, company: Company, as_of: date | None = None) 
         else:
             quarter_values[v.series_id][(v.fiscal_year, v.fiscal_period)] = v.value
     annual_periods = tables[("IS", "annual")].periods
+    items = canonical_items()
     return ForecastHistory(
-        annual={s: tables[(s, "annual")] for s in STATEMENTS},
-        quarterly={s: tables[(s, "quarterly")] for s in STATEMENTS},
+        # M7b S5: new rows go back into their residuals, so the forecast reads what it read before
+        annual=fold_rows({s: tables[(s, "annual")] for s in STATEMENTS}, items),
+        quarterly=fold_rows({s: tables[(s, "quarterly")] for s in STATEMENTS}, items),
         segment_series=tuple(
             SeriesHistory(
                 s.id, s.dimension, s.name, s.metric, s.unit, fy_values[s.id], quarter_values[s.id]

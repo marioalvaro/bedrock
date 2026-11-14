@@ -3,7 +3,7 @@ opening period and the forecast years (docs/erd/forecasting.md "Drivers (M4)", "
 periods"). Pure."""
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from decimal import Decimal
 from enum import Enum
@@ -25,7 +25,8 @@ from bedrock.forecast.drivers import (
     segment_id,
 )
 from bedrock.forecast.errors import ForecastUnavailable
-from bedrock.statements.build import StatementTable
+from bedrock.mapping.config import CanonicalItemDef, parse_formula
+from bedrock.statements.build import Row, StatementTable
 from bedrock.statements.periods import Period
 
 HISTORY_YEARS = 5  # shown beside the forecast years
@@ -103,6 +104,58 @@ class StatementValues:
 
     def get(self, code: str, key: str) -> Decimal | None:
         return self.cells.get((code, key))
+
+
+def fold_rows(
+    tables: Mapping[str, StatementTable], items: Sequence[CanonicalItemDef]
+) -> dict[str, StatementTable]:
+    """The tables with every `forecast_fold` row added back into its residual and dropped
+    (docs/erd/data-coverage.md "New canonical rows"), so the forecast reads the residuals it read
+    before the row existed. A residual cell takes the row's value back as its formula took it out
+    (`- row` adds it, `+ row` subtracts it); an empty row leaves the cell as it is, an empty
+    residual stays empty, and the residual keeps its provenance. A folded residual's YoY and
+    common-size are cleared: the forecast reads values only."""
+    by_code = {item.code: item for item in items}
+    weights: dict[str, tuple[str, int]] = {}  # row -> (residual, the row's sign in its formula)
+    for item in items:
+        if item.forecast_fold is not None:  # `mapping/config.py` checks the formula holds the row
+            formula = parse_formula(by_code[item.forecast_fold].derive or "")
+            weight = next(w for w, operand in formula if operand == item.code)
+            weights[item.code] = (item.forecast_fold, weight)
+    return {statement: _fold_table(table, weights) for statement, table in tables.items()}
+
+
+def _fold_table(table: StatementTable, weights: Mapping[str, tuple[str, int]]) -> StatementTable:
+    by_code = {row.code: row for row in table.rows}
+    # a row folds only beside its residual: without it, it stays rather than losing its value
+    folded = {
+        code: target
+        for code, (target, _) in weights.items()
+        if code in by_code and target in by_code
+    }
+    if not folded:
+        return table
+    sums: dict[str, list[Decimal | None]] = {}
+    for code, target in folded.items():
+        current = sums.setdefault(target, list(by_code[target].values))
+        weight = weights[code][1]
+        current[:] = [
+            _unfold(total, value, weight)
+            for total, value in zip(current, by_code[code].values, strict=True)
+        ]
+    rows = [_folded_row(row, sums[row.code]) if row.code in sums else row for row in table.rows]
+    return replace(table, rows=[row for row in rows if row.code not in folded])
+
+
+def _unfold(total: Decimal | None, value: Decimal | None, weight: int) -> Decimal | None:
+    if total is None or value is None:
+        return total
+    return total - weight * value
+
+
+def _folded_row(row: Row, values: list[Decimal | None]) -> Row:
+    empty: list[Decimal | None] = [None] * len(values)
+    return replace(row, values=values, yoy=empty, common_size=list(empty))
 
 
 def opening_period(history: ForecastHistory) -> Period:

@@ -177,6 +177,17 @@ def test_the_shipped_crosswalk_covers_every_concept_of_the_vendored_table() -> N
         ),
         ("ifrs-full", "Assets", ["total_assets"]),
         ("us-gaap", "CashAndCashEquivalentsAtCarryingValue", []),  # cash + investments bucket
+        # M7b S5: the new rows get the hints of their standard tags
+        # the standard deferred-tax tags group every tax-note component: no hint (crosswalk reason)
+        ("us-gaap", "DeferredIncomeTaxAssetsNet", []),
+        ("us-gaap", "DeferredTaxLiabilitiesNoncurrent", []),
+        ("us-gaap", "InvestmentIncomeInterest", []),  # its tag is interest and dividends
+        ("us-gaap", "DeferredRevenueNoncurrent", ["deferred_revenue_noncurrent"]),
+        (
+            "us-gaap",
+            "PensionAndOtherPostretirementDefinedBenefitPlansLiabilitiesNoncurrent",
+            ["pension_liabilities"],
+        ),
     ],
 )
 def test_shipped_candidates_for_known_concepts(

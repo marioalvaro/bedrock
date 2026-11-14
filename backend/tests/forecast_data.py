@@ -9,7 +9,7 @@ from functools import cache
 from sqlalchemy.orm import Session
 
 from bedrock.forecast.drivers import drivers_for
-from bedrock.forecast.history import FLAT, Flat, ForecastHistory, SeriesHistory
+from bedrock.forecast.history import FLAT, Flat, ForecastHistory, SeriesHistory, fold_rows
 from bedrock.forecast.resolve import Resolved, ResolvedDrivers
 from bedrock.mapping.config import CanonicalItemDef, load_canonical_items
 from bedrock.repositories import engines as engines_repo
@@ -108,9 +108,9 @@ def fixture_history(ticker: str, as_of: date | None = None) -> ForecastHistory:
     known on `as_of` when given."""
     pipeline = run_pipeline(ticker, as_of)
     periods = pipeline.annual["IS"].periods
-    return ForecastHistory(
-        annual=pipeline.annual,
-        quarterly=pipeline.quarterly,
+    return ForecastHistory(  # folded as `services/scenarios.py::load_history` folds it (M7b S5)
+        annual=fold_rows(pipeline.annual, pipeline.items),
+        quarterly=fold_rows(pipeline.quarterly, pipeline.items),
         segment_series=(),
         latest_fy_end=periods[-1].end if periods else None,
     )

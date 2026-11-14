@@ -50,8 +50,27 @@ NEW_ITEMS = frozenset(
         "long_term_debt_current",
         "operating_lease_liabilities_total",
         "operating_lease_liabilities_current",
+        # M7b S5: the new canonical rows (docs/erd/data-coverage.md "New canonical rows")
+        "interest_income",
+        "deferred_tax_assets",
+        "deferred_revenue_noncurrent",
+        "deferred_tax_liabilities",
+        "pension_liabilities",
+        "cash_taxes_paid",
+        "cash_interest_paid",
     }
 )
+
+
+def siblings_taken_out(ticker: str, residual: str) -> list[str]:
+    """The lines whose value a residual cell may lose, by exactly that value: a combined fill of S4
+    (`RESIDUALS_FOLLOWING_A_FILL`) and the M7b S5 rows that fold back into it (`forecast_fold`),
+    which the residual's formula now subtracts."""
+    from bedrock.mapping.config import load_canonical_items
+
+    combined = RESIDUALS_FOLLOWING_A_FILL.get((ticker, residual))
+    new_rows = [i.code for i in load_canonical_items() if i.forecast_fold == residual]
+    return ([combined] if combined else []) + new_rows
 
 
 def current_cells(
@@ -112,14 +131,17 @@ def test_no_non_empty_cell_changes_or_empties(ticker: str) -> None:
         for statement, codes in statements.items():
             for code, periods in codes.items():
                 after = now.get(freq, {}).get(statement, {}).get(code, {})
-                sibling = RESIDUALS_FOLLOWING_A_FILL.get((ticker, code))
-                filled = now.get(freq, {}).get(statement, {}).get(sibling or "", {})
+                filled = [
+                    now.get(freq, {}).get(statement, {}).get(sibling, {})
+                    for sibling in siblings_taken_out(ticker, code)
+                ]
                 for period, before in periods.items():
                     if (ticker, freq, code, period) in RESIDUALS_ALLOWED_TO_CHANGE:
                         continue
-                    if period in filled and period in after:
-                        # residual = subtotal - ... - sibling: the fill moves it by the sibling
-                        expected = Decimal(before) - Decimal(filled[period][0])
+                    taken = [Decimal(f[period][0]) for f in filled if period in f]
+                    if taken and period in after:
+                        # residual = subtotal - ... - sibling: each fill moves it by the sibling
+                        expected = Decimal(before) - sum(taken, Decimal(0))
                         if not same(str(expected), after[period][0]):
                             changed.append(
                                 f"{ticker} {freq} {code} {period}: {before} -> "

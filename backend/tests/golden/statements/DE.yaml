@@ -112,6 +112,13 @@ expected_missing:
 # Concepts of the latest 10-K that the edgartools table recognizes but Bedrock does not map, each a
 # decision (map-xbrl run of 2026-10-14). test_mapping_coverage.py fails on a concept not listed here and
 # on a listed one that is mapped or gone.
+  interest_income: "M7b S5: Deere's InvestmentIncomeInterest is the finance arm's interest inside revenue, excluded in its override"
+  deferred_tax_assets: "M7b S5: FY2007-13 the net deferred tax asset is untagged (only the tax note's gross DeferredTaxAssetsNet)"
+  deferred_tax_liabilities: "M7b S5: FY2007-13 the net deferred tax liability is untagged (only the tax note's gross DeferredTaxLiabilities)"
+  deferred_revenue_noncurrent: "M7b S5: no non-current deferred revenue line"
+  pension_liabilities: "M7b S5: no noncurrent pension or postretirement liability tag in companyfacts"
+  cash_taxes_paid: "M7b S5: FY2007 not tagged"
+  cash_interest_paid: "M7b S5: FY2007 not tagged"
 acknowledged_unmapped:
   us-gaap:AccountsPayableAndAccruedLiabilitiesCurrentAndNoncurrent: "the balance-sheet line combines payables and accruals (13,909 in FY2025), so it is not accounts payable"
   us-gaap:AvailableForSaleSecuritiesDebtMaturitiesWithoutSingleMaturityDateFairValue: "investment-note maturity bucket (234 in FY2025), not a balance-sheet line"
@@ -123,7 +130,6 @@ acknowledged_unmapped:
   us-gaap:FinanceLeaseLiabilityUndiscountedExcessAmount: "lease maturity-note detail (undiscounted excess), not a balance-sheet line"
   us-gaap:IncomeLossFromContinuingOperationsBeforeIncomeTaxesDomestic: "domestic part of pretax income (2,700 against 6,257 consolidated), mapped as the total"
   us-gaap:IncreaseDecreaseInIncomeTaxesPayableNetOfIncomeTaxesReceivable: "change in income taxes payable or receivable, a separate cash-flow line, not trade receivables"
-  us-gaap:InterestPaidNet: "cash paid for interest (3,080 in FY2025), a supplemental disclosure, not the expense line (3,170, mapped)"
   us-gaap:InventoryFinishedGoodsNetOfReserves: "component of inventories in the inventory note; the total is mapped"
   us-gaap:InventoryLIFOReserve: "inventory-note adjustment (2,721 in FY2025), not a balance-sheet line"
   us-gaap:InventoryRawMaterialsAndSuppliesNetOfReserves: "component of inventories in the inventory note; the total is mapped"

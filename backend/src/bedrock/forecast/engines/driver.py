@@ -63,7 +63,16 @@ BALANCE_LINES = (
     + PARENT_EQUITY
     + ("nci",)
 )
-NOT_FORECAST = frozenset({"goodwill_impairment", "shares_issued", "treasury_shares"})
+# History lines with no driver; M7b S5's supplemental cash lines (memo) among them
+NOT_FORECAST = frozenset(
+    {
+        "goodwill_impairment",
+        "shares_issued",
+        "treasury_shares",
+        "cash_taxes_paid",
+        "cash_interest_paid",
+    }
+)
 EPS = frozenset({"eps_diluted", "eps_basic"})
 SHARE_LINES = ("shares_diluted", "shares_basic", "shares_outstanding")
 ZERO_CF = (

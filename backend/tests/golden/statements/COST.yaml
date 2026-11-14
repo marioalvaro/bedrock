@@ -106,7 +106,14 @@ expected_missing:
 # Concepts of the latest 10-K that the edgartools table recognizes but Bedrock does not map, each a
 # decision (map-xbrl run of 2026-10-09). test_mapping_coverage.py fails on a concept not listed here and
 # on a listed one that is mapped or gone.
+  interest_income: "M7b S5: Costco reports interest and other income together (InterestAndOtherIncome), a wider measure"
+  deferred_tax_assets: "M7b S5: FY2008 not tagged; from FY2018 no noncurrent deferred tax asset tag (inside other long-term assets)"
+  deferred_tax_liabilities: "M7b S5: FY2008 not tagged; from FY2022 no net deferred tax liability tag (inside other long-term liabilities)"
+  deferred_revenue_noncurrent: "M7b S5: no non-current deferred revenue line"
+  pension_liabilities: "M7b S5: no defined benefit plan liability line"
+  cash_interest_paid: "M7b S5: FY2019 only InterestPaid (includes capitalized interest, not a default)"
 acknowledged_unmapped:
+  us-gaap:InterestAndOtherIncome: "interest and other income on one line, wider than interest income (M7b S5)"
   us-gaap:AvailableForSaleSecuritiesDebtMaturitiesAfterFiveThroughTenYearsFairValue: "investments-note maturity detail, not a balance-sheet line"
   us-gaap:AvailableForSaleSecuritiesDebtSecurities: "investments-note total of debt securities; the balance-sheet investment lines are mapped"
   us-gaap:BuildingsAndImprovementsGross: "property-note component, gross of depreciation; ppe_net is the net balance-sheet line"
@@ -119,7 +126,6 @@ acknowledged_unmapped:
   us-gaap:HeldToMaturitySecurities: "investments-note component, not a balance-sheet line"
   us-gaap:IncomeLossAttributableToParent: "equals income before taxes every year (12,251 in FY2026), not net income (9,226), which is mapped"
   us-gaap:IncomeLossFromContinuingOperationsBeforeIncomeTaxesDomestic: "domestic part of income before taxes (tax note); pretax_income is the total"
-  us-gaap:InterestPaidNet: "supplemental cash disclosure of interest paid, not the expense"
   us-gaap:Land: "property-note component; ppe_net is the net balance-sheet line"
   us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalAfterYearFive: "debt maturity schedule, not a balance-sheet line"
   us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInNextTwelveMonths: "debt maturity schedule, not a balance-sheet line"

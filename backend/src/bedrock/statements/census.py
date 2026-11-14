@@ -99,7 +99,10 @@ def census(
     `table_coverage` for `annual_only`. `mapped_codes` and `warnings` are those `table_coverage`
     takes. Bucket definitions:
     - `statement_not_presented`: `table_coverage`'s `no_filing_data`;
-    - `not_applicable`: `table_coverage`'s `not_applicable` (M7b S2);
+    - `not_applicable`: `table_coverage`'s `not_applicable` for a line with a value in the table
+      (M7b S2, before a standard's first value). A line the company never reports is
+      `not_applicable` in coverage too (M7b S5) but keeps its bucket below (`candidate_exists`,
+      `never_any_value`, ...), so the census still shows what could be mapped;
     - `included_in`: `table_coverage`'s `included_in` (M7b S4: inside a combined line);
     - `rule_rejected`: `table_coverage`'s `rule_rejected`;
     - `cascade`: the line is computed (it has a `derive`), so an operand is empty too;
@@ -176,7 +179,7 @@ def _buckets(
         bucket: Bucket
         if cause == "no_filing_data":
             bucket = "statement_not_presented"
-        elif cause == "not_applicable":
+        elif cause == "not_applicable" and any(v is not None for v in values):
             bucket = "not_applicable"
         elif cause == "included_in":
             bucket = "included_in"

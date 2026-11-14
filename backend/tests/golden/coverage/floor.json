@@ -1,82 +1,82 @@
 {
  "AAPL": {
-  "BS/annual": 87,
-  "BS/quarterly": 85,
-  "CF/annual": 92,
-  "CF/quarterly": 91,
-  "IS/annual": 95,
-  "IS/quarterly": 91
- },
- "BA": {
-  "BS/annual": 92,
-  "BS/quarterly": 90,
+  "BS/annual": 81,
+  "BS/quarterly": 78,
   "CF/annual": 90,
-  "CF/quarterly": 83,
-  "IS/annual": 85,
-  "IS/quarterly": 84
- },
- "COST": {
-  "BS/annual": 83,
-  "BS/quarterly": 83,
-  "CF/annual": 86,
-  "CF/quarterly": 80,
-  "IS/annual": 88,
+  "CF/quarterly": 88,
+  "IS/annual": 90,
   "IS/quarterly": 87
  },
- "DE": {
-  "BS/annual": 60,
-  "BS/quarterly": 59,
-  "CF/annual": 98,
-  "CF/quarterly": 96,
-  "IS/annual": 80,
-  "IS/quarterly": 79
+ "BA": {
+  "BS/annual": 89,
+  "BS/quarterly": 88,
+  "CF/annual": 86,
+  "CF/quarterly": 75,
+  "IS/annual": 81,
+  "IS/quarterly": 80
  },
- "JNJ": {
-  "BS/annual": 79,
-  "BS/quarterly": 72,
-  "CF/annual": 95,
-  "CF/quarterly": 94,
+ "COST": {
+  "BS/annual": 77,
+  "BS/quarterly": 75,
+  "CF/annual": 87,
+  "CF/quarterly": 81,
+  "IS/annual": 83,
+  "IS/quarterly": 83
+ },
+ "DE": {
+  "BS/annual": 57,
+  "BS/quarterly": 56,
+  "CF/annual": 97,
+  "CF/quarterly": 87,
   "IS/annual": 76,
   "IS/quarterly": 75
  },
+ "JNJ": {
+  "BS/annual": 78,
+  "BS/quarterly": 71,
+  "CF/annual": 95,
+  "CF/quarterly": 86,
+  "IS/annual": 77,
+  "IS/quarterly": 76
+ },
  "MSFT": {
-  "BS/annual": 93,
-  "BS/quarterly": 92,
-  "CF/annual": 84,
-  "CF/quarterly": 83,
-  "IS/annual": 96,
-  "IS/quarterly": 94
+  "BS/annual": 89,
+  "BS/quarterly": 88,
+  "CF/annual": 81,
+  "CF/quarterly": 76,
+  "IS/annual": 91,
+  "IS/quarterly": 90
  },
  "NFLX": {
-  "BS/annual": 68,
-  "BS/quarterly": 67,
+  "BS/annual": 61,
+  "BS/quarterly": 60,
   "CF/annual": 73,
-  "CF/quarterly": 67,
-  "IS/annual": 85,
-  "IS/quarterly": 85
+  "CF/quarterly": 61,
+  "IS/annual": 81,
+  "IS/quarterly": 80
  },
  "NKE": {
-  "BS/annual": 71,
-  "BS/quarterly": 71,
-  "CF/annual": 80,
-  "CF/quarterly": 76,
-  "IS/annual": 73,
+  "BS/annual": 65,
+  "BS/quarterly": 65,
+  "CF/annual": 82,
+  "CF/quarterly": 69,
+  "IS/annual": 72,
   "IS/quarterly": 72
  },
  "ORCL": {
   "BS/annual": 74,
-  "BS/quarterly": 71,
-  "CF/annual": 83,
-  "CF/quarterly": 81,
-  "IS/annual": 80,
-  "IS/quarterly": 71
+  "BS/quarterly": 69,
+  "CF/annual": 82,
+  "CF/quarterly": 74,
+  "IS/annual": 81,
+  "IS/quarterly": 72
  },
  "WMT": {
-  "BS/annual": 73,
-  "BS/quarterly": 73,
-  "CF/annual": 86,
-  "CF/quarterly": 74,
-  "IS/annual": 84,
-  "IS/quarterly": 84
+  "BS/annual": 67,
+  "BS/quarterly": 67,
+  "CF/annual": 85,
+  "CF/quarterly": 67,
+  "IS/annual": 85,
+  "IS/quarterly": 85
  }
 }

@@ -58,3 +58,8 @@ gross_profit:
 # corporate expenses and taxes, so it is not the canonical line. Operating income stays empty.
 operating_income:
   exclude: [us-gaap:OperatingIncomeLoss]
+# Deere tags the finance arm's interest earned as InvestmentIncomeInterest (FY2017 1,575, inside
+# "Finance and interest income" of 2,731.5 in revenue), not interest on nonoperating securities, so the
+# default is a different measure here (M7b S5). Interest income stays empty.
+interest_income:
+  exclude: [us-gaap:InvestmentIncomeInterest]

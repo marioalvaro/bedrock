@@ -90,10 +90,10 @@ IncomeLossAttributableToParent:
   {type: rejected, codes: [net_income_common], reason: "income before taxes attributable to the parent (Costco 12,251 in FY2026, equal to pretax income every year), not net income (9,226); checked with map-xbrl 2026-10-25"}
 IncreaseDecreaseInIncomeTaxesPayableNetOfIncomeTaxesReceivable:
   {type: rejected, codes: [change_receivables], reason: "change in income taxes payable or receivable, a separate cash-flow line, not trade receivables"}
+InterestAndOtherIncome:
+  {type: rejected, codes: [interest_income], reason: "interest and other income on one line (Costco), wider than interest on nonoperating securities (M7b S5)"}
 InterestPaid:
-  {type: rejected, codes: [interest_expense], reason: "cash paid for interest (a supplemental disclosure), not the expense"}
-InterestPaidNet:
-  {type: rejected, codes: [interest_expense], reason: "cash paid for interest, net of amounts capitalized (a supplemental disclosure), not the expense"}
+  {type: rejected, codes: [interest_expense, cash_interest_paid], reason: "cash paid for interest including capitalized interest (a supplemental disclosure): not the expense, and wider than cash_interest_paid, which is net of capitalized interest (JNJ FY2012 576 against 492; M7b S5)"}
 PropertySubjectToOrAvailableForOperatingLeaseAccumulatedDepreciation:
   {type: rejected, codes: [inventory], reason: "accumulated depreciation of Deere's equipment on operating leases (note), not inventory"}
 PropertySubjectToOrAvailableForOperatingLeaseGross:

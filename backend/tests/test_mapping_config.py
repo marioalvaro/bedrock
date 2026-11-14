@@ -4,6 +4,7 @@ import pytest
 
 from bedrock.mapping.config import (
     DEFAULT_ITEMS_PATH,
+    MEMO_CODES,
     CanonicalItemDef,
     MappingConfigError,
     formula_order,
@@ -436,10 +437,10 @@ def test_load_overrides_rejects_unknown_codes_and_duplicates(tmp_path: Path) -> 
         load_overrides(tmp_path, "Y", items)
 
 
-def test_shipped_canonical_items_load_with_88_codes() -> None:
+def test_shipped_canonical_items_load_with_95_codes() -> None:
     items = load_canonical_items(DEFAULT_ITEMS_PATH)
 
-    assert len(items) == 88  # M7b S4 adds the four scope totals
+    assert len(items) == 95  # M7b S4 adds the four scope totals, S5 the seven new rows
     assert {i.statement for i in items} == {"IS", "BS", "CF"}
     by_code = {i.code: i for i in items}
     assert by_code["eps_diluted"].kind == "average"
@@ -1044,3 +1045,221 @@ def test_a_combined_default_can_be_excluded_by_its_concept(tmp_path: Path) -> No
     assert load_excludes(tmp_path, "ACME", items) == {
         "accounts_payable": ["us-gaap:AccountsPayableAndAccruedLiabilitiesCurrent"]
     }
+
+
+# --- M7b S5: new rows folded back into their residual for the forecast (docs/erd/data-coverage.md,
+# "New canonical rows") ---------------------------------------------------------------------------
+
+FOLD = """
+- code: total_current_assets
+  statement: BS
+  label: Total current assets
+  kind: instant
+  unit: USD
+  sign: 1
+  concepts: [AssetsCurrent]
+- code: cash
+  statement: BS
+  label: Cash
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_current_assets
+  concepts: [Cash]
+- code: prepaid
+  statement: BS
+  label: Prepaid
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_current_assets
+  concepts: [PrepaidExpenseCurrent]
+  forecast_fold: other_current_assets
+- code: other_current_assets
+  statement: BS
+  label: Other current assets
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_current_assets
+  residual: true
+  derive: total_current_assets - cash - prepaid
+- code: revenue
+  statement: IS
+  label: Revenue
+  kind: flow
+  unit: USD
+  sign: 1
+  concepts: [Revenues]
+- code: other_income
+  statement: IS
+  label: Other
+  kind: flow
+  unit: USD
+  sign: 1
+  residual: true
+  derive: revenue
+"""
+
+
+def test_forecast_fold_names_the_residual_a_new_row_folds_into(tmp_path: Path) -> None:
+    items = {i.code: i for i in load_canonical_items(write(tmp_path, FOLD))}
+
+    assert items["prepaid"].forecast_fold == "other_current_assets"
+    assert items["cash"].forecast_fold is None
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "code"),
+    [
+        # not a code
+        ("forecast_fold: other_current_assets", "forecast_fold: [other_current_assets]", "prepaid"),
+        # an unknown code
+        ("forecast_fold: other_current_assets", "forecast_fold: nowhere", "prepaid"),
+        # not a residual
+        ("forecast_fold: other_current_assets", "forecast_fold: cash", "prepaid"),
+        # a residual on another statement
+        ("forecast_fold: other_current_assets", "forecast_fold: other_income", "prepaid"),
+        # a residual whose formula does not hold the row
+        (
+            "derive: total_current_assets - cash - prepaid",
+            "derive: total_current_assets - cash",
+            "prepaid",
+        ),
+        # a row with no parent (a memo row)
+        (
+            "parent: total_current_assets\n  concepts: [PrepaidExpenseCurrent]",
+            "concepts: [PrepaidExpenseCurrent]",
+            "prepaid",
+        ),
+        # a computed row
+        ("concepts: [PrepaidExpenseCurrent]", "derive: cash", "prepaid"),
+    ],
+)  # fmt: skip
+def test_a_misplaced_forecast_fold_is_rejected(
+    tmp_path: Path, old: str, new: str, code: str
+) -> None:
+    assert old in FOLD
+    error = fail_with(tmp_path, FOLD.replace(old, new))
+
+    assert error.code == code
+    assert "forecast_fold" in str(error)
+
+
+def test_forecast_fold_is_rejected_on_a_residual(tmp_path: Path) -> None:
+    text = FOLD.replace(
+        "derive: total_current_assets - cash - prepaid",
+        "derive: total_current_assets - cash - prepaid\n  forecast_fold: other_current_assets",
+    )
+
+    error = fail_with(tmp_path, text)
+
+    assert error.code == "other_current_assets"
+    assert "forecast_fold" in str(error)
+
+
+S5_ROWS = {  # code: (statement, parent, forecast_fold)
+    "interest_income": ("IS", "pretax_income", "other_nonoperating_income"),
+    "deferred_tax_assets": ("BS", "total_noncurrent_assets", "other_noncurrent_assets"),
+    "deferred_revenue_noncurrent": (
+        "BS",
+        "total_noncurrent_liabilities",
+        "other_noncurrent_liabilities",
+    ),
+    "deferred_tax_liabilities": (
+        "BS",
+        "total_noncurrent_liabilities",
+        "other_noncurrent_liabilities",
+    ),
+    "pension_liabilities": ("BS", "total_noncurrent_liabilities", "other_noncurrent_liabilities"),
+    "cash_taxes_paid": ("CF", None, None),
+    "cash_interest_paid": ("CF", None, None),
+}
+
+
+def test_shipped_items_add_the_s5_rows_under_their_parents_folded_for_the_forecast() -> None:
+    by_code = {i.code: i for i in load_canonical_items(DEFAULT_ITEMS_PATH)}
+
+    for code, (statement, parent, fold) in S5_ROWS.items():
+        assert (by_code[code].statement, by_code[code].parent) == (statement, parent), code
+        assert by_code[code].forecast_fold == fold, code
+        assert by_code[code].unit == "USD" and by_code[code].concepts, code
+    # only the S5 rows fold: the forecast models every other row
+    assert {c for c, i in by_code.items() if i.forecast_fold} == {
+        c for c, (_, _, fold) in S5_ROWS.items() if fold
+    }
+
+
+def test_the_s5_memo_rows_are_memo_codes_and_never_adjustable() -> None:
+    by_code = {i.code: i for i in load_canonical_items(DEFAULT_ITEMS_PATH)}
+
+    assert {"cash_taxes_paid", "cash_interest_paid"} <= MEMO_CODES
+    assert not is_adjustable(by_code["cash_taxes_paid"])
+    assert not is_adjustable(by_code["cash_interest_paid"])
+    assert by_code["cash_taxes_paid"].kind == by_code["cash_interest_paid"].kind == "flow"
+
+
+def test_the_residuals_take_the_s5_rows_out() -> None:
+    by_code = {i.code: i for i in load_canonical_items(DEFAULT_ITEMS_PATH)}
+
+    assert by_code["other_nonoperating_income"].derive == (
+        "pretax_income - operating_income + interest_expense - interest_income"
+    )
+    assert by_code["other_noncurrent_assets"].derive == (
+        "total_noncurrent_assets - ppe_net - operating_lease_rou - goodwill - intangibles"
+        " - long_term_investments - deferred_tax_assets"
+    )
+    assert by_code["other_noncurrent_liabilities"].derive == (
+        "total_noncurrent_liabilities - long_term_debt - operating_lease_liabilities_noncurrent"
+        " - deferred_revenue_noncurrent - deferred_tax_liabilities - pension_liabilities"
+    )
+    assert by_code["interest_income"].rolls_into == (("pretax_income", 1),)
+
+
+# --- M7b S5 (user, 2026-11-14): `required`, a line every company has: a gap even if never reported
+
+
+def test_required_defaults_to_false_and_reads_true(tmp_path: Path) -> None:
+    text = VALID.replace("concepts: [CostOfRevenue]", "concepts: [CostOfRevenue]\n  required: true")
+
+    items = {i.code: i for i in load_canonical_items(write(tmp_path, text))}
+
+    assert items["cost_of_revenue"].required is True
+    assert items["revenue"].required is False
+
+
+@pytest.mark.parametrize("value", ["maybe", "1", "[true]"])  # YAML reads `yes` as true
+def test_required_must_be_a_bool(tmp_path: Path, value: str) -> None:
+    text = VALID.replace(
+        "concepts: [CostOfRevenue]", f"concepts: [CostOfRevenue]\n  required: {value}"
+    )
+
+    error = fail_with(tmp_path, text)
+
+    assert error.code == "cost_of_revenue" and "required" in str(error)
+
+
+def test_required_is_rejected_on_a_residual(tmp_path: Path) -> None:
+    text = FOLD.replace(
+        "derive: total_current_assets - cash - prepaid",
+        "derive: total_current_assets - cash - prepaid\n  required: true",
+    )
+
+    error = fail_with(tmp_path, text)
+
+    assert error.code == "other_current_assets" and "required" in str(error)
+
+
+REQUIRED = {
+    "revenue", "cost_of_revenue", "gross_profit", "operating_income", "interest_expense",
+    "pretax_income", "income_tax", "net_income", "eps_diluted", "shares_diluted",
+    "cash", "total_assets", "short_term_debt", "long_term_debt", "total_debt",
+    "total_liabilities", "total_equity",
+    "cfo", "capex", "cfi", "cff", "free_cash_flow",
+}  # fmt: skip
+
+
+def test_the_shipped_required_lines_are_the_basic_ones() -> None:
+    items = load_canonical_items(DEFAULT_ITEMS_PATH)
+
+    assert {i.code for i in items if i.required} == REQUIRED

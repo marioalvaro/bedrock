@@ -76,7 +76,9 @@ def table_coverage(
     quarterly table needs it for `annual_only`. Causes, in `CAUSES` order:
     - `no_filing_data`: no anchor of the statement (`STATEMENT_ANCHORS`) has a value in the period;
     - `not_applicable`: the item `starts_with_standard` and the period is before the item's first
-      value in this table (an item with no value at all gets none);
+      value in this table; or (M7b S5, user 2026-11-14) the item is not `required` and has no value
+      in any period of this table, nor of `annual` for a quarterly table: a line the company never
+      reports. Such a line's `included_in` and `rule_rejected` cells keep those causes;
     - `included_in` (M7b S4): the cell's amount is inside a combined line (`Row.included_in`);
     - `structural`: the item has no formula and the company maps no concept to it;
     - `rule_rejected`: a rule warning names the cell (a Q4 cell: any period of its fiscal year,
@@ -93,6 +95,7 @@ def table_coverage(
         any(row.values[at] is not None for row in anchors) for at in range(len(table.periods))
     ]
     annual_filled = _annual_filled(annual) if table.freq == "quarterly" else set()
+    annual_codes = {code for code, _ in annual_filled}
 
     causes: dict[tuple[str, str], Cause] = {}
     provenance: Counter[str] = Counter()
@@ -100,6 +103,7 @@ def table_coverage(
         item = by_code[row.code]
         structural = item.derive is None and row.code not in mapped_codes
         first = next((at for at, v in enumerate(row.values) if v is not None), None)
+        never_reported = not item.required and first is None and row.code not in annual_codes
         quarter_years = (
             {p.fiscal_year for p, v in zip(table.periods, row.values, strict=True) if v is not None}
             if annual_filled
@@ -109,15 +113,20 @@ def table_coverage(
             if row.values[at] is not None:
                 provenance[row.provenance[at] or "reported"] += 1
                 continue
+            rejected = _rejected(
+                row.code, period.key, period.fiscal_year, period.fiscal_period, warned
+            )
             if not presented[at]:
                 cause: Cause = "no_filing_data"
             elif item.starts_with_standard and first is not None and at < first:
                 cause = "not_applicable"
             elif row.included_in[at] is not None:
                 cause = "included_in"
+            elif never_reported and not rejected:
+                cause = "not_applicable"
             elif structural:
                 cause = "structural"
-            elif _rejected(row.code, period.key, period.fiscal_year, period.fiscal_period, warned):
+            elif rejected:
                 cause = "rule_rejected"
             elif (
                 row.code,
