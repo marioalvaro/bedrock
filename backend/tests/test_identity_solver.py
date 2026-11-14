@@ -471,3 +471,96 @@ def test_a_discrete_quarter_is_solved_from_its_own_filing(quarter: int) -> None:
     cells, _ = solve(income((100, 110, 120, 130), (40, 45, 50, 55)), IS_ITEMS, IS_MAP, [GP])
 
     assert cells[("cost_of_revenue", f"FY2023Q{quarter}")].provenance == "derived"
+
+
+# --- M7b S4: scope identities ----------------------------------------------------------------
+
+DEBT = IdentityDef(
+    "long_term_debt_split",
+    "long_term_debt_total = long_term_debt + long_term_debt_current",
+    ((1, "long_term_debt_total"), (-1, "long_term_debt"), (-1, "long_term_debt_current")),
+    {"long_term_debt": EXACT},
+    note="debt only: the total concept carries no finance lease",
+)
+LEASE = identity(
+    "operating_lease_split",
+    "operating_lease_liabilities_total = operating_lease_liabilities_noncurrent"
+    " + operating_lease_liabilities_current",
+    operating_lease_liabilities_noncurrent=EXACT,
+)
+SCOPE_ITEMS = [
+    item("revenue"),
+    *(
+        item(code, "BS", kind="instant")
+        for code in (
+            "long_term_debt",
+            "long_term_debt_total",
+            "long_term_debt_current",
+            "operating_lease_liabilities_noncurrent",
+            "operating_lease_liabilities_total",
+            "operating_lease_liabilities_current",
+        )
+    ),
+]
+SCOPE_MAP = mappings(
+    ("revenue", "Revenues", 0),
+    ("long_term_debt", "LongTermDebtNoncurrent", 0),
+    ("long_term_debt_total", "LongTermDebt", 0),
+    ("long_term_debt_current", "LongTermDebtCurrent", 0),
+    ("operating_lease_liabilities_noncurrent", "OperatingLeaseLiabilityNoncurrent", 0),
+    ("operating_lease_liabilities_total", "OperatingLeaseLiability", 0),
+    ("operating_lease_liabilities_current", "OperatingLeaseLiabilityCurrent", 0),
+)
+
+
+def test_long_term_debt_is_the_total_less_its_current_portion() -> None:
+    rows = [
+        *CALENDAR,
+        *instant_facts("LongTermDebt", {2023: scaled((100, 100, 100, 110))}),
+        *instant_facts("LongTermDebtCurrent", {2023: scaled((10, 10, 10, 12))}),
+    ]
+    cells, warnings = solve(rows, SCOPE_ITEMS, SCOPE_MAP, [DEBT, LEASE])
+
+    assert value(cells, "long_term_debt", "FY2023") == 98 * B
+    assert value(cells, "long_term_debt", "FY2023Q2") == 90 * B
+    solved = cells[("long_term_debt", "FY2023")]
+    assert solved.provenance == "derived"
+    assert solved.derivation is not None
+    assert solved.derivation.formula == (
+        "identity long_term_debt_split: long_term_debt = long_term_debt_total - "
+        "long_term_debt_current (debt only: the total concept carries no finance lease)"
+    )
+    assert warnings == []
+
+
+def test_the_noncurrent_operating_lease_is_the_total_less_its_current_part() -> None:
+    rows = [
+        *CALENDAR,
+        *instant_facts("OperatingLeaseLiability", {2023: scaled((50, 50, 50, 55))}),
+        *instant_facts("OperatingLeaseLiabilityCurrent", {2023: scaled((5, 5, 5, 6))}),
+    ]
+    cells, _ = solve(rows, SCOPE_ITEMS, SCOPE_MAP, [DEBT, LEASE])
+
+    assert value(cells, "operating_lease_liabilities_noncurrent", "FY2023") == 49 * B
+
+
+def test_a_total_without_its_current_part_is_not_split() -> None:
+    # two unknowns (the line and its current portion): nothing is solved, not even as 0
+    rows = [*CALENDAR, *instant_facts("LongTermDebt", {2023: scaled((100, 100, 100, 110))})]
+    cells, warnings = solve(rows, SCOPE_ITEMS, SCOPE_MAP, [DEBT, LEASE])
+
+    assert value(cells, "long_term_debt", "FY2023") is None
+    assert warnings == []
+
+
+def test_a_reported_noncurrent_line_is_never_replaced_by_the_split() -> None:
+    rows = [
+        *CALENDAR,
+        *instant_facts("LongTermDebtNoncurrent", {2023: scaled((80, 80, 80, 80))}),
+        *instant_facts("LongTermDebt", {2023: scaled((100, 100, 100, 110))}),
+        *instant_facts("LongTermDebtCurrent", {2023: scaled((10, 10, 10, 12))}),
+    ]
+    cells, _ = solve(rows, SCOPE_ITEMS, SCOPE_MAP, [DEBT, LEASE])
+
+    assert value(cells, "long_term_debt", "FY2023") == 80 * B
+    assert cells[("long_term_debt", "FY2023")].provenance == "reported"

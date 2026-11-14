@@ -58,4 +58,6 @@ def _pick(row: Row, keep: list[int]) -> Row:
         provenance=[row.provenance[i] for i in keep],
         yoy=[row.yoy[i] for i in keep],
         common_size=[row.common_size[i] for i in keep],
+        combined_with=[row.combined_with[i] for i in keep],
+        included_in=[row.included_in[i] for i in keep],
     )

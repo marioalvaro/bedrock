@@ -8,12 +8,12 @@
   "IS/quarterly": 91
  },
  "BA": {
-  "BS/annual": 80,
-  "BS/quarterly": 78,
-  "CF/annual": 86,
-  "CF/quarterly": 78,
-  "IS/annual": 80,
-  "IS/quarterly": 79
+  "BS/annual": 92,
+  "BS/quarterly": 90,
+  "CF/annual": 90,
+  "CF/quarterly": 83,
+  "IS/annual": 85,
+  "IS/quarterly": 84
  },
  "COST": {
   "BS/annual": 83,
@@ -26,16 +26,16 @@
  "DE": {
   "BS/annual": 60,
   "BS/quarterly": 59,
-  "CF/annual": 93,
-  "CF/quarterly": 91,
+  "CF/annual": 98,
+  "CF/quarterly": 96,
   "IS/annual": 80,
   "IS/quarterly": 79
  },
  "JNJ": {
   "BS/annual": 79,
   "BS/quarterly": 72,
-  "CF/annual": 90,
-  "CF/quarterly": 89,
+  "CF/annual": 95,
+  "CF/quarterly": 94,
   "IS/annual": 76,
   "IS/quarterly": 75
  },
@@ -50,32 +50,32 @@
  "NFLX": {
   "BS/annual": 68,
   "BS/quarterly": 67,
-  "CF/annual": 72,
-  "CF/quarterly": 66,
-  "IS/annual": 84,
-  "IS/quarterly": 84
+  "CF/annual": 73,
+  "CF/quarterly": 67,
+  "IS/annual": 85,
+  "IS/quarterly": 85
  },
  "NKE": {
   "BS/annual": 71,
   "BS/quarterly": 71,
-  "CF/annual": 78,
-  "CF/quarterly": 75,
+  "CF/annual": 80,
+  "CF/quarterly": 76,
   "IS/annual": 73,
   "IS/quarterly": 72
  },
  "ORCL": {
   "BS/annual": 74,
   "BS/quarterly": 71,
-  "CF/annual": 77,
-  "CF/quarterly": 75,
-  "IS/annual": 75,
-  "IS/quarterly": 66
+  "CF/annual": 83,
+  "CF/quarterly": 81,
+  "IS/annual": 80,
+  "IS/quarterly": 71
  },
  "WMT": {
   "BS/annual": 73,
   "BS/quarterly": 73,
-  "CF/annual": 81,
-  "CF/quarterly": 69,
+  "CF/annual": 86,
+  "CF/quarterly": 74,
   "IS/annual": 84,
   "IS/quarterly": 84
  }

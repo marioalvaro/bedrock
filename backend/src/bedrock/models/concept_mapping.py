@@ -17,3 +17,7 @@ class ConceptMapping(Base):
     company_id: Mapped[int | None] = mapped_column(
         ForeignKey("company.id", ondelete="CASCADE"), nullable=True
     )
+    # M7b S3: +1, or -1 for a subtracted member of a summed concept (`A - B`)
+    weight: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1", default=1)
+    # M7b S4: a combined entry's covered codes joined with `,` ("" covers no row); null if plain
+    covers: Mapped[str | None] = mapped_column(String, nullable=True)

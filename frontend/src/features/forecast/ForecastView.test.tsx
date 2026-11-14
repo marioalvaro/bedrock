@@ -91,6 +91,8 @@ function forecastBalance(): ForecastOut {
         custom: false,
         parent: null,
         common_size_base: null,
+        combined_with: [null, null],
+        included_in: [null, null],
       },
     ],
     balance_check: [

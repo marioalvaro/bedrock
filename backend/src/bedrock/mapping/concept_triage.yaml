@@ -54,10 +54,6 @@ EquitySecuritiesWithoutReadilyDeterminableFairValueAmount:
   {type: component, codes: [long_term_investments], reason: "investments-note component (Microsoft 12,400), part of the investment lines rather than a line of its own"}
 FinanceLeaseInterestExpense:
   {type: component, codes: [interest_expense], reason: "lease-note part of interest expense, which is mapped as the whole line"}
-GeneralAndAdministrativeExpense:
-  {type: component, codes: [sga], reason: "half of selling, general and administrative; Apple reports the total (S&M 19,524 + G&A 8,077 = 27,601), Microsoft's override sums the two"}
-SellingAndMarketingExpense:
-  {type: component, codes: [sga], reason: "half of selling, general and administrative; Apple reports the total (S&M 19,524 + G&A 8,077 = 27,601), Microsoft's override sums the two"}
 HeldToMaturitySecurities:
   {type: component, codes: [long_term_investments], reason: "investments-note component of Costco's investment lines (298), not a balance-sheet line"}
 RestrictedInvestments:
@@ -114,11 +110,5 @@ AvailableForSaleSecuritiesDebtSecurities:
   {type: scope, codes: [short_term_investments, long_term_investments], reason: "investments-note total of debt securities, spanning more than one balance-sheet investment line"}
 DebtInstrumentCarryingAmount:
   {type: scope, codes: [long_term_debt, short_term_debt], reason: "debt-note carrying amount of the notes, current and non-current together"}
-IncreaseDecreaseInAccountsPayableAndAccruedLiabilities:
-  {type: scope, codes: [change_payables], reason: "Deere's cash-flow line combines payables with accruals; it waits for parent items"}
-LongTermDebt:
-  {type: scope, codes: [long_term_debt], reason: "total long-term debt including its current portion; long_term_debt is the non-current line"}
-OperatingLeaseLiability:
-  {type: scope, codes: [operating_lease_liabilities_noncurrent], reason: "current plus non-current operating lease liability; the canonical line is the non-current one"}
 TransfersAccountedForAsSecuredBorrowingsAssociatedLiabilitiesCarryingAmount:
   {type: scope, codes: [long_term_debt, short_term_debt], reason: "Deere's securitization-note liability (6,611), spanning its short- and long-term borrowings lines"}

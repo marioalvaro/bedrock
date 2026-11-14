@@ -46,6 +46,19 @@ class Cell:
     source: FactRef | None = None
     derivation: Derivation | None = None
     solved_by: str | None = None  # the identity that filled this cell (see `rules.py`)
+    # M7b S4 (docs/erd/data-coverage.md "Combined lines"): a value from a combined concept names
+    # the codes inside it (maybe none); an empty cell whose amount is inside another line names it
+    combined_with: tuple[str, ...] | None = None
+    included_in: str | None = None
+
+
+def combined(*marks: tuple[str, ...] | None) -> tuple[str, ...] | None:
+    """The `combined_with` of a value built from cells or facts with these marks: None when none
+    is combined, else every covered code once, in order."""
+    present = [m for m in marks if m is not None]
+    if not present:
+        return None
+    return tuple(dict.fromkeys(code for mark in present for code in mark))
 
 
 EMPTY = Cell(None, None)

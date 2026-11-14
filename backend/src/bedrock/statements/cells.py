@@ -7,7 +7,7 @@ cells, so what the grid shows and what the cell details say cannot drift apart.
 
 from collections import defaultdict
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -24,6 +24,7 @@ from bedrock.statements.cell_types import (
     DerivationInput,
     FactRef,
     RuleWarning,
+    combined,
 )
 from bedrock.statements.custom_lines import BUILT_FROM_CHILDREN
 from bedrock.statements.periods import (
@@ -57,6 +58,7 @@ class _Fact:
     split_factor: Decimal = Decimal(1)
     split_dates: tuple[date, ...] = ()
     reported_value: Decimal | None = None  # before the split factor; None = same as value
+    covers: tuple[str, ...] | None = None  # a combined fact's covered codes (M7b S4)
 
 
 class _Index:
@@ -85,6 +87,7 @@ class _Index:
                     r.get("split_factor", Decimal(1)),
                     r.get("split_dates", ()),
                     r.get("reported_value"),
+                    _frame_covers(r.get("covers")),
                 )
             )
 
@@ -111,6 +114,11 @@ class _Index:
             if f.start is not None and abs(f.start - start) <= START_TOLERANCE
         ]
         return min(near, key=lambda f: abs((f.start or start) - start), default=None)
+
+
+def _frame_covers(value: object) -> tuple[str, ...] | None:
+    """The frame's `covers` (a tuple, or None/NaN for a plain fact or a frame without it)."""
+    return tuple(value) if isinstance(value, tuple) else None
 
 
 @dataclass(frozen=True)
@@ -154,6 +162,7 @@ def solve_cells(
             cells[(item.code, period.key)] = _mapped_cell(
                 item, period, years[period.fiscal_year], index, cells, imported, log
             )
+    _apply_combined(items, periods, years, index, cells, imported, log)
 
     solved_nonzero: set[CellKey] = set()
     cover = None if rules.cover_shares is None else _cover_index(rules.cover_shares)
@@ -186,18 +195,71 @@ def solve_cells(
         siblings = frozenset(i.code for i in items if item.residual and i.parent == item.parent)
         for period in periods:
             current = cells.get((item.code, period.key), EMPTY)
-            if item.residual or current.value is None:
+            if item.residual or (current.value is None and current.included_in is None):
                 cells[(item.code, period.key)] = _formula_cell(item, period, cells, siblings)
     _check_breakdowns(items, periods, cells, rules.complete_parents, log)
     return SolvedCells(cells, log.all())
 
 
 def _fill(cells: dict[CellKey, Cell], key: CellKey, cell: Cell) -> int:
-    """Store `cell` where the cell is empty (the rules never replace a value); 1 if it was."""
-    if cell.value is None or cells.get(key, EMPTY).value is not None:
+    """Store `cell` where the cell is empty (the rules never replace a value) and its amount is not
+    inside a combined line (`included_in`); 1 if it was."""
+    current = cells.get(key, EMPTY)
+    if cell.value is None or current.value is not None or current.included_in is not None:
         return 0
     cells[key] = cell
     return 1
+
+
+def _apply_combined(
+    items: Sequence[CanonicalItemDef],
+    periods: Sequence[Period],
+    years: dict[int, FiscalYear],
+    index: _Index,
+    cells: dict[CellKey, Cell],
+    imported: _Index | None,
+    log: WarningLog,
+) -> None:
+    """Engine rules 2 and 3 of docs/erd/data-coverage.md "Combined lines", on the mapped cells.
+    A combined value (FY, Q1-Q3) is dropped where a covered code has a value of its own in the
+    period: the company reports both lines, so the combined concept is their subtotal there
+    (warning `combined_overlap`); the Q4 of a dropped line is rebuilt. Then every empty cell of a
+    covered code, in a period where its carrier holds a combined value, names the carrier."""
+    by_code = {i.code: i for i in items}
+    dropped: set[tuple[str, int]] = set()  # (code, fiscal year) of a dropped combined value
+    for item in items:
+        for period in periods:
+            key = (item.code, period.key)
+            cell = cells.get(key, EMPTY)
+            if period.fiscal_period == "Q4" or not cell.combined_with:
+                continue
+            both = [
+                c for c in cell.combined_with if cells.get((c, period.key), EMPTY).value is not None
+            ]
+            if both:
+                cells[key] = EMPTY
+                dropped.add((item.code, period.fiscal_year))
+                log.add(
+                    RuleWarning(
+                        "combined_overlap",
+                        item.code,
+                        period.key,
+                        cell.value,
+                        f"{', '.join(both)} reported on its own line; the combined concept "
+                        f"{cell.source.concept if cell.source else ''} is their subtotal here, "
+                        "not used",
+                    )
+                )
+    for period in periods:  # Q4 follows its year: rebuild it where the year lost a value
+        for code, fiscal_year in dropped:
+            if period.fiscal_period == "Q4" and period.fiscal_year == fiscal_year:
+                cells[(code, period.key)] = _mapped_cell(
+                    by_code[code], period, years[fiscal_year], index, cells, imported, log
+                )
+    for (code, period_key), cell in list(cells.items()):
+        for covered in cell.combined_with or ():
+            if cells.get((covered, period_key), EMPTY).value is None:
+                cells[(covered, period_key)] = Cell(None, None, included_in=code)
 
 
 def _cover_index(frame: pd.DataFrame) -> _Index:
@@ -508,7 +570,7 @@ def _reported(fact: _Fact | None, code: str, period: Period) -> Cell:
     if fact is None:
         return EMPTY
     if fact.split_factor == 1:
-        return Cell(fact.value, "reported", source=fact.ref)
+        return Cell(fact.value, "reported", source=fact.ref, combined_with=fact.covers)
     reported = fact.value if fact.reported_value is None else fact.reported_value
     return Cell(
         fact.value,
@@ -517,6 +579,7 @@ def _reported(fact: _Fact | None, code: str, period: Period) -> Cell:
         derivation=Derivation(
             _split_formula(fact), (DerivationInput(code, period.fiscal_period, reported),)
         ),
+        combined_with=fact.covers,
     )
 
 
@@ -549,6 +612,7 @@ def _from_year_to_date(code: str, period: Period, year: FiscalYear, index: _Inde
                 DerivationInput(code, f"YTD Q{n - 1}", previous.value),
             ),
         ),
+        combined_with=combined(this.covers, previous.covers),
     )
 
 
@@ -565,10 +629,13 @@ def _q4(code: str, year: FiscalYear, cells: dict[CellKey, Cell], index: _Index) 
     if len(values) < 3:
         if ytd_q3 is None:
             return EMPTY
-        return _fy_less_ytd(code, fiscal.value, ytd_q3.value)
+        marks = combined(fiscal.combined_with, ytd_q3.covers)
+        return replace(_fy_less_ytd(code, fiscal.value, ytd_q3.value), combined_with=marks)
     total = sum(values, Decimal(0))
+    marks = combined(fiscal.combined_with, *(q.combined_with for q in quarters))
     if ytd_q3 is not None and ytd_q3.value == total:  # the usual case: say it the short way
-        return _fy_less_ytd(code, fiscal.value, ytd_q3.value)
+        marks = combined(marks, ytd_q3.covers)
+        return replace(_fy_less_ytd(code, fiscal.value, ytd_q3.value), combined_with=marks)
     return Cell(
         fiscal.value - total,
         "derived",
@@ -582,6 +649,7 @@ def _q4(code: str, year: FiscalYear, cells: dict[CellKey, Cell], index: _Index) 
                 ),
             ),
         ),
+        combined_with=marks,
     )
 
 
@@ -605,14 +673,21 @@ def _formula_cell(
     """A residual treats a missing component of its own breakdown (`siblings`, the lines that
     share its parent) as 0; any other operand (the subtotal it completes, or a line outside the
     breakdown such as operating income) is required, or the residual is a number under the wrong
-    label."""
+    label. An empty operand whose amount is inside a combined line (`included_in`) counts as 0
+    when that carrier is a term of the same sign: the carrier's value already holds it (M7b S4)."""
     assert item.derive is not None
     terms = parse_formula(item.derive)
     operands = [(sign, code, cells.get((code, period.key), EMPTY).value) for sign, code in terms]
+    inside = {
+        code
+        for sign, code in terms
+        if (carrier := cells.get((code, period.key), EMPTY).included_in) is not None
+        and (sign, carrier) in terms
+    }
     if item.residual:
-        if any(value is None and code not in siblings for _, code, value in operands):
+        if any(value is None and code not in siblings | inside for _, code, value in operands):
             return EMPTY
-    elif any(value is None for _, _, value in operands):
+    elif any(value is None and code not in inside for _, code, value in operands):
         return EMPTY
     total = sum((sign * value for sign, _, value in operands if value is not None), Decimal(0))
     inputs = tuple(

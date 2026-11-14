@@ -183,6 +183,7 @@ def load_cover_shares(session: Session, company_id: int) -> pd.DataFrame:
             r[6],
             r[7],
             "instant",
+            None,
         )
         for r in session.execute(stmt)
     ]

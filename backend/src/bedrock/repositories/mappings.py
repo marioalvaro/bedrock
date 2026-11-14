@@ -4,15 +4,23 @@ import pandas as pd
 from sqlalchemy import delete, insert, or_, select
 from sqlalchemy.orm import Session
 
-from bedrock.mapping.config import CanonicalItemDef, split_group
+from bedrock.mapping.config import CanonicalItemDef, covers_text, join_members, signed_members
 from bedrock.models.canonical_item import CanonicalItem
 from bedrock.models.concept_mapping import ConceptMapping
 
-MAPPING_COLUMNS = ["canonical_code", "taxonomy", "concept", "priority", "is_override"]
+MAPPING_COLUMNS = [
+    "canonical_code",
+    "taxonomy",
+    "concept",
+    "priority",
+    "is_override",
+    "weight",
+    "covers",
+]
 
 # A default a company switches off is stored as a marker row of that company: negative priority,
-# the whole default entry (`taxonomy:A` or `taxonomy:A + taxonomy:B`) as `concept`. `mappings_for`
-# applies the markers and never returns them, so `concept_mapping` needs no extra column or table.
+# the whole default entry (`taxonomy:A`, or a sum such as `taxonomy:A - taxonomy:B`) as `concept`.
+# `mappings_for` applies the markers and never returns them, so they need no extra column or table.
 EXCLUDE_PRIORITY = -1
 EXCLUDE_TAXONOMY = "-"
 
@@ -26,7 +34,9 @@ def replace_mappings(
     """Make the stored canonical items and concept mappings equal the config: the defaults, plus
     the overrides of each company (by id). Replace-all keeps the YAML the one source of truth.
     `excludes` lists, by company id and code, the default entries a company switches off.
-    A summed concept (`A + B`) is one row per member with the same priority, anchor first."""
+    A summed concept (`A + B - C`) is one row per member with the same priority, anchor first,
+    each with its weight (+1, or -1 for a subtracted member). A combined default (M7b S4) stores
+    its covered codes in `covers` (`covers_text`)."""
     session.execute(delete(ConceptMapping))
     session.execute(delete(CanonicalItem))
     session.execute(
@@ -48,7 +58,7 @@ def replace_mappings(
     rows: list[dict[str, object]] = []
     for item in items:
         for priority, concept in enumerate(item.concepts):
-            rows.extend(_rows(item.code, concept, priority, None))
+            rows.extend(_rows(item.code, concept, priority, None, covers_text(item, concept)))
     for company_id, by_code in overrides.items():
         for code, concepts in by_code.items():
             for priority, concept in enumerate(concepts):
@@ -69,7 +79,9 @@ def replace_mappings(
         session.execute(insert(ConceptMapping), rows)
 
 
-def _rows(code: str, entry: str, priority: int, company_id: int | None) -> list[dict[str, object]]:
+def _rows(
+    code: str, entry: str, priority: int, company_id: int | None, covers: str | None = None
+) -> list[dict[str, object]]:
     return [
         {
             "canonical_code": code,
@@ -77,8 +89,10 @@ def _rows(code: str, entry: str, priority: int, company_id: int | None) -> list[
             "concept": name,
             "priority": priority,
             "company_id": company_id,
+            "weight": weight,
+            "covers": covers,
         }
-        for taxonomy, name in split_group(entry)
+        for weight, taxonomy, name in signed_members(entry)
     ]
 
 
@@ -91,25 +105,30 @@ def mappings_for(session: Session, company_id: int) -> pd.DataFrame:
             ConceptMapping.concept,
             ConceptMapping.priority,
             ConceptMapping.company_id,
+            ConceptMapping.weight,
+            ConceptMapping.covers,
         )
         .where(or_(ConceptMapping.company_id.is_(None), ConceptMapping.company_id == company_id))
         .order_by(ConceptMapping.id)
     )
-    records: list[tuple[str, str, str, int, int | None]] = [
-        (r[0], r[1], r[2], r[3], r[4]) for r in session.execute(stmt)
+    records: list[tuple[str, str, str, int, int | None, int, str | None]] = [
+        (r[0], r[1], r[2], r[3], r[4], r[5], r[6]) for r in session.execute(stmt)
     ]
     excluded = {(r[0], r[2]) for r in records if r[3] == EXCLUDE_PRIORITY}
-    entries: dict[tuple[str, int], list[str]] = {}
-    for code, taxonomy, concept, priority, owner in records:
+    entries: dict[tuple[str, int], list[tuple[int, str, str]]] = {}
+    for code, taxonomy, concept, priority, owner, weight, _ in records:
         if owner is None:
-            entries.setdefault((code, priority), []).append(f"{taxonomy}:{concept}")
-    dropped = {key for key, members in entries.items() if (key[0], " + ".join(members)) in excluded}
-    return pd.DataFrame(
-        [
-            (code, taxonomy, concept, priority, owner is not None)
-            for code, taxonomy, concept, priority, owner in records
-            if priority != EXCLUDE_PRIORITY
-            and (code, priority) not in (dropped if owner is None else ())
-        ],
-        columns=MAPPING_COLUMNS,
-    )
+            entries.setdefault((code, priority), []).append((weight, taxonomy, concept))
+    dropped = {
+        key for key, members in entries.items() if (key[0], join_members(members)) in excluded
+    }
+    kept = [
+        (code, taxonomy, concept, priority, owner is not None, weight, covers)
+        for code, taxonomy, concept, priority, owner, weight, covers in records
+        if priority != EXCLUDE_PRIORITY
+        and (code, priority) not in (dropped if owner is None else ())
+    ]
+    frame = pd.DataFrame(kept, columns=MAPPING_COLUMNS)
+    # an object column keeps None (plain) apart from "" (combined, covering no row)
+    frame["covers"] = pd.Series([row[6] for row in kept], index=frame.index, dtype=object)
+    return frame

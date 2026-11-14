@@ -1011,9 +1011,10 @@ DEERE: list[tuple[str, str, Decimal | None]] = [
     ("dividends_paid", "FY2025", usd(-1_720)),
     # The cash flow's "Receivables related to sales" is its one operating receivables line (M3 S6
     # verified it, see DEERE_RECEIVABLES); "Accounts payable and accrued expenses" combines two
-    # balance-sheet lines, so it is not the canonical payables line.
+    # balance-sheet lines; since M7b S4 it is the combined entry, shown with its marker (10-K FY2025,
+    # 0001104659-25-122321: (251)).
     ("change_receivables", "FY2025", usd(1_084)),
-    ("change_payables", "FY2025", None),
+    ("change_payables", "FY2025", usd(-251)),
     ("change_inventory", "FY2025", usd(-275)),
 ]
 
@@ -1091,6 +1092,7 @@ def test_the_receivables_fallback_ranks_after_accounts_receivable() -> None:
     assert items["change_receivables"].concepts == (
         "us-gaap:IncreaseDecreaseInAccountsReceivable",
         "us-gaap:IncreaseDecreaseInReceivables",
+        "us-gaap:IncreaseDecreaseInAccountsAndOtherReceivables",  # M7b S4: a combined entry, last
     )
     assert mapped("AAPL", "change_receivables", "FY2020") == usd(6_917)
     assert mapped("COST", "change_receivables", "FY2020") is None
@@ -1265,3 +1267,155 @@ def test_deere_has_no_lease_member_in_its_debt_lines() -> None:
     frame = de.canonical
     debt = frame[frame["code"].isin(["short_term_debt", "long_term_debt"])]
     assert not [c for c in debt["concept"] if "Lease" in c]
+
+
+# --- M7b S3: default widening (docs/erd/data-coverage.md "Default widening") ---------------------
+# Each default added in S3, on the development companies it fills, with figures read from the face
+# statement of the 10-K named in the comment (its R page, the line's own tag shown there).
+WIDENED_DEFAULTS: list[tuple[str, str, str, Decimal]] = [
+    # sga <- SellingAndMarketingExpense + GeneralAndAdministrativeExpense: "Sales and marketing" +
+    # "General and administrative" on the face. NFLX 10-K FY2025 (0001065280-26-000034), thousands.
+    ("NFLX", "sga", "FY2023", usd("2657.883") + usd("1720.285")),
+    ("NFLX", "sga", "FY2024", usd("2917.554") + usd("1702.039")),
+    ("NFLX", "sga", "FY2025", usd("3301.306") + usd("1888.408")),
+    # ORCL 10-Ks FY2011 (0001193125-11-174819), FY2019 (0001564590-19-023119), FY2026
+    # (0001193125-26-277521).
+    ("ORCL", "sga", "FY2010", usd(5_080 + 911)),
+    ("ORCL", "sga", "FY2011", usd(6_579 + 970)),
+    ("ORCL", "sga", "FY2018", usd(8_433 + 1_282)),
+    ("ORCL", "sga", "FY2019", usd(8_509 + 1_265)),
+    ("ORCL", "sga", "FY2025", usd(8_651 + 1_602)),
+    ("ORCL", "sga", "FY2026", usd(8_331 + 1_618)),
+    # interest_expense <- InterestAndDebtExpense: BA "Interest and debt expense". 10-Ks FY2011
+    # (0001193125-12-048565), FY2018 (0000012927-19-000010), FY2025 (0001628280-26-004357).
+    ("BA", "interest_expense", "FY2009", usd(339)),
+    ("BA", "interest_expense", "FY2010", usd(516)),
+    ("BA", "interest_expense", "FY2016", usd(306)),
+    ("BA", "interest_expense", "FY2018", usd(475)),
+    ("BA", "interest_expense", "FY2024", usd(2_725)),
+    ("BA", "interest_expense", "FY2025", usd(2_771)),
+    # debt_repaid <- RepaymentsOfDebt: BA "Debt repayments" (10-Ks FY2018, FY2025 as above).
+    ("BA", "debt_repaid", "FY2016", usd(-1_359)),
+    ("BA", "debt_repaid", "FY2018", usd(-7_183)),
+    ("BA", "debt_repaid", "FY2023", usd(-5_216)),
+    ("BA", "debt_repaid", "FY2025", usd(-3_621)),
+    # NFLX "Repayment of debt": 10-Ks FY2013 (0001065280-14-000006), FY2015 (0001065280-16-000047).
+    ("NFLX", "debt_repaid", "FY2013", usd("-219.362")),
+    ("NFLX", "debt_repaid", "FY2014", Decimal(0)),
+    ("NFLX", "debt_repaid", "FY2015", Decimal(0)),
+    # NKE "Repayment of borrowings": 10-K FY2026 (0000320187-26-000088).
+    ("NKE", "debt_repaid", "FY2024", Decimal(0)),
+    ("NKE", "debt_repaid", "FY2025", usd(-1_000)),
+    ("NKE", "debt_repaid", "FY2026", Decimal(0)),
+    # ORCL "Repayments of borrowings": 10-Ks FY2014 (0001193125-14-251351), FY2016
+    # (0001193125-16-628942), FY2019 (as above).
+    ("ORCL", "debt_repaid", "FY2012", usd(-1_405)),
+    ("ORCL", "debt_repaid", "FY2013", usd(-2_950)),
+    ("ORCL", "debt_repaid", "FY2016", usd(-2_000)),
+    ("ORCL", "debt_repaid", "FY2018", usd(-9_800)),
+    ("ORCL", "debt_repaid", "FY2019", usd(-4_500)),
+    # long_term_debt <- LongTermDebtAndCapitalLeaseObligations: BA "Long-term debt" (10-Ks FY2011,
+    # FY2018, FY2025 as above).
+    ("BA", "long_term_debt", "FY2010", usd(11_473)),
+    ("BA", "long_term_debt", "FY2011", usd(10_018)),
+    ("BA", "long_term_debt", "FY2018", usd(10_657)),
+    ("BA", "long_term_debt", "FY2024", usd(52_586)),
+    ("BA", "long_term_debt", "FY2025", usd(45_637)),
+    # inventory <- InventoryNetOfAllowancesCustomerAdvancesAndProgressBillings: BA "Inventories"
+    # (10-Ks FY2018, FY2021 (0000012927-22-000010), FY2025).
+    ("BA", "inventory", "FY2018", usd(62_567)),
+    ("BA", "inventory", "FY2021", usd(78_823)),
+    ("BA", "inventory", "FY2024", usd(87_550)),
+    ("BA", "inventory", "FY2025", usd(84_679)),
+]
+
+
+@pytest.mark.parametrize(("ticker", "code", "period", "expected"), WIDENED_DEFAULTS)
+def test_a_widened_default_gives_the_10k_face_line(
+    ticker: str, code: str, period: str, expected: Decimal
+) -> None:
+    assert mapped(ticker, code, period) == expected
+    assert provenance_of(ticker, code, period) == "reported"
+
+
+def test_a_widened_sga_names_both_face_lines_anchored_on_selling() -> None:
+    assert source_concept(run_pipeline("ORCL"), "sga", "2026-05-31") == (
+        "SellingAndMarketingExpense + GeneralAndAdministrativeExpense"
+    )
+
+
+def test_general_and_administrative_alone_is_not_sga() -> None:
+    # Boeing's face has "General and administrative expense" and no selling line; G&A alone is a
+    # component of SG&A for other filers (Netflix, Oracle), so it is not a default (S7 decides).
+    assert mapped("BA", "sga", "FY2025") is None
+
+
+def test_a_widened_default_never_replaces_an_earlier_entry() -> None:
+    # Oracle FY2010: the long- plus short-term repayment sum ranks first and keeps its value, even
+    # though `RepaymentsOfDebt` (3,582, the face line) differs: rule zero, nothing replaces a cell.
+    assert mapped("ORCL", "debt_repaid", "FY2010") == usd(-7_164)
+
+
+# --- M7b S4: combined defaults (docs/erd/data-coverage.md "Combined lines") ------------------
+
+COMBINED_DEFAULTS: list[tuple[str, str, str, Decimal]] = [
+    # change_payables <- IncreaseDecreaseInAccountsPayableAndAccruedLiabilities (covers no row).
+    # DE "Accounts payable and accrued expenses": 10-K FY2024 (0001558370-24-016169).
+    ("DE", "change_payables", "FY2022", usd(1_133)),
+    ("DE", "change_payables", "FY2023", usd(830)),
+    ("DE", "change_payables", "FY2024", usd(-1_040)),
+    ("DE", "change_payables", "FY2025", usd(-251)),  # 10-K FY2025 (0001104659-25-122321)
+    # JNJ "Increase in accounts payable and accrued liabilities": 10-K FY2013
+    # (0000200406-14-000033).
+    ("JNJ", "change_payables", "FY2011", usd(493)),
+    ("JNJ", "change_payables", "FY2012", usd(2_768)),
+    ("JNJ", "change_payables", "FY2013", usd(1_821)),
+    # ORCL "(Decrease) increase in accounts payable and other liabilities": 10-K FY2016
+    # (0001193125-16-628942).
+    ("ORCL", "change_payables", "FY2014", usd(48)),
+    ("ORCL", "change_payables", "FY2015", usd(247)),
+    ("ORCL", "change_payables", "FY2016", usd(-13)),
+    # change_receivables <- IncreaseDecreaseInAccountsAndOtherReceivables (covers no row).
+    # WMT "Accounts receivable": 10-K FY2012 (0001193125-12-134679); the only development carrier.
+    ("WMT", "change_receivables", "FY2010", usd(-297)),
+    ("WMT", "change_receivables", "FY2011", usd(-733)),
+    ("WMT", "change_receivables", "FY2012", usd(-796)),
+]
+
+
+def combined_with_of(ticker: str, code: str, period_key: str) -> tuple[str, ...] | None:
+    pipeline = run_pipeline(ticker)
+    statement = next(i.statement for i in pipeline.items if i.code == code)
+    table = pipeline.annual[statement]
+    row = next(r for r in table.rows if r.code == code)
+    return row.combined_with[[p.key for p in table.periods].index(period_key)]
+
+
+@pytest.mark.parametrize(("ticker", "code", "period", "expected"), COMBINED_DEFAULTS)
+def test_a_combined_default_gives_the_10k_face_line_with_its_marker(
+    ticker: str, code: str, period: str, expected: Decimal
+) -> None:
+    assert mapped(ticker, code, period) == expected
+    assert provenance_of(ticker, code, period) == "reported"
+    assert combined_with_of(ticker, code, period) == ()
+
+
+def test_the_cash_and_short_term_investments_total_is_the_last_cash_entry() -> None:
+    # MSFT's face subtotal "Total cash, cash equivalents, and short-term investments" (10-K FY2022,
+    # 0001564590-22-026876: 104,757 = 13,931 + 90,826); NFLX's is the same sum (FY2011: 508,053 +
+    # 289,758 thousand = 797,811). Both report cash on its own line, which ranks first.
+    from bedrock.mapping.config import load_canonical_items
+
+    cash = next(i for i in load_canonical_items() if i.code == "cash")
+    combined = "us-gaap:CashCashEquivalentsAndShortTermInvestments"
+    assert cash.concepts[-1] == combined
+    assert cash.covers == ((combined, ("short_term_investments",)),)
+    assert mapped("MSFT", "cash", "FY2022") == usd(13_931)
+    assert combined_with_of("MSFT", "cash", "FY2022") is None
+
+
+def test_a_company_reporting_payables_alone_keeps_its_plain_line() -> None:
+    # Apple tags `IncreaseDecreaseInAccountsPayable` only: no marker anywhere.
+    pipeline = run_pipeline("AAPL")
+    row = next(r for r in pipeline.annual["CF"].rows if r.code == "change_payables")
+    assert all(mark is None for mark in row.combined_with)

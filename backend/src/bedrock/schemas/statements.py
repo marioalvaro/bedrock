@@ -57,6 +57,10 @@ class RowOut(BaseModel):
     adjustable: bool  # a normalization adjustment may target this line
     custom: bool  # a custom line, or the `Other` row of a custom breakdown
     parent: str | None  # the line a custom row sits under
+    # M7b S4: per period, the codes inside a combined value (empty when it covers no row; null
+    # when not combined), and the line an empty cell's amount is inside (null when not covered)
+    combined_with: list[list[str] | None]
+    included_in: list[str | None]
 
 
 class BalanceCheckOut(BaseModel):
@@ -110,6 +114,8 @@ class StatementOut(BaseModel):
                     adjustable=r.adjustable,
                     custom=r.custom,
                     parent=r.parent,
+                    combined_with=[None if c is None else list(c) for c in r.combined_with],
+                    included_in=r.included_in,
                 )
                 for r in table.rows
             ],
@@ -169,6 +175,9 @@ class CellDetailOut(BaseModel):
     # the value with them applied; null when no adjustment changes the cell, or when normalization
     # empties it (then `adjustments` is non-empty)
     normalized_value: Decimal | None
+    # M7b S4: as on the statement row (docs/erd/data-coverage.md "Combined lines")
+    combined_with: list[str] | None
+    included_in: str | None
 
     @classmethod
     def from_explanation(
@@ -210,6 +219,8 @@ class CellDetailOut(BaseModel):
             ],
             adjustments=[CellAdjustmentOut.from_cell(a) for a in adjustments],
             normalized_value=cell.normalized_value,
+            combined_with=None if cell.combined_with is None else list(cell.combined_with),
+            included_in=cell.included_in,
         )
 
 

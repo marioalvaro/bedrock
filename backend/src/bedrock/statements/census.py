@@ -22,6 +22,7 @@ from bedrock.statements.coverage import Coverage, table_coverage
 Bucket = Literal[
     "statement_not_presented",
     "not_applicable",
+    "included_in",
     "rule_rejected",
     "cascade",
     "fy_empty",
@@ -36,6 +37,7 @@ Bucket = Literal[
 ANNUAL_BUCKETS: tuple[Bucket, ...] = (
     "statement_not_presented",
     "not_applicable",
+    "included_in",
     "rule_rejected",
     "cascade",
     "candidate_exists",
@@ -48,6 +50,7 @@ ANNUAL_BUCKETS: tuple[Bucket, ...] = (
 QUARTERLY_BUCKETS: tuple[Bucket, ...] = (
     "statement_not_presented",
     "not_applicable",
+    "included_in",
     "rule_rejected",
     "cascade",
     "fy_empty",
@@ -97,6 +100,7 @@ def census(
     takes. Bucket definitions:
     - `statement_not_presented`: `table_coverage`'s `no_filing_data`;
     - `not_applicable`: `table_coverage`'s `not_applicable` (M7b S2);
+    - `included_in`: `table_coverage`'s `included_in` (M7b S4: inside a combined line);
     - `rule_rejected`: `table_coverage`'s `rule_rejected`;
     - `cascade`: the line is computed (it has a `derive`), so an operand is empty too;
     - `fy_empty` (quarterly): the line's cell of the same fiscal year is empty in the annual table;
@@ -174,6 +178,8 @@ def _buckets(
             bucket = "statement_not_presented"
         elif cause == "not_applicable":
             bucket = "not_applicable"
+        elif cause == "included_in":
+            bucket = "included_in"
         elif cause == "rule_rejected":
             bucket = "rule_rejected"
         elif by_code[code].derive is not None:

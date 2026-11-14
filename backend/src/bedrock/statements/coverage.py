@@ -26,8 +26,8 @@ Cause = Literal[
     "extension_unclassified",
     "not_reported",
 ]
-# In order: an empty cell takes the first cause that applies. `included_in` (M7b S4) and
-# `extension_unclassified` (S7) are produced by later steps; they are counted from now on.
+# In order: an empty cell takes the first cause that applies. `extension_unclassified` (S7) is
+# produced by a later step; it is counted from now on.
 CAUSES: tuple[Cause, ...] = (
     "no_filing_data",
     "not_applicable",
@@ -77,6 +77,7 @@ def table_coverage(
     - `no_filing_data`: no anchor of the statement (`STATEMENT_ANCHORS`) has a value in the period;
     - `not_applicable`: the item `starts_with_standard` and the period is before the item's first
       value in this table (an item with no value at all gets none);
+    - `included_in` (M7b S4): the cell's amount is inside a combined line (`Row.included_in`);
     - `structural`: the item has no formula and the company maps no concept to it;
     - `rule_rejected`: a rule warning names the cell (a Q4 cell: any period of its fiscal year,
       since Q4 follows the year and the other quarters);
@@ -112,6 +113,8 @@ def table_coverage(
                 cause: Cause = "no_filing_data"
             elif item.starts_with_standard and first is not None and at < first:
                 cause = "not_applicable"
+            elif row.included_in[at] is not None:
+                cause = "included_in"
             elif structural:
                 cause = "structural"
             elif _rejected(row.code, period.key, period.fiscal_year, period.fiscal_period, warned):

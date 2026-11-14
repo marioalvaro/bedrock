@@ -543,6 +543,10 @@ export type CellDetailOut = {
      * Code
      */
     code: string;
+    /**
+     * Combined With
+     */
+    combined_with: Array<string> | null;
     derivation: DerivationOut | null;
     filing: FilingOut | null;
     /**
@@ -553,6 +557,10 @@ export type CellDetailOut = {
      * Fiscal Year
      */
     fiscal_year: number;
+    /**
+     * Included In
+     */
+    included_in: string | null;
     /**
      * Label
      */
@@ -3246,6 +3254,10 @@ export type RowOut = {
      */
     code: string;
     /**
+     * Combined With
+     */
+    combined_with: Array<Array<string> | null>;
+    /**
      * Common Size
      */
     common_size: Array<string | null>;
@@ -3261,6 +3273,10 @@ export type RowOut = {
      * Depth
      */
     depth: number;
+    /**
+     * Included In
+     */
+    included_in: Array<string | null>;
     /**
      * Kind
      */

@@ -96,7 +96,7 @@ def test_the_top_lines_name_their_companies_and_leave_out_statements_not_present
         for key, row in aapl_report["companies"]["AAPL"].items()
         if key.endswith("/annual")
         for bucket, n in row["buckets"].items()
-        if bucket not in ("statement_not_presented", "not_applicable")
+        if bucket not in ("statement_not_presented", "not_applicable", "included_in")
     )
     assert sum(line["empty"] for line in top) <= total
 
@@ -137,9 +137,12 @@ def test_evidence_lists_each_candidate_concept_by_year_with_its_us_gaap_text(
     assert len({r["fiscal_year"] for r in mapped}) >= 5
     assert all(r["ticker"] == "AAPL" and r["label"] and r["description"] for r in mapped)
     assert all(Decimal(r["value"]) > 0 for r in mapped)
-    assert any(not r["mapped"] for r in rows)  # the candidate index adds unmapped concepts
     years = [(r["concept"], r["fiscal_year"]) for r in rows]
     assert len(years) == len(set(years))  # one row per concept and year: the latest vintage
+    # the candidate index adds unmapped concepts (Apple's SG&A has none left since M7b S3 made
+    # `SellingAndMarketingExpense + GeneralAndAdministrativeExpense` a default)
+    interest = script.evidence(script.fixture_companies(["AAPL"]), "interest_expense")
+    assert "InterestExpenseDebt" in {r["concept"] for r in interest if not r["mapped"]}
 
 
 def test_evidence_of_an_unknown_code_is_an_error(

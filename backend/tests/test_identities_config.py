@@ -241,7 +241,7 @@ def test_a_bad_identity_is_a_load_error(tmp_path: Path, identities: str, message
         load_identities(path, items)
 
 
-def test_the_shipped_file_loads_the_seven_identities_of_the_erd() -> None:
+def test_the_shipped_file_loads_the_nine_identities_of_the_erd() -> None:
     items = load_canonical_items(DEFAULT_ITEMS_PATH)
 
     identities = load_identities(DEFAULT_ITEMS_PATH, items)
@@ -254,6 +254,8 @@ def test_the_shipped_file_loads_the_seven_identities_of_the_erd() -> None:
         "balance_sheet",
         "total_assets_equals_le",
         "shares_outstanding_count",
+        "long_term_debt_split",
+        "operating_lease_split",
     ]
     by_id = {i.id: i for i in identities}
     assert by_id["cash_rollforward"].solve == {"fx_effect": SolveRule("bounded", Decimal("0.05"))}
@@ -270,3 +272,54 @@ def test_the_shipped_file_loads_the_seven_identities_of_the_erd() -> None:
     assert by_id["shares_outstanding_count"].solve == {
         "shares_outstanding": SolveRule("exact", None)
     }
+
+
+def test_the_scope_identities_solve_the_noncurrent_line_from_its_total() -> None:
+    # M7b S4, docs/erd/data-coverage.md "Scope identities"
+    items = load_canonical_items(DEFAULT_ITEMS_PATH)
+    by_id = {i.id: i for i in load_identities(DEFAULT_ITEMS_PATH, items)}
+
+    debt = by_id["long_term_debt_split"]
+    assert debt.terms == (
+        (1, "long_term_debt_total"),
+        (-1, "long_term_debt"),
+        (-1, "long_term_debt_current"),
+    )
+    assert debt.solve == {"long_term_debt": SolveRule("exact", None)}
+    assert "finance lease" in debt.note
+    lease = by_id["operating_lease_split"]
+    assert lease.terms == (
+        (1, "operating_lease_liabilities_total"),
+        (-1, "operating_lease_liabilities_noncurrent"),
+        (-1, "operating_lease_liabilities_current"),
+    )
+    assert lease.solve == {"operating_lease_liabilities_noncurrent": SolveRule("exact", None)}
+    assert lease.note == ""
+
+
+def test_the_scope_totals_are_support_lines_of_the_balance_sheet() -> None:
+    from bedrock.mapping.config import SUPPORT_CODES
+
+    by_code = {i.code: i for i in load_canonical_items(DEFAULT_ITEMS_PATH)}
+    for code, concepts in (
+        ("long_term_debt_total", ("us-gaap:LongTermDebt",)),
+        ("long_term_debt_current", ("us-gaap:LongTermDebtCurrent",)),
+        ("operating_lease_liabilities_total", ("us-gaap:OperatingLeaseLiability",)),
+        ("operating_lease_liabilities_current", ("us-gaap:OperatingLeaseLiabilityCurrent",)),
+    ):
+        assert code in SUPPORT_CODES
+        item = by_code[code]
+        assert (item.statement, item.kind, item.unit, item.parent) == ("BS", "instant", "USD", None)
+        assert item.concepts == concepts
+
+
+def test_an_identity_note_must_be_text(tmp_path: Path) -> None:
+    items = load_canonical_items(DEFAULT_ITEMS_PATH)
+    path = tmp_path / "items.yaml"
+    path.write_text(
+        DEFAULT_ITEMS_PATH.read_text()
+        + "  - id: noted\n    equation: total_debt = short_term_debt + long_term_debt\n"
+        "    solve: {long_term_debt: {mode: exact}}\n    note: 7\n"
+    )
+    with pytest.raises(MappingConfigError, match="note"):
+        load_identities(path, items)

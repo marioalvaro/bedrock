@@ -905,6 +905,20 @@
             "title": "Code",
             "type": "string"
           },
+          "combined_with": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Combined With"
+          },
           "derivation": {
             "anyOf": [
               {
@@ -932,6 +946,17 @@
           "fiscal_year": {
             "title": "Fiscal Year",
             "type": "integer"
+          },
+          "included_in": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Included In"
           },
           "label": {
             "title": "Label",
@@ -1011,7 +1036,9 @@
           "derivation",
           "vintages",
           "adjustments",
-          "normalized_value"
+          "normalized_value",
+          "combined_with",
+          "included_in"
         ],
         "title": "CellDetailOut",
         "type": "object"
@@ -6069,6 +6096,23 @@
             "title": "Code",
             "type": "string"
           },
+          "combined_with": {
+            "items": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Combined With",
+            "type": "array"
+          },
           "common_size": {
             "items": {
               "anyOf": [
@@ -6102,6 +6146,20 @@
           "depth": {
             "title": "Depth",
             "type": "integer"
+          },
+          "included_in": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Included In",
+            "type": "array"
           },
           "kind": {
             "title": "Kind",
@@ -6193,7 +6251,9 @@
           "common_size_base",
           "adjustable",
           "custom",
-          "parent"
+          "parent",
+          "combined_with",
+          "included_in"
         ],
         "title": "RowOut",
         "type": "object"

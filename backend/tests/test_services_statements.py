@@ -256,7 +256,9 @@ def test_mapping_gaps_carry_the_coverage_of_every_statement_and_frequency(
     for result in gaps.coverage:
         tables = pipeline.annual if result.freq == "annual" else pipeline.quarterly
         table = tables[result.statement]
-        expected = table_coverage(table, pipeline.items, mapped, table.rule_warnings)
+        # as the service does since M7b S2: the annual table of the statement gives `annual_only`
+        annual = pipeline.annual[result.statement]
+        expected = table_coverage(table, pipeline.items, mapped, table.rule_warnings, annual=annual)
         assert result == expected
 
 

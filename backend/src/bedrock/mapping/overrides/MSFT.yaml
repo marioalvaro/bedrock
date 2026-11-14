@@ -1,6 +1,3 @@
-# Microsoft shows sales and marketing and general and administrative as two lines and no total.
-sga:
-  - us-gaap:SellingAndMarketingExpense + us-gaap:GeneralAndAdministrativeExpense
 # Short-term debt is a balance-sheet line only when Microsoft has commercial paper (FY2014-18 tagged
 # ShortTermBorrowings, which already includes it, so CommercialPaper must not be added; FY2024-25
 # tagged CommercialPaper), plus the current portion of long-term debt. In the years with no such

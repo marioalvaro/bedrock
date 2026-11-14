@@ -127,4 +127,3 @@ acknowledged_unmapped:
   us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInYearFour: "debt maturity schedule, not a balance-sheet line"
   us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInYearThree: "debt maturity schedule, not a balance-sheet line"
   us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInYearTwo: "debt maturity schedule, not a balance-sheet line"
-  us-gaap:OperatingLeaseLiability: "current plus noncurrent operating lease liability; the canonical line is the noncurrent one"

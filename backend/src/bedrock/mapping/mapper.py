@@ -7,7 +7,7 @@ from typing import Any
 
 import pandas as pd
 
-from bedrock.mapping.config import CanonicalItemDef
+from bedrock.mapping.config import CanonicalItemDef, covered_codes
 
 CANONICAL_COLUMNS = [
     "code",
@@ -21,10 +21,10 @@ CANONICAL_COLUMNS = [
     "form",
     "filed_at",
     "kind",
+    "covers",  # M7b S4: a combined fact's covered codes (a tuple, maybe empty); None if plain
 ]
 
 _OVERRIDE_BLOCK = 1_000_000  # every default ranks behind every override
-_SUM_SEPARATOR = " + "
 
 
 def map_facts(
@@ -36,10 +36,16 @@ def map_facts(
     next, so a tag switch between years still yields a full series.
 
     Mapping rows with the same (code, priority, is_override) form a summed concept, in frame order:
-    the first row is the anchor. The group counts for a period only when the anchor has a fact
-    (otherwise a partial group would beat a complete one ranked after it); the value is the sum of
-    the members that have one, and the provenance `concept` joins their names with ` + `, while the
-    taxonomy, filing and unit are the anchor's."""
+    the first row is the anchor. Each member's value is multiplied by its `weight` (+1, or -1 for
+    a subtracted member) before the sum, and the item's `sign` applies after. The group counts for
+    a period only when the anchor has a fact (otherwise a partial group would beat a complete one
+    ranked after it); the value is the weighted sum of the members that have one, and the
+    provenance `concept` joins their names with ` + ` and ` - ` (`-A` for a subtracted anchor,
+    alone or not), while the taxonomy, filing and unit are the anchor's.
+
+    A combined entry (M7b S4) is a single concept; its fact carries the covered codes in `covers`
+    (None for a plain entry). Its rank after every plain entry gives engine rule 1 of
+    docs/erd/data-coverage.md "Combined lines"; `statements/cells.py` applies the others."""
     by_code = {i.code: i for i in items}
     ranked = mappings[mappings["canonical_code"].isin(list(by_code))].copy()
     ranked["rank"] = [
@@ -50,11 +56,29 @@ def map_facts(
     ranked["member"] = group.cumcount()
     ranked["group_size"] = group["rank"].transform("size")
     joined = latest.merge(
-        ranked[["canonical_code", "taxonomy", "concept", "rank", "member", "group_size"]],
+        ranked[
+            [
+                "canonical_code",
+                "taxonomy",
+                "concept",
+                "rank",
+                "member",
+                "group_size",
+                "weight",
+                "covers",
+            ]
+        ],
         on=["taxonomy", "concept"],
         how="inner",
     )
     joined["code"] = joined["canonical_code"]
+    joined["value"] = [v * w for v, w in zip(joined["value"], joined["weight"], strict=True)]
+    # From here `concept` is provenance text, not a fact key: a subtracted anchor reads `-A`, and
+    # `_sum_groups` appends the other members; `explain_cell` parses it back with `signed_members`.
+    joined["concept"] = [
+        f"-{c}" if w < 0 and m == 0 else c
+        for c, w, m in zip(joined["concept"], joined["weight"], joined["member"], strict=True)
+    ]
     in_unit = pd.Series(
         [by_code[c].unit == u for c, u in zip(joined["code"], joined["unit"], strict=True)],
         index=joined.index,
@@ -67,7 +91,16 @@ def map_facts(
     out = best.sort_values(["code", "period_end"], kind="stable").reset_index(drop=True)
     out["value"] = [v * by_code[c].sign for v, c in zip(out["value"], out["code"], strict=True)]
     out["kind"] = [by_code[c].kind for c in out["code"]]
+    out["covers"] = pd.Series([_covers(c) for c in out["covers"]], index=out.index, dtype=object)
     return out[CANONICAL_COLUMNS]
+
+
+def _covers(text: object) -> tuple[str, ...] | None:
+    return (
+        None
+        if text is None or (isinstance(text, float) and pd.isna(text))
+        else covered_codes(str(text))
+    )
 
 
 def _sum_groups(joined: pd.DataFrame) -> pd.DataFrame:
@@ -86,9 +119,10 @@ def _sum_groups(joined: pd.DataFrame) -> pd.DataFrame:
         if rows[0]["member"] != 0:  # the anchor has no fact for this period
             continue
         total = sum((r["value"] for r in rows), Decimal(0))
-        summed.append(
-            {**rows[0], "value": total, "concept": _SUM_SEPARATOR.join(r["concept"] for r in rows)}
+        name = rows[0]["concept"] + "".join(
+            f"{' - ' if r['weight'] < 0 else ' + '}{r['concept']}" for r in rows[1:]
         )
+        summed.append({**rows[0], "value": total, "concept": name})
     single = joined[~grouped]
     if not summed:
         return single

@@ -272,7 +272,8 @@ def _formula(identity: IdentityDef, target: str, ordered: Sequence[tuple[int, st
     for coef, code in ordered:
         sign = -own * coef  # target = -(own) * sum(coef * term)
         text += (f" {'+' if sign > 0 else '-'} " if text else ("-" if sign < 0 else "")) + code
-    return f"identity {identity.id}: {target} = {text}"
+    note = f" ({identity.note})" if identity.note else ""
+    return f"identity {identity.id}: {target} = {text}{note}"
 
 
 def _same_fact(sources: Sequence[FactRef]) -> bool:

@@ -68,8 +68,10 @@ def test_annual_income_statement_has_the_documented_shape(aapl_client: TestClien
         "adjustable",
         "custom",
         "parent",
+        "combined_with",
+        "included_in",
     }
-    for field in ("values", "provenance", "yoy", "common_size"):
+    for field in ("values", "provenance", "yoy", "common_size", "combined_with", "included_in"):
         assert len(revenue[field]) == len(periods)  # type: ignore[arg-type]
 
 
@@ -453,3 +455,51 @@ def test_the_openapi_schema_types_decimals_as_strings(app: FastAPI) -> None:
     row = schemas["RowOut"]["properties"]["values"]["items"]
     assert any(option.get("type") == "string" for option in row["anyOf"])
     assert not any(option.get("type") == "number" for option in row["anyOf"])
+
+
+# --- M7b S4: combined lines in the payload ---------------------------------------------------
+
+
+def _combined_frame():  # type: ignore[no-untyped-def]
+    from bedrock.mapping.mapper import map_facts
+    from bedrock.mapping.vintage import select_vintage
+    from tests.engine_data import facts
+    from tests.test_combined_lines import BS_ITEMS, BS_MAP, COMBINED, balances
+
+    raw = balances(LiabilitiesCurrent=(100, 100, 100, 100), **{COMBINED: (60, 61, 62, 63)})
+    return raw, map_facts(select_vintage(facts(raw)), BS_MAP, BS_ITEMS)
+
+
+def test_statement_rows_carry_combined_with_and_included_in() -> None:
+    from bedrock.schemas.statements import StatementOut
+    from bedrock.statements.build import build_statement
+    from tests.test_combined_lines import BS_ITEMS
+
+    _, canonical = _combined_frame()
+    table = build_statement(canonical, BS_ITEMS, "BS", "annual")
+    body = StatementOut.from_table(
+        table, ticker="ACME", statement="BS", freq="annual", basis="reported", currency="USD"
+    ).model_dump(mode="json")
+    at = [p["key"] for p in body["periods"]].index("FY2023")
+    rows = {r["code"]: r for r in body["rows"]}
+
+    assert rows["accounts_payable"]["combined_with"][at] == ["accrued_liabilities"]
+    assert rows["accounts_payable"]["included_in"][at] is None
+    assert rows["accrued_liabilities"]["included_in"][at] == "accounts_payable"
+    assert rows["accrued_liabilities"]["combined_with"][at] is None
+
+
+def test_the_cell_detail_carries_combined_with_and_included_in() -> None:
+    from bedrock.schemas.statements import CellDetailOut
+    from bedrock.statements.explain import explain_cell
+    from tests.engine_data import facts
+    from tests.test_combined_lines import BS_ITEMS
+
+    raw, canonical = _combined_frame()
+    carrier = explain_cell(canonical, facts(raw), BS_ITEMS, "accounts_payable", 2023, "FY")
+    covered = explain_cell(canonical, facts(raw), BS_ITEMS, "accrued_liabilities", 2023, "FY")
+
+    out = CellDetailOut.from_explanation(carrier, []).model_dump(mode="json")
+    assert (out["combined_with"], out["included_in"]) == (["accrued_liabilities"], None)
+    out = CellDetailOut.from_explanation(covered, []).model_dump(mode="json")
+    assert (out["combined_with"], out["included_in"]) == (None, "accounts_payable")

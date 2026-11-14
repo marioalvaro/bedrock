@@ -13,6 +13,7 @@ from bedrock.mapping.config import (
     load_overrides,
     parse_formula,
     propagation_targets,
+    signed_members,
     split_concept,
     split_group,
 )
@@ -230,6 +231,94 @@ def test_a_malformed_summed_concept_is_rejected(tmp_path: Path, entry: str) -> N
     assert error.code == "cost_of_revenue"
 
 
+# M7b S3: signed members (docs/erd/data-coverage.md "Signed members")
+@pytest.mark.parametrize(
+    ("entry", "members"),
+    [
+        ("A - B", [(1, "us-gaap", "A"), (-1, "us-gaap", "B")]),
+        ("-A", [(-1, "us-gaap", "A")]),
+        ("- A", [(-1, "us-gaap", "A")]),
+        ("A + B - C", [(1, "us-gaap", "A"), (1, "us-gaap", "B"), (-1, "us-gaap", "C")]),
+        ("-us-gaap:A + B", [(-1, "us-gaap", "A"), (1, "us-gaap", "B")]),
+        ("ifrs-full:A - ifrs-full:B", [(1, "ifrs-full", "A"), (-1, "ifrs-full", "B")]),
+        ("A+B", [(1, "us-gaap", "A"), (1, "us-gaap", "B")]),
+    ],
+)
+def test_signed_members_give_each_member_its_weight_anchor_first(
+    entry: str, members: list[tuple[int, str, str]]
+) -> None:
+    assert signed_members(entry) == members
+    assert split_group(entry) == [(t, c) for _, t, c in members]
+
+
+def test_signed_entries_are_qualified_with_their_signs(tmp_path: Path) -> None:
+    text = VALID.replace(
+        "concepts: [CostOfRevenue]",
+        'concepts: ["CostOfRevenue - OtherCost", "-Foo", "A + B - C", "- Bar + Baz"]',
+    )
+
+    items = {i.code: i for i in load_canonical_items(write(tmp_path, text))}
+
+    assert items["cost_of_revenue"].concepts == (
+        "us-gaap:CostOfRevenue - us-gaap:OtherCost",
+        "-us-gaap:Foo",
+        "us-gaap:A + us-gaap:B - us-gaap:C",
+        "-us-gaap:Bar + us-gaap:Baz",
+    )
+    assert all(
+        signed_members(entry) == signed_members(original)
+        for entry, original in zip(
+            items["cost_of_revenue"].concepts,
+            ["CostOfRevenue - OtherCost", "-Foo", "A + B - C", "- Bar + Baz"],
+            strict=True,
+        )
+    )  # the qualified text parses back to the same members
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        "A - A",  # a member twice, whatever its sign
+        "A + B - A",
+        "A - ",  # empty member
+        "A - - B",
+        "-",
+        "A -B",  # a sign needs a space on both sides, or it is part of a name
+        "A - aapl:B",  # mixed taxonomies
+        "A  B",  # whitespace inside a name
+        "A + -B",  # a sign inside a member: `-B` would be a name and never match a fact
+        "A+-B",
+        "A - +B",
+        "us-gaap:-A",
+    ],
+)
+def test_a_malformed_signed_entry_is_rejected(tmp_path: Path, entry: str) -> None:
+    error = fail_with(tmp_path, VALID.replace("[CostOfRevenue]", f'["{entry}"]'))
+
+    assert error.code == "cost_of_revenue"
+
+
+def test_a_signed_override_is_qualified_like_a_default(tmp_path: Path) -> None:
+    (tmp_path / "ACME.yaml").write_text('cost_of_revenue: ["CostOfRevenue - Rebates"]\n')
+
+    assert load_overrides(tmp_path, "ACME") == {
+        "cost_of_revenue": ["us-gaap:CostOfRevenue - us-gaap:Rebates"]
+    }
+
+
+def test_a_signed_default_can_be_excluded_by_its_text(tmp_path: Path) -> None:
+    items = load_canonical_items(
+        write(tmp_path, VALID.replace("[CostOfRevenue]", '["CostOfRevenue - Rebates", Other]'))
+    )
+    (tmp_path / "ACME.yaml").write_text(
+        'cost_of_revenue: {exclude: ["CostOfRevenue - us-gaap:Rebates"]}\n'
+    )
+
+    assert load_excludes(tmp_path, "ACME", items) == {
+        "cost_of_revenue": ["us-gaap:CostOfRevenue - us-gaap:Rebates"]
+    }
+
+
 def test_the_same_summed_concept_twice_is_rejected(tmp_path: Path) -> None:
     text = VALID.replace("[CostOfRevenue]", "[A + B, us-gaap:A + B]")
 
@@ -347,10 +436,10 @@ def test_load_overrides_rejects_unknown_codes_and_duplicates(tmp_path: Path) -> 
         load_overrides(tmp_path, "Y", items)
 
 
-def test_shipped_canonical_items_load_with_84_codes() -> None:
+def test_shipped_canonical_items_load_with_88_codes() -> None:
     items = load_canonical_items(DEFAULT_ITEMS_PATH)
 
-    assert len(items) == 84
+    assert len(items) == 88  # M7b S4 adds the four scope totals
     assert {i.statement for i in items} == {"IS", "BS", "CF"}
     by_code = {i.code: i for i in items}
     assert by_code["eps_diluted"].kind == "average"
@@ -808,4 +897,150 @@ def test_shipped_items_mark_the_two_lease_lines_as_starting_with_a_standard() ->
     assert {i.code for i in items if i.starts_with_standard} == {
         "operating_lease_rou",
         "operating_lease_liabilities_noncurrent",
+    }
+
+
+# --- M7b S4: combined lines ------------------------------------------------------------------
+
+COMBINED = """
+- code: total_current_liabilities
+  statement: BS
+  label: Total current liabilities
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: null
+  concepts: [LiabilitiesCurrent]
+- code: accounts_payable
+  statement: BS
+  label: Accounts payable
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_current_liabilities
+  concepts:
+    - AccountsPayableCurrent
+    - {concept: AccountsPayableAndAccruedLiabilitiesCurrent, covers: [accrued_liabilities]}
+- code: accrued_liabilities
+  statement: BS
+  label: Accrued liabilities
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_current_liabilities
+  concepts: [AccruedLiabilitiesCurrent]
+- code: other_current_liabilities
+  statement: BS
+  label: Other current liabilities
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_current_liabilities
+  concepts: []
+  derive: total_current_liabilities - accounts_payable - accrued_liabilities
+  residual: true
+- code: revenue
+  statement: IS
+  label: Revenue
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: null
+  concepts: [Revenues]
+- code: change_payables
+  statement: CF
+  label: Change in payables
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: null
+  concepts: [IncreaseDecreaseInAccountsPayable]
+"""
+
+AP_COMBINED = (
+    "    - {concept: AccountsPayableAndAccruedLiabilitiesCurrent, covers: [accrued_liabilities]}"
+)
+
+
+def test_a_combined_entry_is_a_concept_with_the_codes_it_covers(tmp_path: Path) -> None:
+    items = {i.code: i for i in load_canonical_items(write(tmp_path, COMBINED))}
+    payable = items["accounts_payable"]
+    assert payable.concepts == (
+        "us-gaap:AccountsPayableCurrent",
+        "us-gaap:AccountsPayableAndAccruedLiabilitiesCurrent",
+    )
+    assert payable.covers == (
+        ("us-gaap:AccountsPayableAndAccruedLiabilitiesCurrent", ("accrued_liabilities",)),
+    )
+    assert items["accrued_liabilities"].covers == ()
+
+
+def test_a_combined_entry_may_cover_no_row(tmp_path: Path) -> None:
+    text = COMBINED.replace(
+        "  concepts: [IncreaseDecreaseInAccountsPayable]",
+        "  concepts:\n    - IncreaseDecreaseInAccountsPayable\n"
+        "    - {concept: IncreaseDecreaseInAccountsPayableAndAccruedLiabilities, covers: []}",
+    )
+    items = {i.code: i for i in load_canonical_items(write(tmp_path, text))}
+    assert items["change_payables"].covers == (
+        ("us-gaap:IncreaseDecreaseInAccountsPayableAndAccruedLiabilities", ()),
+    )
+
+
+@pytest.mark.parametrize(
+    ("entry", "message"),
+    [
+        # a plain entry after a combined one
+        (f"{AP_COMBINED}\n    - AccountsPayableTradeCurrent", "after every plain entry"),
+        # a sum cannot be combined
+        (
+            "    - {concept: 'AccountsPayableCurrent + OtherLiabilitiesCurrent', "
+            "covers: [accrued_liabilities]}",
+            "single concept",
+        ),
+        ("    - {concept: X, covers: [accounts_payable]}", "itself"),
+        ("    - {concept: X, covers: [other_current_liabilities]}", "residual"),
+        ("    - {concept: X, covers: [revenue]}", "same statement"),
+        ("    - {concept: X, covers: [unknown_code]}", "unknown"),
+        ("    - {concept: X, covers: [accrued_liabilities, accrued_liabilities]}", "twice"),
+        ("    - {concept: X}", "covers"),
+        ("    - {concept: X, covers: accrued_liabilities}", "list"),
+        ("    - {concept: X, covers: [], extra: 1}", "covers"),
+        ("    - {covers: []}", "concept"),
+        ("    - 7", "concept"),
+    ],
+)
+def test_a_malformed_combined_entry_is_rejected(tmp_path: Path, entry: str, message: str) -> None:
+    text = COMBINED.replace(AP_COMBINED, entry)
+    with pytest.raises(MappingConfigError, match=message):
+        load_canonical_items(write(tmp_path, text))
+
+
+def test_a_covered_code_has_the_carriers_kind(tmp_path: Path) -> None:
+    text = COMBINED.replace(
+        "  concepts: [Revenues]",
+        "  concepts: [Revenues]\n- code: change_accrued\n"
+        "  statement: BS\n  label: x\n  kind: flow\n  unit: USD\n  sign: 1\n  parent: null\n"
+        "  concepts: [Y]",
+    ).replace("covers: [accrued_liabilities]}", "covers: [change_accrued]}")
+    with pytest.raises(MappingConfigError, match="kind"):
+        load_canonical_items(write(tmp_path, text))
+
+
+def test_an_override_cannot_hold_a_combined_entry(tmp_path: Path) -> None:
+    items = load_canonical_items(write(tmp_path, COMBINED))
+    (tmp_path / "ACME.yaml").write_text(
+        "accounts_payable:\n  - {concept: X, covers: [accrued_liabilities]}\n"
+    )
+    with pytest.raises(MappingConfigError, match="override"):
+        load_overrides(tmp_path, "ACME", items)
+
+
+def test_a_combined_default_can_be_excluded_by_its_concept(tmp_path: Path) -> None:
+    items = load_canonical_items(write(tmp_path, COMBINED))
+    (tmp_path / "ACME.yaml").write_text(
+        "accounts_payable:\n  exclude: [AccountsPayableAndAccruedLiabilitiesCurrent]\n"
+    )
+    assert load_excludes(tmp_path, "ACME", items) == {
+        "accounts_payable": ["us-gaap:AccountsPayableAndAccruedLiabilitiesCurrent"]
     }

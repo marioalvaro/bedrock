@@ -53,7 +53,7 @@ STATEMENTS = ("IS", "BS", "CF")
 FREQS = ("annual", "quarterly")
 TOP_LINES = 40
 # buckets of cells that cannot exist: not gaps, so not among the top empty lines
-NOT_GAPS = frozenset({"statement_not_presented", "not_applicable"})
+NOT_GAPS = frozenset({"statement_not_presented", "not_applicable", "included_in"})
 Labels = dict[str, tuple[str, str]]  # us-gaap concept -> (label, description)
 
 

@@ -44,6 +44,8 @@ export function incomeStatement(overrides: Partial<StatementOut> = {}): Statemen
         custom: false,
         parent: null,
         common_size_base: "Revenue",
+        combined_with: [null, null],
+        included_in: [null, null],
       },
       {
         code: "gross_profit",
@@ -59,6 +61,8 @@ export function incomeStatement(overrides: Partial<StatementOut> = {}): Statemen
         custom: false,
         parent: null,
         common_size_base: "Revenue",
+        combined_with: [null, null],
+        included_in: [null, null],
       },
       {
         code: "cost_of_revenue",
@@ -74,6 +78,8 @@ export function incomeStatement(overrides: Partial<StatementOut> = {}): Statemen
         custom: false,
         parent: null,
         common_size_base: "Revenue",
+        combined_with: [null, null],
+        included_in: [null, null],
       },
       {
         code: "rnd",
@@ -89,6 +95,8 @@ export function incomeStatement(overrides: Partial<StatementOut> = {}): Statemen
         custom: false,
         parent: null,
         common_size_base: "Revenue",
+        combined_with: [null, null],
+        included_in: [null, null],
       },
       {
         code: "eps_diluted",
@@ -104,6 +112,8 @@ export function incomeStatement(overrides: Partial<StatementOut> = {}): Statemen
         custom: false,
         parent: null,
         common_size_base: "Revenue",
+        combined_with: [null, null],
+        included_in: [null, null],
       },
     ],
     ...overrides,
@@ -130,6 +140,8 @@ export function balanceStatement(): StatementOut {
         custom: false,
         parent: null,
         common_size_base: "Total assets",
+        combined_with: [null, null],
+        included_in: [null, null],
       },
       {
         code: "total_current_assets",
@@ -145,6 +157,8 @@ export function balanceStatement(): StatementOut {
         custom: false,
         parent: null,
         common_size_base: "Total assets",
+        combined_with: [null, null],
+        included_in: [null, null],
       },
       {
         code: "cash",
@@ -160,6 +174,8 @@ export function balanceStatement(): StatementOut {
         custom: false,
         parent: null,
         common_size_base: "Total assets",
+        combined_with: [null, null],
+        included_in: [null, null],
       },
       {
         code: "total_noncurrent_assets",
@@ -175,6 +191,8 @@ export function balanceStatement(): StatementOut {
         custom: false,
         parent: null,
         common_size_base: "Total assets",
+        combined_with: [null, null],
+        included_in: [null, null],
       },
       {
         code: "ppe_net",
@@ -190,6 +208,8 @@ export function balanceStatement(): StatementOut {
         custom: false,
         parent: null,
         common_size_base: "Total assets",
+        combined_with: [null, null],
+        included_in: [null, null],
       },
     ],
     balance_check: [
@@ -223,6 +243,8 @@ export function customIncomeStatement(): StatementOut {
     custom: true,
     parent: "cost_of_revenue",
     common_size_base: "Revenue",
+    combined_with: [null, null],
+    included_in: [null, null],
     ...overrides,
   });
   const rows = [...base.rows];

@@ -7,6 +7,7 @@ from dataclasses import replace
 from datetime import date, timedelta
 from decimal import Decimal
 
+import pandas as pd
 import pytest
 
 from bedrock.mapping.mapper import map_facts
@@ -429,3 +430,38 @@ def test_a_line_a_standard_introduced_is_not_applicable_before_its_first_value()
     assert {annual_buckets[("rnd", f"FY{y}")] for y in (2021, 2022, 2023)} == {"not_applicable"}
     assert result.tables[("IS", "annual")].counts["not_applicable"] == 3
     assert result.tables[("IS", "quarterly")].buckets[("rnd", "FY2022Q1")] == "not_applicable"
+
+
+def test_a_covered_cell_has_its_own_bucket_after_not_applicable() -> None:
+    from tests.test_combined_lines import BS_ITEMS, BS_MAP, COMBINED, balances
+
+    assert (
+        ANNUAL_BUCKETS[:3]
+        == QUARTERLY_BUCKETS[:3]
+        == (
+            "statement_not_presented",
+            "not_applicable",
+            "included_in",
+        )
+    )
+    items = [*BS_ITEMS, item("total_assets", "BS", kind="instant")]  # the statement's anchor
+    maps = pd.concat([BS_MAP, mappings(("total_assets", "Assets", 0))])
+    raw = balances(
+        Assets=(200, 200, 200, 200),
+        LiabilitiesCurrent=(100, 100, 100, 100),
+        **{COMBINED: (60, 61, 62, 63)},
+    )
+    canonical = map_facts(select_vintage(facts(raw)), maps, items)
+    tables = {
+        ("BS", f): build_statement(canonical, items, "BS", f)  # type: ignore[arg-type]
+        for f in ("annual", "quarterly")
+    }
+
+    result = census(tables, items, set(maps["canonical_code"]), (), ())
+
+    assert result.tables[("BS", "annual")].buckets[("accrued_liabilities", "FY2023")] == (
+        "included_in"
+    )
+    assert result.tables[("BS", "quarterly")].buckets[("accrued_liabilities", "FY2023Q2")] == (
+        "included_in"
+    )

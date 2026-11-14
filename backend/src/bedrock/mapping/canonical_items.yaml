@@ -70,6 +70,9 @@ items:
   rolls_into: ["-operating_income"]
   concepts:
     - us-gaap:SellingGeneralAndAdministrativeExpense
+    # M7b S3: "Sales and marketing" + "General and administrative" on two lines (NFLX, ORCL);
+    # anchored on selling, since a G&A line alone is a component of SG&A
+    - us-gaap:SellingAndMarketingExpense + us-gaap:GeneralAndAdministrativeExpense
   residual: false
 - code: other_operating_expenses
   statement: IS
@@ -116,6 +119,7 @@ items:
   concepts:
     - us-gaap:InterestExpense
     - us-gaap:InterestExpenseNonoperating
+    - us-gaap:InterestAndDebtExpense  # M7b S3: BA "Interest and debt expense"
   residual: false
 - code: other_nonoperating_income
   statement: IS
@@ -263,6 +267,8 @@ items:
   parent: total_current_assets
   concepts:
     - us-gaap:CashAndCashEquivalentsAtCarryingValue
+    # M7b S4 combined line: cash and short-term investments reported as one line
+    - {concept: "us-gaap:CashCashEquivalentsAndShortTermInvestments", covers: [short_term_investments]}
   residual: false
 - code: short_term_investments
   statement: BS
@@ -296,6 +302,8 @@ items:
   parent: total_current_assets
   concepts:
     - us-gaap:InventoryNet
+    # M7b S3: inventory net of customer advances on long-term contracts, as BA presents it
+    - us-gaap:InventoryNetOfAllowancesCustomerAdvancesAndProgressBillings
   residual: false
 - code: other_current_assets
   statement: BS
@@ -473,6 +481,7 @@ items:
   parent: total_noncurrent_liabilities
   concepts:
     - us-gaap:LongTermDebtNoncurrent + us-gaap:FinanceLeaseLiabilityNoncurrent + us-gaap:CapitalLeaseObligationsNoncurrent
+    - us-gaap:LongTermDebtAndCapitalLeaseObligations  # M7b S3: the noncurrent debt and lease total (BA)
   residual: false
 - code: operating_lease_liabilities_noncurrent
   statement: BS
@@ -643,6 +652,47 @@ items:
     - us-gaap:TreasuryStockCommonShares
     - us-gaap:TreasuryStockShares
   residual: false
+# M7b S4: totals of a different scope, operands of the scope identities (never shown as missing)
+- code: long_term_debt_total
+  statement: BS
+  label: Long-term debt incl. current portion
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: null
+  concepts:
+    - us-gaap:LongTermDebt
+  residual: false
+- code: long_term_debt_current
+  statement: BS
+  label: Current portion of long-term debt
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: null
+  concepts:
+    - us-gaap:LongTermDebtCurrent
+  residual: false
+- code: operating_lease_liabilities_total
+  statement: BS
+  label: Operating lease liabilities, total
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: null
+  concepts:
+    - us-gaap:OperatingLeaseLiability
+  residual: false
+- code: operating_lease_liabilities_current
+  statement: BS
+  label: Operating lease liabilities, current
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: null
+  concepts:
+    - us-gaap:OperatingLeaseLiabilityCurrent
+  residual: false
 - code: cfo
   statement: CF
   label: Cash from operations
@@ -710,6 +760,8 @@ items:
   concepts:
     - us-gaap:IncreaseDecreaseInAccountsReceivable
     - us-gaap:IncreaseDecreaseInReceivables
+    # M7b S4 combined line: trade and other receivables in one change (WMT)
+    - {concept: "us-gaap:IncreaseDecreaseInAccountsAndOtherReceivables", covers: []}
   residual: false
 - code: change_inventory
   statement: CF
@@ -730,6 +782,8 @@ items:
   parent: cfo
   concepts:
     - us-gaap:IncreaseDecreaseInAccountsPayable
+    # M7b S4 combined line: payables with accrued liabilities, which have no cash-flow row (DE, JNJ, ORCL)
+    - {concept: "us-gaap:IncreaseDecreaseInAccountsPayableAndAccruedLiabilities", covers: []}
   residual: false
 - code: other_operating_activities
   statement: CF
@@ -842,6 +896,7 @@ items:
   concepts:
     - us-gaap:RepaymentsOfLongTermDebt + us-gaap:RepaymentsOfShortTermDebt
     - us-gaap:RepaymentsOfDebtMaturingInMoreThanThreeMonths
+    - us-gaap:RepaymentsOfDebt  # M7b S3: aggregate short- and long-term repayments (BA, NFLX, NKE, ORCL)
   residual: false
 - code: buybacks
   statement: CF
@@ -936,3 +991,11 @@ identities:
   - id: shares_outstanding_count
     equation: shares_outstanding = shares_issued - treasury_shares
     solve: {shares_outstanding: {mode: exact}}
+  # M7b S4 scope identities (docs/erd/data-coverage.md "Scope identities")
+  - id: long_term_debt_split
+    equation: long_term_debt_total = long_term_debt + long_term_debt_current
+    solve: {long_term_debt: {mode: exact}}
+    note: "debt only: the total concept carries no finance lease"
+  - id: operating_lease_split
+    equation: operating_lease_liabilities_total = operating_lease_liabilities_noncurrent + operating_lease_liabilities_current
+    solve: {operating_lease_liabilities_noncurrent: {mode: exact}}

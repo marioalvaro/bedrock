@@ -3,13 +3,16 @@
 from dataclasses import replace
 from decimal import Decimal
 
+import pandas as pd
 import pytest
 
+from bedrock.mapping.config import CanonicalItemDef
 from bedrock.mapping.mapper import map_facts
 from bedrock.mapping.vintage import select_vintage
 from bedrock.statements.build import StatementTable, build_statement
 from bedrock.statements.cell_types import RuleWarning
 from bedrock.statements.coverage import CAUSES, PROVENANCES, STATEMENT_ANCHORS, table_coverage
+from tests import test_combined_lines
 from tests.engine_data import facts, flow_facts, instant_facts, item, mappings
 from tests.statements_pipeline import run_pipeline
 from tests.test_statements_golden import TICKERS
@@ -502,6 +505,14 @@ STRICT_BEFORE = {
 }
 
 
+# M7b S4: Deere's "Accounts payable and accrued expenses" fills `change_payables` as a combined
+# line in every year (19 annual cells, the quarters derived from them). Nothing else moves.
+STRICT_AFTER_S4 = {
+    ("DE", "CF", "annual"): "0.982456",
+    ("DE", "CF", "quarterly"): "0.962331",
+}
+
+
 @pytest.mark.parametrize("ticker", TICKERS)
 def test_the_strict_fraction_moves_only_through_the_anchor_rule(ticker: str) -> None:
     pipeline = run_pipeline(ticker)
@@ -520,7 +531,8 @@ def test_the_strict_fraction_moves_only_through_the_anchor_rule(ticker: str) -> 
                     no_data,
                 ), key
             else:
-                assert result.fraction == Decimal(STRICT_BEFORE[key]), key
+                expected = STRICT_AFTER_S4.get(key, STRICT_BEFORE[key])
+                assert result.fraction == Decimal(expected), key
                 assert result.empty_by_cause["no_filing_data"] == 0, key
 
 
@@ -539,3 +551,48 @@ def test_the_fixtures_have_lease_years_before_asc_842_and_annual_only_quarters()
         "operating_lease_liabilities_noncurrent",
     }
     assert quarters.empty_by_cause["annual_only"] > 0
+
+
+# --- M7b S4: included_in ------------------------------------------------------------------
+
+
+def combined_items() -> list[CanonicalItemDef]:
+    from tests.test_combined_lines import BS_ITEMS
+
+    return [*BS_ITEMS, item("total_assets", "BS", kind="instant")]  # the statement's anchor
+
+
+def combined_table() -> StatementTable:
+    from tests.test_combined_lines import COMBINED, balances
+
+    raw = balances(
+        Assets=(200, 200, 200, 200),
+        LiabilitiesCurrent=(100, 100, 100, 100),
+        **{COMBINED: (60, 61, 62, 63)},
+    )
+    maps = pd.concat([test_combined_lines.BS_MAP, mappings(("total_assets", "Assets", 0))])
+    canonical = map_facts(select_vintage(facts(raw)), maps, combined_items())
+    return build_statement(canonical, combined_items(), "BS", "annual")
+
+
+def test_a_covered_cell_is_included_in_and_out_of_the_applicable_cells() -> None:
+    mapped = {
+        "total_assets",
+        "total_current_liabilities",
+        "accounts_payable",
+        "accrued_liabilities",
+    }
+    result = table_coverage(combined_table(), combined_items(), mapped, ())
+
+    assert result.causes[("accrued_liabilities", "FY2023")] == "included_in"
+    assert result.empty_by_cause["included_in"] == 1
+    # strict: assets, total and payables filled, accrued empty; applicable leaves accrued out
+    assert result.fraction == Decimal("0.75")
+    assert result.fraction_applicable == Decimal(1)
+
+
+def test_included_in_comes_before_structural() -> None:
+    # even with no concept mapped for it, a covered cell is included in its carrier
+    result = table_coverage(combined_table(), combined_items(), {"accounts_payable"}, ())
+
+    assert result.causes[("accrued_liabilities", "FY2023")] == "included_in"

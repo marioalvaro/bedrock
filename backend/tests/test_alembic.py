@@ -1989,3 +1989,62 @@ def test_0019_downgrade_drops_only_the_new_tables_and_up_again_recreates_them(
 
     _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
     assert _ACCOUNTABILITY_TABLES <= set(inspect(engine).get_table_names())
+
+
+def _seed_mapping(connection: Connection) -> None:
+    connection.execute(
+        text(
+            "INSERT INTO canonical_item (code, statement, label, kind, unit, sign, display_order)"
+            " VALUES ('revenue', 'IS', 'Revenue', 'flow', 'USD', 1, 0)"
+        )
+    )
+    connection.execute(
+        text(
+            "INSERT INTO concept_mapping (canonical_code, taxonomy, concept, priority)"
+            " VALUES ('revenue', 'us-gaap', 'Revenues', 0)"
+        )
+    )
+
+
+def test_0020_adds_weight_default_one_and_a_nullable_covers_to_concept_mapping(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0019"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        _seed_mapping(connection)
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    columns = {c["name"]: c for c in inspect(engine).get_columns("concept_mapping")}
+    assert columns["weight"]["nullable"] is False
+    assert columns["covers"]["nullable"] is True
+    with engine.begin() as connection:
+        assert tuple(
+            connection.execute(text("SELECT weight, covers FROM concept_mapping")).one()
+        ) == (1, None)
+        with pytest.raises(IntegrityError):
+            connection.execute(
+                text(
+                    "INSERT INTO concept_mapping (canonical_code, taxonomy, concept, priority,"
+                    " weight) VALUES ('revenue', 'us-gaap', 'Other', 1, NULL)"
+                )
+            )
+
+
+def test_0020_downgrade_drops_only_the_two_columns_and_keeps_the_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        _seed_mapping(connection)
+
+    _run_alembic(tmp_path, monkeypatch, ("downgrade", "0019"))
+    names = {c["name"] for c in inspect(engine).get_columns("concept_mapping")}
+    assert names == {"id", "canonical_code", "taxonomy", "concept", "priority", "company_id"}
+    with engine.begin() as connection:
+        assert _count(connection, "concept_mapping") == 1
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    names = {c["name"] for c in inspect(engine).get_columns("concept_mapping")}
+    assert {"weight", "covers"} <= names

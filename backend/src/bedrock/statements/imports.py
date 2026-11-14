@@ -118,6 +118,7 @@ def _row(v: StoredValue, item: CanonicalItemDef) -> dict[str, object]:
         "form": IMPORT_FORM,
         "filed_at": v.imported_at.date(),
         "kind": item.kind,
+        "covers": None,
         "fiscal_year": v.fiscal_year,  # beyond the canonical columns: the calendar reads them
         "fiscal_period": v.fiscal_period,
     }

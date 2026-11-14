@@ -23,6 +23,8 @@ DEFAULT_TAXONOMY = "us-gaap"
 _CODE = r"[a-z][a-z0-9_]*"
 _FORMULA = re.compile(rf"^\s*({_CODE})(\s*[+-]\s*{_CODE})*\s*$")
 _TERM = re.compile(rf"([+-]?)\s*({_CODE})")
+# a member name holds no whitespace or sign of its own
+_BAD_NAME = re.compile(r"\s|^[+-]|[+-]$")
 
 
 class MappingConfigError(ValueError):
@@ -53,6 +55,9 @@ class CanonicalItemDef:
     # M7b S2: a line an accounting standard introduced (ASC 842 leases); its cells before the
     # company's first value are `not_applicable` in coverage, not gaps
     starts_with_standard: bool = False
+    # M7b S4: the combined entries of `concepts` (docs/erd/data-coverage.md "Combined lines"), each
+    # as (entry, the canonical codes whose amount is inside it); empty when there are none
+    covers: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
 
 # Memo lines whose charge sits inside another line: adjust that line instead.
@@ -60,7 +65,17 @@ MEMO_CODES = frozenset({"goodwill_impairment"})
 
 # Lines that only feed an identity (R7): a company that does not report them has left nothing out,
 # so Data gaps does not list them.
-SUPPORT_CODES = frozenset({"shares_issued", "treasury_shares"})
+SUPPORT_CODES = frozenset(
+    {
+        "shares_issued",
+        "treasury_shares",
+        # M7b S4: the scope totals of docs/erd/data-coverage.md "Scope identities"
+        "long_term_debt_total",
+        "long_term_debt_current",
+        "operating_lease_liabilities_total",
+        "operating_lease_liabilities_current",
+    }
+)
 
 SOLVE_MODES = ("zero_only", "exact", "bounded")
 
@@ -82,6 +97,7 @@ class IdentityDef:
     equation: str
     terms: tuple[tuple[int, str], ...]
     solve: Mapping[str, SolveRule]
+    note: str = ""  # M7b S4: said after the formula of a solved cell (its scope), else empty
 
 
 def split_concept(text: str) -> tuple[str, str]:
@@ -90,10 +106,45 @@ def split_concept(text: str) -> tuple[str, str]:
     return (taxonomy, concept) if sep else (DEFAULT_TAXONOMY, text)
 
 
+# A member is added after `+` (spaces optional) and subtracted after ` - ` (a space on both
+# sides, since a taxonomy prefix such as `ifrs-full` holds a hyphen); a leading `-` negates the
+# anchor.
+_MEMBER_SEPARATOR = re.compile(r"\s*(\+)\s*|\s+(-)\s+")
+_LEADING_MINUS = re.compile(r"^\s*-\s*")
+
+
+def signed_members(entry: str) -> list[tuple[int, str, str]]:
+    """A concept entry `A + B - C` -> [(1, taxonomy, A), (1, taxonomy, B), (-1, taxonomy, C)]:
+    the weighted members of a summed concept, anchor first. A plain concept is a group of one,
+    `-A` a group of one subtracted member. Members are not validated here (see `_qualify_entry`)."""
+    anchor_weight = 1
+    rest = entry
+    if (lead := _LEADING_MINUS.match(entry)) is not None:
+        anchor_weight, rest = -1, entry[lead.end() :]
+    parts = _MEMBER_SEPARATOR.split(rest)
+    # split() returns [member, plus, minus, member, plus, minus, member, ...]
+    members = [(anchor_weight, parts[0])]
+    for at in range(1, len(parts), 3):
+        weight = -1 if parts[at + 1] == "-" else 1
+        members.append((weight, parts[at + 2]))
+    return [(weight, *split_concept(member.strip())) for weight, member in members]
+
+
+def covers_text(item: CanonicalItemDef, entry: str) -> str | None:
+    """How `concept_mapping.covers` stores an entry of `item`: None for a plain entry, else its
+    covered codes joined with `,` (an empty string for a combined entry that covers no row)."""
+    return next((",".join(codes) for e, codes in item.covers if e == entry), None)
+
+
+def covered_codes(text: str | None) -> tuple[str, ...] | None:
+    """`covers_text` read back: None for a plain entry, else the covered codes."""
+    return None if text is None else tuple(c for c in text.split(",") if c)
+
+
 def split_group(entry: str) -> list[tuple[str, str]]:
     """A concept entry `A + B` -> [(taxonomy, A), (taxonomy, B)]: the members of a summed concept,
-    anchor first. A plain concept is a group of one."""
-    return [split_concept(member.strip()) for member in entry.split("+")]
+    anchor first, without their weights (`signed_members`). A plain concept is a group of one."""
+    return [(taxonomy, concept) for _, taxonomy, concept in signed_members(entry)]
 
 
 def parse_formula(text: str) -> list[tuple[int, str]]:
@@ -209,6 +260,10 @@ def _override_entry(file: str, code: str, entry: Any) -> tuple[list[str], list[s
             raise MappingConfigError(f"exclude must be `all` or a list of concepts in {file}", code)
     else:
         raise MappingConfigError(f"override must be a list of concepts in {file}", code)
+    if isinstance(concepts, list) and any(isinstance(c, dict) for c in concepts):
+        raise MappingConfigError(
+            f"a combined entry is a default, never an override, in {file}", code
+        )
     if not isinstance(concepts, list) or not all(isinstance(c, str) for c in concepts):
         raise MappingConfigError(f"override must be a list of concepts in {file}", code)
     return concepts, exclude
@@ -322,9 +377,7 @@ def _item(entry: Any) -> CanonicalItemDef:
             )
     if entry["sign"] not in (1, -1) or isinstance(entry["sign"], bool):
         raise MappingConfigError(f"sign must be 1 or -1, got {entry['sign']!r}", code)
-    concepts = entry.get("concepts") or []
-    if not isinstance(concepts, list) or not all(isinstance(c, str) for c in concepts):
-        raise MappingConfigError("concepts must be a list of strings", code)
+    concepts, covers = _concept_entries(code, entry.get("concepts") or [])
     starts_with_standard = entry.get("starts_with_standard", False)
     if not isinstance(starts_with_standard, bool):
         raise MappingConfigError(
@@ -344,10 +397,47 @@ def _item(entry: Any) -> CanonicalItemDef:
         parent=entry.get("parent"),
         concepts=tuple(_qualify(code, concepts)),
         derive=entry.get("derive"),
+        covers=covers,
         residual=bool(entry.get("residual", False)),
         rolls_into=_rolls_into(code, entry.get("rolls_into")),
         starts_with_standard=starts_with_standard,
     )
+
+
+def _concept_entries(
+    code: str, raw: Any
+) -> tuple[list[str], tuple[tuple[str, tuple[str, ...]], ...]]:
+    """The item's concept entries as text, and its combined entries (`{concept, covers}`) as
+    (qualified entry, covered codes). A combined entry is a single concept and comes after every
+    plain entry; the covered codes are checked against the other items in `_validate`."""
+    if not isinstance(raw, list):
+        raise MappingConfigError("concepts must be a list of strings", code)
+    concepts: list[str] = []
+    covers: list[tuple[str, tuple[str, ...]]] = []
+    for entry in raw:
+        if isinstance(entry, str):
+            if covers:
+                raise MappingConfigError(
+                    "a combined entry comes after every plain entry of the item", code
+                )
+            concepts.append(entry)
+            continue
+        if not isinstance(entry, dict) or not isinstance(entry.get("concept"), str):
+            raise MappingConfigError(
+                "concepts must be a list of strings or {concept, covers}", code
+            )
+        if set(entry) != {"concept", "covers"}:
+            raise MappingConfigError("a combined entry takes exactly `concept` and `covers`", code)
+        codes = entry["covers"]
+        if not isinstance(codes, list) or not all(isinstance(c, str) for c in codes):
+            raise MappingConfigError("covers must be a list of codes", code)
+        if len(set(codes)) != len(codes):
+            raise MappingConfigError("a combined entry covers a code twice", code)
+        if len(signed_members(entry["concept"])) != 1 or entry["concept"].strip().startswith("-"):
+            raise MappingConfigError("a combined entry is a single concept, not a sum", code)
+        concepts.append(entry["concept"])
+        covers.append((_qualify_entry(code, entry["concept"]), tuple(codes)))
+    return concepts, tuple(covers)
 
 
 def _identity(entry: Any, by_code: dict[str, CanonicalItemDef]) -> IdentityDef:
@@ -359,6 +449,11 @@ def _identity(entry: Any, by_code: dict[str, CanonicalItemDef]) -> IdentityDef:
     identity_id, equation = entry["id"], entry["equation"]
     if not isinstance(identity_id, str) or not identity_id or not isinstance(equation, str):
         raise MappingConfigError(f"identity needs a text `id` and `equation`: {entry!r}")
+    if set(entry) - {"id", "equation", "solve", "note"}:
+        raise MappingConfigError(f"{identity_id}: unknown identity field in {entry!r}")
+    note = entry.get("note", "")
+    if not isinstance(note, str):
+        raise MappingConfigError(f"{identity_id}: the note must be text")
     terms = _equation_terms(identity_id, equation)
     for _, code in terms:
         if code not in by_code:
@@ -372,6 +467,7 @@ def _identity(entry: Any, by_code: dict[str, CanonicalItemDef]) -> IdentityDef:
         equation.strip(),
         terms,
         _solve_rules(identity_id, entry["solve"], terms, by_code),
+        note.strip(),
     )
 
 
@@ -437,14 +533,30 @@ def _qualify(code: str, concepts: list[str]) -> list[str]:
 
 
 def _qualify_entry(code: str, entry: str) -> str:
-    members = split_group(entry)
-    if any(not concept for _, concept in members):
+    members = signed_members(entry)
+    names = [(taxonomy, concept) for _, taxonomy, concept in members]
+    if any(not concept or not taxonomy for taxonomy, concept in names):
         raise MappingConfigError(f"empty member in {entry!r}", code)
-    if len(set(members)) != len(members):
+    if any(_BAD_NAME.search(part) for name in names for part in name):  # `A + -B`, `A -B`
+        raise MappingConfigError(f"malformed member in {entry!r}", code)
+    if len(set(names)) != len(names):
         raise MappingConfigError(f"duplicate member in {entry!r}", code)
-    if len({taxonomy for taxonomy, _ in members}) > 1:
+    if len({taxonomy for taxonomy, _ in names}) > 1:
         raise MappingConfigError(f"members of {entry!r} must share a taxonomy", code)
-    return " + ".join(f"{taxonomy}:{concept}" for taxonomy, concept in members)
+    return join_members(members)
+
+
+def join_members(members: Sequence[tuple[int, str, str]]) -> str:
+    """The text of an entry from its weighted members: `-taxonomy:A + taxonomy:B - taxonomy:C`.
+    `signed_members` parses it back."""
+    text = ""
+    for at, (weight, taxonomy, concept) in enumerate(members):
+        if at:
+            text += " - " if weight < 0 else " + "
+        elif weight < 0:
+            text += "-"
+        text += f"{taxonomy}:{concept}"
+    return text
 
 
 def _validate(items: list[CanonicalItemDef]) -> None:
@@ -474,6 +586,27 @@ def _validate(items: list[CanonicalItemDef]) -> None:
                 if by_code[operand].statement != item.statement:
                     raise MappingConfigError(
                         f"formula operand {operand!r} is on another statement", item.code
+                    )
+
+    for item in items:
+        for _, covered in item.covers:
+            for target in covered:
+                other = by_code.get(target)
+                if other is None:
+                    raise MappingConfigError(f"covers unknown code {target!r}", item.code)
+                if target == item.code:
+                    raise MappingConfigError(
+                        "a combined entry cannot cover the item itself", item.code
+                    )
+                if other.residual:
+                    raise MappingConfigError(f"covers the residual {target!r}", item.code)
+                if other.statement != item.statement:
+                    raise MappingConfigError(
+                        f"covers {target!r}, which is not on the same statement", item.code
+                    )
+                if other.kind != item.kind:
+                    raise MappingConfigError(
+                        f"covers {target!r}, which is not of the same kind", item.code
                     )
 
     for item in items:  # walk each parent chain: a cycle never reaches a root

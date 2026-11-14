@@ -22,11 +22,12 @@ from bedrock.mapping.config import (
     DEFAULT_OVERRIDES_DIR,
     CanonicalItemDef,
     IdentityDef,
+    covers_text,
     load_canonical_items,
     load_excludes,
     load_identities,
     load_overrides,
-    split_group,
+    signed_members,
 )
 from bedrock.mapping.mapper import CANONICAL_COLUMNS, map_facts
 from bedrock.mapping.vintage import balance_snapshot, select_vintage
@@ -68,7 +69,8 @@ def mapping_frame(
             for priority, entry in enumerate(concepts):
                 if not is_override and entry in dropped.get(item.code, []):
                     continue
-                for taxonomy, name in split_group(entry):  # a summed concept: one row per member
+                # a summed concept: one row per member, each with its weight
+                for weight, taxonomy, name in signed_members(entry):
                     rows.append(
                         {
                             "canonical_code": item.code,
@@ -76,11 +78,26 @@ def mapping_frame(
                             "concept": name,
                             "priority": priority,
                             "is_override": is_override,
+                            "weight": weight,
+                            "covers": None if is_override else covers_text(item, entry),
                         }
                     )
-    return pd.DataFrame(
-        rows, columns=["canonical_code", "taxonomy", "concept", "priority", "is_override"]
+    frame = pd.DataFrame(
+        rows,
+        columns=[
+            "canonical_code",
+            "taxonomy",
+            "concept",
+            "priority",
+            "is_override",
+            "weight",
+            "covers",
+        ],
     )
+    # an object column keeps None (plain) apart from "" (combined, covering no row), as the
+    # repository's `mappings_for` does
+    frame["covers"] = pd.Series([r["covers"] for r in rows], index=frame.index, dtype=object)
+    return frame
 
 
 def fact_frame(ticker: str, mappings: pd.DataFrame) -> pd.DataFrame:
@@ -141,6 +158,7 @@ def cover_shares(ticker: str) -> pd.DataFrame:
             filings[f.accession_no].form,
             filings[f.accession_no].filed_at,
             "instant",
+            None,
         )
         for f in parsed.facts
         if (f.taxonomy, f.concept, f.unit)

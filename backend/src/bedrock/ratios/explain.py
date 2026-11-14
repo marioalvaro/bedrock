@@ -12,7 +12,14 @@ from functools import cache
 from typing import Literal
 
 from bedrock.mapping.config import CanonicalItemDef, load_canonical_items, parse_formula
-from bedrock.ratios.calculator import Operands, Point, RatioFreq, RatioInputs, year_earlier
+from bedrock.ratios.calculator import (
+    Operands,
+    Point,
+    RatioFreq,
+    RatioInputs,
+    row_caveat,
+    year_earlier,
+)
 from bedrock.ratios.caveats import Caveat
 from bedrock.ratios.registry import (
     CANONICAL_CODES,
@@ -108,7 +115,7 @@ def explain_ratio(
         category=ratio.category,
         unit=ratio.unit,
         definition=ratio.definition,
-        caveat=next((c.text for c in caveats if ratio.code in c.codes), None),
+        caveat=row_caveat(ops, ratio, caveats),
         fiscal_year=point[0],
         fiscal_period=point[1],
         value=ops.ratio(code, point),

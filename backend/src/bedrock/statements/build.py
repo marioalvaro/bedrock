@@ -1,14 +1,21 @@
 """Statement tables: periods as columns, canonical items as rows. Pure."""
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from typing import Literal
 
 import pandas as pd
 
 from bedrock.mapping.config import CanonicalItemDef, is_adjustable
-from bedrock.statements.cell_types import EMPTY, Cell, CellKey, Provenance, RuleWarning
+from bedrock.statements.cell_types import (
+    EMPTY,
+    Cell,
+    CellKey,
+    Provenance,
+    RuleWarning,
+    combined,
+)
 from bedrock.statements.cells import solve_cells
 from bedrock.statements.imports import company_calendar
 from bedrock.statements.normalize import AdjustmentLike, apply_adjustments
@@ -40,6 +47,17 @@ class Row:
     adjustable: bool = False  # a normalization adjustment may target this line
     custom: bool = False  # a custom line, or the `Other` row of a custom breakdown
     parent: str | None = None  # the line a custom row sits under; None for a canonical line
+    # M7b S4, aligned with `values`: the codes inside a combined value (None where not combined),
+    # and the line holding an empty cell's amount (None where not covered). Left empty, they are
+    # filled with None for every period.
+    combined_with: list[tuple[str, ...] | None] = field(default_factory=list)
+    included_in: list[str | None] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if not self.combined_with:
+            object.__setattr__(self, "combined_with", [None] * len(self.values))
+        if not self.included_in:
+            object.__setattr__(self, "included_in", [None] * len(self.values))
 
 
 @dataclass(frozen=True)
@@ -258,6 +276,8 @@ def extend_table(
                 yoy=row.yoy + yoy,
                 common_size=row.common_size
                 + [_ratio(v, values.get((total, p.key))) for v, p in zip(new, added, strict=True)],
+                combined_with=row.combined_with + [None] * len(added),
+                included_in=row.included_in + [None] * len(added),
             )
         )
     balance = None
@@ -274,7 +294,10 @@ def _ttm_cell(item: CanonicalItemDef, quarter_keys: list[str], cells: dict[CellK
         return EMPTY
     quarters = [cells.get((item.code, key), EMPTY) for key in quarter_keys]
     if any(q.value is None for q in quarters):
-        return EMPTY
+        # inside a combined line only when every empty quarter is; else an ordinary gap
+        carriers = {q.included_in for q in quarters if q.value is None}
+        carrier = next(iter(carriers)) if len(carriers) == 1 else None
+        return EMPTY if carrier is None else Cell(None, None, included_in=carrier)
     provenance = {q.provenance for q in quarters}
     return Cell(
         sum((q.value for q in quarters if q.value is not None), Decimal(0)),
@@ -285,6 +308,7 @@ def _ttm_cell(item: CanonicalItemDef, quarter_keys: list[str], cells: dict[CellK
         else "approximated"
         if "approximated" in provenance
         else "derived",
+        combined_with=combined(*(q.combined_with for q in quarters)),
     )
 
 
@@ -319,6 +343,8 @@ def _row(
         adjustable=is_adjustable(item),
         custom=item.custom,
         parent=item.parent if item.custom else None,
+        combined_with=[c.combined_with for c in series],
+        included_in=[c.included_in for c in series],
     )
 
 

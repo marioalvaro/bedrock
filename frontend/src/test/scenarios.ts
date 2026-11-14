@@ -376,6 +376,8 @@ export function forecastIncome(overrides: Partial<ForecastOut> = {}): ForecastOu
     custom: false,
     parent: null,
     common_size_base: null,
+    combined_with: [null, null, null, null],
+    included_in: [null, null, null, null],
   });
   return forecast({
     periods: [actualPeriod(2024), actualPeriod(2025), forecastPeriod(2026), forecastPeriod(2027)],

@@ -289,7 +289,7 @@ def test_replace_mappings_stores_items_defaults_and_followed_overrides(db_sessio
     )
     db_session.commit()
 
-    assert _count_rows(db_session, CanonicalItem) == len(items) == 84
+    assert _count_rows(db_session, CanonicalItem) == len(items) == 88
     frame = mappings_repo.mappings_for(db_session, aapl.id)
     assert list(frame.columns) == [
         "canonical_code",
@@ -297,6 +297,8 @@ def test_replace_mappings_stores_items_defaults_and_followed_overrides(db_sessio
         "concept",
         "priority",
         "is_override",
+        "weight",
+        "covers",
     ]
     override = frame[frame["is_override"]]
     assert list(override["concept"]) == ["CommonStockValue"]
@@ -567,3 +569,34 @@ def test_the_mapping_frame_with_excludes_matches_the_one_the_engine_tests_build(
 
     assert key(stored) == key(expected)
     assert "GrossProfit" not in set(expected["concept"])
+
+
+def test_a_combined_entry_stores_the_codes_it_covers(db_session: Session) -> None:
+    aapl = _company(db_session)
+    items = load_canonical_items(DEFAULT_ITEMS_PATH)
+    combined = "us-gaap:AccountsPayableAndAccruedLiabilitiesCurrent"
+    nothing = "us-gaap:IncreaseDecreaseInAccountsPayableAndAccruedLiabilities"
+    items = [
+        replace(
+            i,
+            concepts=(*i.concepts, combined),
+            covers=((combined, ("accrued_liabilities", "other_current_liabilities")),),
+        )
+        if i.code == "accounts_payable"
+        else replace(i, concepts=(*i.concepts, nothing), covers=((nothing, ()),))
+        if i.code == "change_payables"
+        else i
+        for i in items
+    ]
+
+    mappings_repo.replace_mappings(db_session, items, {})
+    db_session.commit()
+
+    frame = mappings_repo.mappings_for(db_session, aapl.id)
+    assert "covers" in frame.columns
+    covers = dict(zip(frame["concept"], frame["covers"], strict=True))
+    assert covers["AccountsPayableAndAccruedLiabilitiesCurrent"] == (
+        "accrued_liabilities,other_current_liabilities"
+    )
+    assert covers["IncreaseDecreaseInAccountsPayableAndAccruedLiabilities"] == ""
+    assert covers["AccountsPayableCurrent"] is None

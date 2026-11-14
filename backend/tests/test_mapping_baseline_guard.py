@@ -25,9 +25,33 @@ TICKERS = ["AAPL", "MSFT", "COST", "DE"]
 # sibling. `{(ticker, freq, code, period): reason}`; empty until a rule is shown to move one.
 RESIDUALS_ALLOWED_TO_CHANGE: dict[tuple[str, str, str, str], str] = {}
 
+# M7b S4: lines a combined default fills for the first time (docs/erd/data-coverage.md "Combined
+# lines"): their new cells may be reported. `{(ticker, code): reason}`.
+COMBINED_FILLS: dict[tuple[str, str], str] = {
+    ("DE", "change_payables"): (
+        "Deere's cash-flow line 'Accounts payable and accrued expenses' is the combined entry "
+        "IncreaseDecreaseInAccountsPayableAndAccruedLiabilities (10-K face, every year)"
+    ),
+}
+# The residual that subtracts each such line: it moves by exactly the newly filled value, and by
+# nothing else. `{(ticker, residual): the filled sibling}`.
+RESIDUALS_FOLLOWING_A_FILL: dict[tuple[str, str], str] = {
+    ("DE", "other_operating_activities"): "change_payables",
+}
+
 NEW_CELL_PROVENANCE = frozenset({"derived", "zero_inferred", "approximated"})
-# Canonical items added after the baseline was recorded (S8a): their reported cells are new too
-NEW_ITEMS = frozenset({"shares_issued", "treasury_shares"})
+# Canonical items added after the baseline was recorded (S8a; M7b S4's scope totals): their
+# reported cells are new too
+NEW_ITEMS = frozenset(
+    {
+        "shares_issued",
+        "treasury_shares",
+        "long_term_debt_total",
+        "long_term_debt_current",
+        "operating_lease_liabilities_total",
+        "operating_lease_liabilities_current",
+    }
+)
 
 
 def current_cells(
@@ -88,8 +112,19 @@ def test_no_non_empty_cell_changes_or_empties(ticker: str) -> None:
         for statement, codes in statements.items():
             for code, periods in codes.items():
                 after = now.get(freq, {}).get(statement, {}).get(code, {})
+                sibling = RESIDUALS_FOLLOWING_A_FILL.get((ticker, code))
+                filled = now.get(freq, {}).get(statement, {}).get(sibling or "", {})
                 for period, before in periods.items():
                     if (ticker, freq, code, period) in RESIDUALS_ALLOWED_TO_CHANGE:
+                        continue
+                    if period in filled and period in after:
+                        # residual = subtotal - ... - sibling: the fill moves it by the sibling
+                        expected = Decimal(before) - Decimal(filled[period][0])
+                        if not same(str(expected), after[period][0]):
+                            changed.append(
+                                f"{ticker} {freq} {code} {period}: {before} -> "
+                                f"{after[period][0]}, expected {expected}"
+                            )
                         continue
                     if period not in after:
                         changed.append(f"{ticker} {freq} {code} {period}: {before} -> empty")
@@ -114,6 +149,7 @@ def test_a_cell_that_was_empty_is_filled_by_a_rule_not_a_report(ticker: str) -> 
                     for period, (_, provenance) in periods.items()
                     if period not in recorded
                     and code not in NEW_ITEMS
+                    and (ticker, code) not in COMBINED_FILLS
                     and provenance not in NEW_CELL_PROVENANCE
                 ]
 
@@ -127,3 +163,15 @@ def test_every_allowed_residual_change_names_a_residual_and_gives_a_reason() -> 
     for (_, _, code, _), reason in RESIDUALS_ALLOWED_TO_CHANGE.items():
         assert code in residuals
         assert reason.strip()
+
+
+def test_every_combined_fill_and_following_residual_gives_a_reason() -> None:
+    from bedrock.mapping.config import load_canonical_items
+
+    by_code = {i.code: i for i in load_canonical_items()}
+    for (_, code), reason in COMBINED_FILLS.items():
+        assert by_code[code].covers and reason.strip()
+    for (ticker, residual), sibling in RESIDUALS_FOLLOWING_A_FILL.items():
+        assert by_code[residual].residual
+        assert (ticker, sibling) in COMBINED_FILLS
+        assert by_code[sibling].parent == by_code[residual].parent
