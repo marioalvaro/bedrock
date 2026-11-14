@@ -75,6 +75,14 @@ class EdgarLike(DataSource[EdgarPayload], Protocol):
     def resolve(self, ticker: str) -> CompanyProfile: ...
 
 
+class FilingsLike(Protocol):
+    """What the services need from the EDGAR filing archive: `EdgarFilingsSource`, or a test
+    double. `fetch` gives one filing's XBRL files by name, {} when it has no XBRL instance, and
+    raises SourceUnavailable."""
+
+    def fetch(self, company: CompanyRef, accession_no: str) -> dict[str, bytes]: ...
+
+
 class PricesLike(DataSource[PricePayload], Protocol):
     """What the services need from the price source: `YFinanceSource`, or a test double."""
 

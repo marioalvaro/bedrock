@@ -22,6 +22,7 @@ from bedrock.models import (
     custom_line,
     driver_value,
     filing,
+    filing_line,
     forecast_run,
     guidance,
     imported_fact,
@@ -54,6 +55,7 @@ _MODELS = (
     custom_line,
     driver_value,
     filing,
+    filing_line,
     forecast_run,
     guidance,
     imported_fact,
@@ -1974,7 +1976,7 @@ def test_0019_deleting_a_scenario_keeps_the_snapshot_without_its_id(
 def test_0019_downgrade_drops_only_the_new_tables_and_up_again_recreates_them(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0019"))
     engine = create_engine(database_url)
     with engine.begin() as connection:
         _seed_accountability(connection)
@@ -2048,3 +2050,140 @@ def test_0020_downgrade_drops_only_the_two_columns_and_keeps_the_rows(
     _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
     names = {c["name"] for c in inspect(engine).get_columns("concept_mapping")}
     assert {"weight", "covers"} <= names
+
+
+def _seed_filing_and_fact(connection: Connection) -> tuple[int, int]:
+    company_id = _company(connection, "AAA")
+    filing_id = _insert(
+        connection,
+        "filing",
+        company_id=company_id,
+        accession_no="0000000001-24-000001",
+        form="10-K",
+        filed_at="2024-11-01",
+        period_end="2024-09-28",
+    )
+    _insert(
+        connection,
+        "raw_fact",
+        company_id=company_id,
+        filing_id=filing_id,
+        taxonomy="us-gaap",
+        concept="Assets",
+        unit="USD",
+        period_end="2024-09-28",
+        value=5,
+    )
+    return company_id, filing_id
+
+
+def _line(connection: Connection, filing_id: int, **cols: object) -> int:
+    row: dict[str, object] = {
+        "filing_id": filing_id,
+        "statement": "CF",
+        "position": 1,
+        "taxonomy": "msft",
+        "concept": "DepreciationAmortizationAndOther",
+        "label": "Depreciation, amortization, and other",
+        "calc_parent_taxonomy": "us-gaap",
+        "calc_parent_concept": "NetCashProvidedByUsedInOperatingActivities",
+        "calc_weight": 1,
+    }
+    row.update(cols)
+    return _insert(connection, "filing_line", **row)
+
+
+def test_0021_adds_the_filing_xbrl_columns_and_fact_source_and_keeps_the_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0020"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        _seed_filing_and_fact(connection)
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+
+    filing_columns = {c["name"]: c for c in inspect(engine).get_columns("filing")}
+    assert filing_columns["xbrl_status"]["nullable"] is True
+    assert filing_columns["xbrl_parser_version"]["nullable"] is True
+    fact_columns = {c["name"]: c for c in inspect(engine).get_columns("raw_fact")}
+    assert fact_columns["source"]["nullable"] is False
+    with engine.begin() as connection:
+        assert tuple(
+            connection.execute(text("SELECT xbrl_status, xbrl_parser_version FROM filing")).one()
+        ) == (None, None)
+        assert connection.execute(text("SELECT source FROM raw_fact")).scalar_one() == (
+            "companyfacts"
+        )
+
+
+def test_0021_checks_hold_at_the_database_level(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        _, filing_id = _seed_filing_and_fact(connection)
+    bad = [
+        "UPDATE filing SET xbrl_status = 'maybe'",
+        "UPDATE raw_fact SET source = 'guess'",
+        "UPDATE raw_fact SET source = NULL",
+    ]
+    for statement in bad:
+        with engine.begin() as connection, pytest.raises(IntegrityError):
+            connection.execute(text(statement))
+    with engine.begin() as connection, pytest.raises(IntegrityError):
+        _line(connection, filing_id, statement="EQ")
+
+
+def test_0021_filing_line_is_unique_per_statement_and_concept_and_cascades_from_filing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        _, filing_id = _seed_filing_and_fact(connection)
+        _line(connection, filing_id)
+        _line(connection, filing_id, statement="IS")  # the same concept on another statement
+    with engine.begin() as connection, pytest.raises(IntegrityError):
+        _line(connection, filing_id, position=2)
+
+    indexes = {i["name"]: i["column_names"] for i in inspect(engine).get_indexes("filing_line")}
+    assert indexes["ix_filing_line_filing_id"] == ["filing_id"]
+    with engine.begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+        connection.execute(text("DELETE FROM filing"))
+        assert _count(connection, "filing_line") == 0
+        assert _count(connection, "raw_fact") == 0
+
+
+def test_0021_downgrade_drops_only_what_it_added_and_keeps_the_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        _, filing_id = _seed_filing_and_fact(connection)
+        _line(connection, filing_id)
+
+    _run_alembic(tmp_path, monkeypatch, ("downgrade", "0020"))
+
+    assert "filing_line" not in inspect(engine).get_table_names()
+    assert {c["name"] for c in inspect(engine).get_columns("filing")} == {
+        "id",
+        "company_id",
+        "accession_no",
+        "form",
+        "filed_at",
+        "fiscal_year",
+        "fiscal_period",
+        "period_end",
+    }
+    assert "source" not in {c["name"] for c in inspect(engine).get_columns("raw_fact")}
+    with engine.begin() as connection:
+        assert _count(connection, "filing") == 1
+        assert _count(connection, "raw_fact") == 1
+        assert _count(connection, "company") == 1
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    assert "filing_line" in inspect(engine).get_table_names()

@@ -7,6 +7,7 @@ from bedrock.analysis.multiples import KeyStats
 from bedrock.ingest.sources import Sources
 from bedrock.models.company import Company
 from bedrock.repositories import companies as companies_repo
+from bedrock.repositories import filing_lines as lines_repo
 from bedrock.services.errors import CompanyExists, CompanyNotFound
 from bedrock.services.refresh import refresh_company
 from bedrock.services.statements import company_key_stats
@@ -27,10 +28,14 @@ __all__ = [
 class CompanyView:
     company: Company
     stats: KeyStats
+    filings_parsed: int = 0  # filings of the four forms whose XBRL is read (M7b S6)
+    filings_total: int = 0
 
 
 def list_companies(session: Session) -> list[CompanyView]:
-    return [_view(session, company) for company in companies_repo.list_all(session)]
+    companies = companies_repo.list_all(session)
+    progress = lines_repo.xbrl_progress(session, [c.id for c in companies])
+    return [_view(session, company, progress[company.id]) for company in companies]
 
 
 def get_company(session: Session, ticker: str) -> CompanyView:
@@ -98,5 +103,8 @@ def _followed(session: Session, ticker: str) -> Company:
     return company
 
 
-def _view(session: Session, company: Company) -> CompanyView:
-    return CompanyView(company, company_key_stats(session, company))
+def _view(
+    session: Session, company: Company, progress: tuple[int, int] | None = None
+) -> CompanyView:
+    parsed, total = progress or lines_repo.xbrl_progress(session, [company.id])[company.id]
+    return CompanyView(company, company_key_stats(session, company), parsed, total)

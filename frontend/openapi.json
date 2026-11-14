@@ -300,6 +300,20 @@
         "title": "AuthStatus",
         "type": "object"
       },
+      "BackfillStartedOut": {
+        "description": "A filing backfill was started; follow it with `filings_parsed` on the company.",
+        "properties": {
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticker"
+        ],
+        "title": "BackfillStartedOut",
+        "type": "object"
+      },
       "BacktestOriginOut": {
         "properties": {
           "as_of_date": {
@@ -1126,6 +1140,16 @@
             ],
             "title": "Ev Ebitda"
           },
+          "filings_parsed": {
+            "description": "10-K and 10-Q filings (amendments included) whose XBRL is read",
+            "title": "Filings Parsed",
+            "type": "integer"
+          },
+          "filings_total": {
+            "description": "10-K and 10-Q filings, amendments included",
+            "title": "Filings Total",
+            "type": "integer"
+          },
           "fiscal_year_end_month": {
             "title": "Fiscal Year End Month",
             "type": "integer"
@@ -1246,6 +1270,8 @@
           "source",
           "sic",
           "last_refreshed_at",
+          "filings_parsed",
+          "filings_total",
           "price",
           "price_date",
           "market_cap",
@@ -6049,6 +6075,10 @@
             "title": "New Facts",
             "type": "integer"
           },
+          "new_filing_lines": {
+            "title": "New Filing Lines",
+            "type": "integer"
+          },
           "new_filings": {
             "title": "New Filings",
             "type": "integer"
@@ -6079,6 +6109,7 @@
           "new_facts",
           "new_prices",
           "new_splits",
+          "new_filing_lines",
           "last_refreshed_at",
           "warnings"
         ],
@@ -10003,6 +10034,49 @@
         "summary": "Set Audit Rationale",
         "tags": [
           "accountability"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/backfill-filings": {
+      "post": {
+        "description": "Read the XBRL of every filing not read yet, in a worker thread; 409 while one runs.",
+        "operationId": "backfill_filings_api_v1_companies__ticker__backfill_filings_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackfillStartedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Backfill Filings",
+        "tags": [
+          "companies"
         ]
       }
     },

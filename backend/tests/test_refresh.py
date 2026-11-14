@@ -21,12 +21,13 @@ from bedrock.models.company import Company
 from bedrock.models.concept_mapping import ConceptMapping
 from bedrock.models.corporate_action import CorporateAction
 from bedrock.models.filing import Filing
+from bedrock.models.filing_line import FilingLine
 from bedrock.models.price_daily import PriceDaily
 from bedrock.models.raw_fact import RawFact
 from bedrock.services.companies import CompanyNotFound
 from bedrock.services.refresh import refresh_company
 
-from .fakes import FakeEdgar, FakePrices
+from .fakes import FakeEdgar, FakeFilings, FakePrices
 from .seed import follow
 
 NOW = datetime(2026, 10, 8, 14, 30, tzinfo=UTC)
@@ -206,3 +207,100 @@ def test_splits_come_with_every_price_fetch_and_a_second_refresh_adds_none(
 
     assert prices.calls[1] is not None  # an incremental fetch still carries the full history
     assert again.new_splits == 0
+
+
+# --- filing-level XBRL (M7b S6) -----------------------------------------------------------------
+
+AAPL_FY2024_10K = "0000320193-24-000123"  # recorded under fixtures/edgar/filings/
+
+
+def _with_filings(filings: FakeFilings) -> Sources:
+    return Sources(edgar=FakeEdgar(), prices=FakePrices(), filings=filings)
+
+
+def _mark_newer_filings_tried(session: Session, accession: str) -> None:
+    """So the four newest untried filings start at the recorded one."""
+    filed = session.execute(
+        select(Filing.filed_at).where(Filing.accession_no == accession)
+    ).scalar_one()
+    for filing in session.execute(select(Filing).where(Filing.filed_at > filed)).scalars():
+        filing.xbrl_status = "absent"
+    session.commit()
+
+
+def test_refresh_reads_the_four_newest_filings_not_tried_and_counts_their_lines(
+    db_session: Session,
+) -> None:
+    follow(db_session, FakeEdgar(), "AAPL")
+    refresh_company(db_session, _sources(), "AAPL", NOW)
+    _mark_newer_filings_tried(db_session, AAPL_FY2024_10K)
+    filings = FakeFilings()
+
+    result = refresh_company(db_session, _with_filings(filings), "AAPL", LATER)
+
+    assert len(filings.calls) == 4 and filings.calls[0] == AAPL_FY2024_10K
+    assert result.new_filing_lines == _count(db_session, FilingLine) > 0
+    assert result.warnings == []
+
+
+def test_a_first_load_reads_the_newest_four_filings(db_session: Session) -> None:
+    follow(db_session, FakeEdgar(), "AAPL")
+    filings = FakeFilings()
+
+    result = refresh_company(db_session, _with_filings(filings), "AAPL", NOW)
+
+    assert len(filings.calls) == 4
+    assert result.new_filing_lines == 0  # the four newest recorded filings are not on disk
+
+
+def test_a_filings_failure_is_a_warning_and_the_companyfacts_are_kept(
+    db_session: Session,
+) -> None:
+    follow(db_session, FakeEdgar(), "AAPL")
+    refresh_company(db_session, _sources(), "AAPL", NOW)
+    _mark_newer_filings_tried(db_session, AAPL_FY2024_10K)
+    failing = FakeFilings(fail={AAPL_FY2024_10K: SourceUnavailable("HTTP 503")})
+
+    result = refresh_company(db_session, _with_filings(failing), "AAPL", LATER)
+
+    assert len(result.warnings) == 1 and AAPL_FY2024_10K in result.warnings[0]
+    assert _count(db_session, RawFact) > 0
+
+
+def test_a_filings_source_that_is_not_configured_is_a_warning(db_session: Session) -> None:
+    follow(db_session, FakeEdgar(), "AAPL")
+    filings = FakeFilings()
+    filings.raises = SourceNotConfigured("SEC_USER_AGENT is not set")
+
+    result = refresh_company(db_session, _with_filings(filings), "AAPL", NOW)
+
+    assert result.warnings == ["filings not read: SEC_USER_AGENT is not set"]
+    assert result.new_facts == _count(db_session, RawFact) > 0
+
+
+def test_without_a_filings_source_refresh_tries_no_filing(db_session: Session) -> None:
+    follow(db_session, FakeEdgar(), "AAPL")
+
+    result = refresh_company(db_session, _sources(), "AAPL", NOW)
+
+    assert result.new_filing_lines == 0
+    assert _count(db_session, FilingLine) == 0
+    assert (
+        db_session.execute(
+            select(func.count()).select_from(Filing).where(Filing.xbrl_status.is_not(None))
+        ).scalar_one()
+        == 0
+    )
+
+
+def test_an_unexpected_filings_error_is_a_warning_after_the_refresh_is_stored(
+    db_session: Session,
+) -> None:
+    follow(db_session, FakeEdgar(), "AAPL")
+    filings = FakeFilings()
+    filings.raises = RuntimeError("disk full")
+
+    result = refresh_company(db_session, _with_filings(filings), "AAPL", NOW)
+
+    assert result.warnings == ["filings not read: disk full"]
+    assert result.new_facts == _count(db_session, RawFact) > 0

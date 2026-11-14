@@ -13,6 +13,7 @@ from bedrock.ingest.protocol import SourceNotConfigured, SourceUnavailable, Unkn
 from bedrock.services.errors import (
     AdjustmentNotFound,
     AuditRowNotFound,
+    BackfillRunning,
     CellNotFound,
     CompanyExists,
     CompanyNotFound,
@@ -79,6 +80,7 @@ _STATUS: dict[type[Exception], int] = {
     ImportNotFound: 404,
     InvalidNote: 422,
     CompanyExists: 409,
+    BackfillRunning: 409,
     ScenarioNotFound: 404,
     ScenarioConflict: 409,
     InvalidScenario: 422,

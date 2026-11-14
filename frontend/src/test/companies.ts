@@ -11,6 +11,8 @@ export function companyItem(overrides: Partial<CompanyListItem> = {}): CompanyLi
     source: "sec",
     sic: "3571",
     last_refreshed_at: new Date(Date.now() - 2 * 3_600_000).toISOString(),
+    filings_parsed: 0,
+    filings_total: 0,
     price: "231.40",
     price_date: "2026-10-07",
     market_cap: "3500000000000.00",

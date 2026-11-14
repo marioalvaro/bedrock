@@ -190,8 +190,8 @@ def test_refresh_reports_what_it_loaded(authed_client: TestClient) -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["ticker"] == "AAPL"
-    keys = ("new_filings", "new_facts", "new_prices", "new_splits")
-    assert tuple(body[key] for key in keys) == (0, 0, 0, 0)
+    keys = ("new_filings", "new_facts", "new_prices", "new_splits", "new_filing_lines")
+    assert tuple(body[key] for key in keys) == (0, 0, 0, 0, 0)
     assert body["warnings"] == []
     assert datetime.fromisoformat(body["last_refreshed_at"]).utcoffset() == timedelta(0)
 

@@ -171,6 +171,18 @@ export type AuthStatus = {
 };
 
 /**
+ * BackfillStartedOut
+ *
+ * A filing backfill was started; follow it with `filings_parsed` on the company.
+ */
+export type BackfillStartedOut = {
+    /**
+     * Ticker
+     */
+    ticker: string;
+};
+
+/**
  * BacktestOriginOut
  */
 export type BacktestOriginOut = {
@@ -638,6 +650,18 @@ export type CompanyListItem = {
      * Ev Ebitda
      */
     ev_ebitda: string | null;
+    /**
+     * Filings Parsed
+     *
+     * 10-K and 10-Q filings (amendments included) whose XBRL is read
+     */
+    filings_parsed: number;
+    /**
+     * Filings Total
+     *
+     * 10-K and 10-Q filings, amendments included
+     */
+    filings_total: number;
     /**
      * Fiscal Year End Month
      */
@@ -3216,6 +3240,10 @@ export type RefreshResultOut = {
      */
     new_facts: number;
     /**
+     * New Filing Lines
+     */
+    new_filing_lines: number;
+    /**
      * New Filings
      */
     new_filings: number;
@@ -5331,6 +5359,36 @@ export type SetAuditRationaleApiV1CompaniesTickerAuditRowIdPatchResponses = {
 };
 
 export type SetAuditRationaleApiV1CompaniesTickerAuditRowIdPatchResponse = SetAuditRationaleApiV1CompaniesTickerAuditRowIdPatchResponses[keyof SetAuditRationaleApiV1CompaniesTickerAuditRowIdPatchResponses];
+
+export type BackfillFilingsApiV1CompaniesTickerBackfillFilingsPostData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/backfill-filings';
+};
+
+export type BackfillFilingsApiV1CompaniesTickerBackfillFilingsPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type BackfillFilingsApiV1CompaniesTickerBackfillFilingsPostError = BackfillFilingsApiV1CompaniesTickerBackfillFilingsPostErrors[keyof BackfillFilingsApiV1CompaniesTickerBackfillFilingsPostErrors];
+
+export type BackfillFilingsApiV1CompaniesTickerBackfillFilingsPostResponses = {
+    /**
+     * Successful Response
+     */
+    202: BackfillStartedOut;
+};
+
+export type BackfillFilingsApiV1CompaniesTickerBackfillFilingsPostResponse = BackfillFilingsApiV1CompaniesTickerBackfillFilingsPostResponses[keyof BackfillFilingsApiV1CompaniesTickerBackfillFilingsPostResponses];
 
 export type GetBacktestApiV1CompaniesTickerBacktestGetData = {
     body?: never;

@@ -10,6 +10,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from bedrock.forecast.history import ForecastHistory
+from bedrock.ingest.sources import Sources
 from bedrock.models.adjustment import Adjustment
 from bedrock.models.company import Company
 from bedrock.models.filing import Filing
@@ -18,9 +19,13 @@ from bedrock.models.raw_fact import RawFact
 from bedrock.models.statement_import import StatementImport
 from bedrock.repositories import companies as companies_repo
 from bedrock.repositories import facts as facts_repo
+from bedrock.repositories import filing_lines as lines_repo
+from bedrock.services.filings import ingest_filings
 from bedrock.services.scenarios import load_history
 from bedrock.services.statements import statement_tables
 from bedrock.statements.build import StatementTable
+
+from .fakes import FakeEdgar, FakeFilings, FakePrices
 
 AAPL_FY2019_10K = date(2019, 10, 31)  # the filing date of AAPL's FY2019 10-K
 
@@ -282,3 +287,18 @@ def test_latest_filing_date_is_the_newest_of_any_form(
     db_session.commit()
     assert facts_repo.latest_filing_date(db_session, who.id) is None
     assert facts_repo.annual_filing_dates(db_session, who.id) == []
+
+
+def test_the_lines_of_a_parsed_filing_are_known_from_its_filing_date(
+    db_session: Session, seed_db: Callable[..., None]
+) -> None:
+    seed_db("AAPL")
+    who = company(db_session, "AAPL")
+    sources = Sources(edgar=FakeEdgar(), prices=FakePrices(), filings=FakeFilings())
+    ingest_filings(db_session, sources, who, limit=None)
+
+    before = lines_repo.lines_for(db_session, who.id, as_of=date(2024, 10, 31))
+    on_the_day = lines_repo.lines_for(db_session, who.id, as_of=date(2024, 11, 1))
+
+    assert set(before["accession_no"]) == {"0001193125-10-238044"}
+    assert set(on_the_day["accession_no"]) == {"0001193125-10-238044", "0000320193-24-000123"}

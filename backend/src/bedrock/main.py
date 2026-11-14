@@ -13,6 +13,7 @@ from bedrock.core.db import make_engine, make_sessionmaker
 from bedrock.core.scheduler import acquire_scheduler_lock, refresh_loop
 from bedrock.core.spa import mount_spa
 from bedrock.ingest.sources import Sources, build_sources
+from bedrock.services.filings import BackfillRunner
 
 
 @asynccontextmanager
@@ -57,6 +58,7 @@ def create_app(settings: Settings | None = None, *, sources: Sources | None = No
     # Building real sources makes no network call; tests pass fakes built from the fixtures.
     app.state.sources = sources or build_sources(settings)
     app.state.login_throttle = LoginThrottle()
+    app.state.backfills = BackfillRunner()
 
     app.add_middleware(
         SessionMiddleware,

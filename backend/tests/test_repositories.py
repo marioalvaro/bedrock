@@ -120,6 +120,23 @@ def test_insert_parsed_stores_every_filing_and_fact(db_session: Session) -> None
     assert _count(db_session, RawFact) == new_facts
 
 
+def test_facts_are_stored_as_from_companyfacts_unless_a_source_is_given(
+    db_session: Session,
+) -> None:
+    company = _company(db_session)
+    parsed = _parsed()
+    facts_repo.insert_parsed(db_session, company, parsed)
+    extension = replace(parsed.facts[0], taxonomy="aapl", concept="SomethingOwn")
+
+    assert facts_repo.insert_parsed(
+        db_session, company, ParsedFacts(filings=[], facts=[extension]), source="filing"
+    ) == (0, 1)
+    sources = dict(
+        db_session.execute(select(RawFact.source, func.count()).group_by(RawFact.source)).all()
+    )
+    assert sources == {"companyfacts": len(parsed.facts), "filing": 1}
+
+
 def test_a_second_insert_of_the_same_payload_inserts_nothing(db_session: Session) -> None:
     company = _company(db_session)
     facts_repo.insert_parsed(db_session, company, _parsed())

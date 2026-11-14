@@ -18,7 +18,7 @@ def script(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
 
 def _spy(monkeypatch: pytest.MonkeyPatch, script: ModuleType) -> list[tuple[str, list[str]]]:
     calls: list[tuple[str, list[str]]] = []
-    for kind in ("edgar", "prices", "splits"):
+    for kind in ("edgar", "prices", "splits", "filings"):
         monkeypatch.setattr(
             script, f"record_{kind}", lambda tickers, kind=kind: calls.append((kind, tickers))
         )
@@ -32,6 +32,7 @@ def test_by_default_every_kind_is_recorded(
 
     assert script.main(["aapl", "DE"]) == 0
 
+    # Filings are recorded only when asked for: they are fixed accessions, not a ticker's history.
     assert calls == [
         ("edgar", ["AAPL", "DE"]),
         ("prices", ["AAPL", "DE"]),
@@ -74,3 +75,25 @@ def test_ratios_are_written_as_plain_decimals(script: ModuleType) -> None:
         "1.5",
         "20",
     ]
+
+
+def test_only_filings_records_only_filings(
+    monkeypatch: pytest.MonkeyPatch, script: ModuleType
+) -> None:
+    calls = _spy(monkeypatch, script)
+
+    assert script.main(["--only", "filings", "MSFT"]) == 0
+
+    assert calls == [("filings", ["MSFT"])]
+
+
+def test_the_recorded_filings_are_the_planned_six(script: ModuleType) -> None:
+    # M7b S6 item 1: one filing per layout the parser must read.
+    assert {(t, a) for t, accessions in script.FILINGS.items() for a in accessions} == {
+        ("AAPL", "0000320193-24-000123"),  # 10-K FY2024, inline
+        ("AAPL", "0001193125-10-238044"),  # 10-K FY2010, early XBRL
+        ("MSFT", "0000950170-24-087843"),  # 10-K FY2024, extension D&A, linkbases in the schema
+        ("MSFT", "0001193125-15-272806"),  # 10-K FY2015, before inline XBRL
+        ("DE", "0001558370-23-019812"),  # 10-K FY2023, many de: tags
+        ("COST", "0000909832-24-000017"),  # 10-Q Q2 FY2024
+    }

@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -9,8 +10,11 @@ from bedrock.ingest.sources import Sources
 from bedrock.repositories import companies as companies_repo
 from bedrock.repositories import facts as facts_repo
 from bedrock.services.errors import CompanyNotFound
+from bedrock.services.filings import ingest_filings
 from bedrock.services.mappings import sync_mappings
 from bedrock.services.prices import update_prices
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -22,6 +26,12 @@ class RefreshResult:
     new_splits: int
     last_refreshed_at: datetime
     warnings: list[str]
+    new_filing_lines: int = 0  # face-statement lines read from the filings' own XBRL (M7b S6)
+
+
+# A refresh reads at most this many filings' XBRL: a new filing, or the newest year on a first
+# load. `backfill-filings` reads the rest.
+REFRESH_FILINGS_LIMIT = 4
 
 
 def refresh_company(
@@ -31,7 +41,9 @@ def refresh_company(
     company has no EDGAR data: only its prices are loaded.
 
     A price (or split) failure is a warning; an EDGAR failure is raised, and nothing is kept (not
-    even the mapping sync), so a failed refresh leaves the database as it was."""
+    even the mapping sync), so a failed refresh leaves the database as it was. After that commit,
+    the newest filings not read yet are read for their XBRL (`ingest_filings`, which commits
+    filing by filing); a failure there is a warning, never a rollback."""
     company = companies_repo.get_by_ticker(session, ticker.strip().upper())
     if company is None:
         raise CompanyNotFound(ticker)
@@ -59,6 +71,23 @@ def refresh_company(
     except Exception:
         session.rollback()
         raise
+
+    new_filing_lines = 0
+    try:
+        filings = ingest_filings(session, sources, company, limit=REFRESH_FILINGS_LIMIT)
+        new_filing_lines = filings.new_lines
+        warnings.extend(filings.warnings)
+    except Exception as error:  # the refresh is committed: any filings failure is a warning
+        session.rollback()
+        logger.exception("filings of %s not read", company.ticker)
+        warnings.append(f"filings not read: {error}")
     return RefreshResult(
-        company.ticker, new_filings, new_facts, new_prices, new_splits, now, warnings
+        company.ticker,
+        new_filings,
+        new_facts,
+        new_prices,
+        new_splits,
+        now,
+        warnings,
+        new_filing_lines,
     )

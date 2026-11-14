@@ -18,7 +18,7 @@ from bedrock.models.canonical_item import CanonicalItem
 from bedrock.models.company import Company
 from bedrock.services.companies import add_manual_company
 
-from .fakes import FakeEdgar, FakePrices
+from .fakes import FakeEdgar, FakeFilings, FakePrices
 from .seed import fake_sources
 
 runner = CliRunner()
@@ -125,6 +125,7 @@ def test_refresh_prints_the_result_of_each_ticker(cli_db: Path) -> None:
         "new_facts: 0",
         "new_prices: 0",
         "new_splits: 0",
+        "new_filing_lines: 0",
         "last_refreshed_at:",
     ):
         assert line in result.output
@@ -203,3 +204,75 @@ def test_sync_mappings_stores_the_canonical_items(cli_db: Path) -> None:
     with Session(engine) as session:
         assert session.execute(select(func.count()).select_from(CanonicalItem)).scalar_one() == 95
     engine.dispose()
+
+
+# --- backfill-filings (M7b S6) ------------------------------------------------------------------
+
+
+@pytest.fixture
+def cli_filings(cli_db: Path, monkeypatch: pytest.MonkeyPatch) -> FakeFilings:
+    """The fake sources with the recorded filing archive, once AAPL and MSFT are followed."""
+    runner.invoke(app, ["add", "AAPL", "MSFT"])
+    filings = FakeFilings()
+    monkeypatch.setattr(
+        "bedrock.cli.build_sources",
+        lambda settings: Sources(edgar=FakeEdgar(), prices=FakePrices(), filings=filings),
+    )
+    return filings
+
+
+def test_backfill_filings_reads_every_filing_and_prints_the_counts(
+    cli_filings: FakeFilings,
+) -> None:
+    result = runner.invoke(app, ["backfill-filings", "AAPL"])
+
+    assert result.exit_code == 0, result.output
+    assert result.output.startswith("AAPL\n")
+    assert "  parsed: 2\n" in result.output
+    assert "  failed: 0\n" in result.output
+    assert "  new_lines: " in result.output and "  absent: " in result.output
+    assert cli_filings.calls and "0000320193-24-000123" in cli_filings.calls
+
+
+def test_backfill_filings_all_covers_every_followed_company(cli_filings: FakeFilings) -> None:
+    result = runner.invoke(app, ["backfill-filings", "--all"])
+
+    assert result.exit_code == 0, result.output
+    assert "AAPL\n" in result.output and "MSFT\n" in result.output
+
+
+def test_backfill_filings_needs_tickers_or_all(cli_filings: FakeFilings) -> None:
+    assert runner.invoke(app, ["backfill-filings"]).exit_code == 2
+    assert runner.invoke(app, ["backfill-filings", "--all", "AAPL"]).exit_code == 2
+
+
+def test_backfill_filings_a_second_time_reads_nothing_unless_reparse(
+    cli_filings: FakeFilings,
+) -> None:
+    runner.invoke(app, ["backfill-filings", "AAPL"])
+    cli_filings.calls.clear()
+
+    assert "  parsed: 0\n" in runner.invoke(app, ["backfill-filings", "AAPL"]).output
+    assert cli_filings.calls == []
+
+    reparsed = runner.invoke(app, ["backfill-filings", "AAPL", "--reparse"])
+    assert "  parsed: 2\n" in reparsed.output
+    assert sorted(cli_filings.calls) == ["0000320193-24-000123", "0001193125-10-238044"]
+
+
+def test_backfill_filings_prints_a_failed_filing_as_a_warning(cli_filings: FakeFilings) -> None:
+    cli_filings.fail["0000320193-24-000123"] = SourceUnavailable("HTTP 503")
+
+    result = runner.invoke(app, ["backfill-filings", "AAPL"])
+
+    assert result.exit_code == 0, result.output
+    assert "  failed: 1\n" in result.output
+    assert "  warning: filing 0000320193-24-000123 (10-K) not read: HTTP 503" in result.output
+
+
+def test_backfill_filings_of_an_unfollowed_company_exits_1(cli_filings: FakeFilings) -> None:
+    result = runner.invoke(app, ["backfill-filings", "ZZZZ", "AAPL"])
+
+    assert result.exit_code == 1
+    assert "ZZZZ: error:" in result.output
+    assert "AAPL\n" in result.output

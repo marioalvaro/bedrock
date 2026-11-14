@@ -2,7 +2,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
+from pydantic import BaseModel, Field, StringConstraints, field_validator
 
 from bedrock.services.companies import CompanyView
 
@@ -19,8 +19,6 @@ class ManualCompanyCreate(BaseModel):
 
 
 class CompanyOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
     id: int
     ticker: str
     cik: str | None = Field(description="Null for a manual company")
@@ -30,6 +28,10 @@ class CompanyOut(BaseModel):
     source: Literal["sec", "manual"]
     sic: str | None
     last_refreshed_at: datetime | None
+    filings_parsed: int = Field(
+        description="10-K and 10-Q filings (amendments included) whose XBRL is read"
+    )
+    filings_total: int = Field(description="10-K and 10-Q filings, amendments included")
 
     @field_validator("last_refreshed_at")
     @classmethod
@@ -37,6 +39,12 @@ class CompanyOut(BaseModel):
         # SQLite keeps no time zone, so the stored UTC time comes back naive; without a zone in
         # the JSON a browser would read it as local time.
         return value if value is None or value.tzinfo else value.replace(tzinfo=UTC)
+
+
+# The `CompanyOut` fields read straight from the `company` row; the rest come from the view.
+_COMPANY_COLUMNS = tuple(
+    n for n in CompanyOut.model_fields if n not in {"filings_parsed", "filings_total"}
+)
 
 
 class CompanyListItem(CompanyOut):
@@ -53,7 +61,9 @@ class CompanyListItem(CompanyOut):
     def from_view(cls, view: CompanyView) -> "CompanyListItem":
         stats = view.stats
         return cls(
-            **CompanyOut.model_validate(view.company).model_dump(),
+            **{name: getattr(view.company, name) for name in _COMPANY_COLUMNS},
+            filings_parsed=view.filings_parsed,
+            filings_total=view.filings_total,
             price=stats.price,
             price_date=stats.price_date,
             market_cap=stats.market_cap,

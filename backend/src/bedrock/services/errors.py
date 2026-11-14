@@ -13,6 +13,10 @@ class CompanyExists(Exception):
     """The company is already followed."""
 
 
+class BackfillRunning(Exception):
+    """A filing backfill of this company is already running."""
+
+
 class CellNotFound(Exception):
     """No such statement cell: an unknown item code or a period the company does not have."""
 
@@ -196,6 +200,7 @@ class UnknownLineItem(Exception):
 DOMAIN_ERRORS = (
     CompanyNotFound,
     CompanyExists,
+    BackfillRunning,
     CellNotFound,
     RatioCellNotFound,
     AdjustmentNotFound,
@@ -279,6 +284,8 @@ def user_message(error: Exception) -> str:
             return error.detail
         case CompanyExists():
             return f"{error} is already followed"
+        case BackfillRunning():
+            return f"A filing backfill of {error} is already running"
         case SourceNotConfigured():
             return f"Data source not configured: {error}"
         case SourceUnavailable():

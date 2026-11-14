@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from bedrock.core.auth import LoginThrottle, refresh_session
 from bedrock.core.config import Settings
 from bedrock.ingest.sources import Sources
+from bedrock.services.filings import BackfillRunner
 
 
 def get_settings(request: Request) -> Settings:
@@ -22,6 +23,17 @@ def get_session(request: Request) -> Generator[Session, None, None]:
     session_factory: sessionmaker[Session] = request.app.state.session_factory
     with session_factory() as session:
         yield session
+
+
+def get_session_factory(request: Request) -> sessionmaker[Session]:
+    """For work that outlives the request (a backfill's worker thread opens its own session)."""
+    session_factory: sessionmaker[Session] = request.app.state.session_factory
+    return session_factory
+
+
+def get_backfills(request: Request) -> BackfillRunner:
+    backfills: BackfillRunner = request.app.state.backfills
+    return backfills
 
 
 def get_sources(request: Request) -> Sources:

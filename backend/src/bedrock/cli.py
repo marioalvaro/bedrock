@@ -14,6 +14,7 @@ from bedrock.main import create_app
 from bedrock.repositories import companies as companies_repo
 from bedrock.services import companies as companies_service
 from bedrock.services.errors import DOMAIN_ERRORS, user_message
+from bedrock.services.filings import backfill_filings
 from bedrock.services.mappings import sync_mappings
 from bedrock.services.refresh import RefreshResult, refresh_company
 
@@ -71,6 +72,7 @@ def _result_lines(result: RefreshResult) -> list[str]:
         f"  new_facts: {result.new_facts}",
         f"  new_prices: {result.new_prices}",
         f"  new_splits: {result.new_splits}",
+        f"  new_filing_lines: {result.new_filing_lines}",
         f"  last_refreshed_at: {result.last_refreshed_at.isoformat()}",
         *(f"  warning: {warning}" for warning in result.warnings),
     ]
@@ -93,6 +95,14 @@ def refresh(
     all_companies: Annotated[bool, typer.Option("--all", help="Every followed company")] = False,
 ) -> None:
     """Load new filings and prices for companies already followed."""
+
+    def run(session: Session, sources: Sources, ticker: str) -> list[str]:
+        return _result_lines(refresh_company(session, sources, ticker, datetime.now(UTC)))
+
+    _run(_tickers_or_all(tickers, all_companies), run)
+
+
+def _tickers_or_all(tickers: list[str] | None, all_companies: bool) -> list[str]:
     if all_companies == bool(tickers):
         typer.echo("Give tickers, or --all (not both).", err=True)
         raise typer.Exit(code=2)
@@ -101,11 +111,32 @@ def refresh(
         with make_sessionmaker(engine)() as session:
             tickers = [c.ticker for c in companies_repo.list_all(session)]
         engine.dispose()
+    return tickers or []
+
+
+@app.command("backfill-filings")
+def backfill_filings_command(
+    tickers: Annotated[list[str] | None, typer.Argument()] = None,
+    all_companies: Annotated[bool, typer.Option("--all", help="Every followed company")] = False,
+    reparse: Annotated[
+        bool, typer.Option("--reparse", help="Also re-read the filings already read")
+    ] = False,
+) -> None:
+    """Read the XBRL of every 10-K and 10-Q not read yet: extension facts and statement lines."""
 
     def run(session: Session, sources: Sources, ticker: str) -> list[str]:
-        return _result_lines(refresh_company(session, sources, ticker, datetime.now(UTC)))
+        result = backfill_filings(session, sources, ticker, reparse=reparse)
+        return [
+            ticker.strip().upper(),
+            f"  parsed: {result.parsed}",
+            f"  absent: {result.absent}",
+            f"  failed: {result.failed}",
+            f"  new_facts: {result.new_facts}",
+            f"  new_lines: {result.new_lines}",
+            *(f"  warning: {warning}" for warning in result.warnings),
+        ]
 
-    _run(tickers or [], run)
+    _run(_tickers_or_all(tickers, all_companies), run)
 
 
 @app.command("sync-mappings")

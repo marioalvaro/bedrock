@@ -185,3 +185,39 @@ class FakeConsensus:
         if self.rows is not None or not path.is_file():
             return []
         return history_from_frame(pd.read_csv(path, index_col="quarter"))
+
+
+class FakeFilings:
+    """The EDGAR filing archive from the recorded filings (`fixtures/edgar/filings/<TICKER>/
+    <accession>/`); any other accession has no XBRL instance (`{}`), like a filing from before
+    XBRL. `fail` maps an accession to the exception its fetch raises; `broken` accessions return
+    an unreadable instance. `calls` lists every accession fetched."""
+
+    def __init__(
+        self, fail: dict[str, Exception] | None = None, broken: set[str] | None = None
+    ) -> None:
+        self.fail = dict(fail or {})
+        self.broken = set(broken or ())
+        self.raises: Exception | None = None  # set to fail every fetch
+        self.calls: list[str] = []
+
+    def fetch(self, company: CompanyRef, accession_no: str) -> dict[str, bytes]:
+        self.calls.append(accession_no)
+        if self.raises is not None:
+            raise self.raises
+        if accession_no in self.fail:
+            raise self.fail[accession_no]
+        if accession_no in self.broken:
+            return {"broken_htm.xml": b"<xbrli:xbrl"}
+        return dict(_recorded_filing(company.ticker, accession_no))
+
+
+@cache
+def _recorded_filing(ticker: str, accession_no: str) -> tuple[tuple[str, bytes], ...]:
+    folder = FIXTURES / "edgar" / "filings" / ticker / accession_no
+    if not folder.is_dir():
+        return ()
+    return tuple(
+        (path.name.removesuffix(".gz"), gzip.decompress(path.read_bytes()))
+        for path in sorted(folder.iterdir())
+    )

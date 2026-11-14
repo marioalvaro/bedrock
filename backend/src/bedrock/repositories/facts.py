@@ -29,8 +29,12 @@ FACT_COLUMNS = [
 _FactKey = tuple[int, str, str, str, date | None, date]
 
 
-def insert_parsed(session: Session, company: Company, parsed: ParsedFacts) -> tuple[int, int]:
-    """Append the filings and facts not stored yet; returns (new_filings, new_facts).
+def insert_parsed(
+    session: Session, company: Company, parsed: ParsedFacts, source: str = "companyfacts"
+) -> tuple[int, int]:
+    """Append the filings and facts not stored yet; returns (new_filings, new_facts). `source`
+    says where the facts were read: `companyfacts`, or `filing` for a filing's own XBRL (whose
+    filing is stored already, so `parsed.filings` may be empty).
 
     SQLite's UNIQUE treats NULLs as distinct, so a fact with no `period_start` (an instant)
     is compared against the stored keys here instead of relying on the constraint."""
@@ -80,6 +84,7 @@ def insert_parsed(session: Session, company: Company, parsed: ParsedFacts) -> tu
                 "fiscal_period": fact.fiscal_period,
                 "frame": fact.frame,
                 "value": fact.value,
+                "source": source,
             }
         )
     if rows:
