@@ -4635,6 +4635,13 @@
             "title": "Rule Warnings",
             "type": "array"
           },
+          "unclassified_lines": {
+            "items": {
+              "$ref": "#/components/schemas/UnclassifiedLineOut"
+            },
+            "title": "Unclassified Lines",
+            "type": "array"
+          },
           "unmapped_concepts": {
             "items": {
               "$ref": "#/components/schemas/UnmappedConceptOut"
@@ -4647,7 +4654,8 @@
           "missing_items",
           "unmapped_concepts",
           "coverage",
-          "rule_warnings"
+          "rule_warnings",
+          "unclassified_lines"
         ],
         "title": "MappingGapsOut",
         "type": "object"
@@ -8572,6 +8580,60 @@
           "bars"
         ],
         "title": "TornadoOut",
+        "type": "object"
+      },
+      "UnclassifiedLineOut": {
+        "description": "A face line of the newest 10-K or 10-Q nobody classified (M7b S7): map it in the\ncompany's override file, or list it under `other_lines:`.",
+        "properties": {
+          "concept": {
+            "title": "Concept",
+            "type": "string"
+          },
+          "filings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Filings",
+            "type": "array"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "latest_period_end": {
+            "format": "date",
+            "title": "Latest Period End",
+            "type": "string"
+          },
+          "latest_value": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Latest Value",
+            "type": "string"
+          },
+          "statement": {
+            "enum": [
+              "IS",
+              "BS",
+              "CF"
+            ],
+            "title": "Statement",
+            "type": "string"
+          },
+          "taxonomy": {
+            "title": "Taxonomy",
+            "type": "string"
+          }
+        },
+        "required": [
+          "statement",
+          "taxonomy",
+          "concept",
+          "label",
+          "latest_value",
+          "latest_period_end",
+          "filings"
+        ],
+        "title": "UnclassifiedLineOut",
         "type": "object"
       },
       "UnmappedConceptOut": {

@@ -503,3 +503,9 @@ def test_the_cell_detail_carries_combined_with_and_included_in() -> None:
     assert (out["combined_with"], out["included_in"]) == (["accrued_liabilities"], None)
     out = CellDetailOut.from_explanation(covered, []).model_dump(mode="json")
     assert (out["combined_with"], out["included_in"]) == (None, "accounts_payable")
+
+
+def test_mapping_gaps_carry_the_unclassified_face_lines(aapl_client: TestClient) -> None:
+    gaps = aapl_client.get("/api/v1/companies/AAPL/mapping-gaps").json()
+
+    assert gaps["unclassified_lines"] == []  # no filing of the test company is parsed

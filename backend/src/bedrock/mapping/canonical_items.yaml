@@ -65,6 +65,8 @@ items:
     - us-gaap:ResearchAndDevelopmentExpense
   residual: false
 - code: sga
+  # M7b S7, R8: the selling, marketing, advertising and administrative lines of the face
+  face_members: [SellingAndMarketingExpense, GeneralAndAdministrativeExpense, SellingExpense, MarketingExpense, MarketingAndAdvertisingExpense, AdvertisingExpense]
   statement: IS
   label: Selling, general & administrative
   kind: flow
@@ -190,6 +192,8 @@ items:
   derive: net_income - net_income_nci
   residual: false
 - code: net_income_nci
+  # M7b S7: R1b owns the zero of the NCI lines
+  zero_when_absent: false
   statement: IS
   label: Net income attributable to non-controlling interests
   kind: flow
@@ -407,6 +411,9 @@ items:
     - us-gaap:AvailableForSaleSecuritiesNoncurrent
   residual: false
 - code: deferred_tax_assets
+  # M7b S7: companies fold this line into accrued or other liabilities (assets) without a
+  # combined concept, so a face without it does not prove a zero (R9 opts out)
+  zero_when_absent: false
   statement: BS
   label: Deferred tax assets
   kind: instant
@@ -465,6 +472,10 @@ items:
     - us-gaap:AccountsPayableCurrent
   residual: false
 - code: short_term_debt
+  # M7b S7, R8 (docs/erd/data-coverage.md "Structure rules"): disjoint parts of current debt by
+  # their us-gaap definitions, summed only from the lines a filing presents on the face (a member
+  # inside another, such as commercial paper under short-term borrowings, is dropped)
+  face_members: [CommercialPaper, ShortTermBorrowings, OtherShortTermBorrowings, NotesPayableCurrent, BankOverdrafts, LongTermDebtCurrent, FinanceLeaseLiabilityCurrent, CapitalLeaseObligationsCurrent, LongTermDebtAndCapitalLeaseObligationsCurrent, SecuredDebtCurrent]
   statement: BS
   label: Short-term debt
   kind: instant
@@ -476,6 +487,9 @@ items:
   required: true
   residual: false
 - code: deferred_revenue_current
+  # M7b S7: companies fold this line into accrued or other liabilities (assets) without a
+  # combined concept, so a face without it does not prove a zero (R9 opts out)
+  zero_when_absent: false
   statement: BS
   label: Deferred revenue, current
   kind: instant
@@ -517,6 +531,8 @@ items:
   derive: total_liabilities - total_current_liabilities
   residual: false
 - code: long_term_debt
+  # M7b S7, R8: the noncurrent debt lines a filing may present apart (notes, loans, leases)
+  face_members: [LongTermNotesAndLoans, LongTermNotesPayable, SeniorLongTermNotes, LongTermLoansPayable, ConvertibleNotesPayable, FinanceLeaseLiabilityNoncurrent, CapitalLeaseObligationsNoncurrent, OtherLongTermDebtNoncurrent]
   statement: BS
   label: Long-term debt
   kind: instant
@@ -540,6 +556,9 @@ items:
   residual: false
   starts_with_standard: true
 - code: deferred_revenue_noncurrent
+  # M7b S7: companies fold this line into accrued or other liabilities (assets) without a
+  # combined concept, so a face without it does not prove a zero (R9 opts out)
+  zero_when_absent: false
   statement: BS
   label: Deferred revenue, non-current
   kind: instant
@@ -553,6 +572,9 @@ items:
   forecast_fold: other_noncurrent_liabilities
   residual: false
 - code: deferred_tax_liabilities
+  # M7b S7: companies fold this line into accrued or other liabilities (assets) without a
+  # combined concept, so a face without it does not prove a zero (R9 opts out)
+  zero_when_absent: false
   statement: BS
   label: Deferred tax liabilities
   kind: instant
@@ -569,6 +591,9 @@ items:
   forecast_fold: other_noncurrent_liabilities
   residual: false
 - code: pension_liabilities
+  # M7b S7: companies fold this line into accrued or other liabilities (assets) without a
+  # combined concept, so a face without it does not prove a zero (R9 opts out)
+  zero_when_absent: false
   statement: BS
   label: Pension and postretirement benefits
   kind: instant
@@ -671,6 +696,8 @@ items:
   derive: equity_parent - common_stock_apic - retained_earnings - aoci
   residual: true
 - code: nci
+  # M7b S7: R1b owns the zero of the NCI lines (it reads the NCI-inclusive totals)
+  zero_when_absent: false
   statement: BS
   label: Non-controlling interests
   kind: instant
@@ -808,6 +835,8 @@ items:
     - us-gaap:NetIncomeLoss
   residual: false
 - code: d_and_a
+  # M7b S7, R8: depreciation and amortization when the face presents them apart (ORCL)
+  face_members: [Depreciation, AmortizationOfIntangibleAssets]
   statement: CF
   label: Depreciation & amortization
   kind: flow
@@ -923,6 +952,8 @@ items:
     - us-gaap:PaymentsToAcquireBusinessesAndInterestInAffiliates
   residual: false
 - code: purchases_of_investments
+  # M7b S7, R8: the purchase lines of investments the face may present apart
+  face_members: [PaymentsToAcquireMarketableSecurities, PaymentsToAcquireHeldToMaturitySecurities, PaymentsToAcquireOtherInvestments]
   statement: CF
   label: Purchases of investments
   kind: flow
@@ -936,6 +967,8 @@ items:
     - us-gaap:PaymentsToAcquireAvailableForSaleSecurities
   residual: false
 - code: sales_maturities_of_investments
+  # M7b S7, R8: the sale and the maturity lines of investments the face may present apart
+  face_members: [ProceedsFromSaleOfAvailableForSaleSecurities, ProceedsFromSaleOfAvailableForSaleSecuritiesDebt, ProceedsFromMaturitiesPrepaymentsAndCallsOfAvailableForSaleSecurities, ProceedsFromSaleAndMaturityOfAvailableForSaleSecurities, ProceedsFromMaturitiesPrepaymentsAndCallsOfHeldToMaturitySecurities, ProceedsFromSaleOfShortTermInvestments, ProceedsFromSaleAndMaturityOfOtherInvestments, ProceedsFromSaleOfOtherInvestments]
   statement: CF
   label: Sales & maturities of investments
   kind: flow
@@ -970,6 +1003,8 @@ items:
   required: true
   residual: false
 - code: debt_issued
+  # M7b S7, R8: gross issuance lines of the face (a net change line is neither issued nor repaid)
+  face_members: [ProceedsFromIssuanceOfLongTermDebt, ProceedsFromShortTermDebt, ProceedsFromIssuanceOfDebt, ProceedsFromIssuanceOfSeniorLongTermDebt, ProceedsFromIssuanceOfCommercialPaper, ProceedsFromNotesPayable, ProceedsFromConvertibleDebt, ProceedsFromBankDebt, ProceedsFromShortTermDebtMaturingInThreeMonthsOrLess]
   statement: CF
   label: Debt issued
   kind: flow
@@ -981,6 +1016,8 @@ items:
     - us-gaap:ProceedsFromDebtMaturingInMoreThanThreeMonths
   residual: false
 - code: debt_repaid
+  # M7b S7, R8: gross repayment lines of the face
+  face_members: [RepaymentsOfLongTermDebt, RepaymentsOfShortTermDebt, RepaymentsOfDebt, RepaymentsOfSeniorDebt, RepaymentsOfCommercialPaper, RepaymentsOfNotesPayable, RepaymentsOfConvertibleDebt, RepaymentsOfBankDebt, RepaymentsOfShortTermDebtMaturingInThreeMonthsOrLess, RepaymentsOfLongTermDebtAndCapitalSecurities]
   statement: CF
   label: Debt repaid
   kind: flow

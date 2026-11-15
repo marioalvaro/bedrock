@@ -48,6 +48,7 @@ function coverageRow(overrides: Partial<CoverageOut> = {}): CoverageOut {
 
 export function mappingGaps(): MappingGapsOut {
   return {
+    unclassified_lines: [], // shown from M7b S8
     coverage: [
       coverageRow(),
       coverageRow({

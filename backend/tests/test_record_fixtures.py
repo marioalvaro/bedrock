@@ -1,4 +1,6 @@
+import gzip
 import importlib.util
+import json
 from pathlib import Path
 from types import ModuleType
 
@@ -87,9 +89,21 @@ def test_only_filings_records_only_filings(
     assert calls == [("filings", ["MSFT"])]
 
 
-def test_the_recorded_filings_are_the_planned_six(script: ModuleType) -> None:
+def test_the_recorded_filings_are_the_planned_layouts_and_the_newest_of_each_company(
+    script: ModuleType,
+) -> None:
+    from tests.statements_pipeline import FIXTURES, parse_companyfacts
+
+    recorded = {(t, a) for t, accessions in script.FILINGS.items() for a in accessions}
+    # M7b S7: the newest 10-K and 10-Q of each development company's companyfacts fixture
+    for ticker in ("AAPL", "MSFT", "COST", "DE", "BA", "JNJ", "NFLX", "NKE", "ORCL", "WMT"):
+        with gzip.open(FIXTURES / f"{ticker}.json.gz", "rt") as handle:
+            filings = parse_companyfacts(json.load(handle)).filings
+        for form in ("10-K", "10-Q"):
+            newest = max((f for f in filings if f.form == form), key=lambda f: f.filed_at)
+            assert (ticker, newest.accession_no) in recorded, (ticker, form)
     # M7b S6 item 1: one filing per layout the parser must read.
-    assert {(t, a) for t, accessions in script.FILINGS.items() for a in accessions} == {
+    assert recorded >= {
         ("AAPL", "0000320193-24-000123"),  # 10-K FY2024, inline
         ("AAPL", "0001193125-10-238044"),  # 10-K FY2010, early XBRL
         ("MSFT", "0000950170-24-087843"),  # 10-K FY2024, extension D&A, linkbases in the schema

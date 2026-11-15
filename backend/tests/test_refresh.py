@@ -250,7 +250,8 @@ def test_a_first_load_reads_the_newest_four_filings(db_session: Session) -> None
     result = refresh_company(db_session, _with_filings(filings), "AAPL", NOW)
 
     assert len(filings.calls) == 4
-    assert result.new_filing_lines == 0  # the four newest recorded filings are not on disk
+    # of the four newest, the FY2025 10-K and the FY2026 Q3 10-Q are recorded (M7b S7)
+    assert result.new_filing_lines > 0
 
 
 def test_a_filings_failure_is_a_warning_and_the_companyfacts_are_kept(

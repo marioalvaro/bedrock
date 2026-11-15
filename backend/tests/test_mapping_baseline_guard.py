@@ -33,10 +33,18 @@ COMBINED_FILLS: dict[tuple[str, str], str] = {
         "IncreaseDecreaseInAccountsPayableAndAccruedLiabilities (10-K face, every year)"
     ),
 }
-# The residual that subtracts each such line: it moves by exactly the newly filled value, and by
-# nothing else. `{(ticker, residual): the filled sibling}`.
-RESIDUALS_FOLLOWING_A_FILL: dict[tuple[str, str], str] = {
-    ("DE", "other_operating_activities"): "change_payables",
+# M7b S7: extension lines a company's override file maps (docs/erd/data-coverage.md "Structure
+# rules"; evidence in tests/test_mapping_regressions.py::EXTENSION_LINES): their new cells may be
+# reported. `{(ticker, code): reason}`.
+EXTENSION_FILLS: dict[tuple[str, str], str] = {
+    ("MSFT", "d_and_a"): "msft:DepreciationAmortizationAndOther, the 10-K's only D&A line",
+    ("MSFT", "acquisitions"): "msft:AcquisitionsNetOfCash...OtherAssets, after the us-gaap tag",
+    ("MSFT", "sales_maturities_of_investments"): (
+        "msft:ProceedsFromInvestments + the us-gaap maturities line, the two face lines"
+    ),
+    ("DE", "ppe_net"): "de: property and equipment tag, the same face line from FY2019",
+    ("DE", "long_term_debt"): "de:LongTermDebtAndFinanceLeasesNoncurrent, from FY2022",
+    ("DE", "short_term_debt"): "de: short-term borrowings + securitization, before FY2020",
 }
 
 NEW_CELL_PROVENANCE = frozenset({"derived", "zero_inferred", "approximated"})
@@ -62,15 +70,25 @@ NEW_ITEMS = frozenset(
 )
 
 
-def siblings_taken_out(ticker: str, residual: str) -> list[str]:
-    """The lines whose value a residual cell may lose, by exactly that value: a combined fill of S4
-    (`RESIDUALS_FOLLOWING_A_FILL`) and the M7b S5 rows that fold back into it (`forecast_fold`),
-    which the residual's formula now subtracts."""
+def _residuals() -> frozenset[str]:
     from bedrock.mapping.config import load_canonical_items
 
-    combined = RESIDUALS_FOLLOWING_A_FILL.get((ticker, residual))
-    new_rows = [i.code for i in load_canonical_items() if i.forecast_fold == residual]
-    return ([combined] if combined else []) + new_rows
+    return frozenset(i.code for i in load_canonical_items() if i.residual)
+
+
+RESIDUALS = _residuals()
+
+
+def siblings_taken_out(residual: str) -> list[str]:
+    """The lines a residual subtracts (its parent's other children): a residual cell may move by
+    exactly the value of those whose cell was empty in the baseline and is filled now (a combined
+    fill of S4, a row of S5, a face sum, an inferred zero or an extension line of S7), and by
+    nothing else."""
+    from bedrock.mapping.config import load_canonical_items
+
+    items = load_canonical_items()
+    parent = next(i.parent for i in items if i.code == residual)
+    return [i.code for i in items if i.parent == parent and not i.residual and i.code != residual]
 
 
 def current_cells(
@@ -132,13 +150,17 @@ def test_no_non_empty_cell_changes_or_empties(ticker: str) -> None:
             for code, periods in codes.items():
                 after = now.get(freq, {}).get(statement, {}).get(code, {})
                 filled = [
-                    now.get(freq, {}).get(statement, {}).get(sibling, {})
-                    for sibling in siblings_taken_out(ticker, code)
+                    (now.get(freq, {}).get(statement, {}).get(sibling, {}), codes.get(sibling, {}))
+                    for sibling in (siblings_taken_out(code) if code in RESIDUALS else [])
                 ]
                 for period, before in periods.items():
                     if (ticker, freq, code, period) in RESIDUALS_ALLOWED_TO_CHANGE:
                         continue
-                    taken = [Decimal(f[period][0]) for f in filled if period in f]
+                    taken = [
+                        Decimal(f[period][0])
+                        for f, was in filled
+                        if period in f and period not in was
+                    ]
                     if taken and period in after:
                         # residual = subtotal - ... - sibling: each fill moves it by the sibling
                         expected = Decimal(before) - sum(taken, Decimal(0))
@@ -172,6 +194,7 @@ def test_a_cell_that_was_empty_is_filled_by_a_rule_not_a_report(ticker: str) -> 
                     if period not in recorded
                     and code not in NEW_ITEMS
                     and (ticker, code) not in COMBINED_FILLS
+                    and (ticker, code) not in EXTENSION_FILLS
                     and provenance not in NEW_CELL_PROVENANCE
                 ]
 
@@ -188,12 +211,21 @@ def test_every_allowed_residual_change_names_a_residual_and_gives_a_reason() -> 
 
 
 def test_every_combined_fill_and_following_residual_gives_a_reason() -> None:
-    from bedrock.mapping.config import load_canonical_items
+    from bedrock.mapping.config import (
+        DEFAULT_OVERRIDES_DIR,
+        load_canonical_items,
+        load_overrides,
+        signed_members,
+    )
 
     by_code = {i.code: i for i in load_canonical_items()}
     for (_, code), reason in COMBINED_FILLS.items():
         assert by_code[code].covers and reason.strip()
-    for (ticker, residual), sibling in RESIDUALS_FOLLOWING_A_FILL.items():
-        assert by_code[residual].residual
-        assert (ticker, sibling) in COMBINED_FILLS
-        assert by_code[sibling].parent == by_code[residual].parent
+    for (ticker, code), reason in EXTENSION_FILLS.items():
+        assert reason.strip()
+        overrides = load_overrides(DEFAULT_OVERRIDES_DIR, ticker, list(by_code.values()))
+        assert any(
+            taxonomy != "us-gaap"
+            for entry in overrides[code]
+            for _, taxonomy, _ in signed_members(entry)
+        )  # the override maps an extension tag

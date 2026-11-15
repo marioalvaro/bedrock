@@ -73,7 +73,7 @@ def test_backfill_starts_in_the_background_and_parses_the_filings(
     assert response.json()["ticker"] == "AAPL"
     app.state.backfills.join("AAPL", timeout=30)
     body = authed_client.get("/api/v1/companies/AAPL").json()
-    assert body["filings_parsed"] == 2  # the two recorded AAPL filings
+    assert body["filings_parsed"] == 4  # the four recorded AAPL filings (M7b S7)
     assert body["filings_total"] == _four_forms(db_session)
 
 

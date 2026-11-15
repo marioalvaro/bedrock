@@ -32,8 +32,11 @@ def aapl_db(seed_db: Callable[..., None]) -> None:
 
 @pytest.fixture
 def aapl(aapl_db: None, db_session: Session) -> Company:
+    from .seed import read_recorded_filings
+
     company = companies_repo.get_by_ticker(db_session, "AAPL")
     assert company is not None
+    read_recorded_filings(db_session, company)  # as the fixture pipeline does (M7b S7)
     return company
 
 

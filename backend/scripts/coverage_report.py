@@ -158,6 +158,11 @@ def report(entries: Sequence[Entry]) -> dict[str, Any]:
                 "strict": _ratio(cov.filled, strict_cells),
                 "applicable": _ratio(cov.filled, applicable_cells),
                 "buckets": dict(table.counts),
+                # M7b S7: inferred zeros and derived cells (face sums among them), and the empty
+                # cells an unclassified face line blocks
+                "zero_inferred": cov.by_provenance["zero_inferred"],
+                "derived": cov.by_provenance["derived"],
+                "extension_unclassified": causes["extension_unclassified"],
             }
             total = totals[freq]
             total["cells"] += cov.cells

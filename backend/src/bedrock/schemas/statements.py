@@ -292,11 +292,25 @@ class RuleWarningOut(BaseModel):
     reason: str
 
 
+class UnclassifiedLineOut(BaseModel):
+    """A face line of the newest 10-K or 10-Q nobody classified (M7b S7): map it in the
+    company's override file, or list it under `other_lines:`."""
+
+    statement: Literal["IS", "BS", "CF"]
+    taxonomy: str
+    concept: str
+    label: str
+    latest_value: Decimal
+    latest_period_end: date
+    filings: list[str]  # accession numbers, newest first
+
+
 class MappingGapsOut(BaseModel):
     missing_items: list[MissingItemOut]
     unmapped_concepts: list[UnmappedConceptOut]
     coverage: list[CoverageOut]
     rule_warnings: list[RuleWarningOut]
+    unclassified_lines: list[UnclassifiedLineOut]
 
     @classmethod
     def from_gaps(cls, gaps: MappingGaps) -> "MappingGapsOut":
@@ -355,5 +369,17 @@ class MappingGapsOut(BaseModel):
                     reason=w.warning.reason,
                 )
                 for w in gaps.rule_warnings
+            ],
+            unclassified_lines=[
+                UnclassifiedLineOut(
+                    statement=u.statement,
+                    taxonomy=u.taxonomy,
+                    concept=u.concept,
+                    label=u.label,
+                    latest_value=u.latest_value,
+                    latest_period_end=u.latest_period_end,
+                    filings=u.filings,
+                )
+                for u in gaps.unclassified_lines
             ],
         )

@@ -11,6 +11,7 @@ from bedrock.mapping.config import (
     is_adjustable,
     load_canonical_items,
     load_excludes,
+    load_other_lines,
     load_overrides,
     parse_formula,
     propagation_targets,
@@ -1263,3 +1264,153 @@ def test_the_shipped_required_lines_are_the_basic_ones() -> None:
     items = load_canonical_items(DEFAULT_ITEMS_PATH)
 
     assert {i.code for i in items if i.required} == REQUIRED
+
+
+# M7b S7: structure-rule fields (docs/erd/data-coverage.md "Structure rules")
+STRUCTURE = (
+    VALID
+    + """
+- code: opex
+  statement: IS
+  label: Opex
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: gross_profit
+  concepts: [OperatingExpenses]
+  face_members: [SellingExpense, "us-gaap:MarketingExpense"]
+  zero_when_absent: false
+"""
+)
+
+
+def test_face_members_and_zero_when_absent_are_read(tmp_path: Path) -> None:
+    items = {i.code: i for i in load_canonical_items(write(tmp_path, STRUCTURE))}
+
+    assert items["opex"].face_members == ("us-gaap:SellingExpense", "us-gaap:MarketingExpense")
+    assert items["opex"].zero_when_absent is False
+    assert items["revenue"].face_members == ()
+    assert items["revenue"].zero_when_absent is True
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        # a face member that is a default concept of another item
+        ("face_members: [SellingExpense", "face_members: [CostOfRevenue"),
+        # a sum is not a face member: each member is one line
+        ("face_members: [SellingExpense", 'face_members: ["SellingExpense + Foo"'),
+        ('"us-gaap:MarketingExpense"]', '"us-gaap:SellingExpense"]'),  # twice
+        (
+            'face_members: [SellingExpense, "us-gaap:MarketingExpense"]',
+            "face_members: Foo",
+        ),  # not a list
+        ("zero_when_absent: false", "zero_when_absent: no-thanks"),
+        ("zero_when_absent: false", "zero_when_absnt: false"),  # an unknown key
+    ],
+)
+def test_malformed_structure_fields_are_rejected(tmp_path: Path, old: str, new: str) -> None:
+    error = fail_with(tmp_path, STRUCTURE.replace(old, new))
+
+    assert error.code == "opex"
+
+
+def test_face_members_on_a_computed_or_residual_item_are_rejected(tmp_path: Path) -> None:
+    computed = VALID.replace(
+        "  derive: revenue - cost_of_revenue",
+        "  derive: revenue - cost_of_revenue\n  face_members: [Foo]",
+    )
+    assert fail_with(tmp_path, computed).code == "gross_profit"
+    residual = (
+        VALID
+        + """
+- code: other_cost
+  statement: IS
+  label: Other
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: gross_profit
+  residual: true
+  derive: gross_profit - revenue
+  face_members: [Foo]
+"""
+    )
+    assert fail_with(tmp_path, residual).code == "other_cost"
+
+
+def test_the_shipped_items_have_face_members_for_the_eight_first_items() -> None:
+    items = {i.code: i for i in load_canonical_items(DEFAULT_ITEMS_PATH)}
+
+    with_members = {code for code, item in items.items() if item.face_members}
+    assert with_members == {
+        "short_term_debt",
+        "long_term_debt",
+        "sga",
+        "debt_issued",
+        "debt_repaid",
+        "sales_maturities_of_investments",
+        "purchases_of_investments",
+        "d_and_a",
+    }
+
+
+def test_other_lines_are_read_from_the_override_file(tmp_path: Path) -> None:
+    items = load_canonical_items(write(tmp_path, VALID))
+    (tmp_path / "X.yaml").write_text("revenue: [x:Rev]\nother_lines: [x:Gain, 'x:OtherCharge']\n")
+
+    assert load_other_lines(tmp_path, "x") == (("x", "Gain"), ("x", "OtherCharge"))
+    assert load_overrides(tmp_path, "X", items) == {"revenue": ["x:Rev"]}  # not a code
+    assert load_other_lines(tmp_path, "NOFILE") == ()
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "other_lines: x:Gain\n",  # not a list
+        "other_lines: ['x:A + x:B']\n",  # a sum
+        "other_lines: [x:Gain, x:Gain]\n",  # twice
+        "other_lines: [OtherNonoperatingIncome]\n",  # a us-gaap line has a triage verdict instead
+    ],
+)
+def test_malformed_other_lines_are_rejected(tmp_path: Path, text: str) -> None:
+    (tmp_path / "X.yaml").write_text(text)
+
+    with pytest.raises(MappingConfigError):
+        load_other_lines(tmp_path, "X")
+
+
+def test_an_override_sum_may_join_us_gaap_and_the_company_extension(tmp_path: Path) -> None:
+    items = load_canonical_items(write(tmp_path, VALID))
+    (tmp_path / "X.yaml").write_text('revenue: ["x:Sales + us-gaap:OtherRevenue"]\n')
+
+    assert load_overrides(tmp_path, "X", items) == {"revenue": ["x:Sales + us-gaap:OtherRevenue"]}
+
+
+@pytest.mark.parametrize("entry", ["x:A + y:B", "x:A + y:B + us-gaap:C", "x:A + dei:B"])
+def test_an_override_sum_of_two_extensions_is_rejected(tmp_path: Path, entry: str) -> None:
+    items = load_canonical_items(write(tmp_path, VALID))
+    (tmp_path / "X.yaml").write_text(f'revenue: ["{entry}"]\n')
+
+    with pytest.raises(MappingConfigError):
+        load_overrides(tmp_path, "X", items)
+
+
+def test_a_face_member_may_be_the_concept_of_a_support_line(tmp_path: Path) -> None:
+    support = (
+        STRUCTURE
+        + """
+- code: long_term_debt_current
+  statement: IS
+  label: Support
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: null
+  concepts: [SellingExpense]
+"""
+    )  # a support line only feeds an identity: it is no line on the face
+
+    items = {i.code: i for i in load_canonical_items(write(tmp_path, support))}
+
+    assert "us-gaap:SellingExpense" in items["opex"].face_members

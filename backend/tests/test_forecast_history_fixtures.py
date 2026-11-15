@@ -40,13 +40,15 @@ def test_deere_needs_only_gross_margin() -> None:
     assert missing_required("DE") == {"gross_margin"}
 
 
-def test_microsoft_d_and_a_has_no_history_and_follows_capex() -> None:
+def test_microsoft_d_and_a_history_comes_from_its_extension_line() -> None:
+    # M7b S7: "Depreciation, amortization, and other" (msft:DepreciationAmortizationAndOther) is
+    # mapped in Microsoft's override file, so D&A has history (FY2022-26, 6.5% to 11.6% of revenue;
+    # 10-K FY2026 0001193125-26-323660: D&A 38,534) and no longer follows capex.
     history = fixture_history("MSFT")
     got = historical_drivers(history, GROWTH)
-    assert [got[("d_and_a_pct_revenue", fy)] for fy in history_years(history)] == [None] * 5
-    assert default_drivers(history, GROWTH)["d_and_a_pct_revenue"] == Follows(
-        "capex_pct_revenue", resolved=True
-    )
+    ratios = [got[("d_and_a_pct_revenue", fy)] for fy in history_years(history)]
+    assert all(r is not None and Decimal("0.05") < r < Decimal("0.15") for r in ratios)
+    assert not isinstance(default_drivers(history, GROWTH)["d_and_a_pct_revenue"], Follows)
 
 
 def test_apple_fy2024_ratios_equal_the_10k() -> None:

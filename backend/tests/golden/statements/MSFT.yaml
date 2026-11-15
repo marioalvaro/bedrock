@@ -130,5 +130,4 @@ acknowledged_unmapped:
   us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInYearFour: "debt maturity schedule, not a balance-sheet line"
   us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInYearThree: "debt maturity schedule, not a balance-sheet line"
   us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInYearTwo: "debt maturity schedule, not a balance-sheet line"
-  us-gaap:ProceedsFromMaturitiesPrepaymentsAndCallsOfAvailableForSaleSecurities: "half of investment sales + maturities: the sales line is a custom tag from FY2019 that companyfacts omits, so no sum can cover the years (S3, map-xbrl run of 2026-10-09)"
   us-gaap:RestrictedInvestments: "investments-note detail, not a balance-sheet line"

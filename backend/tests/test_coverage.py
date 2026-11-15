@@ -393,6 +393,27 @@ def test_a_required_line_never_reported_is_still_a_gap() -> None:
     assert {result.causes[("rnd", key)] for key in ALL_YEARS} == {"not_reported"}
 
 
+def test_a_line_whose_only_values_are_inferred_zeros_is_still_never_reported() -> None:
+    # M7b S7: R9 proves a 0 where a 10-K face has no line; that is no report of the line, so the
+    # line's other empty cells stay not applicable instead of turning into gaps
+    annual = blank(s2_table("IS", "annual"), "rnd", ALL_YEARS - {"FY2023"})
+    rows = [
+        replace(
+            r,
+            values=[Decimal(0) if v is not None else None for v in r.values],
+            provenance=["zero_inferred" if v is not None else None for v in r.values],
+        )
+        if r.code == "rnd"
+        else r
+        for r in annual.rows
+    ]
+
+    result = table_coverage(replace(annual, rows=rows), S2_ITEMS, S2_MAPPED, ())
+
+    assert result.causes[("rnd", "FY2022")] == "not_applicable"
+    assert ("rnd", "FY2023") not in result.causes  # the inferred zero is a filled cell
+
+
 def test_a_line_with_one_value_keeps_its_gaps() -> None:
     result = table_coverage(s2_table("IS", "annual"), S2_ITEMS, S2_MAPPED, ())
 
@@ -533,35 +554,37 @@ def test_the_applicable_fraction_is_never_below_the_strict_one(seed: int) -> Non
 
 
 # The strict fraction of every table of the four companies, and its no_filing_data cells, pinned.
-# It has moved three times (docs/erd/data-coverage.md, the "What S<n> built" blocks): S2's anchor
+# It has moved four times (docs/erd/data-coverage.md, the "What S<n> built" blocks): S2's anchor
 # rule (the balance sheet's first year, comparatives only, became no_filing_data); S4's combined
-# fill of Deere's `change_payables`; and S5's seven new rows, which add their cells to every table
-# of their statement while a company that never reports one leaves all of them empty. The cells of
-# the rows that existed before do not change (`test_mapping_baseline_guard.py`).
+# fill of Deere's `change_payables`; S5's seven new rows, which add their cells to every table
+# of their statement while a company that never reports one leaves all of them empty; and S7's
+# structure rules and extension lines (face sums, inferred zeros, MSFT's and DE's extension tags),
+# which only fill empty cells. The cells of the rows that existed before do not change
+# (`test_mapping_baseline_guard.py`).
 STRICT = {  # (ticker, statement, freq): (strict fraction, no_filing_data cells)
-    ("AAPL", "IS", "annual"): ("0.902632", 0),
-    ("AAPL", "BS", "annual"): ("0.815951", 32),
+    ("AAPL", "IS", "annual"): ("0.913158", 0),
+    ("AAPL", "BS", "annual"): ("0.817485", 32),
     ("AAPL", "CF", "annual"): ("0.908467", 0),
-    ("AAPL", "IS", "quarterly"): ("0.872535", 0),
-    ("AAPL", "BS", "quarterly"): ("0.787611", 70),
+    ("AAPL", "IS", "quarterly"): ("0.873239", 0),
+    ("AAPL", "BS", "quarterly"): ("0.788013", 70),
     ("AAPL", "CF", "quarterly"): ("0.889161", 0),
-    ("MSFT", "IS", "annual"): ("0.915789", 0),
+    ("MSFT", "IS", "annual"): ("0.921053", 0),
     ("MSFT", "BS", "annual"): ("0.890076", 29),
-    ("MSFT", "CF", "annual"): ("0.819222", 0),
-    ("MSFT", "IS", "quarterly"): ("0.900000", 0),
+    ("MSFT", "CF", "annual"): ("0.867277", 0),
+    ("MSFT", "IS", "quarterly"): ("0.900694", 0),
     ("MSFT", "BS", "quarterly"): ("0.880208", 96),
-    ("MSFT", "CF", "quarterly"): ("0.762681", 0),
-    ("COST", "IS", "annual"): ("0.836842", 0),
+    ("MSFT", "CF", "quarterly"): ("0.770531", 0),
+    ("COST", "IS", "annual"): ("0.842105", 0),
     ("COST", "BS", "annual"): ("0.770468", 0),
     ("COST", "CF", "annual"): ("0.876430", 0),
-    ("COST", "IS", "quarterly"): ("0.830556", 0),
+    ("COST", "IS", "quarterly"): ("0.832639", 0),
     ("COST", "BS", "quarterly"): ("0.750704", 105),
     ("COST", "CF", "quarterly"): ("0.816425", 0),
     ("DE", "IS", "annual"): ("0.763158", 0),
-    ("DE", "BS", "annual"): ("0.570552", 32),
+    ("DE", "BS", "annual"): ("0.605828", 32),
     ("DE", "CF", "annual"): ("0.979405", 0),
     ("DE", "IS", "quarterly"): ("0.752239", 0),
-    ("DE", "BS", "quarterly"): ("0.565506", 0),
+    ("DE", "BS", "quarterly"): ("0.578358", 0),
     ("DE", "CF", "quarterly"): ("0.878650", 0),
 }
 
@@ -644,3 +667,56 @@ def test_included_in_comes_before_structural() -> None:
     result = table_coverage(combined_table(), combined_items(), {"accounts_payable"}, ())
 
     assert result.causes[("accrued_liabilities", "FY2023")] == "included_in"
+
+
+# --- M7b S7: extension_unclassified ---------------------------------------------------------
+
+
+def unclassified_table() -> StatementTable:
+    from bedrock.statements.rules import Rules
+    from bedrock.statements.structure import FaceLines
+    from tests import test_structure_rules as s
+
+    weird = s.line(f"K-{s.FY}", "BS", "x:Weird", "LiabilitiesCurrent")
+    raw = [*s.base_facts(), *s.debt_facts(CommercialPaper=3 * s.B, LongTermDebtCurrent=2 * s.B)]
+    line_facts = [*raw, *[{**r, "taxonomy": "x"} for r in s.debt_facts(Weird=s.B)]]
+    face = FaceLines(
+        s.lines_frame(s.balance_sheet_lines(f"K-{s.FY}", "10-K", weird)), facts(line_facts), s.MAPS
+    )
+    canonical = map_facts(select_vintage(facts(raw)), s.MAPS, s.ITEMS)
+    return build_statement(canonical, s.ITEMS, "BS", "annual", rules=Rules(filing_lines=face))
+
+
+def required_items() -> list[CanonicalItemDef]:
+    """The structure-rule items with the two debt-side lines `required`, so that a line the
+    company never reports stays a gap (`not_applicable` comes first otherwise)."""
+    from tests import test_structure_rules as s
+
+    wanted = {"short_term_debt", "accrued_liabilities"}
+    return [replace(i, required=True) if i.code in wanted else i for i in s.ITEMS]
+
+
+def test_an_empty_cell_whose_block_has_an_unclassified_line_is_extension_unclassified() -> None:
+    from tests import test_structure_rules as s
+
+    table = unclassified_table()
+    row = next(r for r in table.rows if r.code == "short_term_debt")
+    result = table_coverage(table, required_items(), {i.code for i in s.ITEMS}, ())
+
+    assert row.unclassified[
+        table.periods.index(next(p for p in table.periods if p.key == "FY2023"))
+    ] == ("x:Weird",)
+    assert result.causes[("short_term_debt", "FY2023")] == "extension_unclassified"
+    assert result.causes[("accrued_liabilities", "FY2023")] == "extension_unclassified"
+    assert result.empty_by_cause["extension_unclassified"] == 2
+    # a gap like any other: it stays in the applicable denominator
+    assert result.fraction == result.fraction_applicable
+
+
+def test_structural_comes_before_extension_unclassified() -> None:
+    from tests import test_structure_rules as s
+
+    mapped = {i.code for i in s.ITEMS} - {"accrued_liabilities"}
+    result = table_coverage(unclassified_table(), required_items(), mapped, ())
+
+    assert result.causes[("accrued_liabilities", "FY2023")] == "structural"

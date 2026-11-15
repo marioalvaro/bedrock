@@ -2510,6 +2510,10 @@ export type MappingGapsOut = {
      */
     rule_warnings: Array<RuleWarningOut>;
     /**
+     * Unclassified Lines
+     */
+    unclassified_lines: Array<UnclassifiedLineOut>;
+    /**
      * Unmapped Concepts
      */
     unmapped_concepts: Array<UnmappedConceptOut>;
@@ -4539,6 +4543,43 @@ export type TornadoOut = {
      * Scenario Id
      */
     scenario_id: number;
+};
+
+/**
+ * UnclassifiedLineOut
+ *
+ * A face line of the newest 10-K or 10-Q nobody classified (M7b S7): map it in the
+ * company's override file, or list it under `other_lines:`.
+ */
+export type UnclassifiedLineOut = {
+    /**
+     * Concept
+     */
+    concept: string;
+    /**
+     * Filings
+     */
+    filings: Array<string>;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Latest Period End
+     */
+    latest_period_end: string;
+    /**
+     * Latest Value
+     */
+    latest_value: string;
+    /**
+     * Statement
+     */
+    statement: 'IS' | 'BS' | 'CF';
+    /**
+     * Taxonomy
+     */
+    taxonomy: string;
 };
 
 /**

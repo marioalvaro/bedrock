@@ -75,7 +75,7 @@ expected_missing:
   accrued_liabilities: "inside 'Accounts payable and accrued expenses', no separate line"
   acquisitions: "no acquisition line in years without a purchase (the cash flow omits zero lines)"
   aoci: "no XBRL balance sheet before FY2008"
-  cost_of_revenue: "us-gaap tag until FY2017; from FY2018 a `de:` fact that companyfacts omits"
+  cost_of_revenue: "us-gaap tag until FY2017; from FY2018 `CostOfRevenue` with dimensional facts only (M7b S7: no extension tag on the 10-K faces of FY2019-25)"
   deferred_revenue_current: "no balance-sheet line (contract liabilities sit inside accrued expenses)"
   equity_parent: "no XBRL balance sheet before FY2008"
   goodwill: "no XBRL balance sheet before FY2008"

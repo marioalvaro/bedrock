@@ -41,8 +41,13 @@ def aapl_db(seed_db: Callable[..., None]) -> None:
 
 @pytest.fixture
 def aapl(aapl_db: None, db_session: Session) -> Company:
+    """Apple followed and its recorded filings read, as after a backfill (M7b S7): the database
+    then holds what the fixture pipeline builds from, face lines and extension facts included."""
+    from .seed import read_recorded_filings
+
     company = companies_repo.get_by_ticker(db_session, "AAPL")
     assert company is not None
+    read_recorded_filings(db_session, company)
     return company
 
 
@@ -311,3 +316,48 @@ def test_the_cells_are_solved_once_for_all_the_tables_a_request_builds(
     build(db_session, aapl)
 
     assert len(calls) == 1
+
+
+# --- M7b S7: structure rules from the parsed filings ----------------------------------------
+
+
+def _r9_zeros(session: Session, who: Company) -> int:
+    from bedrock.services.statements import statement_tables as tables_of
+
+    tables = tables_of(session, who, [("BS", "annual"), ("CF", "annual"), ("IS", "annual")])
+    return sum(
+        1
+        for table in tables.values()
+        for row in table.rows
+        for provenance in row.provenance
+        if provenance == "zero_inferred"
+        and row.code not in {"nci", "net_income_nci"}
+        and row.code != "temporary_equity"
+    )
+
+
+def test_a_full_load_carries_the_parsed_face_lines_and_the_rules_apply(
+    db_session: Session, seed_db: Callable[..., None]
+) -> None:
+    from bedrock.ingest.sources import Sources
+    from bedrock.services.filings import ingest_filings
+    from bedrock.services.statements import load_inputs
+
+    from .fakes import FakeEdgar, FakeFilings, FakePrices
+
+    seed_db("MSFT")
+    who = companies_repo.get_by_ticker(db_session, "MSFT")
+    assert who is not None
+    before = _r9_zeros(db_session, who)
+    assert load_inputs(db_session, who).rules.filing_lines is None  # nothing parsed yet
+
+    sources = Sources(edgar=FakeEdgar(), prices=FakePrices(), filings=FakeFilings())
+    ingest_filings(db_session, sources, who, limit=None)
+
+    face = load_inputs(db_session, who).rules.filing_lines
+    assert face is not None
+    assert "0001193125-26-323660" in set(face.lines["accession_no"])
+    assert ("msft", "DepreciationAmortizationAndOther") in set(
+        zip(face.facts["taxonomy"], face.facts["concept"], strict=True)
+    )  # an extension line's amount is a stored filing fact
+    assert _r9_zeros(db_session, who) > before

@@ -17,6 +17,7 @@ from pathlib import Path
 import pandas as pd
 
 from bedrock.ingest.parse import parse_companyfacts
+from bedrock.ingest.xbrl import is_standard_taxonomy, parse_filing
 from bedrock.mapping.config import (
     DEFAULT_ITEMS_PATH,
     DEFAULT_OVERRIDES_DIR,
@@ -26,6 +27,7 @@ from bedrock.mapping.config import (
     load_canonical_items,
     load_excludes,
     load_identities,
+    load_other_lines,
     load_overrides,
     parse_formula,
     signed_members,
@@ -39,6 +41,7 @@ from bedrock.statements.imports import StoredValue, company_calendar, imported_f
 from bedrock.statements.periods import Calendar
 from bedrock.statements.rules import Rules, filings_tagging_nci
 from bedrock.statements.splits import split_adjust
+from bedrock.statements.structure import LINE_COLUMNS, FaceLines, face_concepts
 
 FIXTURES = Path(__file__).parent / "fixtures" / "edgar"
 SPLITS = Path(__file__).parent / "fixtures" / "yfinance"
@@ -101,12 +104,99 @@ def mapping_frame(
     return frame
 
 
+@cache
+def filing_fixtures(ticker: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """The recorded filings of the company (`fixtures/edgar/filings/<TICKER>/`), parsed as
+    `services/filings.py` does: their face lines (`LINE_COLUMNS`) and their extension-taxonomy
+    facts (`FACT_COLUMNS`), each joined to its filing in the companyfacts fixture. A company
+    without recorded filings has neither."""
+    from bedrock.services.filings import statement_anchors
+
+    with gzip.open(FIXTURES / f"{ticker}.json.gz", "rt") as handle:
+        filings = {f.accession_no: f for f in parse_companyfacts(json.load(handle)).filings}
+    lines: list[tuple[object, ...]] = []
+    extension: list[dict[str, object]] = []
+    folder = FIXTURES / "filings" / ticker
+    for path in sorted(folder.iterdir()) if folder.is_dir() else []:
+        filing = filings[path.name]
+        files = {
+            p.name.removesuffix(".gz"): gzip.decompress(p.read_bytes()) for p in path.iterdir()
+        }
+        parsed = parse_filing(files, statement_anchors(ticker), accession_no=path.name)
+        for line in parsed.lines:
+            lines.append(
+                (
+                    path.name,
+                    filing.form,
+                    filing.filed_at,
+                    line.statement,
+                    line.position,
+                    line.taxonomy,
+                    line.concept,
+                    line.label,
+                    line.calc_parent_taxonomy,
+                    line.calc_parent_concept,
+                    line.calc_weight,
+                )
+            )
+        extension += [
+            {
+                "taxonomy": f.taxonomy,
+                "concept": f.concept,
+                "unit": f.unit,
+                "period_start": f.period_start,
+                "period_end": f.period_end,
+                "value": f.value,
+                "accession_no": path.name,
+                "form": filing.form,
+                "filed_at": filing.filed_at,
+            }
+            for f in parsed.facts
+            if not is_standard_taxonomy(f.taxonomy)
+        ]
+    line_frame = pd.DataFrame(lines, columns=LINE_COLUMNS).astype({"calc_weight": "object"})
+    facts = pd.DataFrame(extension, columns=FACT_COLUMNS).astype(
+        {"period_start": "object", "period_end": "object", "value": "object", "filed_at": "object"}
+    )
+    return line_frame, facts
+
+
+def face_lines(ticker: str, mappings: pd.DataFrame, as_of: date | None) -> FaceLines | None:
+    """What `services/statements.py::_face_lines` gives for the fixture company."""
+    from bedrock.services.statements import concept_triage
+
+    lines, _ = filing_fixtures(ticker)
+    lines = _filed_by(lines, as_of)
+    if lines.empty:
+        return None
+    items = load_canonical_items(DEFAULT_ITEMS_PATH)
+    concepts = face_concepts(lines, items)
+    every = all_facts(ticker)
+    facts = every[
+        [key in concepts for key in zip(every["taxonomy"], every["concept"], strict=True)]
+    ]
+    return FaceLines(
+        lines,
+        _filed_by(facts, as_of),
+        mappings,
+        {key: verdict.codes for key, verdict in concept_triage().items()},
+        frozenset(load_other_lines(DEFAULT_OVERRIDES_DIR, ticker)),
+    )
+
+
 def fact_frame(ticker: str, mappings: pd.DataFrame) -> pd.DataFrame:
-    """All vintages of the concepts the mappings reference, joined to their filing."""
+    """All vintages of the concepts the mappings reference, joined to their filing: the
+    companyfacts fixture's, and the extension facts of the recorded filings (stored with
+    `source="filing"` in the database)."""
+    every = all_facts(ticker)
+    wanted = set(zip(mappings["taxonomy"], mappings["concept"], strict=True))
+    return every[[key in wanted for key in zip(every["taxonomy"], every["concept"], strict=True)]]
+
+
+def _companyfacts_frame(ticker: str) -> pd.DataFrame:
     with gzip.open(FIXTURES / f"{ticker}.json.gz", "rt") as handle:
         parsed = parse_companyfacts(json.load(handle))
     filings = {f.accession_no: f for f in parsed.filings}
-    wanted = set(zip(mappings["taxonomy"], mappings["concept"], strict=True))
     rows = [
         {
             "taxonomy": f.taxonomy,
@@ -120,22 +210,8 @@ def fact_frame(ticker: str, mappings: pd.DataFrame) -> pd.DataFrame:
             "filed_at": filings[f.accession_no].filed_at,
         }
         for f in parsed.facts
-        if (f.taxonomy, f.concept) in wanted
     ]
-    return pd.DataFrame(
-        rows,
-        columns=[
-            "taxonomy",
-            "concept",
-            "unit",
-            "period_start",
-            "period_end",
-            "value",
-            "accession_no",
-            "form",
-            "filed_at",
-        ],
-    ).astype(
+    return pd.DataFrame(rows, columns=FACT_COLUMNS).astype(
         {"period_start": "object", "period_end": "object", "value": "object", "filed_at": "object"}
     )
 
@@ -185,29 +261,12 @@ FACT_COLUMNS = [
 
 @cache
 def latest_10k_facts(ticker: str) -> pd.DataFrame:
-    """Every fact (any concept) of the newest 10-K, like `load_latest_annual_facts`."""
-    with gzip.open(FIXTURES / f"{ticker}.json.gz", "rt") as handle:
-        parsed = parse_companyfacts(json.load(handle))
-    annual = [f for f in parsed.filings if f.form.startswith("10-K")]
-    newest = max(annual, key=lambda f: (f.filed_at, f.accession_no))
-    rows = [
-        {
-            "taxonomy": f.taxonomy,
-            "concept": f.concept,
-            "unit": f.unit,
-            "period_start": f.period_start,
-            "period_end": f.period_end,
-            "value": f.value,
-            "accession_no": newest.accession_no,
-            "form": newest.form,
-            "filed_at": newest.filed_at,
-        }
-        for f in parsed.facts
-        if f.accession_no == newest.accession_no
-    ]
-    return pd.DataFrame(rows, columns=FACT_COLUMNS).astype(
-        {"period_start": "object", "period_end": "object", "value": "object", "filed_at": "object"}
-    )
+    """Every fact (any concept) of the newest 10-K, like `load_latest_annual_facts`: with the
+    extension facts of that filing when it is recorded."""
+    every = all_facts(ticker)
+    annual = every[[str(form).startswith("10-K") for form in every["form"]]]
+    newest = max(zip(annual["filed_at"], annual["accession_no"], strict=True))[1]
+    return every[every["accession_no"] == newest].reset_index(drop=True)
 
 
 def ten_k_dates(ticker: str) -> list[date]:
@@ -277,6 +336,7 @@ def run_pipeline(
         tuple(identities),
         filings_tagging_nci(facts, mappings),
         split_adjust(_filed_by(cover_shares(ticker), as_of), splits),
+        filing_lines=face_lines(ticker, mappings, as_of),
     )
     return Pipeline(
         items=items,
@@ -313,27 +373,13 @@ def solve_with_imports(
 
 @cache
 def all_facts(ticker: str) -> pd.DataFrame:
-    """Every fact of the fixture (any concept, every vintage), joined to its filing."""
-    with gzip.open(FIXTURES / f"{ticker}.json.gz", "rt") as handle:
-        parsed = parse_companyfacts(json.load(handle))
-    filings = {f.accession_no: f for f in parsed.filings}
-    rows = [
-        {
-            "taxonomy": f.taxonomy,
-            "concept": f.concept,
-            "unit": f.unit,
-            "period_start": f.period_start,
-            "period_end": f.period_end,
-            "value": f.value,
-            "accession_no": f.accession_no,
-            "form": filings[f.accession_no].form,
-            "filed_at": filings[f.accession_no].filed_at,
-        }
-        for f in parsed.facts
-    ]
-    return pd.DataFrame(rows, columns=FACT_COLUMNS).astype(
-        {"period_start": "object", "period_end": "object", "value": "object", "filed_at": "object"}
-    )
+    """Every fact of the fixture (any concept, every vintage), joined to its filing, with the
+    extension facts of the recorded filings, as the database holds them after a backfill."""
+    _, extension = filing_fixtures(ticker)
+    frame = _companyfacts_frame(ticker)
+    if extension.empty:
+        return frame
+    return pd.concat([frame, extension], ignore_index=True)
 
 
 @cache

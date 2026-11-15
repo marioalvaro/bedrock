@@ -2,6 +2,7 @@
 raw facts and its statement lines stored (M7b S6, docs/erd/data-coverage.md "Flow")."""
 
 from collections.abc import Callable
+from pathlib import Path
 
 import pytest
 from sqlalchemy import func, select
@@ -22,6 +23,10 @@ from .fakes import FakeEdgar, FakeFilings, FakePrices
 
 FY2024 = "0000320193-24-000123"  # AAPL 10-K FY2024, recorded
 FY2010 = "0001193125-10-238044"  # AAPL 10-K FY2010, recorded
+# every recorded AAPL filing (M7b S7 added the newest 10-K and 10-Q)
+RECORDED = frozenset(
+    p.name for p in (Path(__file__).parent / "fixtures" / "edgar" / "filings" / "AAPL").iterdir()
+)
 FORMS = ("10-K", "10-Q", "10-K/A", "10-Q/A")
 
 
@@ -69,7 +74,7 @@ def test_extension_facts_are_inserted_from_the_filing_and_no_standard_fact_is_ad
     assert _count(db_session, RawFact, RawFact.source == "companyfacts") == standard_before
     # Each fact belongs to its filing and carries the filing's fy/fp, as companyfacts facts do.
     filings = {f.id: f for f in db_session.execute(select(Filing)).scalars()}
-    assert {filings[r.filing_id].accession_no for r in rows} == {FY2024, FY2010}
+    assert {filings[r.filing_id].accession_no for r in rows} == RECORDED
     assert all(r.fiscal_year == filings[r.filing_id].fiscal_year for r in rows)
     assert all(r.fiscal_period == filings[r.filing_id].fiscal_period for r in rows)
 
@@ -82,17 +87,18 @@ def test_each_filing_gets_a_status_and_the_parsed_ones_their_lines(
 
     result = ingest_filings(db_session, _sources(FakeFilings()), company, limit=None)
 
-    assert (result.parsed, result.absent, result.failed) == (2, total - 2, 0)
+    n = len(RECORDED)
+    assert (result.parsed, result.absent, result.failed) == (n, total - n, 0)
     assert _status(db_session, FY2024) == ("parsed", XBRL_PARSER_VERSION)
     assert _status(db_session, FY2010) == ("parsed", XBRL_PARSER_VERSION)
-    assert _count(db_session, Filing, Filing.xbrl_status == "absent") == total - 2
+    assert _count(db_session, Filing, Filing.xbrl_status == "absent") == total - len(RECORDED)
     # Filings of other forms are never tried.
     assert _count(db_session, Filing, Filing.xbrl_status.is_(None)) == _count(
         db_session, Filing, Filing.form.not_in(FORMS)
     )
     frame = lines_repo.lines_for(db_session, company.id)
     assert result.new_lines == len(frame) == _count(db_session, FilingLine)
-    assert set(frame["accession_no"]) == {FY2024, FY2010}
+    assert set(frame["accession_no"]) == RECORDED
     assert set(frame["statement"]) == {"IS", "BS", "CF"}
 
 
@@ -167,9 +173,9 @@ def test_reparse_rebuilds_the_lines_and_retries_failed_filings_without_new_facts
     company = _aapl(db_session, seed_db)
     ingest_filings(db_session, _sources(FakeFilings(broken={FY2010})), company, limit=None)
     assert _status(db_session, FY2010)[0] == "failed"
-    full_lines_2024 = _count(db_session, FilingLine)
     # A stale line of an older parser version, to be replaced.
     fy2024 = db_session.execute(select(Filing).where(Filing.accession_no == FY2024)).scalar_one()
+    full_lines_2024 = _count(db_session, FilingLine, FilingLine.filing_id == fy2024.id)
     db_session.query(FilingLine).filter(FilingLine.position > 3).delete()
     fy2024.xbrl_parser_version = XBRL_PARSER_VERSION - 1
     db_session.commit()
@@ -179,14 +185,15 @@ def test_reparse_rebuilds_the_lines_and_retries_failed_filings_without_new_facts
 
     result = ingest_filings(db_session, _sources(filings), company, limit=None, reparse=True)
 
-    assert sorted(filings.calls) == sorted([FY2024, FY2010])  # absent filings are not re-read
+    assert sorted(filings.calls) == sorted(RECORDED)  # absent filings are not re-read
     assert _status(db_session, FY2024) == ("parsed", XBRL_PARSER_VERSION)
     assert _status(db_session, FY2010) == ("parsed", XBRL_PARSER_VERSION)
     assert _count(db_session, RawFact, RawFact.filing_id == fy2024.id) == facts_before
     assert _count(db_session, Filing, Filing.xbrl_status == "absent") == absent_before
     fy2024_lines = _count(db_session, FilingLine, FilingLine.filing_id == fy2024.id)
     assert fy2024_lines == full_lines_2024
-    assert result.parsed == 2 and result.new_lines == _count(db_session, FilingLine)
+    assert result.parsed == len(RECORDED)
+    assert result.new_lines == _count(db_session, FilingLine)
 
 
 def test_without_a_filings_source_nothing_is_tried(

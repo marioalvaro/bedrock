@@ -26,8 +26,7 @@ Cause = Literal[
     "extension_unclassified",
     "not_reported",
 ]
-# In order: an empty cell takes the first cause that applies. `extension_unclassified` (S7) is
-# produced by a later step; it is counted from now on.
+# In order: an empty cell takes the first cause that applies.
 CAUSES: tuple[Cause, ...] = (
     "no_filing_data",
     "not_applicable",
@@ -78,13 +77,16 @@ def table_coverage(
     - `not_applicable`: the item `starts_with_standard` and the period is before the item's first
       value in this table; or (M7b S5, user 2026-11-14) the item is not `required` and has no value
       in any period of this table, nor of `annual` for a quarterly table: a line the company never
-      reports. Such a line's `included_in` and `rule_rejected` cells keep those causes;
+      reports (M7b S7: an inferred zero is no report). Such a line's `included_in` and
+      `rule_rejected` cells keep those causes;
     - `included_in` (M7b S4): the cell's amount is inside a combined line (`Row.included_in`);
     - `structural`: the item has no formula and the company maps no concept to it;
     - `rule_rejected`: a rule warning names the cell (a Q4 cell: any period of its fiscal year,
       since Q4 follows the year and the other quarters);
     - `annual_only` (a quarterly table with `annual` given): the item has a value in the fiscal
       year's annual cell and in none of the year's quarters;
+    - `extension_unclassified` (M7b S7): the item's block on the face of the period's filing holds
+      a line nobody classified (`Row.unclassified`);
     - `not_reported`: everything else, including extension tags companyfacts cannot reveal."""
     wanted = {i.code for i in items if i.statement == table.statement and not _skipped(i)}
     by_code = {i.code: i for i in items}
@@ -95,7 +97,7 @@ def table_coverage(
         any(row.values[at] is not None for row in anchors) for at in range(len(table.periods))
     ]
     annual_filled = _annual_filled(annual) if table.freq == "quarterly" else set()
-    annual_codes = {code for code, _ in annual_filled}
+    annual_codes = _reported_codes(annual) if table.freq == "quarterly" else set()
 
     causes: dict[tuple[str, str], Cause] = {}
     provenance: Counter[str] = Counter()
@@ -103,7 +105,12 @@ def table_coverage(
         item = by_code[row.code]
         structural = item.derive is None and row.code not in mapped_codes
         first = next((at for at, v in enumerate(row.values) if v is not None), None)
-        never_reported = not item.required and first is None and row.code not in annual_codes
+        # M7b S7: an inferred zero (R9, R1b) is no report of the line
+        reported = any(
+            v is not None and p != "zero_inferred"
+            for v, p in zip(row.values, row.provenance, strict=True)
+        )
+        never_reported = not item.required and not reported and row.code not in annual_codes
         quarter_years = (
             {p.fiscal_year for p, v in zip(table.periods, row.values, strict=True) if v is not None}
             if annual_filled
@@ -133,6 +140,8 @@ def table_coverage(
                 period.fiscal_year,
             ) in annual_filled and period.fiscal_year not in quarter_years:
                 cause = "annual_only"
+            elif row.unclassified[at]:
+                cause = "extension_unclassified"
             else:
                 cause = "not_reported"
             causes[(row.code, period.key)] = cause
@@ -166,6 +175,20 @@ def _annual_filled(annual: StatementTable | None) -> set[tuple[str, int]]:
         for row in annual.rows
         for period, value in zip(annual.periods, row.values, strict=True)
         if value is not None and period.fiscal_period == "FY"
+    }
+
+
+def _reported_codes(annual: StatementTable | None) -> set[str]:
+    """The codes with a value other than an inferred zero in some period of `annual`."""
+    if annual is None:
+        return set()
+    return {
+        row.code
+        for row in annual.rows
+        if any(
+            v is not None and p != "zero_inferred"
+            for v, p in zip(row.values, row.provenance, strict=True)
+        )
     }
 
 

@@ -52,12 +52,17 @@ class Row:
     # filled with None for every period.
     combined_with: list[tuple[str, ...] | None] = field(default_factory=list)
     included_in: list[str | None] = field(default_factory=list)
+    # M7b S7, aligned likewise: the unclassified face lines that block an empty cell's structure
+    # rules (None where there are none); coverage gives such a cell `extension_unclassified`
+    unclassified: list[tuple[str, ...] | None] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if not self.combined_with:
             object.__setattr__(self, "combined_with", [None] * len(self.values))
         if not self.included_in:
             object.__setattr__(self, "included_in", [None] * len(self.values))
+        if not self.unclassified:
+            object.__setattr__(self, "unclassified", [None] * len(self.values))
 
 
 @dataclass(frozen=True)
@@ -278,6 +283,7 @@ def extend_table(
                 + [_ratio(v, values.get((total, p.key))) for v, p in zip(new, added, strict=True)],
                 combined_with=row.combined_with + [None] * len(added),
                 included_in=row.included_in + [None] * len(added),
+                unclassified=row.unclassified + [None] * len(added),
             )
         )
     balance = None
@@ -345,6 +351,7 @@ def _row(
         parent=item.parent if item.custom else None,
         combined_with=[c.combined_with for c in series],
         included_in=[c.included_in for c in series],
+        unclassified=[c.unclassified for c in series],
     )
 
 

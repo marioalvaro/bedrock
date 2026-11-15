@@ -55,6 +55,10 @@ def test_the_totals_are_those_table_coverage_gives(aapl_report: dict) -> None:  
             assert Decimal(row["strict"]) == coverage.fraction
             assert Decimal(row["applicable"]) == coverage.fraction_applicable
             assert sum(row["buckets"].values()) == coverage.cells - coverage.filled
+            # M7b S7: what the structure rules did, per table
+            assert row["zero_inferred"] == coverage.by_provenance["zero_inferred"]
+            assert row["derived"] == coverage.by_provenance["derived"]
+            assert row["extension_unclassified"] == causes["extension_unclassified"]
 
 
 def test_the_total_of_one_company_is_its_own_numbers(aapl_report: dict) -> None:  # type: ignore[type-arg]
@@ -188,7 +192,13 @@ def test_a_database_is_read_from_a_copy_and_gives_the_fixture_numbers(
     settings: Settings,
     aapl_report: dict,  # type: ignore[type-arg]
 ) -> None:
+    from bedrock.repositories import companies as companies_repo
+    from tests.seed import read_recorded_filings
+
     seed_db("AAPL")
+    company = companies_repo.get_by_ticker(db_session, "AAPL")
+    assert company is not None
+    read_recorded_filings(db_session, company)  # as the fixture pipeline does (M7b S7)
     db_session.close()
     path = Path(settings.resolved_database_url.removeprefix("sqlite:///"))
     before = hashlib.sha256(path.read_bytes()).hexdigest()

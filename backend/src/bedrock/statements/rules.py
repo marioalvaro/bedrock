@@ -8,8 +8,12 @@ loop. Warnings go into a `WarningLog` that the caller owns, never into a global.
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 import pandas as pd
+
+if TYPE_CHECKING:
+    from bedrock.statements.structure import FaceLines
 
 from bedrock.mapping.config import CanonicalItemDef, IdentityDef, SolveRule
 from bedrock.statements.cell_types import (
@@ -55,7 +59,9 @@ class Rules:
     share counts as a canonical-shaped frame (`code` `shares_outstanding`, `period_end` the end of
     the period the filing reports, split-adjusted); None switches the cover-page rule (R7) off.
     `complete_parents` are the codes whose custom breakdown is marked complete: an empty one is
-    the sum of its custom lines (M3 S10c)."""
+    the sum of its custom lines (M3 S10c). `filing_lines` are the face lines of the company's
+    parsed filings and what classifies them (M7b S7, `structure.py`); None switches the structure
+    rules R8 and R9 off."""
 
     identities: tuple[IdentityDef, ...] = ()
     nci_filings: frozenset[str] | None = None
@@ -63,6 +69,7 @@ class Rules:
     imported: pd.DataFrame | None = None
     imported_vintages: pd.DataFrame | None = None
     complete_parents: frozenset[str] = frozenset()
+    filing_lines: "FaceLines | None" = None
 
 
 NO_RULES = Rules()

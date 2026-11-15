@@ -8,6 +8,9 @@
 # item is empty rather than the securitization line alone.
 short_term_debt:
   - us-gaap:DebtCurrent + us-gaap:SecuredDebt
+  # M7b S7: before FY2020 "Short-term borrowings" is de:ShortTermBorrowingsIncludingLongTermDebtCurrent
+  # (10-K FY2019: 11,062 and 10,784), beside the securitization line.
+  - de:ShortTermBorrowingsIncludingLongTermDebtCurrent + us-gaap:SecuredDebt
 # Deere's finance leases are inside "Short-term borrowings" and "Long-term borrowings" (lease note and
 # short-term borrowings table, 10-K FY2025), so the default lease members would count them twice. These
 # overrides rank ahead of the defaults and have the same anchors, so the default groups (which carry the
@@ -15,6 +18,8 @@ short_term_debt:
 # Long-term debt is the long-term debt tag alone (a `de:` tag from FY2022, hence empty after FY2021).
 long_term_debt:
   - us-gaap:LongTermDebtNoncurrent
+  # M7b S7: "Long-term borrowings" from FY2022 (10-Ks FY2023 38,477, FY2025 43,544)
+  - de:LongTermDebtAndFinanceLeasesNoncurrent
 # "Marketable securities": AvailableForSaleSecurities until FY2018, MarketableSecurities after (the
 # same 490 in FY2018 under both).
 short_term_investments:
@@ -30,6 +35,9 @@ receivables:
 # finance-lease-inclusive tag with the same balance sheet figure, FY2021+ is a `de:` tag.
 ppe_net:
   - us-gaap:PropertyPlantAndEquipmentAndFinanceLeaseRightOfUseAssetAfterAccumulatedDepreciationAndAmortization
+  # M7b S7: the extension tag of the same line (FY2019-20 equal to the us-gaap tags; FY2021 5,820,
+  # FY2025 8,079)
+  - de:PropertyPlantAndEquipmentAndFinanceLeaseRightOfUseAssetExcludingLessorAssetUnderOperatingLeaseAfterAccumulatedDepreciationAndAmortization
 # "Common stock ... at paid-in amount" is one line (par plus paid-in capital), as for Apple until FY2013.
 common_stock_apic:
   - us-gaap:CommonStockValue

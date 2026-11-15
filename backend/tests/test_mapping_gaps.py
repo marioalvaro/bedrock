@@ -298,3 +298,68 @@ def test_a_verdict_for_a_concept_not_in_the_latest_10k_is_ignored() -> None:
     result = unmapped_concepts(unmapped_facts(), MAPS, INDEX, TRIAGE)
 
     assert "NeverInTheFacts" not in {u.concept for u in result}
+
+
+# --- M7b S7: unclassified face lines --------------------------------------------------------
+
+
+def _face(*extra: dict[str, object], verdicts=None, other_lines=frozenset()):  # type: ignore[no-untyped-def]
+    from bedrock.statements.structure import FaceLines
+    from tests import test_structure_rules as s
+
+    q = s.line("Q1-2024", "BS", "x:Weird", "LiabilitiesCurrent", form="10-Q")
+    lines = [
+        *s.balance_sheet_lines(
+            "K-2023", "10-K", s.line("K-2023", "BS", "x:Weird", "LiabilitiesCurrent")
+        ),
+        *s.balance_sheet_lines(
+            "K-2022", "10-K", s.line("K-2022", "BS", "x:Old", "LiabilitiesCurrent")
+        ),
+        *s.balance_sheet_lines("Q1-2024", "10-Q", q),
+        *extra,
+    ]
+    raw = [
+        *s.base_facts(),
+        fact("Weird", None, date(2023, 6, 30), 7, accession="K-2023", taxonomy="x"),
+        fact("Weird", None, date(2022, 6, 30), 6, accession="K-2023", taxonomy="x"),
+        fact("Weird", None, date(2023, 9, 30), 8, accession="Q1-2024", form="10-Q", taxonomy="x"),
+        fact("Old", None, date(2022, 6, 30), 5, accession="K-2022", taxonomy="x"),
+    ]
+    frame = s.lines_frame(lines)
+    frame.loc[frame["accession_no"] == "K-2022", "filed_at"] = date(2022, 8, 30)
+    frame.loc[frame["accession_no"] == "Q1-2024", "filed_at"] = date(2023, 11, 1)
+    return FaceLines(frame, facts(raw), s.MAPS, verdicts or {}, other_lines), s.ITEMS
+
+
+def test_unclassified_lines_list_the_newest_10k_and_10q_lines_nobody_classified() -> None:
+    from bedrock.mapping.gaps import UnclassifiedLine, unclassified_lines
+
+    face, items = _face()
+
+    assert unclassified_lines(face, items) == [
+        UnclassifiedLine(
+            statement="BS",
+            taxonomy="x",
+            concept="Weird",
+            label="Weird",
+            latest_value=Decimal(8),
+            latest_period_end=date(2023, 9, 30),
+            filings=["Q1-2024", "K-2023"],  # newest first; the older 10-K's line is not listed
+        )
+    ]
+
+
+def test_a_classified_line_or_a_line_without_an_amount_is_not_listed() -> None:
+    from bedrock.mapping.gaps import unclassified_lines
+    from tests import test_structure_rules as s
+
+    nil = s.line("K-2023", "BS", "x:Nil", "LiabilitiesCurrent")
+    face, items = _face(nil, other_lines=frozenset({("x", "Weird")}))
+
+    assert unclassified_lines(face, items) == []
+
+
+def test_no_face_lines_means_no_unclassified_lines() -> None:
+    from bedrock.mapping.gaps import unclassified_lines
+
+    assert unclassified_lines(None, []) == []

@@ -177,7 +177,9 @@ def test_msft_sga_is_sales_and_marketing_plus_general_and_administrative() -> No
 
 def test_costco_reports_no_research_and_development() -> None:
     assert mapped("COST", "rnd", "FY2020") is None
-    assert mapped("COST", "rnd", "FY2026") is None
+    # M7b S7: the FY2026 10-K (a recorded filing) has no R&D line on its face: an inferred 0
+    assert mapped("COST", "rnd", "FY2026") == 0
+    assert provenance_of("COST", "rnd", "FY2026") == "zero_inferred"
 
 
 @pytest.mark.parametrize("ticker", ["AAPL", "MSFT"])
@@ -698,16 +700,12 @@ def test_cash_flow_mapping(ticker: str, code: str, period: str, expected: Decima
 
 
 def test_cash_flow_lines_without_a_matching_concept_stay_empty() -> None:
-    # Microsoft's "Depreciation, amortization, and other" is a custom tag that companyfacts omits;
-    # the us-gaap `Depreciation` (34,300 in FY2026) is the note's component, not that line.
-    assert mapped("MSFT", "d_and_a", "FY2026") is None
     # Costco tags its deferred taxes IncreaseDecreaseInDeferredIncomeTaxes, whose value is the
     # opposite sign of DeferredIncomeTaxExpenseBenefit (-306 for a 306 add-back): one sign cannot
     # fit both, so it is not mapped.
     assert mapped("COST", "deferred_taxes", "FY2026") is None
-    # Microsoft reports investment maturities and sales on two lines, and the sales tag stops after
-    # FY2018 (the later "Sales of investments" is a custom tag companyfacts omits): see
-    # `test_microsoft_investment_sales_and_maturities_are_left_empty`.
+    # Microsoft's extension lines (D&A, investment sales) are mapped since M7b S7 from the filings
+    # themselves: see EXTENSION_LINES; a year no recorded filing presents stays empty.
     assert mapped("MSFT", "sales_maturities_of_investments", "FY2020") is None
     # Apple has no FX line: the cash roll-forward gives it (0 in FY2020, derived, M3 S7). Costco
     # has no receivables line.
@@ -769,10 +767,10 @@ def test_costco_investment_sales_and_maturities_before_the_combined_line() -> No
     )
 
 
-def test_microsoft_investment_sales_and_maturities_are_left_empty() -> None:
-    # FY2019-26 "Sales of investments" (17,721 in FY2020) is not in companyfacts, so a sum could
-    # only cover FY2008-18, and the residual would then jump by the missing line between FY2018
-    # and FY2019. Neither tag alone is the whole item.
+def test_microsoft_investment_sales_and_maturities_are_empty_without_a_filing() -> None:
+    # "Sales of investments" is the extension tag msft:ProceedsFromInvestments from FY2019 (not in
+    # companyfacts); the fixtures record no filing for FY2016-21, so those years stay empty. With
+    # every filing read (a backfill) the override and the face sum fill them (EXTENSION_LINES).
     assert mapped("MSFT", "sales_maturities_of_investments", "FY2018") is None
     assert mapped("MSFT", "sales_maturities_of_investments", "FY2020") is None
 
@@ -917,12 +915,12 @@ DEERE: list[tuple[str, str, Decimal | None]] = [
     ("short_term_debt", "FY2023", usd(24_934)),  # 17,939 + 6,995
     ("short_term_debt", "FY2024", usd(21_964)),  # 13,533 + 8,431
     ("short_term_debt", "FY2025", usd(20_392)),  # 13,796 + 6,596
-    ("short_term_debt", "FY2019", None),
-    # Long-term borrowings: LongTermDebtNoncurrent until FY2021, then a `de:` tag.
+    ("short_term_debt", "FY2019", usd(15_105)),  # M7b S7: the `de:` line + securitization
+    # Long-term borrowings: LongTermDebtNoncurrent until FY2021, then a `de:` tag (M7b S7).
     ("long_term_debt", "FY2013", usd("21577.7")),
     ("long_term_debt", "FY2020", usd(32_734)),
-    ("long_term_debt", "FY2022", None),
-    ("long_term_debt", "FY2025", None),
+    ("long_term_debt", "FY2022", usd(33_596)),
+    ("long_term_debt", "FY2025", usd(43_544)),
     # Marketable securities: AvailableForSaleSecurities until FY2018, MarketableSecurities after.
     ("short_term_investments", "FY2013", usd("1624.8")),
     ("short_term_investments", "FY2016", usd("453.5")),
@@ -944,7 +942,7 @@ DEERE: list[tuple[str, str, Decimal | None]] = [
     ("ppe_net", "FY2013", usd("5466.9")),
     ("ppe_net", "FY2019", usd(5_973)),
     ("ppe_net", "FY2020", usd(5_817)),
-    ("ppe_net", "FY2025", None),
+    ("ppe_net", "FY2025", usd(8_079)),  # M7b S7: the `de:` tag
     # "Common stock ... at paid-in amount" is one line (par plus paid-in capital): CommonStockValue.
     ("common_stock_apic", "FY2013", usd("3524.2")),
     ("common_stock_apic", "FY2020", usd(4_895)),
@@ -1273,7 +1271,10 @@ def test_deere_has_no_lease_member_in_its_debt_lines() -> None:
     de = run_pipeline("DE")
     frame = de.canonical
     debt = frame[frame["code"].isin(["short_term_debt", "long_term_debt"])]
-    assert not [c for c in debt["concept"] if "Lease" in c]
+    # Deere's own "Long-term borrowings" tag (M7b S7) names the leases it holds; no us-gaap lease
+    # member is added on top of it
+    us_gaap = debt[debt["taxonomy"] == "us-gaap"]
+    assert not [c for c in us_gaap["concept"] if "Lease" in c]
 
 
 # --- M7b S3: default widening (docs/erd/data-coverage.md "Default widening") ---------------------
@@ -1516,3 +1517,69 @@ def test_deere_finance_interest_is_not_interest_income() -> None:
     # ("Finance and interest income"): excluded in its override, so the line stays empty.
     assert mapped("DE", "interest_income", "FY2020") is None
     assert mapped("DE", "interest_income", "FY2022") is None
+
+
+# M7b S7: extension tags mapped in the company's override file (principle 2), each against the
+# face of the 10-K that presents it (the latest that carries the year, G13), and the face sums.
+EXTENSION_LINES: list[tuple[str, str, str, Decimal, str]] = [
+    # d_and_a <- msft:DepreciationAmortizationAndOther, "Depreciation, amortization, and other",
+    # Microsoft's only D&A line. 10-Ks FY2015 (0001193125-15-272806), FY2024 (0000950170-24-087843),
+    # FY2026 (0001193125-26-323660, which restates FY2024 from 22,287 to 20,958).
+    ("MSFT", "d_and_a", "FY2013", usd(3_755), "reported"),
+    ("MSFT", "d_and_a", "FY2015", usd(5_957), "reported"),
+    ("MSFT", "d_and_a", "FY2022", usd(14_460), "reported"),
+    ("MSFT", "d_and_a", "FY2024", usd(20_958), "reported"),
+    ("MSFT", "d_and_a", "FY2026", usd(38_534), "reported"),
+    # acquisitions <- msft:AcquisitionsNetOfCashAcquiredAndPurchasesOfIntangibleAndOtherAssets
+    # ("...Netof...Intangibleand..." in FY2015), "Acquisition of companies, net of cash acquired, and
+    # purchases of intangible and other assets", shown negative (sign -1).
+    ("MSFT", "acquisitions", "FY2013", usd(-1_584), "reported"),
+    ("MSFT", "acquisitions", "FY2015", usd(-3_723), "reported"),
+    ("MSFT", "acquisitions", "FY2023", usd(-1_670), "reported"),
+    ("MSFT", "acquisitions", "FY2024", usd(-69_132), "reported"),
+    ("MSFT", "acquisitions", "FY2026", usd(-1_743), "reported"),
+    # sales_maturities_of_investments <- msft:ProceedsFromInvestments ("Sales of investments") +
+    # us-gaap:ProceedsFromMaturitiesPrepaymentsAndCallsOfAvailableForSaleSecurities ("Maturities of
+    # investments"): FY2022 28,443 + 16,451; FY2025 9,309 + 16,079; FY2026 21,798 + 34,605.
+    ("MSFT", "sales_maturities_of_investments", "FY2022", usd(44_894), "reported"),
+    ("MSFT", "sales_maturities_of_investments", "FY2025", usd(25_388), "reported"),
+    ("MSFT", "sales_maturities_of_investments", "FY2026", usd(56_403), "reported"),
+    # Face sums (R8) of us-gaap face members, from the newest recorded filing that carries the year:
+    # WMT "Short-term borrowings" 6,596 + "Long-term debt due within one year" 3,542 + "Finance lease
+    # obligations due within one year" 856 (10-Q 0000104169-26-000154, the Jan. 31, 2026 column);
+    # ORCL "Notes payable and other borrowings, non-current" (10-K 0001193125-26-277521); BA "New
+    # borrowings" (10-K 0001628280-26-004357), which S3 could not take as a default because WMT
+    # tags the concept for a note figure (6,700 against a face line of 7,072).
+    ("WMT", "short_term_debt", "FY2026", usd(10_994), "derived"),
+    ("ORCL", "long_term_debt", "FY2025", usd(85_297), "derived"),
+    ("BA", "debt_issued", "FY2024", usd(10_161), "derived"),
+    # ppe_net <- de:PropertyPlantAndEquipmentAndFinanceLeaseRightOfUseAsset...AfterAccumulated
+    # DepreciationAndAmortization, "Property and equipment - net": 10-Ks FY2021 (0001558370-21-016864),
+    # FY2023 (0001558370-23-019812), FY2025 (0001104659-25-122321).
+    ("DE", "ppe_net", "FY2021", usd(5_820), "reported"),
+    ("DE", "ppe_net", "FY2023", usd(6_879), "reported"),
+    ("DE", "ppe_net", "FY2025", usd(8_079), "reported"),
+    # long_term_debt <- de:LongTermDebtAndFinanceLeasesNoncurrent, "Long-term borrowings" (FY2022 on)
+    ("DE", "long_term_debt", "FY2022", usd(33_596), "reported"),
+    ("DE", "long_term_debt", "FY2023", usd(38_477), "reported"),
+    ("DE", "long_term_debt", "FY2025", usd(43_544), "reported"),
+    # short_term_debt <- de:ShortTermBorrowingsIncludingLongTermDebtCurrent + us-gaap:SecuredDebt,
+    # "Short-term borrowings" + "Short-term securitization borrowings" before FY2020: 10-K FY2019
+    # (0001558370-19-011614) 11,062 + 3,957 and 10,784 + 4,321.
+    ("DE", "short_term_debt", "FY2018", usd(15_019), "reported"),
+    ("DE", "short_term_debt", "FY2019", usd(15_105), "reported"),
+]
+
+
+@pytest.mark.parametrize(("ticker", "code", "period", "expected", "provenance"), EXTENSION_LINES)
+def test_an_extension_line_gives_the_10k_figure(
+    ticker: str, code: str, period: str, expected: Decimal, provenance: str
+) -> None:
+    assert mapped(ticker, code, period) == expected
+    assert provenance_of(ticker, code, period) == provenance
+
+
+def test_deere_cost_of_sales_is_dimensional_so_it_stays_empty() -> None:
+    # Deere's "Cost of sales" is us-gaap:CostOfRevenue with dimensional facts only (FY2019-25
+    # 10-Ks): no extension tag to map, and the parser keeps non-dimensional facts only (G19).
+    assert mapped("DE", "cost_of_revenue", "FY2023") is None

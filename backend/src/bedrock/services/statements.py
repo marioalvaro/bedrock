@@ -1,7 +1,7 @@
 """Statements, cell details and mapping gaps of a followed company, built from stored facts."""
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 from functools import cache
@@ -19,13 +19,22 @@ from bedrock.mapping.candidates import (
 )
 from bedrock.mapping.config import (
     DEFAULT_ITEMS_PATH,
+    DEFAULT_OVERRIDES_DIR,
     CanonicalItemDef,
     IdentityDef,
     load_canonical_items,
     load_identities,
+    load_other_lines,
     parse_formula,
 )
-from bedrock.mapping.gaps import MissingItem, UnmappedConcept, missing_items, unmapped_concepts
+from bedrock.mapping.gaps import (
+    MissingItem,
+    UnclassifiedLine,
+    UnmappedConcept,
+    missing_items,
+    unclassified_lines,
+    unmapped_concepts,
+)
 from bedrock.mapping.mapper import map_facts
 from bedrock.mapping.triage import (
     DEFAULT_TRIAGE_PATH,
@@ -38,6 +47,7 @@ from bedrock.models.company import Company
 from bedrock.repositories import adjustments as adjustments_repo
 from bedrock.repositories import corporate_actions as actions_repo
 from bedrock.repositories import facts as facts_repo
+from bedrock.repositories import filing_lines as lines_repo
 from bedrock.repositories import imports as imports_repo
 from bedrock.repositories import mappings as mappings_repo
 from bedrock.repositories import prices as prices_repo
@@ -57,6 +67,7 @@ from bedrock.statements.imports import StoredValue, company_calendar, imported_f
 from bedrock.statements.periods import annual_periods, quarterly_periods
 from bedrock.statements.rules import Rules, filings_tagging_nci
 from bedrock.statements.splits import split_adjust, split_factor
+from bedrock.statements.structure import FaceLines, face_concepts
 from bedrock.statements.view import trim_periods
 
 __all__ = [
@@ -124,6 +135,8 @@ class MappingGaps:
     unmapped_concepts: list[UnmappedConcept]
     coverage: list[Coverage]  # statement x (annual, quarterly), IS, BS, CF in that order
     rule_warnings: list[LabelledWarning]
+    # M7b S7: face lines of the newest 10-K and 10-Q nobody classified
+    unclassified_lines: list[UnclassifiedLine] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -270,6 +283,7 @@ def mapping_gaps(session: Session, company: Company) -> MappingGaps:
         rule_warnings=[
             LabelledWarning(w, by_code[w.code].label, by_code[w.code].unit) for w in warnings
         ],
+        unclassified_lines=unclassified_lines(loaded.rules.filing_lines, loaded.items),
     )
 
 
@@ -347,8 +361,30 @@ def _load(
         imported.newest,
         imported.vintages,
         complete_parents([(r.code, r.parent_code, r.children_complete) for r in rows]),
+        # The structure rules, like the identities, would read an unloaded line as empty.
+        _face_lines(session, company, mappings, as_of) if codes is None else None,
     )
     return StatementInputs(items, mappings, facts, canonical, rules, tuple(stored), custom)
+
+
+def _face_lines(
+    session: Session, company: Company, mappings: pd.DataFrame, as_of: date | None
+) -> FaceLines | None:
+    """The face lines of the company's parsed filings known on `as_of`, the facts of their
+    concepts, and what classifies them (M7b S7); None when no filing is parsed."""
+    lines = lines_repo.lines_for(session, company.id, as_of)
+    if lines.empty:
+        return None
+    items = canonical_items()
+    concepts = face_concepts(lines, items)
+    facts = _filed_by(facts_repo.load_facts(session, company.id, concepts), as_of)
+    return FaceLines(
+        lines,
+        facts,
+        mappings,
+        {key: verdict.codes for key, verdict in concept_triage().items()},
+        frozenset(load_other_lines(DEFAULT_OVERRIDES_DIR, company.ticker)),
+    )
 
 
 def _filed_by(frame: pd.DataFrame, as_of: date | None) -> pd.DataFrame:

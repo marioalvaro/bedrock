@@ -302,3 +302,20 @@ def test_the_lines_of_a_parsed_filing_are_known_from_its_filing_date(
 
     assert set(before["accession_no"]) == {"0001193125-10-238044"}
     assert set(on_the_day["accession_no"]) == {"0001193125-10-238044", "0000320193-24-000123"}
+
+
+def test_the_structure_rules_read_only_the_filings_known_on_the_date(
+    db_session: Session, seed_db: Callable[..., None]
+) -> None:
+    from bedrock.services.statements import load_inputs
+
+    seed_db("AAPL")
+    who = company(db_session, "AAPL")
+    sources = Sources(edgar=FakeEdgar(), prices=FakePrices(), filings=FakeFilings())
+    ingest_filings(db_session, sources, who, limit=None)
+
+    face = load_inputs(db_session, who, as_of=date(2024, 11, 1)).rules.filing_lines
+
+    assert face is not None
+    assert set(face.lines["accession_no"]) == {"0001193125-10-238044", "0000320193-24-000123"}
+    assert all(filed <= date(2024, 11, 1) for filed in face.facts["filed_at"])

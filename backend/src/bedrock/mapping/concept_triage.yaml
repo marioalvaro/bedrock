@@ -112,3 +112,240 @@ DebtInstrumentCarryingAmount:
   {type: scope, codes: [long_term_debt, short_term_debt], reason: "debt-note carrying amount of the notes, current and non-current together"}
 TransfersAccountedForAsSecuredBorrowingsAssociatedLiabilitiesCarryingAmount:
   {type: scope, codes: [long_term_debt, short_term_debt], reason: "Deere's securitization-note liability (6,611), spanning its short- and long-term borrowings lines"}
+
+# --- M7b S7: lines on the face of the development companies' newest 10-K and 10-Q --------------
+# Every us-gaap line on those faces is classified (tests/test_mapping_coverage.py). For the
+# structure rules (docs/erd/data-coverage.md "Structure rules"), `codes` name every canonical line
+# whose amount the line may hold: a face line whose verdict names a line blocks that line's
+# inferred zero (R9). Catch-all lines therefore name the lines companies commonly fold into them.
+# Balance sheet
+AccruedIncomeTaxesCurrent:
+  {type: component, codes: [other_current_liabilities], reason: "income taxes payable; no canonical row (vetoed by the S1 sweep), so part of the other current liabilities"}
+AccruedIncomeTaxesNoncurrent:
+  {type: component, codes: [other_noncurrent_liabilities], reason: "long-term income taxes payable, part of the other noncurrent liabilities"}
+AccumulatedDepreciationDepletionAndAmortizationPropertyPlantAndEquipment:
+  {type: component, codes: [ppe_net], reason: "accumulated depreciation shown on the face before net PP&E (JNJ)"}
+PropertyPlantAndEquipmentGross:
+  {type: component, codes: [ppe_net], reason: "gross PP&E shown on the face before accumulated depreciation (JNJ)"}
+AssetsNoncurrent:
+  {type: scope, codes: [total_noncurrent_assets], reason: "the noncurrent-assets total, which Bedrock computes as total assets less current assets"}
+LiabilitiesNoncurrent:
+  {type: scope, codes: [total_noncurrent_liabilities], reason: "the noncurrent-liabilities total, which Bedrock computes as total less current liabilities"}
+AssetsOfDisposalGroupIncludingDiscontinuedOperation:
+  {type: component, codes: [other_current_assets, other_noncurrent_assets], reason: "assets held for sale on an unclassified sheet (DE): inside the other assets"}
+AssetsOfDisposalGroupIncludingDiscontinuedOperationCurrent:
+  {type: component, codes: [other_current_assets], reason: "current assets held for sale, part of the other current assets"}
+LiabilitiesOfDisposalGroupIncludingDiscontinuedOperation:
+  {type: component, codes: [other_current_liabilities, other_noncurrent_liabilities], reason: "liabilities held for sale on an unclassified sheet (DE)"}
+LiabilitiesOfDisposalGroupIncludingDiscontinuedOperationCurrent:
+  {type: component, codes: [other_current_liabilities], reason: "current liabilities held for sale, part of the other current liabilities"}
+AvailableForSaleSecuritiesDebtSecuritiesCurrent:
+  {type: component, codes: [short_term_investments], reason: "current AFS debt securities, the marketable-securities line of some filers (ORCL); a default only with 10-K evidence"}
+DebtSecuritiesAvailableForSaleExcludingAccruedInterestCurrent:
+  {type: component, codes: [short_term_investments], reason: "current AFS debt securities, the short-term investments line of some filers (NKE); a default only with 10-K evidence"}
+CommonStockValue:
+  {type: component, codes: [common_stock_apic], reason: "the par value of common stock, shown apart from paid-in capital"}
+PreferredStockValue:
+  {type: component, codes: [other_equity], reason: "preferred stock in equity, outside common stock and APIC"}
+TreasuryStockCommonValue:
+  {type: component, codes: [other_equity], reason: "treasury stock at cost, a deduction inside equity"}
+TreasuryStockValue:
+  {type: component, codes: [other_equity], reason: "treasury stock at cost, a deduction inside equity"}
+DeferredIncomeTaxesAndOtherAssetsNoncurrent:
+  {type: component, codes: [deferred_tax_assets, other_noncurrent_assets], reason: "deferred tax assets reported with other noncurrent assets as one line (NKE)"}
+DefinedBenefitPlanAssetsForPlanBenefitsNoncurrent:
+  {type: component, codes: [other_noncurrent_assets], reason: "overfunded pension plans, part of the other noncurrent assets"}
+EmployeeRelatedLiabilitiesCurrent:
+  {type: component, codes: [accrued_liabilities, other_current_liabilities], reason: "accrued compensation, an accrued liability the face shows apart"}
+EmployeeRelatedLiabilitiesCurrentAndNoncurrent:
+  {type: component, codes: [accrued_liabilities, pension_liabilities, other_noncurrent_liabilities], reason: "employee obligations including pensions as one line (JNJ)"}
+FinanceLeaseRightOfUseAsset:
+  {type: component, codes: [ppe_net, other_noncurrent_assets], reason: "finance-lease assets, inside PP&E or other assets depending on the filer"}
+NontradeReceivablesCurrent:
+  {type: component, codes: [other_current_assets], reason: "non-trade receivables (AAPL vendor receivables), not trade receivables"}
+NotesAndLoansReceivableNetCurrent:
+  {type: component, codes: [receivables, other_current_assets], reason: "current financing receivables, shown apart from trade receivables"}
+OtherReceivables:
+  {type: component, codes: [receivables, other_current_assets], reason: "receivables other than trade, shown apart"}
+UnbilledContractsReceivable:
+  {type: component, codes: [receivables, other_current_assets], reason: "unbilled receivables of a contractor (BA), shown apart from billed ones"}
+OtherAssets:
+  {type: component, codes: [other_current_assets, other_noncurrent_assets, deferred_tax_assets, operating_lease_rou, goodwill, intangibles, long_term_investments], reason: "the other assets of an unclassified sheet (DE): may hold any line it does not show"}
+OtherAssetsCurrent:
+  {type: component, codes: [other_current_assets, receivables], reason: "the other current assets line, held by the residual: may hold receivables the face does not show (NFLX)"}
+PrepaidExpenseAndOtherAssetsCurrent:
+  {type: component, codes: [other_current_assets], reason: "prepaid expenses and other current assets, held by the residual"}
+OtherAssetsNoncurrent:
+  {type: component, codes: [other_noncurrent_assets, deferred_tax_assets, operating_lease_rou, goodwill, intangibles, long_term_investments], reason: "other noncurrent assets: may hold deferred tax, lease assets and goodwill the face does not show (AAPL)"}
+OtherLiabilitiesCurrent:
+  {type: component, codes: [other_current_liabilities, accrued_liabilities, deferred_revenue_current], reason: "other current liabilities: may hold accrued expenses and deferred revenue the face does not show (AAPL)"}
+OtherLiabilitiesNoncurrent:
+  {type: component, codes: [other_noncurrent_liabilities, deferred_tax_liabilities, operating_lease_liabilities_noncurrent, pension_liabilities, deferred_revenue_noncurrent], reason: "other noncurrent liabilities: may hold deferred taxes, leases and pensions the face does not show (AAPL)"}
+DividendsPayableCurrent:
+  {type: component, codes: [other_current_liabilities], reason: "dividends declared and unpaid: a current liability line (WMT), or a non-cash note under the cash flow (COST)"}
+DividendsPayableCurrentAndNoncurrent:
+  {type: disclosure, reason: "dividends declared and not paid, a non-cash supplement under the cash flow (NKE)"}
+# Cash flow
+AssetImpairmentCharges:
+  {type: component, codes: [other_operating_activities], reason: "impairment add-back, part of the other operating adjustments"}
+CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents:
+  {type: scope, codes: [cash], reason: "the cash balance the cash flow reconciles, restricted cash included; not the balance-sheet cash line"}
+CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalentsIncludingDisposalGroupAndDiscontinuedOperations:
+  {type: scope, codes: [cash], reason: "the reconciled cash balance including held-for-sale cash"}
+DisposalGroupIncludingDiscontinuedOperationCashAndCashEquivalents:
+  {type: scope, codes: [cash], reason: "held-for-sale cash in the cash reconciliation (BA)"}
+RestrictedCashAndCashEquivalents:
+  {type: scope, codes: [cash], reason: "restricted cash in the cash reconciliation, outside the cash line"}
+DiscontinuedOperationGainLossOnDisposalOfDiscontinuedOperationNetOfTax:
+  {type: component, codes: [other_operating_activities], reason: "gain on a separation (JNJ Kenvue) removed from operating cash"}
+FinanceLeasePrincipalPayments:
+  {type: component, codes: [other_financing_activities, debt_repaid], reason: "finance-lease principal: debt-like repayments, shown apart from debt repaid"}
+ForeignCurrencyTransactionGainLossBeforeTax:
+  {type: component, codes: [other_operating_activities], reason: "foreign-currency remeasurement add-back"}
+ForeignCurrencyTransactionGainLossUnrealized:
+  {type: component, codes: [other_operating_activities], reason: "unrealized foreign-currency adjustment add-back"}
+GainLossOnInvestments:
+  {type: component, codes: [other_operating_activities], reason: "investment gains removed from operating cash"}
+GainLossOnSalesOfAssetsAndAssetImpairmentCharges:
+  {type: component, codes: [other_operating_activities], reason: "gains on asset sales and impairments removed from operating cash"}
+GainLossOnDispositionOfAssets:
+  {type: component, codes: [other_operating_expenses, other_operating_activities], reason: "gains on dispositions (BA), on the income statement and as a cash flow adjustment"}
+IncreaseDecreaseInAccountsPayableAndOtherOperatingLiabilities:
+  {type: component, codes: [change_payables, other_operating_activities], reason: "payables reported with other operating liabilities as one change (NKE, ORCL); wider than the payables change"}
+IncreaseDecreaseInAccruedIncomeTaxesPayable:
+  {type: component, codes: [other_operating_activities], reason: "change in income taxes payable"}
+IncreaseDecreaseInAccruedTaxesPayable:
+  {type: component, codes: [other_operating_activities], reason: "change in accrued taxes"}
+IncreaseDecreaseInIncomeTaxes:
+  {type: component, codes: [other_operating_activities, deferred_taxes], reason: "change in income taxes receivable, payable and deferred as one line (BA)"}
+IncreaseDecreaseInAccruedLiabilities:
+  {type: component, codes: [other_operating_activities], reason: "change in accrued liabilities"}
+IncreaseDecreaseInOtherAccruedLiabilities:
+  {type: component, codes: [other_operating_activities], reason: "change in other accrued liabilities"}
+IncreaseDecreaseInContractWithCustomerAsset:
+  {type: component, codes: [change_receivables, other_operating_activities], reason: "change in unbilled receivables (contract assets)"}
+IncreaseDecreaseInContractWithCustomerLiability:
+  {type: component, codes: [other_operating_activities], reason: "change in deferred revenue; no canonical row (vetoed by the S1 sweep)"}
+IncreaseDecreaseInDeferredIncomeTaxes:
+  {type: rejected, codes: [deferred_taxes], reason: "the change in a deferred tax balance, not the deferred tax expense (M7b S3: WMT -651 against 876)"}
+IncreaseDecreaseInOtherCurrentAssets:
+  {type: component, codes: [other_operating_activities], reason: "change in other current assets"}
+IncreaseDecreaseInOtherCurrentLiabilities:
+  {type: component, codes: [other_operating_activities], reason: "change in other current liabilities"}
+IncreaseDecreaseInOtherNoncurrentAssets:
+  {type: component, codes: [other_operating_activities], reason: "change in other noncurrent assets"}
+IncreaseDecreaseInOtherNoncurrentAssetsAndLiabilitiesNet:
+  {type: component, codes: [other_operating_activities], reason: "change in other noncurrent assets and liabilities"}
+IncreaseDecreaseInOtherNoncurrentLiabilities:
+  {type: component, codes: [other_operating_activities], reason: "change in other noncurrent liabilities"}
+IncreaseDecreaseInOtherOperatingAssets:
+  {type: component, codes: [other_operating_activities], reason: "change in other operating assets"}
+IncreaseDecreaseInOtherOperatingCapitalNet:
+  {type: component, codes: [other_operating_activities], reason: "change in other operating assets and liabilities, net"}
+IncreaseDecreaseInOtherOperatingLiabilities:
+  {type: component, codes: [other_operating_activities], reason: "change in other operating liabilities"}
+IncreaseDecreaseInPensionAndPostretirementObligations:
+  {type: component, codes: [other_operating_activities], reason: "change in pension and retiree obligations"}
+IncreaseDecreaseInPrepaidDeferredExpenseAndOtherAssets:
+  {type: component, codes: [other_operating_activities], reason: "change in prepaid expenses and other assets"}
+IncreaseDecreaseInRetailRelatedInventories:
+  {type: component, codes: [change_inventory], reason: "a retailer's inventory change (WMT); the change_inventory line, a default only with 10-K evidence"}
+OtherNoncashExpense:
+  {type: component, codes: [other_operating_activities, deferred_taxes], reason: "other non-cash charges: may hold deferred taxes the face does not show"}
+OtherNoncashIncomeExpense:
+  {type: component, codes: [other_operating_activities, deferred_taxes], reason: "other non-cash items: may hold deferred taxes the face does not show (AAPL from FY2023)"}
+ProvisionForDoubtfulAccounts:
+  {type: component, codes: [other_operating_activities], reason: "credit-loss provision add-back"}
+ProvisionForLoanLeaseAndOtherLosses:
+  {type: component, codes: [other_operating_activities], reason: "credit-loss provision of a finance arm (DE)"}
+OriginationOfNotesReceivableFromRelatedParties:
+  {type: component, codes: [other_investing_activities], reason: "loans to affiliates"}
+RepaymentOfNotesReceivableFromRelatedParties:
+  {type: component, codes: [other_investing_activities], reason: "collections of loans to affiliates"}
+PaymentsForProceedsFromOtherInvestingActivities:
+  {type: component, codes: [other_investing_activities, acquisitions], reason: "the other investing line, held by the residual: may hold small acquisitions the face does not show (AAPL)"}
+PaymentsToAcquireEquipmentOnLease:
+  {type: component, codes: [other_investing_activities], reason: "equipment bought to lease out (DE finance arm), not capital expenditure"}
+PaymentsToAcquireFinanceReceivables:
+  {type: component, codes: [other_investing_activities], reason: "receivables acquired by a finance arm (DE)"}
+ProceedsFromCollectionOfFinanceReceivables:
+  {type: component, codes: [other_investing_activities], reason: "collections of a finance arm's receivables (DE)"}
+ProceedsFromDivestitureOfBusinesses:
+  {type: component, codes: [other_investing_activities], reason: "proceeds from dispositions; no canonical row (vetoed by the S1 sweep)"}
+ProceedsFromSaleOfEquitySecuritiesFvNi:
+  {type: component, codes: [sales_maturities_of_investments, other_investing_activities], reason: "sales of strategic equity investments (WMT)"}
+ProceedsFromSaleOfProductiveAssets:
+  {type: component, codes: [other_investing_activities], reason: "proceeds from disposals of assets"}
+ProceedsFromSaleOfPropertyPlantAndEquipment:
+  {type: component, codes: [other_investing_activities], reason: "proceeds from PP&E disposals; no canonical row (vetoed by the S1 sweep)"}
+PaymentsOfDividendsMinorityInterest:
+  {type: component, codes: [other_financing_activities], reason: "dividends to noncontrolling interests, not to the company's shareholders"}
+PaymentsOfOrdinaryDividends:
+  {type: component, codes: [dividends_paid], reason: "dividends to shareholders (JNJ); the dividends line, a default only with 10-K evidence"}
+PaymentsRelatedToTaxWithholdingForShareBasedCompensation:
+  {type: component, codes: [other_financing_activities, buybacks], reason: "shares withheld for taxes on awards; no canonical row (vetoed by the S1 sweep)"}
+ProceedsFromIssuanceInitialPublicOffering:
+  {type: component, codes: [other_financing_activities], reason: "a subsidiary IPO (JNJ Kenvue)"}
+ProceedsFromIssuanceOfCommonStock:
+  {type: component, codes: [other_financing_activities], reason: "stock issued; no canonical row (vetoed by the S1 sweep)"}
+ProceedsFromIssuanceOfConvertiblePreferredStock:
+  {type: component, codes: [other_financing_activities], reason: "convertible preferred stock issued"}
+ProceedsFromIssuanceOfSharesUnderIncentiveAndShareBasedCompensationPlans:
+  {type: component, codes: [other_financing_activities], reason: "employee stock plan proceeds"}
+ProceedsFromIssuanceOrSaleOfEquity:
+  {type: component, codes: [other_financing_activities], reason: "equity issued or sold"}
+ProceedsFromStockOptionsExercised:
+  {type: component, codes: [other_financing_activities], reason: "stock options exercised"}
+ProceedsFromPaymentsForOtherFinancingActivities:
+  {type: component, codes: [other_financing_activities], reason: "the other financing line, held by the residual"}
+ProceedsFromRepaymentsOfCommercialPaper:
+  {type: rejected, codes: [debt_issued, debt_repaid], reason: "a net change of commercial paper, neither gross issuance nor repayment"}
+ProceedsFromRepaymentsOfShortTermDebt:
+  {type: rejected, codes: [debt_issued, debt_repaid], reason: "a net change of short-term borrowings, neither gross issuance nor repayment"}
+ProceedsFromRepaymentsOfShortTermDebtMaturingInThreeMonthsOrLess:
+  {type: rejected, codes: [debt_issued, debt_repaid], reason: "a net change of debt maturing within 90 days, neither gross issuance nor repayment"}
+RightOfUseAssetObtainedInExchangeForFinanceLeaseLiability:
+  {type: disclosure, reason: "a non-cash lease supplement under the cash flow"}
+RightOfUseAssetObtainedInExchangeForOperatingLeaseLiability:
+  {type: disclosure, reason: "a non-cash lease supplement under the cash flow"}
+# Income statement
+CostsAndExpenses:
+  {type: scope, codes: [total_operating_costs], reason: "total costs and expenses (cost of sales included), a total of another scope"}
+OperatingExpenses:
+  {type: scope, codes: [total_operating_costs], reason: "total operating expenses below gross margin, a subtotal Bedrock computes"}
+DiscontinuedOperationIncomeLossFromDiscontinuedOperationNetOfTaxPerBasicShare:
+  {type: component, codes: [eps_basic], reason: "the discontinued part of basic EPS"}
+DiscontinuedOperationIncomeLossFromDiscontinuedOperationNetOfTaxPerDilutedShare:
+  {type: component, codes: [eps_diluted], reason: "the discontinued part of diluted EPS"}
+IncomeLossFromContinuingOperationsPerBasicShare:
+  {type: component, codes: [eps_basic], reason: "the continuing part of basic EPS"}
+IncomeLossFromContinuingOperationsPerDilutedShare:
+  {type: component, codes: [eps_diluted], reason: "the continuing part of diluted EPS"}
+IncomeLossFromContinuingOperations:
+  {type: component, codes: [net_income], reason: "net income from continuing operations, a part of net income"}
+IncomeLossFromDiscontinuedOperationsNetOfTaxAttributableToReportingEntity:
+  {type: component, codes: [net_income], reason: "net income from discontinued operations; no canonical row (vetoed by the S1 sweep)"}
+IncomeLossFromEquityMethodInvestments:
+  {type: component, codes: [other_nonoperating_income], reason: "equity-method income; no canonical row (vetoed by the S1 sweep)"}
+InterestExpenseDebt:
+  {type: component, codes: [interest_expense], reason: "interest on debt only, beside a finance-lease interest line (WMT): a component (M7b S3)"}
+InterestIncomeExpenseNonoperatingNet:
+  {type: rejected, codes: [interest_expense, interest_income], reason: "net interest: interest expense less interest income"}
+NetIncomeLossAvailableToCommonStockholdersBasic:
+  {type: scope, codes: [net_income_common], reason: "net income available to common after preferred dividends"}
+NetIncomeLossAvailableToCommonStockholdersDiluted:
+  {type: scope, codes: [net_income_common], reason: "net income available to common, diluted"}
+PreferredStockDividendsIncomeStatementImpact:
+  {type: component, codes: [net_income_common], reason: "preferred dividends deducted to reach the common shareholders' income"}
+NonoperatingIncomeExpense:
+  {type: component, codes: [other_nonoperating_income, interest_income, interest_expense], reason: "other income/(expense), net: may hold interest income and expense the face does not show (AAPL)"}
+OtherNonoperatingIncomeExpense:
+  {type: component, codes: [other_nonoperating_income, interest_income], reason: "other nonoperating income: may hold interest income the face does not show"}
+OtherCostAndExpenseOperating:
+  {type: component, codes: [other_operating_expenses, goodwill_impairment], reason: "other operating expenses: may hold an impairment the face does not show"}
+OtherIncome:
+  {type: component, codes: [revenue], reason: "membership and other income reported in total revenues (WMT)"}
+ResearchAndDevelopmentExpenseExcludingAcquiredInProcessCost:
+  {type: rejected, codes: [rnd], reason: "narrower than R&D expense (M7b S3: JNJ differs in all five overlap years)"}
+RestructuringCharges:
+  {type: component, codes: [other_operating_expenses, goodwill_impairment], reason: "restructuring; no canonical row (vetoed by the S1 sweep); may hold impairments"}

@@ -50,6 +50,9 @@ class Cell:
     # the codes inside it (maybe none); an empty cell whose amount is inside another line names it
     combined_with: tuple[str, ...] | None = None
     included_in: str | None = None
+    # M7b S7: an empty cell whose block, on its filing's face, holds lines nobody classified
+    # (docs/erd/data-coverage.md "Structure rules"): those lines as `taxonomy:Concept`
+    unclassified: tuple[str, ...] | None = None
 
 
 def combined(*marks: tuple[str, ...] | None) -> tuple[str, ...] | None:

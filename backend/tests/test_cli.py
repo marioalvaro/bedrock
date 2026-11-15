@@ -228,7 +228,7 @@ def test_backfill_filings_reads_every_filing_and_prints_the_counts(
 
     assert result.exit_code == 0, result.output
     assert result.output.startswith("AAPL\n")
-    assert "  parsed: 2\n" in result.output
+    assert "  parsed: 4\n" in result.output  # the four recorded AAPL filings
     assert "  failed: 0\n" in result.output
     assert "  new_lines: " in result.output and "  absent: " in result.output
     assert cli_filings.calls and "0000320193-24-000123" in cli_filings.calls
@@ -256,8 +256,13 @@ def test_backfill_filings_a_second_time_reads_nothing_unless_reparse(
     assert cli_filings.calls == []
 
     reparsed = runner.invoke(app, ["backfill-filings", "AAPL", "--reparse"])
-    assert "  parsed: 2\n" in reparsed.output
-    assert sorted(cli_filings.calls) == ["0000320193-24-000123", "0001193125-10-238044"]
+    assert "  parsed: 4\n" in reparsed.output
+    assert sorted(cli_filings.calls) == [  # the recorded filings only: absent ones are not re-read
+        "0000320193-24-000123",
+        "0000320193-25-000079",
+        "0000320193-26-000020",
+        "0001193125-10-238044",
+    ]
 
 
 def test_backfill_filings_prints_a_failed_filing_as_a_warning(cli_filings: FakeFilings) -> None:

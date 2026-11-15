@@ -45,6 +45,7 @@ from bedrock.statements.rules import (
     infer_nci_zeros,
     solve_identities,
 )
+from bedrock.statements.structure import FaceIndex, structure_cells, unclassified_marks
 
 COVER_SHARES = "shares_outstanding"  # the line the cover-page count fills (R7)
 
@@ -167,6 +168,7 @@ def solve_cells(
     solved_nonzero: set[CellKey] = set()
     cover = None if rules.cover_shares is None else _cover_index(rules.cover_shares)
     early = _formulas_before_residuals(items)
+    face = None if rules.filing_lines is None else FaceIndex(rules.filing_lines, items)
     while True:
         while True:
             filled = _fill_formulas(early, periods, cells)
@@ -178,6 +180,9 @@ def solve_cells(
                 for key, cell in infer_nci_zeros(cells, by_code, periods, rules.nci_filings):
                     filled += _fill(cells, key, cell)
             filled += _fill_cover_shares(periods, cells, cover)
+            if face is not None:  # M7b S7: R8 and R9, after the identities, before Q4
+                for key, cell in structure_cells(cells, items, periods, face):
+                    filled += _fill(cells, key, cell)
             filled += _close_q4(items, periods, years, cells, index)
             if not filled:
                 break
@@ -198,6 +203,9 @@ def solve_cells(
             if item.residual or (current.value is None and current.included_in is None):
                 cells[(item.code, period.key)] = _formula_cell(item, period, cells, siblings)
     _check_breakdowns(items, periods, cells, rules.complete_parents, log)
+    if face is not None:
+        for key, marks in unclassified_marks(cells, items, periods, face):
+            cells[key] = replace(cells[key], unclassified=marks)
     return SolvedCells(cells, log.all())
 
 
