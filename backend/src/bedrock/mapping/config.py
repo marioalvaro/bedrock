@@ -202,12 +202,25 @@ def _read_items_file(path: Path) -> tuple[Any, Any]:
     return raw, None
 
 
+# path -> ((modification time, size), items): parsing the shipped file takes ~0.1 s, and every
+# refresh, mapping sync and filing read asks for it.
+_ITEMS_CACHE: dict[Path, tuple[tuple[int, int], tuple[CanonicalItemDef, ...]]] = {}
+
+
 def load_canonical_items(path: Path = DEFAULT_ITEMS_PATH) -> list[CanonicalItemDef]:
+    """The file's items, validated. Parsed once per file while its modification time and size
+    do not change; each call returns its own list of the (frozen) items."""
+    stat = path.stat()
+    stamp = (stat.st_mtime_ns, stat.st_size)
+    cached = _ITEMS_CACHE.get(path)
+    if cached is not None and cached[0] == stamp:
+        return list(cached[1])
     raw, _ = _read_items_file(path)
     if not isinstance(raw, list):
         raise MappingConfigError(f"{path.name} must be a list of items")
     items = [_item(entry) for entry in raw]
     _validate(items)
+    _ITEMS_CACHE[path] = (stamp, tuple(items))
     return items
 
 

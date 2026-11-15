@@ -361,3 +361,29 @@ def test_a_full_load_carries_the_parsed_face_lines_and_the_rules_apply(
         zip(face.facts["taxonomy"], face.facts["concept"], strict=True)
     )  # an extension line's amount is a stored filing fact
     assert _r9_zeros(db_session, who) > before
+
+
+def test_the_fiscal_periods_are_listed_without_reading_the_filing_lines(
+    db_session: Session, aapl: Company, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A note or an adjustment only checks its period exists: the calendar comes from the mapped
+    facts and the imports, so the face lines and their facts (S7) are not loaded for it."""
+    from bedrock.repositories import facts as facts_repo
+    from bedrock.repositories import filing_lines as lines_repo
+    from bedrock.services.statements import fiscal_periods, load_inputs
+    from bedrock.statements.imports import company_calendar
+    from bedrock.statements.periods import annual_periods, quarterly_periods
+
+    from .spies import count_calls
+
+    loaded = load_inputs(db_session, aapl)
+    calendar = company_calendar(loaded.canonical, loaded.rules.imported)
+    expected = {
+        (p.fiscal_year, p.fiscal_period)
+        for p in annual_periods(calendar) + quarterly_periods(calendar)
+    }
+    line_reads = count_calls(monkeypatch, lines_repo, "lines_for")
+    fact_reads = count_calls(monkeypatch, facts_repo, "load_facts")
+
+    assert fiscal_periods(db_session, aapl) == expected
+    assert line_reads == [] and len(fact_reads) == 1

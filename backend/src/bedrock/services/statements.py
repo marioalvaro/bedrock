@@ -285,8 +285,9 @@ def cell_detail(
 
 
 def fiscal_periods(session: Session, company: Company) -> set[tuple[int, str]]:
-    """The (fiscal year, FY or Qn) pairs the company's statements have."""
-    loaded = _load(session, company)
+    """The (fiscal year, FY or Qn) pairs the company's statements have. The calendar is read
+    from the mapped facts and the imports, so the filing lines are not loaded for it."""
+    loaded = _load(session, company, structure=False)
     if loaded.empty:
         return set()
     calendar = company_calendar(loaded.canonical, loaded.rules.imported)
@@ -368,9 +369,12 @@ def _load(
     company: Company,
     codes: frozenset[str] | None = None,
     as_of: date | None = None,
+    structure: bool = True,
 ) -> StatementInputs:
-    """`as_of` cuts the facts and cover-page shares by `filed_at` (before the vintage and the NCI
-    rule read them) and the imported values by import date. Splits, mappings and custom-line
+    """`structure=False` leaves the face lines of the filings out (no structure rule then runs):
+    for a caller that reads the calendar and solves nothing. `as_of` cuts the facts and cover-page
+    shares by `filed_at` (before the vintage and the NCI rule read them) and the imported values
+    by import date. Splits, mappings and custom-line
     definitions are not cut (a custom line defined later simply has no values at the date)."""
     items = canonical_items()
     mappings = mappings_repo.mappings_for(session, company.id)
@@ -403,7 +407,7 @@ def _load(
         imported.vintages,
         complete_parents([(r.code, r.parent_code, r.children_complete) for r in rows]),
         # The structure rules, like the identities, would read an unloaded line as empty.
-        _face_lines(session, company, mappings, as_of) if codes is None else None,
+        _face_lines(session, company, mappings, as_of) if codes is None and structure else None,
     )
     return StatementInputs(items, mappings, facts, canonical, rules, tuple(stored), custom)
 

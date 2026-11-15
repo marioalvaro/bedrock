@@ -1,3 +1,4 @@
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -215,3 +216,74 @@ def test_a_combined_line_covering_no_row_says_it_holds_other_lines() -> None:
     assert generated_caveat({"Cash": ("Short-term investments", "Receivables")}) == (
         "Cash includes Short-term investments and Receivables."
     )
+
+
+# --- M7b: a covered operand counts 0 beside its carrier (the statement formulas' rule) ----------
+
+
+def _value(inputs, numerator: str):  # type: ignore[no-untyped-def]
+    from bedrock.ratios.calculator import Operands
+
+    ratios = (_ratio("probe", numerator),)
+    return Operands(inputs, "annual", ratios).ratio("probe", (2023, "FY"))
+
+
+def test_a_covered_operand_counts_zero_beside_its_carrier_in_a_ratio_formula() -> None:
+    inputs = _combined_inputs(**COMBINED_AP)
+
+    # accrued liabilities is empty, its amount inside accounts payable (63 of 100 at the year end)
+    assert _value(inputs, "accounts_payable + accrued_liabilities") == Decimal("0.63")
+
+
+def test_a_covered_operand_alone_leaves_the_ratio_empty() -> None:
+    assert _value(_combined_inputs(**COMBINED_AP), "accrued_liabilities") is None
+
+
+def test_a_covered_operand_of_the_other_sign_than_its_carrier_leaves_the_ratio_empty() -> None:
+    inputs = _combined_inputs(**COMBINED_AP)
+
+    assert _value(inputs, "accounts_payable - accrued_liabilities") is None
+
+
+def test_an_operand_missing_for_another_reason_still_empties_the_ratio() -> None:
+    inputs = _combined_inputs(
+        LiabilitiesCurrent=(100, 100, 100, 100), AccountsPayableCurrent=(40, 41, 42, 43)
+    )
+
+    assert _value(inputs, "accounts_payable + accrued_liabilities") is None
+
+
+def test_a_metric_counts_a_covered_input_as_zero_when_its_carrier_is_an_input_too() -> None:
+    from bedrock.mapping.mapper import map_facts
+    from bedrock.mapping.vintage import select_vintage
+    from bedrock.ratios.calculator import Operands, RatioInputs
+    from bedrock.statements.build import build_statement
+    from tests.engine_data import facts, item, mappings
+    from tests.test_combined_lines import B, balances
+
+    items = [
+        item("revenue"),
+        item("total_debt", "BS", kind="instant"),
+        item("total_equity", "BS", kind="instant"),
+        item("cash", "BS", kind="instant"),
+        item("short_term_investments", "BS", kind="instant"),
+    ]
+    maps = mappings(
+        ("revenue", "Revenues", 0),
+        ("total_debt", "DebtAndFinanceLeaseObligations", 0),
+        ("total_equity", "StockholdersEquity", 0),
+        ("cash", "CashAndCashEquivalentsAtCarryingValue", 0),
+        ("cash", "CashCashEquivalentsAndShortTermInvestments", 1, False, "short_term_investments"),
+        ("short_term_investments", "ShortTermInvestments", 0),
+    )
+    rows = balances(
+        DebtAndFinanceLeaseObligations=(50, 50, 50, 50),
+        StockholdersEquity=(80, 80, 80, 80),
+        CashCashEquivalentsAndShortTermInvestments=(30, 30, 30, 30),
+    )
+    canonical = map_facts(select_vintage(facts(rows)), maps, items)
+    table = {s: build_statement(canonical, items, s, "annual") for s in ("IS", "CF", "BS")}
+    ops = Operands(RatioInputs(table["IS"], table["CF"], table["BS"]), "annual")
+
+    # debt 50 + equity 80 − cash 30, which already holds the short-term investments
+    assert ops.value("invested_capital", (2023, "FY")) == 100 * B

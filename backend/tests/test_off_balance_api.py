@@ -44,8 +44,10 @@ def advance(app: FastAPI) -> Callable[[timedelta], None]:
 
 
 @pytest.fixture
-def aapl_client(advance: Callable[[timedelta], None], authed_client: TestClient) -> TestClient:
-    assert authed_client.post("/api/v1/companies", json={"ticker": "AAPL"}).status_code == 201
+def aapl_client(
+    advance: Callable[[timedelta], None], seed_db: Callable[..., None], authed_client: TestClient
+) -> TestClient:
+    seed_db("AAPL")  # the followed company from the session's template, not a fresh ingest (G42)
     return authed_client
 
 

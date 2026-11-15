@@ -19,15 +19,16 @@ from bedrock.ingest.sources import Sources
 from bedrock.models.canonical_item import CanonicalItem
 from bedrock.models.company import Company
 from bedrock.models.concept_mapping import ConceptMapping
+from bedrock.models.consensus_estimate import ConsensusEstimate
 from bedrock.models.corporate_action import CorporateAction
 from bedrock.models.filing import Filing
 from bedrock.models.filing_line import FilingLine
 from bedrock.models.price_daily import PriceDaily
 from bedrock.models.raw_fact import RawFact
-from bedrock.services.companies import CompanyNotFound
+from bedrock.services.companies import CompanyNotFound, add_company
 from bedrock.services.refresh import refresh_company
 
-from .fakes import FakeEdgar, FakeFilings, FakePrices
+from .fakes import FakeConsensus, FakeEdgar, FakeFilings, FakePrices
 from .seed import follow
 
 NOW = datetime(2026, 10, 8, 14, 30, tzinfo=UTC)
@@ -305,3 +306,57 @@ def test_an_unexpected_filings_error_is_a_warning_after_the_refresh_is_stored(
 
     assert result.warnings == ["filings not read: disk full"]
     assert result.new_facts == _count(db_session, RawFact) > 0
+
+
+# --- the analyst consensus is fetched with a refresh, not only by the scheduler (2026-11-15) ----
+
+
+def test_refresh_fetches_the_analyst_consensus(db_session: Session) -> None:
+    follow(db_session, FakeEdgar(), "AAPL")
+    consensus = FakeConsensus()
+    sources = replace(_sources(), consensus=consensus)
+
+    result = refresh_company(db_session, sources, "AAPL", NOW)
+
+    assert consensus.calls == ["AAPL"]
+    assert _count(db_session, ConsensusEstimate) == len(FakeConsensus().fetch(AAPL)) > 0
+    assert result.warnings == []
+
+
+def test_following_a_company_fetches_its_analyst_consensus(db_session: Session) -> None:
+    sources = replace(_sources(), consensus=FakeConsensus())
+
+    add_company(db_session, sources, "AAPL", NOW)
+
+    assert _count(db_session, ConsensusEstimate) > 0
+
+
+def test_a_consensus_failure_is_a_warning_and_the_refresh_is_kept(db_session: Session) -> None:
+    follow(db_session, FakeEdgar(), "AAPL")
+    sources = replace(_sources(), consensus=FakeConsensus(raises=SourceUnavailable("yahoo down")))
+
+    result = refresh_company(db_session, sources, "AAPL", NOW)
+
+    assert result.warnings == ["consensus not updated: yahoo down"]
+    assert _count(db_session, RawFact) > 0
+    assert _count(db_session, ConsensusEstimate) == 0
+
+
+def test_an_unexpected_consensus_error_is_a_warning_after_the_refresh_is_stored(
+    db_session: Session,
+) -> None:
+    follow(db_session, FakeEdgar(), "AAPL")
+    sources = replace(_sources(), consensus=FakeConsensus(raises=RuntimeError("boom")))
+
+    result = refresh_company(db_session, sources, "AAPL", NOW)
+
+    assert result.warnings == ["consensus not updated: boom"]
+    assert _count(db_session, RawFact) > 0
+
+
+def test_without_a_consensus_source_refresh_stores_no_consensus(db_session: Session) -> None:
+    follow(db_session, FakeEdgar(), "AAPL")
+
+    refresh_company(db_session, _sources(), "AAPL", NOW)
+
+    assert _count(db_session, ConsensusEstimate) == 0

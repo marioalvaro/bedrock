@@ -1414,3 +1414,38 @@ def test_a_face_member_may_be_the_concept_of_a_support_line(tmp_path: Path) -> N
     items = {i.code: i for i in load_canonical_items(write(tmp_path, support))}
 
     assert "us-gaap:SellingExpense" in items["opex"].face_members
+
+
+# --- the items file is parsed once while it does not change (test speed, 2026-11-15) -----------
+
+
+def test_an_unchanged_items_file_is_parsed_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    import yaml
+
+    from tests.spies import count_calls
+
+    first = load_canonical_items()
+    parses = count_calls(monkeypatch, yaml, "safe_load")
+
+    again = load_canonical_items()
+
+    assert again == first and parses == []
+    again.clear()  # the caller's list is its own: the next load is whole
+    assert load_canonical_items() == first
+
+
+def test_a_changed_items_file_is_read_again(tmp_path: Path) -> None:
+    import os
+
+    path = tmp_path / "canonical_items.yaml"
+    path.write_text(
+        "- {code: revenue, statement: IS, label: Revenue, kind: flow, unit: USD, sign: 1}\n"
+    )
+    assert [i.label for i in load_canonical_items(path)] == ["Revenue"]
+
+    path.write_text(
+        "- {code: revenue, statement: IS, label: Sales, kind: flow, unit: USD, sign: 1}\n"
+    )
+    os.utime(path, ns=(1, 1))  # same size or not, a new modification time is a new file
+
+    assert [i.label for i in load_canonical_items(path)] == ["Sales"]

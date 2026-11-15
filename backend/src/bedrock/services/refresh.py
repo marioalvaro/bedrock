@@ -9,6 +9,7 @@ from bedrock.ingest.protocol import CompanyRef, SourceUnavailable
 from bedrock.ingest.sources import Sources
 from bedrock.repositories import companies as companies_repo
 from bedrock.repositories import facts as facts_repo
+from bedrock.services import consensus as consensus_service
 from bedrock.services.errors import CompanyNotFound
 from bedrock.services.filings import ingest_filings
 from bedrock.services.mappings import sync_mappings
@@ -43,7 +44,9 @@ def refresh_company(
     A price (or split) failure is a warning; an EDGAR failure is raised, and nothing is kept (not
     even the mapping sync), so a failed refresh leaves the database as it was. After that commit,
     the newest filings not read yet are read for their XBRL (`ingest_filings`, which commits
-    filing by filing); a failure there is a warning, never a rollback."""
+    filing by filing); a failure there is a warning, never a rollback. The analyst consensus is
+    fetched last (`refresh_consensus`, which commits), so a company followed or refreshed between
+    two scheduled runs has it; a failure there is a warning too, and the stored rows are kept."""
     company = companies_repo.get_by_ticker(session, ticker.strip().upper())
     if company is None:
         raise CompanyNotFound(ticker)
@@ -81,6 +84,16 @@ def refresh_company(
         session.rollback()
         logger.exception("filings of %s not read", company.ticker)
         warnings.append(f"filings not read: {error}")
+    if sources.consensus is not None:
+        try:
+            consensus_service.refresh_consensus(session, sources.consensus, company, now)
+        except SourceUnavailable as error:
+            session.rollback()
+            warnings.append(f"consensus not updated: {error}")
+        except Exception as error:  # the refresh is committed: never a 500 for the consensus
+            session.rollback()
+            logger.exception("consensus of %s not updated", company.ticker)
+            warnings.append(f"consensus not updated: {error}")
     return RefreshResult(
         company.ticker,
         new_filings,
