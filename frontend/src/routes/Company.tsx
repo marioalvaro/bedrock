@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { BacktestView } from "@/features/backtest/BacktestView";
 import { CapitalView } from "@/features/capital/CapitalView";
 import { CompsView } from "@/features/comps/CompsView";
+import { FilingsStatus } from "@/features/filings/FilingsStatus";
 import { ForecastView } from "@/features/forecast/ForecastView";
 import { GuidanceView } from "@/features/guidance/GuidanceView";
 import { NotesView } from "@/features/notes/NotesView";
@@ -117,7 +118,8 @@ export function Company() {
         <span data-testid="header-market-cap" className="num text-muted-foreground">
           {formatCompact(company.market_cap)}
         </span>
-        <span className="ml-auto flex items-center gap-2">
+        <span className="ml-auto flex flex-wrap items-center gap-2">
+          <FilingsStatus company={company} />
           <span className="text-muted-foreground text-xs">
             Refreshed {formatRelative(company.last_refreshed_at, now)}
           </span>

@@ -1,8 +1,12 @@
 import { QueryClient } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { getStatementApiV1CompaniesTickerStatementsGet } from "@/api/generated/sdk.gen";
-import { statementQueryOptions } from "@/api/statements";
+import {
+  getMappingGapsApiV1CompaniesTickerMappingGapsGet,
+  getStatementApiV1CompaniesTickerStatementsGet,
+} from "@/api/generated/sdk.gen";
+import { mappingGapsQueryOptions, statementQueryOptions } from "@/api/statements";
+import { mappingGaps } from "@/test/companies";
 import { errorResult, networkErrorResult, okResult } from "@/test/responses";
 
 vi.mock("@/api/generated/sdk.gen", () => ({
@@ -68,5 +72,27 @@ describe("statementQueryOptions basis", () => {
     await expect(
       client().fetchQuery(statementQueryOptions("AAPL", "IS", "annual", "total", "normalized")),
     ).rejects.toMatchObject({ status: undefined });
+  });
+});
+
+describe("mappingGapsQueryOptions", () => {
+  it("rejects a gaps report without its unclassified lines (an API before M7b S7)", async () => {
+    const { unclassified_lines: _dropped, ...old } = mappingGaps();
+    vi.mocked(getMappingGapsApiV1CompaniesTickerMappingGapsGet).mockResolvedValue(
+      okResult(old) as never,
+    );
+    await expect(client().fetchQuery(mappingGapsQueryOptions("AAPL"))).rejects.toMatchObject({
+      status: 200,
+      detail: "Unexpected response",
+    });
+  });
+
+  it("accepts a full gaps report", async () => {
+    vi.mocked(getMappingGapsApiV1CompaniesTickerMappingGapsGet).mockResolvedValue(
+      okResult(mappingGaps()) as never,
+    );
+    await expect(client().fetchQuery(mappingGapsQueryOptions("AAPL"))).resolves.toMatchObject({
+      unclassified_lines: [],
+    });
   });
 });

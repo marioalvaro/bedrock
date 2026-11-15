@@ -3306,6 +3306,10 @@ export type RowOut = {
      */
     depth: number;
     /**
+     * Empty Cause
+     */
+    empty_cause: Array<'no_filing_data' | 'not_applicable' | 'included_in' | 'structural' | 'rule_rejected' | 'annual_only' | 'extension_unclassified' | 'not_reported' | null>;
+    /**
      * Included In
      */
     included_in: Array<string | null>;

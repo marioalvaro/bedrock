@@ -226,6 +226,25 @@ details[open] > :not(summary) {
   color: var(--muted-foreground);
 }
 
+/* M7b S8: a cell inside a combined line ("incl. in …") or one that cannot exist ("n/a"): a note,
+   not a figure. Smaller so the label fits a period column. */
+.cell-muted {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+/* M7b S8: a combined line's value holds another line too; a small dot before the number, the
+   cell's tooltip names what it includes. */
+.combined-mark {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-right: 4px;
+  border-radius: 9999px;
+  vertical-align: middle;
+  background: var(--prov-derived);
+}
+
 /* Imported: the figure comes from the user's own file, not SEC; teal, not italic. */
 .prov-imported {
   color: var(--prov-imported);

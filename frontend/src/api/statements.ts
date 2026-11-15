@@ -79,7 +79,8 @@ export const mappingGapsQueryOptions = (ticker: string) =>
         !Array.isArray(gaps?.missing_items) ||
         !Array.isArray(gaps?.unmapped_concepts) ||
         !Array.isArray(gaps?.coverage) ||
-        !Array.isArray(gaps?.rule_warnings)
+        !Array.isArray(gaps?.rule_warnings) ||
+        !Array.isArray(gaps?.unclassified_lines)
       ) {
         throw new ApiError(200, "Unexpected response");
       }

@@ -4,6 +4,7 @@ import { ApiError, unwrap } from "@/api/errors";
 import {
   addCompanyApiV1CompaniesPost,
   addManualCompanyApiV1CompaniesManualPost,
+  backfillFilingsApiV1CompaniesTickerBackfillFilingsPost,
   getCompaniesApiV1CompaniesGet,
   getCompanyApiV1CompaniesTickerGet,
   refreshApiV1CompaniesTickerRefreshPost,
@@ -74,5 +75,14 @@ export function useRefreshCompany(ticker: string) {
   return useMutation({
     mutationFn: () => unwrap(refreshApiV1CompaniesTickerRefreshPost({ path: { ticker } })),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: companiesQueryKey }),
+  });
+}
+
+/** POST …/backfill-filings (202): reads every 10-K and 10-Q not read yet, in a worker thread. A 409
+ * means a backfill already runs for the company; either way, progress is `filings_parsed`. */
+export function useBackfillFilings(ticker: string) {
+  return useMutation({
+    mutationFn: () =>
+      unwrap(backfillFilingsApiV1CompaniesTickerBackfillFilingsPost({ path: { ticker } })),
   });
 }

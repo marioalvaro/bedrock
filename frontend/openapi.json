@@ -6186,6 +6186,30 @@
             "title": "Depth",
             "type": "integer"
           },
+          "empty_cause": {
+            "items": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "no_filing_data",
+                    "not_applicable",
+                    "included_in",
+                    "structural",
+                    "rule_rejected",
+                    "annual_only",
+                    "extension_unclassified",
+                    "not_reported"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Empty Cause",
+            "type": "array"
+          },
           "included_in": {
             "items": {
               "anyOf": [
@@ -6292,7 +6316,8 @@
           "custom",
           "parent",
           "combined_with",
-          "included_in"
+          "included_in",
+          "empty_cause"
         ],
         "title": "RowOut",
         "type": "object"

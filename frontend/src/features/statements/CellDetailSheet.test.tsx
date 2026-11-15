@@ -44,6 +44,8 @@ const cell = {
   vintages: [],
   adjustments: [],
   normalized_value: null,
+  combined_with: null,
+  included_in: null,
 };
 
 const target: CellTarget = {
@@ -577,5 +579,55 @@ describe("CellDetailSheet imported cells", () => {
     expect(await screen.findByText("Notes: not available for custom lines")).toBeVisible();
     expect(screen.queryByRole("button", { name: "Add note" })).not.toBeInTheDocument();
     expect(listNotes).not.toHaveBeenCalled();
+  });
+});
+
+describe("combined lines (M7b S8)", () => {
+  const lineLabels = {
+    accrued_liabilities: "Accrued liabilities",
+    accounts_payable: "Accounts payable",
+  };
+
+  it("names the lines a combined value includes", async () => {
+    mockCell({ combined_with: ["accrued_liabilities"], included_in: null });
+    renderSheet({ lineLabels });
+    expect(await screen.findByText("Includes Accrued liabilities")).toBeInTheDocument();
+  });
+
+  it("says so when a combined value covers no row of its own", async () => {
+    mockCell({ combined_with: [], included_in: null });
+    renderSheet({ lineLabels });
+    expect(
+      await screen.findByText("Includes other lines with no row of their own"),
+    ).toBeInTheDocument();
+  });
+
+  it("names the line a covered cell's amount is inside", async () => {
+    mockCell({
+      value: null,
+      provenance: null,
+      combined_with: null,
+      included_in: "accounts_payable",
+    });
+    renderSheet({ lineLabels });
+    expect(await screen.findByText("Included in Accounts payable")).toBeInTheDocument();
+  });
+
+  it("falls back to the code of a line it has no label for", async () => {
+    mockCell({
+      value: null,
+      provenance: null,
+      combined_with: null,
+      included_in: "accounts_payable",
+    });
+    renderSheet();
+    expect(await screen.findByText("Included in accounts_payable")).toBeInTheDocument();
+  });
+
+  it("shows neither for a plain cell", async () => {
+    mockCell({ combined_with: null, included_in: null });
+    renderSheet({ lineLabels });
+    await screen.findByText("Value");
+    expect(screen.queryByText(/^Includ/)).toBeNull();
   });
 });

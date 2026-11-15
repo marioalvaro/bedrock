@@ -1,4 +1,4 @@
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from datetime import date
 from decimal import Decimal
 from typing import Literal
@@ -9,6 +9,7 @@ from bedrock.schemas.adjustments import CellAdjustmentOut
 from bedrock.services.adjustments import CellAdjustment
 from bedrock.services.statements import MappingGaps
 from bedrock.statements.build import StatementTable
+from bedrock.statements.coverage import Cause
 from bedrock.statements.explain import CellExplanation
 from bedrock.statements.periods import Period
 
@@ -61,6 +62,9 @@ class RowOut(BaseModel):
     # when not combined), and the line an empty cell's amount is inside (null when not covered)
     combined_with: list[list[str] | None]
     included_in: list[str | None]
+    # M7b S8: per period, why the cell is empty (`statements/coverage.py::CAUSES`); null for a
+    # filled cell, a row coverage does not count (residuals, support and custom lines) and TTM
+    empty_cause: list[Cause | None]
 
 
 class BalanceCheckOut(BaseModel):
@@ -90,8 +94,11 @@ class StatementOut(BaseModel):
         basis: Literal["reported", "normalized"],
         currency: str,
         forecast_keys: Collection[str] = (),
+        causes: Mapping[tuple[str, str], Cause] | None = None,
     ) -> "StatementOut":
-        """`forecast_keys`: the periods that are forecast, not actual."""
+        """`forecast_keys`: the periods that are forecast, not actual. `causes`: the cause of each
+        empty cell by (code, period key), as `table_coverage` gives them."""
+        why = causes or {}
         return cls(
             ticker=ticker,
             statement=statement,
@@ -116,6 +123,7 @@ class StatementOut(BaseModel):
                     parent=r.parent,
                     combined_with=[None if c is None else list(c) for c in r.combined_with],
                     included_in=r.included_in,
+                    empty_cause=[why.get((r.code, p.key)) for p in table.periods],
                 )
                 for r in table.rows
             ],

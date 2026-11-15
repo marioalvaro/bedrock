@@ -46,6 +46,7 @@ export function incomeStatement(overrides: Partial<StatementOut> = {}): Statemen
         common_size_base: "Revenue",
         combined_with: [null, null],
         included_in: [null, null],
+        empty_cause: [null, null],
       },
       {
         code: "gross_profit",
@@ -63,6 +64,7 @@ export function incomeStatement(overrides: Partial<StatementOut> = {}): Statemen
         common_size_base: "Revenue",
         combined_with: [null, null],
         included_in: [null, null],
+        empty_cause: [null, null],
       },
       {
         code: "cost_of_revenue",
@@ -80,6 +82,7 @@ export function incomeStatement(overrides: Partial<StatementOut> = {}): Statemen
         common_size_base: "Revenue",
         combined_with: [null, null],
         included_in: [null, null],
+        empty_cause: [null, null],
       },
       {
         code: "rnd",
@@ -97,6 +100,7 @@ export function incomeStatement(overrides: Partial<StatementOut> = {}): Statemen
         common_size_base: "Revenue",
         combined_with: [null, null],
         included_in: [null, null],
+        empty_cause: [null, null],
       },
       {
         code: "eps_diluted",
@@ -114,6 +118,7 @@ export function incomeStatement(overrides: Partial<StatementOut> = {}): Statemen
         common_size_base: "Revenue",
         combined_with: [null, null],
         included_in: [null, null],
+        empty_cause: [null, null],
       },
     ],
     ...overrides,
@@ -142,6 +147,7 @@ export function balanceStatement(): StatementOut {
         common_size_base: "Total assets",
         combined_with: [null, null],
         included_in: [null, null],
+        empty_cause: [null, null],
       },
       {
         code: "total_current_assets",
@@ -159,6 +165,7 @@ export function balanceStatement(): StatementOut {
         common_size_base: "Total assets",
         combined_with: [null, null],
         included_in: [null, null],
+        empty_cause: [null, null],
       },
       {
         code: "cash",
@@ -176,6 +183,7 @@ export function balanceStatement(): StatementOut {
         common_size_base: "Total assets",
         combined_with: [null, null],
         included_in: [null, null],
+        empty_cause: [null, null],
       },
       {
         code: "total_noncurrent_assets",
@@ -193,6 +201,7 @@ export function balanceStatement(): StatementOut {
         common_size_base: "Total assets",
         combined_with: [null, null],
         included_in: [null, null],
+        empty_cause: [null, null],
       },
       {
         code: "ppe_net",
@@ -210,6 +219,7 @@ export function balanceStatement(): StatementOut {
         common_size_base: "Total assets",
         combined_with: [null, null],
         included_in: [null, null],
+        empty_cause: [null, null],
       },
     ],
     balance_check: [
@@ -245,6 +255,7 @@ export function customIncomeStatement(): StatementOut {
     common_size_base: "Revenue",
     combined_with: [null, null],
     included_in: [null, null],
+    empty_cause: [null, null],
     ...overrides,
   });
   const rows = [...base.rows];
@@ -263,4 +274,63 @@ export function customIncomeStatement(): StatementOut {
     ),
   );
   return { ...base, rows };
+}
+
+// M7b S8: a balance sheet with a combined line ("Accounts payable and accrued liabilities"), the
+// line it covers (empty, "included in"), a lease line that starts with its standard (n/a before)
+// and a carrier that covers no row of its own.
+export function combinedBalanceStatement(): StatementOut {
+  const base = incomeStatement();
+  const row = (
+    code: string,
+    label: string,
+    values: (string | null)[],
+    overrides: Partial<StatementOut["rows"][number]> = {},
+  ): StatementOut["rows"][number] => ({
+    code,
+    label,
+    unit: "USD",
+    kind: "instant",
+    depth: 1,
+    values,
+    provenance: values.map((value) => (value === null ? null : "reported")),
+    yoy: [null, null],
+    common_size: [null, null],
+    adjustable: false,
+    custom: false,
+    parent: null,
+    common_size_base: "Total assets",
+    combined_with: [null, null],
+    included_in: [null, null],
+    empty_cause: values.map((value) => (value === null ? "not_reported" : null)),
+    ...overrides,
+  });
+  return {
+    ...base,
+    statement: "BS",
+    rows: [
+      row("cash", "Cash and short-term investments", ["60000000000", "65000000000"], {
+        depth: 0,
+        combined_with: [[], []],
+      }),
+      row(
+        "total_current_liabilities",
+        "Total current liabilities",
+        ["90000000000", "95000000000"],
+        {
+          depth: 0,
+        },
+      ),
+      row("accounts_payable", "Accounts payable", ["62000000000", "68000000000"], {
+        combined_with: [["accrued_liabilities"], ["accrued_liabilities"]],
+      }),
+      row("accrued_liabilities", "Accrued liabilities", [null, null], {
+        included_in: ["accounts_payable", "accounts_payable"],
+        empty_cause: ["included_in", "included_in"],
+      }),
+      row("operating_lease_rou", "Operating lease right-of-use assets", [null, "10000000000"], {
+        empty_cause: ["not_applicable", null],
+      }),
+    ],
+  };
 }

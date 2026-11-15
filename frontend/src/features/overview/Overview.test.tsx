@@ -13,6 +13,7 @@ import {
 import { createQueryClient } from "@/lib/query-client";
 import { setScale } from "@/lib/scale";
 import { adjustment, corporateActions } from "@/test/adjustments";
+import type { MappingGapsOut } from "@/api/generated/types.gen";
 import { companyItem, mappingGaps } from "@/test/companies";
 import { errorResult, okResult } from "@/test/responses";
 
@@ -222,12 +223,14 @@ describe("Overview", () => {
         .getAllByText("Income statement")[0]!
         .closest("tr") as HTMLElement;
       expect(within(income).getByText("Annual")).toBeInTheDocument();
-      expect(within(income).getByText("95.0%")).toBeInTheDocument();
+      expect(within(income).getByText("95.0% (applicable 95.0%)")).toBeInTheDocument();
       expect(within(income).getByText("95 / 100")).toBeInTheDocument();
-      const quarterly = within(table).getByText("88.8%").closest("tr") as HTMLElement;
+      const quarterly = within(table)
+        .getByText("88.8% (applicable 88.8%)")
+        .closest("tr") as HTMLElement;
       expect(within(quarterly).getByText("Quarterly")).toBeInTheDocument();
       expect(within(table).getByText("Balance sheet")).toBeInTheDocument();
-      expect(within(table).getByText("75.0%")).toBeInTheDocument();
+      expect(within(table).getByText("75.0% (applicable 75.0%)")).toBeInTheDocument();
     });
 
     it("breaks the empty cells down by cause and the filled ones by provenance", async () => {
@@ -245,20 +248,28 @@ describe("Overview", () => {
         "Inferred 0",
         "Approximated",
         "No filing data",
+        "Not applicable",
+        "Included in",
         "Structural",
         "Rule rejected",
+        "Annual only",
+        "Unclassified line",
         "Not reported",
       ]);
-      const quarterly = within(table).getByText("88.8%").closest("tr") as HTMLElement;
+      const quarterly = within(table)
+        .getByText("88.8% (applicable 88.8%)")
+        .closest("tr") as HTMLElement;
       const cells = within(quarterly)
         .getAllByRole("cell")
         .map((c) => c.textContent);
-      expect(cells.slice(4)).toEqual(["12", "8", "17", "4", "0", "39"]);
+      expect(cells.slice(4)).toEqual(["12", "8", "17", "0", "0", "4", "0", "0", "0", "39"]);
     });
 
     it("shows a dash where a statement has nothing to cover", async () => {
       const empty = mappingGaps();
-      empty.coverage = [{ ...empty.coverage[0]!, cells: 0, filled: 0, fraction: null }];
+      empty.coverage = [
+        { ...empty.coverage[0]!, cells: 0, filled: 0, fraction: null, fraction_applicable: null },
+      ];
       vi.mocked(getMappingGapsApiV1CompaniesTickerMappingGapsGet).mockResolvedValue(
         okResult(empty) as never,
       );
@@ -266,8 +277,60 @@ describe("Overview", () => {
 
       const table = await within(gaps).findByRole("table", { name: "Coverage" });
       const row = within(table).getByText("Income statement").closest("tr") as HTMLElement;
-      expect(within(row).getByText("—")).toBeInTheDocument();
+      expect(within(row).getByText("— (applicable —)")).toBeInTheDocument();
       expect(within(row).getByText("0 / 0")).toBeInTheDocument();
+    });
+
+    it("shows strict and applicable coverage and names what applicable leaves out", async () => {
+      const gaps0 = mappingGaps();
+      gaps0.coverage = [
+        {
+          ...gaps0.coverage[0]!,
+          fraction: "0.800000",
+          fraction_applicable: "0.920000",
+          empty_by_cause: {
+            ...gaps0.coverage[0]!.empty_by_cause,
+            no_filing_data: 4,
+            not_applicable: 9,
+            included_in: 2,
+          },
+        },
+      ];
+      vi.mocked(getMappingGapsApiV1CompaniesTickerMappingGapsGet).mockResolvedValue(
+        okResult(gaps0) as never,
+      );
+      const gaps = await gapsRegion();
+
+      const table = await within(gaps).findByRole("table", { name: "Coverage" });
+      const coverage = within(table).getByText("80.0% (applicable 92.0%)");
+      expect(coverage).toHaveAttribute(
+        "title",
+        "Both leave out No filing data (4). Applicable also leaves out Not applicable (9) and " +
+          "Included in (2): cells that cannot hold a value.",
+      );
+    });
+
+    it("explains every cause of an empty cell in one line", async () => {
+      const gaps = await gapsRegion();
+
+      const causes = await within(gaps).findByRole("list", { name: "Empty-cell causes" });
+      const terms = within(causes)
+        .getAllByRole("term")
+        .map((t) => t.textContent);
+      expect(terms).toEqual([
+        "No filing data",
+        "Not applicable",
+        "Included in",
+        "Structural",
+        "Rule rejected",
+        "Annual only",
+        "Unclassified line",
+        "Not reported",
+      ]);
+      expect(within(causes).getAllByRole("definition")).toHaveLength(8);
+      expect(
+        within(causes).getByText(/inside a combined line/, { selector: "dd" }),
+      ).toBeInTheDocument();
     });
 
     it("lists the rule warnings with line, period, value and reason", async () => {
@@ -497,5 +560,61 @@ describe("Overview import", () => {
     const gaps = await screen.findByRole("region", { name: "Data gaps" });
     await userEvent.click(within(gaps).getByRole("button", { name: "Import" }));
     expect(await screen.findByText("Import statements")).toBeVisible();
+  });
+});
+
+describe("lines to classify (M7b S8)", () => {
+  function withLines(lines: MappingGapsOut["unclassified_lines"]) {
+    vi.mocked(getMappingGapsApiV1CompaniesTickerMappingGapsGet).mockResolvedValue(
+      okResult({ ...mappingGaps(), unclassified_lines: lines }) as never,
+    );
+  }
+
+  it("lists the face lines nobody classified, with what to do about them", async () => {
+    withLines([
+      {
+        statement: "CF",
+        taxonomy: "msft",
+        concept: "DepreciationAmortizationAndOther",
+        label: "Depreciation, amortization, and other",
+        latest_value: "22287000000",
+        latest_period_end: "2024-06-30",
+        filings: ["0000950170-24-087843", "0000950170-24-118967"],
+      },
+    ]);
+    renderOverview();
+
+    const table = await screen.findByRole("table", { name: "Lines to classify" });
+    const headers = within(table)
+      .getAllByRole("columnheader")
+      .map((h) => h.textContent);
+    expect(headers).toEqual([
+      "Statement",
+      "Label",
+      "Concept",
+      "Latest value (USD millions)",
+      "Period end",
+      "Filings",
+    ]);
+    const row = within(table)
+      .getByText("Depreciation, amortization, and other")
+      .closest("tr") as HTMLElement;
+    expect(within(row).getByText("Cash flow")).toBeInTheDocument();
+    expect(within(row).getByText("msft:DepreciationAmortizationAndOther")).toBeInTheDocument();
+    expect(within(row).getByText("22,287")).toBeInTheDocument();
+    expect(within(row).getByText("2024-06-30")).toBeInTheDocument();
+    expect(within(row).getByText("0000950170-24-087843, 0000950170-24-118967")).toBeInTheDocument();
+    expect(screen.getByText("Lines to classify (1)")).toBeInTheDocument();
+    expect(
+      screen.getByText("Map it in the company's override file, or list it under other_lines."),
+    ).toBeInTheDocument();
+  });
+
+  it("says so when every face line is classified", async () => {
+    withLines([]);
+    renderOverview();
+
+    expect(await screen.findByText("No lines to classify.")).toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "Lines to classify" })).not.toBeInTheDocument();
   });
 });

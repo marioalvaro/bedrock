@@ -60,7 +60,7 @@ from bedrock.statements.build import (
     build_tables,
 )
 from bedrock.statements.cell_types import RuleWarning
-from bedrock.statements.coverage import Coverage, table_coverage
+from bedrock.statements.coverage import Cause, Coverage, table_coverage
 from bedrock.statements.custom_lines import complete_parents, custom_items, merge_lines
 from bedrock.statements.explain import CellExplanation, explain_cell
 from bedrock.statements.imports import StoredValue, company_calendar, imported_frames
@@ -180,11 +180,52 @@ def build_statements(
     """One statement as periods x items. `normalized` is reported + the company's adjustments
     (see `statements/normalize.py`). `common_size_base` picks the common-size denominator (see
     `build_statement`). Raises ValueError for a TTM balance sheet."""
-    return trim_periods(
-        statement_tables(session, company, [(statement, freq)], basis, common_size_base)[
-            (statement, freq)
-        ]
+    return statement_view(session, company, statement, freq, basis, common_size_base).table
+
+
+@dataclass(frozen=True)
+class StatementView:
+    """One statement as the statements route shows it: the trimmed table and the cause of each
+    empty cell by (code, period key), as Data gaps counts them (M7b S8). TTM has no causes."""
+
+    table: StatementTable
+    causes: dict[tuple[str, str], Cause]
+
+
+def statement_view(
+    session: Session,
+    company: Company,
+    statement: str,
+    freq: Freq,
+    basis: Basis = "reported",
+    common_size_base: CommonSizeBase = "total",
+) -> StatementView:
+    """`build_statements` plus `table_coverage`'s causes, from one load and one solve. A quarterly
+    table is judged against the annual one (`annual_only`), as `mapping_gaps` does. Raises
+    ValueError for a TTM balance sheet."""
+    if (statement, freq) == ("BS", "ttm"):
+        raise ValueError("TTM is only defined for flow statements, not the balance sheet")
+    loaded = _load(session, company)
+    if loaded.empty:
+        return StatementView(StatementTable(statement, freq, [], [], None, []), {})
+    adjustments = adjustments_repo.list_for(session, company.id) if basis == "normalized" else []
+    wanted: list[tuple[str, Freq]] = [(statement, freq)]
+    if freq == "quarterly":
+        wanted.append((statement, "annual"))
+    tables = build_tables(
+        loaded.canonical, loaded.lines, wanted, common_size_base, adjustments, loaded.rules
     )
+    table = tables[(statement, freq)]
+    causes: dict[tuple[str, str], Cause] = {}
+    if freq != "ttm":
+        causes = table_coverage(
+            table,
+            loaded.items,
+            set(loaded.mappings["canonical_code"]),
+            table.rule_warnings,
+            annual=tables.get((statement, "annual")),
+        ).causes
+    return StatementView(trim_periods(table), causes)
 
 
 def statement_tables(

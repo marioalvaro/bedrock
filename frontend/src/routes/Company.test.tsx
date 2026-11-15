@@ -49,6 +49,7 @@ vi.mock("@/api/generated/sdk.gen", () => ({
   getGuidanceApiV1CompaniesTickerGuidanceGet: vi.fn(),
   listMetricsApiV1CompaniesTickerGuidanceMetricsGet: vi.fn(),
   refreshApiV1CompaniesTickerRefreshPost: vi.fn(),
+  backfillFilingsApiV1CompaniesTickerBackfillFilingsPost: vi.fn(),
   listScenariosApiV1CompaniesTickerScenariosGet: vi.fn(),
   getDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversGet: vi.fn(
     () => new Promise(() => {}),
@@ -124,6 +125,16 @@ describe("company header", () => {
     expect(screen.getByTestId("header-price")).toHaveTextContent("231.40");
     expect(screen.getByTestId("header-market-cap")).toHaveTextContent("3.5T");
     expect(screen.getByText("Refreshed 2h ago")).toBeInTheDocument();
+  });
+
+  it("shows how many filings are read, with a button to read them all", async () => {
+    vi.mocked(getCompanyApiV1CompaniesTickerGet).mockResolvedValue(
+      okResult(companyItem({ filings_parsed: 12, filings_total: 70 })) as never,
+    );
+    renderAt("/c/AAPL");
+
+    expect(await screen.findByText("Filings read: 12 of 70")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Read all filings" })).toBeEnabled();
   });
 
   it("says when the company is not followed", async () => {
