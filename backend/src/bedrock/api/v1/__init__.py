@@ -5,6 +5,7 @@ from bedrock.api.v1 import (
     accountability,
     adjustments,
     auth,
+    classification,
     companies,
     comps,
     corporate_actions,
@@ -36,6 +37,7 @@ protected.include_router(companies.router)
 protected.include_router(corporate_actions.router)
 protected.include_router(adjustments.router)
 protected.include_router(statements.router)
+protected.include_router(classification.router)
 protected.include_router(ratios.router)
 protected.include_router(multiples.router)
 protected.include_router(flags.router)

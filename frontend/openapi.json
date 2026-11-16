@@ -122,6 +122,45 @@
         "title": "AdjustmentOut",
         "type": "object"
       },
+      "AnswerIn": {
+        "description": "The user's own answer: `codes` are candidates of the line, empty for none of the rows.",
+        "properties": {
+          "codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Codes",
+            "type": "array"
+          },
+          "concept": {
+            "minLength": 1,
+            "title": "Concept",
+            "type": "string"
+          },
+          "statement": {
+            "enum": [
+              "IS",
+              "BS",
+              "CF"
+            ],
+            "title": "Statement",
+            "type": "string"
+          },
+          "taxonomy": {
+            "minLength": 1,
+            "title": "Taxonomy",
+            "type": "string"
+          }
+        },
+        "required": [
+          "statement",
+          "taxonomy",
+          "concept",
+          "codes"
+        ],
+        "title": "AnswerIn",
+        "type": "object"
+      },
       "AsReportedFilingOut": {
         "properties": {
           "accession_no": {
@@ -429,7 +468,9 @@
               "engine_choice",
               "valuation_input",
               "scenario",
-              "adjustment"
+              "adjustment",
+              "line_classification",
+              "company"
             ],
             "title": "Entity",
             "type": "string"
@@ -1325,6 +1366,379 @@
         "title": "CheckOut",
         "type": "object"
       },
+      "ClassificationOut": {
+        "description": "One answer of one classifier (or of `user`) for a line. `codes`: empty for none of the\nrows, one code for that row, several for one combined line.",
+        "properties": {
+          "classifier": {
+            "title": "Classifier",
+            "type": "string"
+          },
+          "codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Codes",
+            "type": "array"
+          },
+          "confidence": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Confidence",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "proposed",
+              "accepted",
+              "rejected"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "classifier",
+          "codes",
+          "confidence",
+          "status"
+        ],
+        "title": "ClassificationOut",
+        "type": "object"
+      },
+      "ClassificationRunOut": {
+        "description": "One click. `error` is the reason of a `failed` or `stopped` run.",
+        "properties": {
+          "classifier": {
+            "title": "Classifier",
+            "type": "string"
+          },
+          "cost_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Cost Usd",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "input_tokens": {
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "lines_answered": {
+            "title": "Lines Answered",
+            "type": "integer"
+          },
+          "lines_asked": {
+            "title": "Lines Asked",
+            "type": "integer"
+          },
+          "output_tokens": {
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "running",
+              "done",
+              "failed",
+              "stopped"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "classifier",
+          "status",
+          "started_at",
+          "finished_at",
+          "lines_asked",
+          "lines_answered",
+          "input_tokens",
+          "output_tokens",
+          "cost_usd",
+          "error"
+        ],
+        "title": "ClassificationRunOut",
+        "type": "object"
+      },
+      "ClassificationStatusOut": {
+        "properties": {
+          "classifiers": {
+            "items": {
+              "$ref": "#/components/schemas/ClassifierOut"
+            },
+            "title": "Classifiers",
+            "type": "array"
+          },
+          "cost_month_usd": {
+            "description": "An estimate from the recorded prices",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Cost Month Usd",
+            "type": "string"
+          },
+          "daily_tokens": {
+            "title": "Daily Tokens",
+            "type": "integer"
+          },
+          "max_lines_per_run": {
+            "title": "Max Lines Per Run",
+            "type": "integer"
+          },
+          "min_confidence": {
+            "title": "Min Confidence",
+            "type": "number"
+          },
+          "monthly_tokens": {
+            "title": "Monthly Tokens",
+            "type": "integer"
+          },
+          "used_month": {
+            "title": "Used Month",
+            "type": "integer"
+          },
+          "used_today": {
+            "description": "Input + output tokens of the runs of this UTC day",
+            "title": "Used Today",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "classifiers",
+          "daily_tokens",
+          "monthly_tokens",
+          "used_today",
+          "used_month",
+          "cost_month_usd",
+          "max_lines_per_run",
+          "min_confidence"
+        ],
+        "title": "ClassificationStatusOut",
+        "type": "object"
+      },
+      "ClassificationsOut": {
+        "description": "The company's open lines, in statement then presentation order, with every answer.\n`to_ask` and `estimate` are for the `classifier` parameter; null without it.",
+        "properties": {
+          "estimate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EstimateOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/ClassifiedLineOut"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
+          "mode": {
+            "enum": [
+              "off",
+              "accepted",
+              "all"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClassificationRunOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The company's newest run"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "to_ask": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lines a run of the classifier would ask now",
+            "title": "To Ask"
+          }
+        },
+        "required": [
+          "mode",
+          "source",
+          "run",
+          "to_ask",
+          "estimate",
+          "lines"
+        ],
+        "title": "ClassificationsOut",
+        "type": "object"
+      },
+      "ClassifiedLineOut": {
+        "properties": {
+          "answers": {
+            "items": {
+              "$ref": "#/components/schemas/ClassificationOut"
+            },
+            "title": "Answers",
+            "type": "array"
+          },
+          "block": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RowRefOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/RowRefOut"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "concept": {
+            "title": "Concept",
+            "type": "string"
+          },
+          "effective": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The codes in force under the company's mode; null when none",
+            "title": "Effective"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "latest_period_end": {
+            "format": "date",
+            "title": "Latest Period End",
+            "type": "string"
+          },
+          "latest_value": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Value"
+          },
+          "statement": {
+            "enum": [
+              "IS",
+              "BS",
+              "CF"
+            ],
+            "title": "Statement",
+            "type": "string"
+          },
+          "taxonomy": {
+            "title": "Taxonomy",
+            "type": "string"
+          }
+        },
+        "required": [
+          "statement",
+          "taxonomy",
+          "concept",
+          "label",
+          "latest_value",
+          "latest_period_end",
+          "block",
+          "candidates",
+          "effective",
+          "answers"
+        ],
+        "title": "ClassifiedLineOut",
+        "type": "object"
+      },
+      "ClassifierOut": {
+        "properties": {
+          "configured": {
+            "description": "Its API key is set",
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "configured"
+        ],
+        "title": "ClassifierOut",
+        "type": "object"
+      },
       "CompanyCreate": {
         "properties": {
           "ticker": {
@@ -1354,6 +1768,28 @@
             ],
             "description": "Null for a manual company",
             "title": "Cik"
+          },
+          "classification_mode": {
+            "description": "What of the line classifications the statements use",
+            "enum": [
+              "off",
+              "accepted",
+              "all"
+            ],
+            "title": "Classification Mode",
+            "type": "string"
+          },
+          "classification_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The classifier whose proposals mode `all` uses",
+            "title": "Classification Source"
           },
           "currency": {
             "title": "Currency",
@@ -1503,6 +1939,8 @@
           "last_refreshed_at",
           "filings_parsed",
           "filings_total",
+          "classification_mode",
+          "classification_source",
           "price",
           "price_date",
           "market_cap",
@@ -2283,6 +2721,24 @@
           "present_value"
         ],
         "title": "DcfPeriodOut",
+        "type": "object"
+      },
+      "DecisionIn": {
+        "properties": {
+          "status": {
+            "enum": [
+              "proposed",
+              "accepted",
+              "rejected"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "DecisionIn",
         "type": "object"
       },
       "DerivationInputOut": {
@@ -3467,6 +3923,30 @@
           "seasonal"
         ],
         "title": "EngineRowOut",
+        "type": "object"
+      },
+      "EstimateOut": {
+        "properties": {
+          "cost_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Cost Usd",
+            "type": "string"
+          },
+          "input_tokens": {
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "output_tokens": {
+            "title": "Output Tokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "input_tokens",
+          "output_tokens",
+          "cost_usd"
+        ],
+        "title": "EstimateOut",
         "type": "object"
       },
       "FilingOut": {
@@ -5018,6 +5498,37 @@
           "missing_periods"
         ],
         "title": "MissingItemOut",
+        "type": "object"
+      },
+      "ModeIn": {
+        "properties": {
+          "mode": {
+            "enum": [
+              "off",
+              "accepted",
+              "all"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The classifier whose proposals mode `all` uses",
+            "title": "Source"
+          }
+        },
+        "required": [
+          "mode",
+          "source"
+        ],
+        "title": "ModeIn",
         "type": "object"
       },
       "MultiplesOut": {
@@ -6621,6 +7132,27 @@
           "reason"
         ],
         "title": "RuleWarningOut",
+        "type": "object"
+      },
+      "RunIn": {
+        "properties": {
+          "classifier": {
+            "minLength": 1,
+            "title": "Classifier",
+            "type": "string"
+          },
+          "confirm_lines": {
+            "description": "The number of lines the user confirmed",
+            "minimum": 0.0,
+            "title": "Confirm Lines",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "classifier",
+          "confirm_lines"
+        ],
+        "title": "RunIn",
         "type": "object"
       },
       "ScenarioIn": {
@@ -9840,6 +10372,28 @@
         ]
       }
     },
+    "/api/v1/classification/status": {
+      "get": {
+        "description": "The classifiers and whether each has its key, the token budgets and what was used.",
+        "operationId": "get_status_api_v1_classification_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassificationStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Status",
+        "tags": [
+          "classification"
+        ]
+      }
+    },
     "/api/v1/companies": {
       "get": {
         "operationId": "get_companies_api_v1_companies_get",
@@ -10318,7 +10872,9 @@
                     "engine_choice",
                     "valuation_input",
                     "scenario",
-                    "adjustment"
+                    "adjustment",
+                    "line_classification",
+                    "company"
                   ],
                   "type": "string"
                 },
@@ -10624,6 +11180,284 @@
         "summary": "Get Capital Allocation",
         "tags": [
           "analysis"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/classification-mode": {
+      "put": {
+        "description": "What of the classifications the company's statements use: off, accepted, or all.",
+        "operationId": "set_mode_api_v1_companies__ticker__classification_mode_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompanyListItem"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Mode",
+        "tags": [
+          "classification"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/classifications": {
+      "get": {
+        "description": "The company's lines to classify with their answers; with `classifier`, also what a run of\nit would ask now and its estimate. 409 for an unknown classifier name.",
+        "operationId": "get_classifications_of_api_v1_companies__ticker__classifications_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "classifier",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Classifier"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassificationsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Classifications Of",
+        "tags": [
+          "classification"
+        ]
+      },
+      "put": {
+        "description": "The user's own answer for one line, stored accepted.",
+        "operationId": "answer_api_v1_companies__ticker__classifications_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnswerIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassificationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Answer",
+        "tags": [
+          "classification"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/classifications/run": {
+      "post": {
+        "description": "Ask the classifier about the company's open lines, in a worker thread. This sends their\nlabels, tags and amounts to the provider. 409 when the classifier has no key, nothing is\nleft to ask, `confirm_lines` is not the number that would be sent, the estimate does not fit\na budget, or a run is running.",
+        "operationId": "start_run_api_v1_companies__ticker__classifications_run_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassificationRunOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Run",
+        "tags": [
+          "classification"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/classifications/{classification_id}": {
+      "put": {
+        "description": "Accept, reject or reopen one answer.",
+        "operationId": "decide_api_v1_companies__ticker__classifications__classification_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "classification_id",
+            "required": true,
+            "schema": {
+              "title": "Classification Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassificationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Decide",
+        "tags": [
+          "classification"
         ]
       }
     },

@@ -13,6 +13,7 @@ from bedrock.models import (
     adjustment,
     audit_log,
     canonical_item,
+    classification_run,
     company,
     comps_member,
     comps_set,
@@ -26,6 +27,7 @@ from bedrock.models import (
     forecast_run,
     guidance,
     imported_fact,
+    line_classification,
     macro,
     note,
     off_balance_item,
@@ -46,6 +48,7 @@ _MODELS = (
     adjustment,
     audit_log,
     canonical_item,
+    classification_run,
     company,
     comps_member,
     comps_set,
@@ -59,6 +62,7 @@ _MODELS = (
     forecast_run,
     guidance,
     imported_fact,
+    line_classification,
     macro,
     note,
     off_balance_item,
@@ -2187,3 +2191,186 @@ def test_0021_downgrade_drops_only_what_it_added_and_keeps_the_rows(
 
     _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
     assert "filing_line" in inspect(engine).get_table_names()
+
+
+# --- 0022: line classification (M7d S3, docs/erd/face-tree.md "Storage") ---------------------
+
+
+def _classification(connection: Connection, company_id: int, **cols: object) -> int:
+    row: dict[str, object] = {
+        "company_id": company_id,
+        "statement": "BS",
+        "taxonomy": "aapl",
+        "concept": "Widgets",
+        "classifier": "claude:claude-haiku-5-5",
+        "codes": '["inventory"]',
+        "confidence": "0.9100",
+        "status": "proposed",
+        "created_at": _NOW,
+    }
+    row.update(cols)
+    return _insert(connection, "line_classification", **row)
+
+
+def _classification_run(connection: Connection, company_id: int, **cols: object) -> int:
+    row: dict[str, object] = {
+        "company_id": company_id,
+        "classifier": "claude:claude-haiku-5-5",
+        "status": "done",
+        "started_at": _NOW,
+        "lines_asked": 3,
+        "lines_answered": 3,
+        "input_tokens": 100,
+        "output_tokens": 10,
+        "cost_usd": "0.000015",
+    }
+    row.update(cols)
+    return _insert(connection, "classification_run", **row)
+
+
+def test_0022_adds_the_mode_columns_with_their_defaults_and_keeps_the_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0021"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        company_id = _company(connection, "AAA")
+        _snapshot(connection, company_id, None)
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+
+    company_columns = {c["name"]: c for c in inspect(engine).get_columns("company")}
+    assert company_columns["classification_mode"]["nullable"] is False
+    assert company_columns["classification_source"]["nullable"] is True
+    snapshot_columns = {c["name"]: c for c in inspect(engine).get_columns("forecast_snapshot")}
+    assert snapshot_columns["classification_mode"]["nullable"] is True
+    with engine.begin() as connection:
+        assert tuple(
+            connection.execute(
+                text("SELECT classification_mode, classification_source FROM company")
+            ).one()
+        ) == ("off", None)
+        # a snapshot older than the migration does not know its mode
+        assert (
+            connection.execute(
+                text("SELECT classification_mode FROM forecast_snapshot")
+            ).scalar_one()
+            is None
+        )
+        assert _count(connection, "line_classification") == 0
+        assert _count(connection, "classification_run") == 0
+
+
+def test_0022_one_answer_per_classifier_and_line_and_the_checks_hold(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        company_id = _company(connection, "AAA")
+        other_id = _company(connection, "BBB")
+        _classification(connection, company_id)
+        _classification(connection, company_id, classifier="jev:jev-latest")
+        _classification(connection, company_id, classifier="user")
+        _classification(connection, company_id, statement="IS")
+        _classification(connection, company_id, taxonomy="us-gaap")
+        _classification(connection, other_id)
+    duplicates_and_bad_values: list[dict[str, object]] = [
+        {},  # the same company, line and classifier
+        {"concept": "A", "statement": "EQ"},
+        {"concept": "B", "status": "maybe"},
+        {"concept": "C", "codes": None},
+        {"concept": "D", "confidence": None},
+        {"concept": "E", "classifier": None},
+    ]
+    for cols in duplicates_and_bad_values:
+        with engine.begin() as connection, pytest.raises(IntegrityError):
+            _classification(connection, company_id, **cols)
+    with engine.begin() as connection, pytest.raises(IntegrityError):
+        _classification_run(connection, company_id, status="paused")
+
+    indexes = {
+        i["name"]: i["column_names"] for i in inspect(engine).get_indexes("line_classification")
+    }
+    assert indexes["ix_line_classification_company_id"] == ["company_id"]
+
+
+def test_0022_allows_one_running_run_in_the_whole_database(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        company_id = _company(connection, "AAA")
+        other_id = _company(connection, "BBB")
+        for status in ("done", "done", "failed", "failed", "stopped", "stopped"):
+            _classification_run(connection, company_id, status=status)
+        running = _classification_run(connection, company_id, status="running")
+    for owner_id in (company_id, other_id):
+        with engine.begin() as connection, pytest.raises(IntegrityError):
+            _classification_run(connection, owner_id, status="running")
+    with engine.begin() as connection:
+        connection.execute(
+            text("UPDATE classification_run SET status = 'done' WHERE id = :id"), {"id": running}
+        )
+        _classification_run(connection, other_id, status="running")
+
+
+def test_0022_rows_go_with_the_company_and_outlive_their_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+        company_id = _company(connection, "AAA")
+        kept_id = _company(connection, "BBB")
+        run_id = _classification_run(connection, kept_id)
+        _classification(connection, kept_id, run_id=run_id)
+        _classification(connection, company_id, run_id=_classification_run(connection, company_id))
+
+        connection.execute(text("DELETE FROM classification_run WHERE id = :id"), {"id": run_id})
+        assert (
+            connection.execute(
+                text("SELECT run_id FROM line_classification WHERE company_id = :id"),
+                {"id": kept_id},
+            ).scalar_one()
+            is None
+        )
+
+        connection.execute(text("DELETE FROM company WHERE id = :id"), {"id": company_id})
+        assert _count(connection, "line_classification") == 1
+        assert _count(connection, "classification_run") == 0
+
+
+def test_0022_downgrade_drops_only_what_it_added_and_keeps_the_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0021"))
+    engine = create_engine(database_url)
+    before = {
+        table: {c["name"] for c in inspect(engine).get_columns(table)}
+        for table in ("company", "forecast_snapshot")
+    }
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    with engine.begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+        company_id = _company(connection, "AAA")
+        _snapshot(connection, company_id, None)
+        _audit(connection, company_id)  # a row that cascades from `company` (G34)
+        _classification(connection, company_id, run_id=_classification_run(connection, company_id))
+
+    _run_alembic(tmp_path, monkeypatch, ("downgrade", "0021"))
+
+    engine.dispose()
+    tables = inspect(engine).get_table_names()
+    assert "line_classification" not in tables and "classification_run" not in tables
+    for table, columns in before.items():
+        assert {c["name"] for c in inspect(engine).get_columns(table)} == columns
+    with engine.begin() as connection:
+        assert _count(connection, "company") == 1
+        assert _count(connection, "forecast_snapshot") == 1
+        assert _count(connection, "audit_log") == 1
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    assert "line_classification" in inspect(engine).get_table_names()

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from bedrock.core.auth import LoginThrottle, refresh_session
 from bedrock.core.config import Settings
 from bedrock.ingest.sources import Sources
+from bedrock.services.classification import ClassificationRunner, Factory
 from bedrock.services.filings import BackfillRunner
 
 
@@ -34,6 +35,17 @@ def get_session_factory(request: Request) -> sessionmaker[Session]:
 def get_backfills(request: Request) -> BackfillRunner:
     backfills: BackfillRunner = request.app.state.backfills
     return backfills
+
+
+def get_classifications(request: Request) -> ClassificationRunner:
+    runner: ClassificationRunner = request.app.state.classifications
+    return runner
+
+
+def get_classifier_factory(request: Request) -> Factory:
+    """What builds a classifier for a run (`classify/registry.py::get`; tests replace it)."""
+    factory: Factory = request.app.state.classifier_factory
+    return factory
 
 
 def get_sources(request: Request) -> Sources:

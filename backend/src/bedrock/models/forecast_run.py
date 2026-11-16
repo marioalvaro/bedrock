@@ -38,6 +38,8 @@ class ForecastSnapshot(Base):
     # the newest filing the forecast saw; null for a manual company
     data_as_of: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    # M7d: the company's classification mode when the snapshot was taken; null before 0022
+    classification_mode: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 class ForecastRun(Base):

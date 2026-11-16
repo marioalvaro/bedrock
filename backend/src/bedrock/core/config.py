@@ -20,8 +20,24 @@ class Settings(BaseSettings):
     static_dir: Path | None = None
     # Prices hourly in US market hours and the market series daily (core/scheduler.py).
     scheduled_refresh: bool = True
+    # M7d line classification (docs/erd/face-tree.md "Registry and settings"). A key enables its
+    # classifiers; the budgets count input + output tokens of every run, per UTC day and month.
+    anthropic_api_key: str | None = None
+    typesafe_api_key: str | None = None
+    classify_daily_tokens: int = 300_000
+    classify_monthly_tokens: int = 3_000_000
+    classify_max_lines_per_run: int = 300
+    classify_min_confidence: float = 0.9
 
-    @field_validator("database_url", "sec_user_agent", "fred_api_key", "static_dir", mode="before")
+    @field_validator(
+        "database_url",
+        "sec_user_agent",
+        "fred_api_key",
+        "static_dir",
+        "anthropic_api_key",
+        "typesafe_api_key",
+        mode="before",
+    )
     @classmethod
     def _blank_is_unset(cls, value: object) -> object:
         # `KEY=` (as shipped in .env.example, or STATIC_DIR="" in the dev profile, since

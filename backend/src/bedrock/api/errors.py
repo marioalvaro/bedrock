@@ -8,13 +8,17 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from bedrock.classify.protocol import ClassifierError, ClassifierUnavailable
 from bedrock.forecast.errors import ForecastUnavailable
 from bedrock.ingest.protocol import SourceNotConfigured, SourceUnavailable, UnknownTicker
 from bedrock.services.errors import (
     AdjustmentNotFound,
     AuditRowNotFound,
     BackfillRunning,
+    BudgetExceeded,
     CellNotFound,
+    ClassificationNotFound,
+    ClassificationRunning,
     CompanyExists,
     CompanyNotFound,
     CompsSetNotFound,
@@ -26,6 +30,7 @@ from bedrock.services.errors import (
     InvalidAdjustment,
     InvalidAuditRow,
     InvalidBacktest,
+    InvalidClassification,
     InvalidCompsSet,
     InvalidCustomRule,
     InvalidDriverFile,
@@ -45,6 +50,7 @@ from bedrock.services.errors import (
     InvalidThreshold,
     InvalidValuationInput,
     NoteNotFound,
+    NothingToClassify,
     OffBalanceItemNotFound,
     RatioCellNotFound,
     RuleNotFound,
@@ -52,6 +58,7 @@ from bedrock.services.errors import (
     ScenarioNotFound,
     SeriesNotFound,
     SnapshotNotFound,
+    StaleEstimate,
     UnknownLineItem,
     user_message,
 )
@@ -100,6 +107,19 @@ _STATUS: dict[type[Exception], int] = {
     ForecastUnavailable: 422,
     SourceNotConfigured: 503,
     SourceUnavailable: 502,
+    ClassificationNotFound: 404,
+    InvalidClassification: 422,
+    ClassifierError: 502,
+}
+
+# The reasons a classification run does not start (docs/erd/face-tree.md "Routes"): 409, with a
+# `code` beside the message so the panel can tell them apart.
+_CONFLICT_CODES: dict[type[Exception], str] = {
+    ClassifierUnavailable: "classifier_unavailable",
+    NothingToClassify: "nothing_to_classify",
+    StaleEstimate: "stale_estimate",
+    BudgetExceeded: "budget_exceeded",
+    ClassificationRunning: "classification_running",
 }
 
 
@@ -107,6 +127,12 @@ def register_error_handlers(app: FastAPI) -> None:
     async def handle(_: Request, error: Exception) -> JSONResponse:
         return JSONResponse(
             status_code=_STATUS[type(error)], content={"detail": user_message(error)}
+        )
+
+    async def handle_conflict(_: Request, error: Exception) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
+            content={"detail": user_message(error), "code": _CONFLICT_CODES[type(error)]},
         )
 
     async def handle_import(_: Request, error: Exception) -> JSONResponse:
@@ -156,6 +182,8 @@ def register_error_handlers(app: FastAPI) -> None:
 
     for error_type in _STATUS:
         app.add_exception_handler(error_type, handle)
+    for error_type in _CONFLICT_CODES:
+        app.add_exception_handler(error_type, handle_conflict)
     app.add_exception_handler(InvalidImport, handle_import)
     app.add_exception_handler(InvalidStatementImport, handle_statement_import)
     app.add_exception_handler(InvalidDriverFile, handle_driver_file)

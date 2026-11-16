@@ -84,6 +84,30 @@ export type AdjustmentOut = {
 };
 
 /**
+ * AnswerIn
+ *
+ * The user's own answer: `codes` are candidates of the line, empty for none of the rows.
+ */
+export type AnswerIn = {
+    /**
+     * Codes
+     */
+    codes: Array<string>;
+    /**
+     * Concept
+     */
+    concept: string;
+    /**
+     * Statement
+     */
+    statement: 'IS' | 'BS' | 'CF';
+    /**
+     * Taxonomy
+     */
+    taxonomy: string;
+};
+
+/**
  * AsReportedFilingOut
  */
 export type AsReportedFilingOut = {
@@ -246,7 +270,7 @@ export type AuditRowOut = {
     /**
      * Entity
      */
-    entity: 'driver' | 'year_mode' | 'engine_choice' | 'valuation_input' | 'scenario' | 'adjustment';
+    entity: 'driver' | 'year_mode' | 'engine_choice' | 'valuation_input' | 'scenario' | 'adjustment' | 'line_classification' | 'company';
     /**
      * Field
      */
@@ -742,6 +766,222 @@ export type CheckOut = {
 };
 
 /**
+ * ClassificationOut
+ *
+ * One answer of one classifier (or of `user`) for a line. `codes`: empty for none of the
+ * rows, one code for that row, several for one combined line.
+ */
+export type ClassificationOut = {
+    /**
+     * Classifier
+     */
+    classifier: string;
+    /**
+     * Codes
+     */
+    codes: Array<string>;
+    /**
+     * Confidence
+     */
+    confidence: string;
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Status
+     */
+    status: 'proposed' | 'accepted' | 'rejected';
+};
+
+/**
+ * ClassificationRunOut
+ *
+ * One click. `error` is the reason of a `failed` or `stopped` run.
+ */
+export type ClassificationRunOut = {
+    /**
+     * Classifier
+     */
+    classifier: string;
+    /**
+     * Cost Usd
+     */
+    cost_usd: string;
+    /**
+     * Error
+     */
+    error: string | null;
+    /**
+     * Finished At
+     */
+    finished_at: string | null;
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Input Tokens
+     */
+    input_tokens: number;
+    /**
+     * Lines Answered
+     */
+    lines_answered: number;
+    /**
+     * Lines Asked
+     */
+    lines_asked: number;
+    /**
+     * Output Tokens
+     */
+    output_tokens: number;
+    /**
+     * Started At
+     */
+    started_at: string;
+    /**
+     * Status
+     */
+    status: 'running' | 'done' | 'failed' | 'stopped';
+};
+
+/**
+ * ClassificationStatusOut
+ */
+export type ClassificationStatusOut = {
+    /**
+     * Classifiers
+     */
+    classifiers: Array<ClassifierOut>;
+    /**
+     * Cost Month Usd
+     *
+     * An estimate from the recorded prices
+     */
+    cost_month_usd: string;
+    /**
+     * Daily Tokens
+     */
+    daily_tokens: number;
+    /**
+     * Max Lines Per Run
+     */
+    max_lines_per_run: number;
+    /**
+     * Min Confidence
+     */
+    min_confidence: number;
+    /**
+     * Monthly Tokens
+     */
+    monthly_tokens: number;
+    /**
+     * Used Month
+     */
+    used_month: number;
+    /**
+     * Used Today
+     *
+     * Input + output tokens of the runs of this UTC day
+     */
+    used_today: number;
+};
+
+/**
+ * ClassificationsOut
+ *
+ * The company's open lines, in statement then presentation order, with every answer.
+ * `to_ask` and `estimate` are for the `classifier` parameter; null without it.
+ */
+export type ClassificationsOut = {
+    estimate: EstimateOut | null;
+    /**
+     * Lines
+     */
+    lines: Array<ClassifiedLineOut>;
+    /**
+     * Mode
+     */
+    mode: 'off' | 'accepted' | 'all';
+    /**
+     * The company's newest run
+     */
+    run: ClassificationRunOut | null;
+    /**
+     * Source
+     */
+    source: string | null;
+    /**
+     * To Ask
+     *
+     * Lines a run of the classifier would ask now
+     */
+    to_ask: number | null;
+};
+
+/**
+ * ClassifiedLineOut
+ */
+export type ClassifiedLineOut = {
+    /**
+     * Answers
+     */
+    answers: Array<ClassificationOut>;
+    block: RowRefOut | null;
+    /**
+     * Candidates
+     */
+    candidates: Array<RowRefOut>;
+    /**
+     * Concept
+     */
+    concept: string;
+    /**
+     * Effective
+     *
+     * The codes in force under the company's mode; null when none
+     */
+    effective: Array<string> | null;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Latest Period End
+     */
+    latest_period_end: string;
+    /**
+     * Latest Value
+     */
+    latest_value: string | null;
+    /**
+     * Statement
+     */
+    statement: 'IS' | 'BS' | 'CF';
+    /**
+     * Taxonomy
+     */
+    taxonomy: string;
+};
+
+/**
+ * ClassifierOut
+ */
+export type ClassifierOut = {
+    /**
+     * Configured
+     *
+     * Its API key is set
+     */
+    configured: boolean;
+    /**
+     * Name
+     */
+    name: string;
+};
+
+/**
  * CompanyCreate
  */
 export type CompanyCreate = {
@@ -763,6 +1003,18 @@ export type CompanyListItem = {
      * Null for a manual company
      */
     cik: string | null;
+    /**
+     * Classification Mode
+     *
+     * What of the line classifications the statements use
+     */
+    classification_mode: 'off' | 'accepted' | 'all';
+    /**
+     * Classification Source
+     *
+     * The classifier whose proposals mode `all` uses
+     */
+    classification_source: string | null;
     /**
      * Currency
      */
@@ -1273,6 +1525,16 @@ export type DcfPeriodOut = {
      * Years
      */
     years: string;
+};
+
+/**
+ * DecisionIn
+ */
+export type DecisionIn = {
+    /**
+     * Status
+     */
+    status: 'proposed' | 'accepted' | 'rejected';
 };
 
 /**
@@ -1829,6 +2091,24 @@ export type EngineRowOut = {
      * Used
      */
     used: 'mean' | 'arima' | 'ets' | 'blend' | null;
+};
+
+/**
+ * EstimateOut
+ */
+export type EstimateOut = {
+    /**
+     * Cost Usd
+     */
+    cost_usd: string;
+    /**
+     * Input Tokens
+     */
+    input_tokens: number;
+    /**
+     * Output Tokens
+     */
+    output_tokens: number;
 };
 
 /**
@@ -2727,6 +3007,22 @@ export type MissingItemOut = {
 };
 
 /**
+ * ModeIn
+ */
+export type ModeIn = {
+    /**
+     * Mode
+     */
+    mode: 'off' | 'accepted' | 'all';
+    /**
+     * Source
+     *
+     * The classifier whose proposals mode `all` uses
+     */
+    source: string | null;
+};
+
+/**
  * MultiplesOut
  */
 export type MultiplesOut = {
@@ -3512,6 +3808,22 @@ export type RuleWarningOut = {
      * Value
      */
     value: string | null;
+};
+
+/**
+ * RunIn
+ */
+export type RunIn = {
+    /**
+     * Classifier
+     */
+    classifier: string;
+    /**
+     * Confirm Lines
+     *
+     * The number of lines the user confirmed
+     */
+    confirm_lines: number;
 };
 
 /**
@@ -5207,6 +5519,22 @@ export type MeApiV1AuthMeGetResponses = {
 
 export type MeApiV1AuthMeGetResponse = MeApiV1AuthMeGetResponses[keyof MeApiV1AuthMeGetResponses];
 
+export type GetStatusApiV1ClassificationStatusGetData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/classification/status';
+};
+
+export type GetStatusApiV1ClassificationStatusGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: ClassificationStatusOut;
+};
+
+export type GetStatusApiV1ClassificationStatusGetResponse = GetStatusApiV1ClassificationStatusGetResponses[keyof GetStatusApiV1ClassificationStatusGetResponses];
+
 export type GetCompaniesApiV1CompaniesGetData = {
     body?: never;
     path?: never;
@@ -5516,7 +5844,7 @@ export type ListAuditApiV1CompaniesTickerAuditGetData = {
         /**
          * Entity
          */
-        entity?: 'driver' | 'year_mode' | 'engine_choice' | 'valuation_input' | 'scenario' | 'adjustment' | null;
+        entity?: 'driver' | 'year_mode' | 'engine_choice' | 'valuation_input' | 'scenario' | 'adjustment' | 'line_classification' | 'company' | null;
         /**
          * Limit
          */
@@ -5705,6 +6033,165 @@ export type GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetResponse
 };
 
 export type GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetResponse = GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetResponses[keyof GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetResponses];
+
+export type SetModeApiV1CompaniesTickerClassificationModePutData = {
+    body: ModeIn;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/classification-mode';
+};
+
+export type SetModeApiV1CompaniesTickerClassificationModePutErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SetModeApiV1CompaniesTickerClassificationModePutError = SetModeApiV1CompaniesTickerClassificationModePutErrors[keyof SetModeApiV1CompaniesTickerClassificationModePutErrors];
+
+export type SetModeApiV1CompaniesTickerClassificationModePutResponses = {
+    /**
+     * Successful Response
+     */
+    200: CompanyListItem;
+};
+
+export type SetModeApiV1CompaniesTickerClassificationModePutResponse = SetModeApiV1CompaniesTickerClassificationModePutResponses[keyof SetModeApiV1CompaniesTickerClassificationModePutResponses];
+
+export type GetClassificationsOfApiV1CompaniesTickerClassificationsGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: {
+        /**
+         * Classifier
+         */
+        classifier?: string | null;
+    };
+    url: '/api/v1/companies/{ticker}/classifications';
+};
+
+export type GetClassificationsOfApiV1CompaniesTickerClassificationsGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetClassificationsOfApiV1CompaniesTickerClassificationsGetError = GetClassificationsOfApiV1CompaniesTickerClassificationsGetErrors[keyof GetClassificationsOfApiV1CompaniesTickerClassificationsGetErrors];
+
+export type GetClassificationsOfApiV1CompaniesTickerClassificationsGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: ClassificationsOut;
+};
+
+export type GetClassificationsOfApiV1CompaniesTickerClassificationsGetResponse = GetClassificationsOfApiV1CompaniesTickerClassificationsGetResponses[keyof GetClassificationsOfApiV1CompaniesTickerClassificationsGetResponses];
+
+export type AnswerApiV1CompaniesTickerClassificationsPutData = {
+    body: AnswerIn;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/classifications';
+};
+
+export type AnswerApiV1CompaniesTickerClassificationsPutErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AnswerApiV1CompaniesTickerClassificationsPutError = AnswerApiV1CompaniesTickerClassificationsPutErrors[keyof AnswerApiV1CompaniesTickerClassificationsPutErrors];
+
+export type AnswerApiV1CompaniesTickerClassificationsPutResponses = {
+    /**
+     * Successful Response
+     */
+    200: ClassificationOut;
+};
+
+export type AnswerApiV1CompaniesTickerClassificationsPutResponse = AnswerApiV1CompaniesTickerClassificationsPutResponses[keyof AnswerApiV1CompaniesTickerClassificationsPutResponses];
+
+export type StartRunApiV1CompaniesTickerClassificationsRunPostData = {
+    body: RunIn;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/classifications/run';
+};
+
+export type StartRunApiV1CompaniesTickerClassificationsRunPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type StartRunApiV1CompaniesTickerClassificationsRunPostError = StartRunApiV1CompaniesTickerClassificationsRunPostErrors[keyof StartRunApiV1CompaniesTickerClassificationsRunPostErrors];
+
+export type StartRunApiV1CompaniesTickerClassificationsRunPostResponses = {
+    /**
+     * Successful Response
+     */
+    202: ClassificationRunOut;
+};
+
+export type StartRunApiV1CompaniesTickerClassificationsRunPostResponse = StartRunApiV1CompaniesTickerClassificationsRunPostResponses[keyof StartRunApiV1CompaniesTickerClassificationsRunPostResponses];
+
+export type DecideApiV1CompaniesTickerClassificationsClassificationIdPutData = {
+    body: DecisionIn;
+    path: {
+        /**
+         * Classification Id
+         */
+        classification_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/classifications/{classification_id}';
+};
+
+export type DecideApiV1CompaniesTickerClassificationsClassificationIdPutErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DecideApiV1CompaniesTickerClassificationsClassificationIdPutError = DecideApiV1CompaniesTickerClassificationsClassificationIdPutErrors[keyof DecideApiV1CompaniesTickerClassificationsClassificationIdPutErrors];
+
+export type DecideApiV1CompaniesTickerClassificationsClassificationIdPutResponses = {
+    /**
+     * Successful Response
+     */
+    200: ClassificationOut;
+};
+
+export type DecideApiV1CompaniesTickerClassificationsClassificationIdPutResponse = DecideApiV1CompaniesTickerClassificationsClassificationIdPutResponses[keyof DecideApiV1CompaniesTickerClassificationsClassificationIdPutResponses];
 
 export type ListSetsApiV1CompaniesTickerCompsSetsGetData = {
     body?: never;

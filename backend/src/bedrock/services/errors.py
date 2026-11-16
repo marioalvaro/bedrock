@@ -1,3 +1,4 @@
+from bedrock.classify.protocol import ClassifierError, ClassifierUnavailable
 from bedrock.forecast.driver_io import DriverFileIssue
 from bedrock.forecast.errors import ForecastUnavailable
 from bedrock.ingest.manual_import import ImportIssue as FileIssue
@@ -200,6 +201,31 @@ class UnknownLineItem(Exception):
     """A requested line item code is not a canonical IS, BS or CF line."""
 
 
+class NothingToClassify(Exception):
+    """A classification run was asked for, but the classifier has no open line left to ask."""
+
+
+class StaleEstimate(Exception):
+    """The user confirmed a different number of lines than a run would now send."""
+
+
+class BudgetExceeded(Exception):
+    """The run's estimate does not fit what is left of a token budget; the message says which."""
+
+
+class ClassificationRunning(Exception):
+    """A classification run is already running (one at a time in the whole database)."""
+
+
+class ClassificationNotFound(Exception):
+    """No line classification with this id on the company (another company's id counts as
+    unknown)."""
+
+
+class InvalidClassification(Exception):
+    """A decision, an answer or a mode breaks a rule; the message says which."""
+
+
 # What a use-case can raise on purpose; the API maps these to statuses, the CLI prints them.
 DOMAIN_ERRORS = (
     CompanyNotFound,
@@ -247,6 +273,14 @@ DOMAIN_ERRORS = (
     UnknownTicker,
     SourceNotConfigured,
     SourceUnavailable,
+    ClassifierUnavailable,
+    ClassifierError,
+    NothingToClassify,
+    StaleEstimate,
+    BudgetExceeded,
+    ClassificationRunning,
+    ClassificationNotFound,
+    InvalidClassification,
 )
 
 
@@ -297,5 +331,11 @@ def user_message(error: Exception) -> str:
             return f"Data source not configured: {error}"
         case SourceUnavailable():
             return f"Data source unavailable: {error}"
+        case ClassifierUnavailable():
+            return f"Classifier unavailable: {error}"
+        case ClassifierError():
+            return f"The classifier failed: {error}"
+        case ClassificationNotFound():
+            return f"No such line classification: {error}"
         case _:
             return str(error)

@@ -32,6 +32,12 @@ class CompanyOut(BaseModel):
         description="10-K and 10-Q filings (amendments included) whose XBRL is read"
     )
     filings_total: int = Field(description="10-K and 10-Q filings, amendments included")
+    classification_mode: Literal["off", "accepted", "all"] = Field(
+        description="What of the line classifications the statements use"
+    )
+    classification_source: str | None = Field(
+        description="The classifier whose proposals mode `all` uses"
+    )
 
     @field_validator("last_refreshed_at")
     @classmethod
