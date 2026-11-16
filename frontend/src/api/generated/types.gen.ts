@@ -84,6 +84,127 @@ export type AdjustmentOut = {
 };
 
 /**
+ * AsReportedFilingOut
+ */
+export type AsReportedFilingOut = {
+    /**
+     * Accession No
+     */
+    accession_no: string;
+    /**
+     * Filed At
+     */
+    filed_at: string;
+    /**
+     * Form
+     */
+    form: string;
+};
+
+/**
+ * AsReportedLineOut
+ *
+ * One face line. `values` and `foots` are aligned with the view's `periods`; `foots` is
+ * null where the line is not a total or has no value. `kind`: mapped to `codes`, other (in a
+ * residual; `codes` are the rows a verdict names), or open (nothing classifies it).
+ */
+export type AsReportedLineOut = {
+    block: RowRefOut | null;
+    /**
+     * Codes
+     */
+    codes: Array<RowRefOut>;
+    /**
+     * Concept
+     */
+    concept: string;
+    /**
+     * Depth
+     */
+    depth: number;
+    /**
+     * Foots
+     */
+    foots: Array<boolean | null>;
+    /**
+     * In Tree
+     */
+    in_tree: boolean;
+    /**
+     * Is Total
+     */
+    is_total: boolean;
+    /**
+     * Kind
+     */
+    kind: 'mapped' | 'other' | 'open';
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Missing Children
+     */
+    missing_children: Array<string>;
+    /**
+     * Position
+     */
+    position: number;
+    /**
+     * Taxonomy
+     */
+    taxonomy: string;
+    /**
+     * Unit
+     */
+    unit: string | null;
+    /**
+     * Values
+     */
+    values: Array<string | null>;
+};
+
+/**
+ * AsReportedOut
+ *
+ * One filing's statement as filed. Read only: no feature takes a value from it. `filing` is
+ * null when the company has no parsed filing with lines for the statement.
+ */
+export type AsReportedOut = {
+    filing: AsReportedFilingOut | null;
+    /**
+     * Filings
+     */
+    filings: Array<AsReportedFilingOut>;
+    /**
+     * Foots
+     */
+    foots: boolean | null;
+    /**
+     * Lines
+     */
+    lines: Array<AsReportedLineOut>;
+    /**
+     * Periods
+     */
+    periods: Array<AsReportedPeriodOut>;
+};
+
+/**
+ * AsReportedPeriodOut
+ */
+export type AsReportedPeriodOut = {
+    /**
+     * End
+     */
+    end: string;
+    /**
+     * Start
+     */
+    start: string | null;
+};
+
+/**
  * AuditPageOut
  */
 export type AuditPageOut = {
@@ -3344,6 +3465,22 @@ export type RowOut = {
 };
 
 /**
+ * RowRefOut
+ *
+ * A canonical row a face line names.
+ */
+export type RowRefOut = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Label
+     */
+    label: string;
+};
+
+/**
  * RuleWarningOut
  */
 export type RuleWarningOut = {
@@ -5327,6 +5464,45 @@ export type UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutRespon
 };
 
 export type UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutResponse = UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutResponses[keyof UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutResponses];
+
+export type GetAsReportedApiV1CompaniesTickerAsReportedGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query: {
+        /**
+         * Statement
+         */
+        statement: 'IS' | 'BS' | 'CF';
+        /**
+         * Accession
+         */
+        accession?: string | null;
+    };
+    url: '/api/v1/companies/{ticker}/as-reported';
+};
+
+export type GetAsReportedApiV1CompaniesTickerAsReportedGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetAsReportedApiV1CompaniesTickerAsReportedGetError = GetAsReportedApiV1CompaniesTickerAsReportedGetErrors[keyof GetAsReportedApiV1CompaniesTickerAsReportedGetErrors];
+
+export type GetAsReportedApiV1CompaniesTickerAsReportedGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: AsReportedOut;
+};
+
+export type GetAsReportedApiV1CompaniesTickerAsReportedGetResponse = GetAsReportedApiV1CompaniesTickerAsReportedGetResponses[keyof GetAsReportedApiV1CompaniesTickerAsReportedGetResponses];
 
 export type ListAuditApiV1CompaniesTickerAuditGetData = {
     body?: never;

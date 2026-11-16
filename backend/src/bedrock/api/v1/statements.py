@@ -6,8 +6,9 @@ from sqlalchemy.orm import Session
 from bedrock.api.deps import get_session
 from bedrock.models.company import Company
 from bedrock.repositories import companies as companies_repo
-from bedrock.schemas.statements import CellDetailOut, MappingGapsOut, StatementOut
+from bedrock.schemas.statements import AsReportedOut, CellDetailOut, MappingGapsOut, StatementOut
 from bedrock.services import adjustments as adjustments_service
+from bedrock.services import as_reported as as_reported_service
 from bedrock.services import statements as service
 from bedrock.services.errors import CompanyNotFound
 
@@ -63,3 +64,16 @@ def get_mapping_gaps(
     company: Company = Depends(followed_company), session: Session = Depends(get_session)
 ) -> MappingGapsOut:
     return MappingGapsOut.from_gaps(service.mapping_gaps(session, company))
+
+
+@router.get("/companies/{ticker}/as-reported")
+def get_as_reported(
+    statement: Literal["IS", "BS", "CF"],
+    accession: str | None = None,
+    company: Company = Depends(followed_company),
+    session: Session = Depends(get_session),
+) -> AsReportedOut:
+    """One filing's statement as filed (M7d S1): the newest 10-K by default."""
+    return AsReportedOut.from_view(
+        as_reported_service.as_reported(session, company, statement, accession)
+    )

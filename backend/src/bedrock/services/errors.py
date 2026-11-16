@@ -17,6 +17,10 @@ class BackfillRunning(Exception):
     """A filing backfill of this company is already running."""
 
 
+class FilingNotFound(Exception):
+    """The accession is not a parsed filing of the company with lines for the statement."""
+
+
 class CellNotFound(Exception):
     """No such statement cell: an unknown item code or a period the company does not have."""
 
@@ -201,6 +205,7 @@ DOMAIN_ERRORS = (
     CompanyNotFound,
     CompanyExists,
     BackfillRunning,
+    FilingNotFound,
     CellNotFound,
     RatioCellNotFound,
     AdjustmentNotFound,
@@ -252,6 +257,8 @@ def user_message(error: Exception) -> str:
             return f"{error} is not a followed company"
         case UnknownTicker():
             return f"Unknown ticker {error}: no SEC filer has it"
+        case FilingNotFound():
+            return f"No parsed filing {error} with lines for this statement"
         case CellNotFound():
             return f"No such statement cell: {error}"
         case RatioCellNotFound():

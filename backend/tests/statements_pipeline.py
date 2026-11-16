@@ -162,7 +162,7 @@ def filing_fixtures(ticker: str) -> tuple[pd.DataFrame, pd.DataFrame]:
 
 
 def face_lines(ticker: str, mappings: pd.DataFrame, as_of: date | None) -> FaceLines | None:
-    """What `services/statements.py::_face_lines` gives for the fixture company."""
+    """What `services/statements.py::face_lines` gives for the fixture company."""
     from bedrock.services.statements import concept_triage
 
     lines, _ = filing_fixtures(ticker)

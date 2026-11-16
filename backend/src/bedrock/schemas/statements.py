@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from bedrock.schemas.adjustments import CellAdjustmentOut
 from bedrock.services.adjustments import CellAdjustment
+from bedrock.services.as_reported import AsReported
 from bedrock.services.statements import MappingGaps
 from bedrock.statements.build import StatementTable
 from bedrock.statements.coverage import Cause
@@ -389,5 +390,100 @@ class MappingGapsOut(BaseModel):
                     filings=u.filings,
                 )
                 for u in gaps.unclassified_lines
+            ],
+        )
+
+
+# --- M7d S1: the As reported view (docs/erd/face-tree.md "As reported route") -----------------
+
+
+class AsReportedFilingOut(BaseModel):
+    accession_no: str
+    form: str
+    filed_at: date
+
+
+class AsReportedPeriodOut(BaseModel):
+    start: date | None  # None for an instant
+    end: date
+
+
+class RowRefOut(BaseModel):
+    """A canonical row a face line names."""
+
+    code: str
+    label: str
+
+
+class AsReportedLineOut(BaseModel):
+    """One face line. `values` and `foots` are aligned with the view's `periods`; `foots` is
+    null where the line is not a total or has no value. `kind`: mapped to `codes`, other (in a
+    residual; `codes` are the rows a verdict names), or open (nothing classifies it)."""
+
+    position: int
+    taxonomy: str
+    concept: str
+    label: str
+    unit: str | None
+    depth: int
+    is_total: bool
+    in_tree: bool
+    kind: Literal["mapped", "other", "open"]
+    codes: list[RowRefOut]
+    block: RowRefOut | None
+    values: list[Decimal | None]
+    foots: list[bool | None]
+    missing_children: list[str]  # `taxonomy:Concept` of children with no value in any period
+
+
+class AsReportedOut(BaseModel):
+    """One filing's statement as filed. Read only: no feature takes a value from it. `filing` is
+    null when the company has no parsed filing with lines for the statement."""
+
+    filing: AsReportedFilingOut | None
+    filings: list[AsReportedFilingOut]  # newest first; those with lines for the statement
+    periods: list[AsReportedPeriodOut]
+    foots: bool | None
+    lines: list[AsReportedLineOut]
+
+    @classmethod
+    def from_view(cls, view: AsReported) -> "AsReportedOut":
+        def ref(code: str) -> RowRefOut:
+            return RowRefOut(code=code, label=view.labels.get(code, code))
+
+        filings = [
+            AsReportedFilingOut(accession_no=f.accession_no, form=f.form, filed_at=f.filed_at)
+            for f in view.filings
+        ]
+        projected = view.statement
+        if projected is None:
+            return cls(filing=None, filings=filings, periods=[], foots=None, lines=[])
+        return cls(
+            filing=AsReportedFilingOut(
+                accession_no=projected.accession_no,
+                form=projected.form,
+                filed_at=projected.filed_at,
+            ),
+            filings=filings,
+            periods=[AsReportedPeriodOut(start=p.start, end=p.end) for p in projected.periods],
+            foots=projected.foots,
+            lines=[
+                AsReportedLineOut(
+                    position=ln.position,
+                    taxonomy=ln.taxonomy,
+                    concept=ln.concept,
+                    label=ln.label,
+                    unit=ln.unit,
+                    depth=ln.depth,
+                    is_total=ln.is_total,
+                    in_tree=ln.in_tree,
+                    kind=ln.kind,
+                    codes=[ref(c) for c in ln.codes],
+                    block=None if ln.block_code is None else ref(ln.block_code),
+                    values=list(ln.values),
+                    foots=list(ln.foots),
+                    missing_children=list(ln.missing_children),
+                )
+                for ln in projected.lines
             ],
         )

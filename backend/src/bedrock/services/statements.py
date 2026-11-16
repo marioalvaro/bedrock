@@ -78,6 +78,7 @@ __all__ = [
     "build_statements",
     "cell_detail",
     "company_key_stats",
+    "face_lines",
     "fiscal_periods",
     "load_inputs",
     "mapping_gaps",
@@ -407,12 +408,12 @@ def _load(
         imported.vintages,
         complete_parents([(r.code, r.parent_code, r.children_complete) for r in rows]),
         # The structure rules, like the identities, would read an unloaded line as empty.
-        _face_lines(session, company, mappings, as_of) if codes is None and structure else None,
+        face_lines(session, company, mappings, as_of) if codes is None and structure else None,
     )
     return StatementInputs(items, mappings, facts, canonical, rules, tuple(stored), custom)
 
 
-def _face_lines(
+def face_lines(
     session: Session, company: Company, mappings: pd.DataFrame, as_of: date | None
 ) -> FaceLines | None:
     """The face lines of the company's parsed filings known on `as_of`, the facts of their

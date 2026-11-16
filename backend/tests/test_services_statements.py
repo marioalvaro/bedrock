@@ -3,6 +3,7 @@
 from collections.abc import Callable
 from datetime import UTC, datetime
 
+import pandas as pd
 import pytest
 from sqlalchemy.orm import Session
 
@@ -387,3 +388,28 @@ def test_the_fiscal_periods_are_listed_without_reading_the_filing_lines(
 
     assert fiscal_periods(db_session, aapl) == expected
     assert line_reads == [] and len(fact_reads) == 1
+
+
+def test_the_face_lines_are_public_and_equal_what_the_rules_read(
+    db_session: Session, seed_db: Callable[..., None]
+) -> None:
+    """M7d S1: the As reported view loads the face lines through the same function as the
+    statements (docs/erd/face-tree.md "As reported route")."""
+    from bedrock.repositories import mappings as mappings_repo
+    from bedrock.services.statements import face_lines, load_inputs
+
+    from .seed import read_recorded_filings
+
+    seed_db("AAPL")
+    who = companies_repo.get_by_ticker(db_session, "AAPL")
+    assert who is not None
+    mappings = mappings_repo.mappings_for(db_session, who.id)
+    assert face_lines(db_session, who, mappings, None) is None  # nothing parsed yet
+
+    read_recorded_filings(db_session, who)
+
+    face = face_lines(db_session, who, mappings, None)
+    rules = load_inputs(db_session, who).rules.filing_lines
+    assert face is not None and rules is not None
+    pd.testing.assert_frame_equal(face.lines, rules.lines)
+    assert face.other_lines == rules.other_lines

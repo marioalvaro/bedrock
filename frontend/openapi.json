@@ -122,6 +122,237 @@
         "title": "AdjustmentOut",
         "type": "object"
       },
+      "AsReportedFilingOut": {
+        "properties": {
+          "accession_no": {
+            "title": "Accession No",
+            "type": "string"
+          },
+          "filed_at": {
+            "format": "date",
+            "title": "Filed At",
+            "type": "string"
+          },
+          "form": {
+            "title": "Form",
+            "type": "string"
+          }
+        },
+        "required": [
+          "accession_no",
+          "form",
+          "filed_at"
+        ],
+        "title": "AsReportedFilingOut",
+        "type": "object"
+      },
+      "AsReportedLineOut": {
+        "description": "One face line. `values` and `foots` are aligned with the view's `periods`; `foots` is\nnull where the line is not a total or has no value. `kind`: mapped to `codes`, other (in a\nresidual; `codes` are the rows a verdict names), or open (nothing classifies it).",
+        "properties": {
+          "block": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RowRefOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "codes": {
+            "items": {
+              "$ref": "#/components/schemas/RowRefOut"
+            },
+            "title": "Codes",
+            "type": "array"
+          },
+          "concept": {
+            "title": "Concept",
+            "type": "string"
+          },
+          "depth": {
+            "title": "Depth",
+            "type": "integer"
+          },
+          "foots": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Foots",
+            "type": "array"
+          },
+          "in_tree": {
+            "title": "In Tree",
+            "type": "boolean"
+          },
+          "is_total": {
+            "title": "Is Total",
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "mapped",
+              "other",
+              "open"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "missing_children": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Children",
+            "type": "array"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "taxonomy": {
+            "title": "Taxonomy",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "values": {
+            "items": {
+              "anyOf": [
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Values",
+            "type": "array"
+          }
+        },
+        "required": [
+          "position",
+          "taxonomy",
+          "concept",
+          "label",
+          "unit",
+          "depth",
+          "is_total",
+          "in_tree",
+          "kind",
+          "codes",
+          "block",
+          "values",
+          "foots",
+          "missing_children"
+        ],
+        "title": "AsReportedLineOut",
+        "type": "object"
+      },
+      "AsReportedOut": {
+        "description": "One filing's statement as filed. Read only: no feature takes a value from it. `filing` is\nnull when the company has no parsed filing with lines for the statement.",
+        "properties": {
+          "filing": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AsReportedFilingOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "filings": {
+            "items": {
+              "$ref": "#/components/schemas/AsReportedFilingOut"
+            },
+            "title": "Filings",
+            "type": "array"
+          },
+          "foots": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Foots"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/AsReportedLineOut"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
+          "periods": {
+            "items": {
+              "$ref": "#/components/schemas/AsReportedPeriodOut"
+            },
+            "title": "Periods",
+            "type": "array"
+          }
+        },
+        "required": [
+          "filing",
+          "filings",
+          "periods",
+          "foots",
+          "lines"
+        ],
+        "title": "AsReportedOut",
+        "type": "object"
+      },
+      "AsReportedPeriodOut": {
+        "properties": {
+          "end": {
+            "format": "date",
+            "title": "End",
+            "type": "string"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "AsReportedPeriodOut",
+        "type": "object"
+      },
       "AuditPageOut": {
         "properties": {
           "next_before_id": {
@@ -6322,6 +6553,25 @@
         "title": "RowOut",
         "type": "object"
       },
+      "RowRefOut": {
+        "description": "A canonical row a face line names.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "label"
+        ],
+        "title": "RowRefOut",
+        "type": "object"
+      },
       "RuleWarningOut": {
         "properties": {
           "code": {
@@ -9966,6 +10216,79 @@
         "summary": "Update Adjustment",
         "tags": [
           "adjustments"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/as-reported": {
+      "get": {
+        "description": "One filing's statement as filed (M7d S1): the newest 10-K by default.",
+        "operationId": "get_as_reported_api_v1_companies__ticker__as_reported_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "statement",
+            "required": true,
+            "schema": {
+              "enum": [
+                "IS",
+                "BS",
+                "CF"
+              ],
+              "title": "Statement",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "accession",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Accession"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AsReportedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get As Reported",
+        "tags": [
+          "statements"
         ]
       }
     },
