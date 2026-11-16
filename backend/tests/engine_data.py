@@ -23,7 +23,15 @@ FACT_COLUMNS = [
     "form",
     "filed_at",
 ]
-MAPPING_COLUMNS = ["canonical_code", "taxonomy", "concept", "priority", "is_override"]
+MAPPING_COLUMNS = [
+    "canonical_code",
+    "taxonomy",
+    "concept",
+    "priority",
+    "is_override",
+    "weight",
+    "covers",
+]
 
 Row = dict[str, object]
 
@@ -59,19 +67,26 @@ def facts(rows: Iterable[Row]) -> pd.DataFrame:
     )
 
 
-def mappings(*rows: tuple[str, str, int] | tuple[str, str, int, bool]) -> pd.DataFrame:
-    """(code, "taxonomy:Concept" or bare concept, priority[, is_override])."""
+def mappings(
+    *rows: tuple[str, str, int] | tuple[str, str, int, bool] | tuple[str, str, int, bool, str],
+) -> pd.DataFrame:
+    """(code, "taxonomy:Concept" or bare concept, priority[, is_override[, covers]]). A leading
+    `-` on the concept makes it a subtracted member (weight -1); `covers` is the stored text of a
+    combined entry (codes joined with `,`, "" for none), else the row is plain."""
     out = []
     for row in rows:
         code, concept, priority = row[:3]
-        taxonomy, _, name = str(concept).rpartition(":")
+        weight = -1 if str(concept).startswith("-") else 1
+        taxonomy, _, name = str(concept).lstrip("-").rpartition(":")
         out.append(
             {
                 "canonical_code": code,
                 "taxonomy": taxonomy or "us-gaap",
                 "concept": name,
                 "priority": priority,
-                "is_override": row[3] if len(row) == 4 else False,
+                "is_override": row[3] if len(row) >= 4 else False,
+                "weight": weight,
+                "covers": row[4] if len(row) == 5 else None,
             }
         )
     return pd.DataFrame(out, columns=MAPPING_COLUMNS)

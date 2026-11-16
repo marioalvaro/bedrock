@@ -54,8 +54,9 @@ def reset_valuation_inputs(
     case: Case,
     company: Company = Depends(followed_company),
     session: Session = Depends(get_session),
+    now: datetime = Depends(get_clock),
 ) -> ValuationInputsOut:
-    view = service.reset_valuation_inputs(session, company, scenario_id, case)
+    view = service.reset_valuation_inputs(session, company, scenario_id, case, now)
     return ValuationInputsOut.from_view(view)
 
 

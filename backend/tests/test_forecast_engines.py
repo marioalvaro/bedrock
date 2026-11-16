@@ -142,6 +142,18 @@ def test_samples_are_none_and_meta_names_the_engine(code: str) -> None:
     assert out.meta["engine"] == code
 
 
+def test_arima_reads_a_steady_trend_as_a_random_walk_with_drift() -> None:
+    """A series that rises by the same step each period has constant differences. Without a drift
+    candidate ARIMA could only follow it through an AR(1) on those differences, a degenerate fit
+    whose optimum differs by platform: on Linux it lost to a mean-reverting AR(1) and the forecast
+    fell (CI, 2026-11-15)."""
+    out = run("arima", trend())
+
+    assert (out.meta["order"], out.meta["trend"]) == ([0, 1, 0], "t")
+    steps = np.diff(out.point.to_numpy())
+    assert np.allclose(steps, 0.01, atol=1e-4)  # the estimated drift, the same every period
+
+
 def test_arima_meta_names_the_order_and_trend_with_the_lowest_aic() -> None:
     meta = run("arima", ar1()).meta
 
@@ -280,6 +292,21 @@ def test_the_registry_lists_the_engines_in_order() -> None:
     assert isinstance(registry.ENGINES["blend"], BlendEngine)
     assert [e.code for e in registry.ENGINES.values()] == ["arima", "ets", "blend"]
     assert [e.label for e in registry.ENGINES.values()] == ["ARIMA", "ETS", "Blend"]
+
+
+def test_engines_with_a_fit_route_the_blends_parts_through_it() -> None:
+    calls: list[str] = []
+
+    def counting(code: str, data: SeriesInput, horizon: int) -> ForecastResult:
+        calls.append(code)
+        return registry.fit(code, data, horizon)
+
+    engines = registry.engines_with(counting)
+    blended = engines["blend"].forecast(ar1(), H, {})
+
+    assert list(engines) == ["arima", "ets", "blend"]
+    assert calls == ["arima", "ets"]
+    assert blended.point.equals(run("blend", ar1()).point)
 
 
 def test_an_unknown_engine_is_a_key_error() -> None:

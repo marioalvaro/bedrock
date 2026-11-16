@@ -1,6 +1,3 @@
-# Microsoft shows sales and marketing and general and administrative as two lines and no total.
-sga:
-  - us-gaap:SellingAndMarketingExpense + us-gaap:GeneralAndAdministrativeExpense
 # Short-term debt is a balance-sheet line only when Microsoft has commercial paper (FY2014-18 tagged
 # ShortTermBorrowings, which already includes it, so CommercialPaper must not be added; FY2024-25
 # tagged CommercialPaper), plus the current portion of long-term debt. In the years with no such
@@ -16,3 +13,22 @@ short_term_debt:
 # total_debt and net_debt are right, the split is approximate.
 long_term_debt:
   - us-gaap:LongTermDebtNoncurrent + us-gaap:FinanceLeaseLiability
+# M7b S7, extension tags (principle 2: the override file is where an extension reaches a row).
+# "Depreciation, amortization, and other" is Microsoft's only D&A line on the cash flow, filed as
+# msft:DepreciationAmortizationAndOther in every 10-K read (FY2015 3,755..5,957; FY2026 38,534).
+# Its "and other" is part of the line as Microsoft presents it.
+d_and_a:
+  - msft:DepreciationAmortizationAndOther
+# "Acquisition of companies, net of cash acquired, and purchases of intangible and other assets":
+# the default tag ranks first, so FY2008-11 keep the business-acquisition figure; the extension
+# (two spellings: FY2015 "...Netof...Intangibleand...") fills the later years.
+acquisitions:
+  - us-gaap:PaymentsToAcquireBusinessesNetOfCashAcquired
+  - msft:AcquisitionsNetOfCashAcquiredAndPurchasesOfIntangibleAndOtherAssets
+  - msft:AcquisitionsNetofCashAcquiredAndPurchasesOfIntangibleandOtherAssets
+# "Sales of investments" (msft:ProceedsFromInvestments, FY2019 on) and "Maturities of investments"
+# (us-gaap) are two lines; anchored on the extension. Before FY2019 both lines are us-gaap face
+# members and the face sum (R8) adds them.
+sales_maturities_of_investments:
+  - msft:ProceedsFromInvestments + us-gaap:ProceedsFromMaturitiesPrepaymentsAndCallsOfAvailableForSaleSecurities
+# The other extension lines of the cash flow are left for the user (Data gaps, "Lines to classify").

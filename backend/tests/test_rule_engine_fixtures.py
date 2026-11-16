@@ -182,3 +182,57 @@ def test_a_derived_total_liabilities_never_sits_beside_a_reported_temporary_equi
         for i, provenance in enumerate(rows["total_liabilities"].provenance):
             if provenance == "derived":
                 assert not rows["temporary_equity"].values[i], tables["BS"].periods[i].key
+
+
+# --- M7b S5: residual + components = subtotal, new rows included, on every development fixture ---
+
+DEVELOPMENT = ["AAPL", "MSFT", "COST", "DE", "BA", "JNJ", "NFLX", "NKE", "ORCL", "WMT"]
+# The income statement is a waterfall, not a sum of children: each subtotal from its lines.
+IS_WATERFALLS = {
+    "pretax_income": [
+        (1, "operating_income"),
+        (-1, "interest_expense"),
+        (1, "interest_income"),
+        (1, "other_nonoperating_income"),
+    ],
+    "total_operating_costs": [(1, "rnd"), (1, "sga"), (1, "other_operating_expenses")],
+}
+
+
+def _sums(ticker: str, freq: str) -> list[tuple[str, str, str, list[tuple[int, str]]]]:
+    """(statement, subtotal, residual, signed components) for every residual's subtotal."""
+    items = run_pipeline(ticker).items
+    found = []
+    for residual in (i for i in items if i.residual and i.parent is not None):
+        parent = residual.parent
+        assert parent is not None
+        if residual.statement == "IS":
+            terms = IS_WATERFALLS[parent]
+        else:
+            terms = [(1, i.code) for i in items if i.parent == parent and not i.custom]
+        found.append((residual.statement, parent, residual.code, terms))
+    return found
+
+
+@pytest.mark.parametrize("ticker", DEVELOPMENT)
+@pytest.mark.parametrize("freq", ["annual", "quarterly"])
+def test_residual_and_components_add_up_to_the_subtotal_in_every_period(
+    ticker: str, freq: str
+) -> None:
+    pipeline = run_pipeline(ticker)
+    tables = pipeline.annual if freq == "annual" else pipeline.quarterly
+    wrong: list[str] = []
+    checked = 0
+    for statement, subtotal, residual, terms in _sums(ticker, freq):
+        table = tables[statement]
+        rows = {r.code: r.values for r in table.rows}
+        for at, period in enumerate(table.periods):
+            total, rest = rows[subtotal][at], rows[residual][at]
+            if total is None or rest is None:
+                continue
+            parts = sum((sign * (rows[code][at] or Decimal(0)) for sign, code in terms), Decimal(0))
+            checked += 1
+            if parts != total:
+                wrong.append(f"{statement} {subtotal} {period.key}: {total} != parts {parts}")
+    assert checked > 0
+    assert wrong == [], "\n".join(wrong[:20])

@@ -16,6 +16,10 @@ CANDIDATES: tuple[tuple[tuple[int, int, int], str], ...] = (
     ((1, 0, 0), "c"),
     ((0, 1, 1), "n"),
     ((1, 1, 0), "n"),
+    # A random walk with drift: the model of a steady trend. Without it a trend could only be
+    # followed by an AR(1) on constant differences, a degenerate fit whose optimum differs by
+    # platform (macOS: rising; Linux: a mean-reverting model won and the forecast fell).
+    ((0, 1, 0), "t"),
 )
 
 

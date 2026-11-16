@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -7,11 +8,14 @@ from bedrock.ingest.parse import parse_companyfacts
 from bedrock.ingest.protocol import CompanyRef, SourceUnavailable
 from bedrock.ingest.sources import Sources
 from bedrock.repositories import companies as companies_repo
-from bedrock.repositories import corporate_actions as actions_repo
 from bedrock.repositories import facts as facts_repo
-from bedrock.repositories import prices as prices_repo
+from bedrock.services import consensus as consensus_service
 from bedrock.services.errors import CompanyNotFound
+from bedrock.services.filings import ingest_filings
 from bedrock.services.mappings import sync_mappings
+from bedrock.services.prices import update_prices
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -23,6 +27,12 @@ class RefreshResult:
     new_splits: int
     last_refreshed_at: datetime
     warnings: list[str]
+    new_filing_lines: int = 0  # face-statement lines read from the filings' own XBRL (M7b S6)
+
+
+# A refresh reads at most this many filings' XBRL: a new filing, or the newest year on a first
+# load. `backfill-filings` reads the rest.
+REFRESH_FILINGS_LIMIT = 4
 
 
 def refresh_company(
@@ -32,7 +42,11 @@ def refresh_company(
     company has no EDGAR data: only its prices are loaded.
 
     A price (or split) failure is a warning; an EDGAR failure is raised, and nothing is kept (not
-    even the mapping sync), so a failed refresh leaves the database as it was."""
+    even the mapping sync), so a failed refresh leaves the database as it was. After that commit,
+    the newest filings not read yet are read for their XBRL (`ingest_filings`, which commits
+    filing by filing); a failure there is a warning, never a rollback. The analyst consensus is
+    fetched last (`refresh_consensus`, which commits), so a company followed or refreshed between
+    two scheduled runs has it; a failure there is a warning too, and the stored rows are kept."""
     company = companies_repo.get_by_ticker(session, ticker.strip().upper())
     if company is None:
         raise CompanyNotFound(ticker)
@@ -49,15 +63,8 @@ def refresh_company(
         new_prices = 0
         new_splits = 0
         try:
-            since = prices_repo.last_date(session, company.id)
-            # Nothing can be newer than today, and the source rejects a start date after "now".
-            if since is None or since < now.astimezone(UTC).date():
-                quotes = sources.prices.fetch(CompanyRef(company.ticker, company.cik), since)
-                new_prices = prices_repo.insert_new(session, company.id, quotes.rows)
-                # The split history comes with every price fetch (full history, a handful of
-                # rows), so it is skipped with it when prices are already current today; a split
-                # effective today is picked up by the next day's refresh.
-                new_splits = actions_repo.insert_new(session, company.id, quotes.splits)
+            update = update_prices(session, sources.prices, company, now)
+            new_prices, new_splits = update.new_prices, update.new_splits
         except SourceUnavailable as error:
             warnings.append(f"prices and splits not updated: {error}")
 
@@ -67,6 +74,33 @@ def refresh_company(
     except Exception:
         session.rollback()
         raise
+
+    new_filing_lines = 0
+    try:
+        filings = ingest_filings(session, sources, company, limit=REFRESH_FILINGS_LIMIT)
+        new_filing_lines = filings.new_lines
+        warnings.extend(filings.warnings)
+    except Exception as error:  # the refresh is committed: any filings failure is a warning
+        session.rollback()
+        logger.exception("filings of %s not read", company.ticker)
+        warnings.append(f"filings not read: {error}")
+    if sources.consensus is not None:
+        try:
+            consensus_service.refresh_consensus(session, sources.consensus, company, now)
+        except SourceUnavailable as error:
+            session.rollback()
+            warnings.append(f"consensus not updated: {error}")
+        except Exception as error:  # the refresh is committed: never a 500 for the consensus
+            session.rollback()
+            logger.exception("consensus of %s not updated", company.ticker)
+            warnings.append(f"consensus not updated: {error}")
     return RefreshResult(
-        company.ticker, new_filings, new_facts, new_prices, new_splits, now, warnings
+        company.ticker,
+        new_filings,
+        new_facts,
+        new_prices,
+        new_splits,
+        now,
+        warnings,
+        new_filing_lines,
     )

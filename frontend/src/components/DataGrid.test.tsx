@@ -72,4 +72,31 @@ describe("DataGrid", () => {
     expect(latest().defaultColDef).toBe(first.defaultColDef);
     expect(latest().getRowId).toBe(first.getRowId);
   });
+
+  it("hands AG Grid one row-class function that maps the row through the latest prop", () => {
+    setReducedMotion(false);
+    const { rerender } = render(
+      <DataGrid<Row>
+        rowData={[]}
+        columnDefs={columns}
+        getRowId={(row) => row.id}
+        getRowClass={(row) => (row.id === "sub" ? "row-sub" : undefined)}
+      />,
+    );
+    const first = latest().getRowClass!;
+    rerender(
+      <DataGrid<Row>
+        rowData={[]}
+        columnDefs={columns}
+        getRowId={(row) => row.id}
+        getRowClass={(row) => (row.id === "head" ? "row-heading" : undefined)}
+      />,
+    );
+
+    const getRowClass = latest().getRowClass!;
+    expect(getRowClass).toBe(first);
+    const call = (id: string) => getRowClass({ data: { id } } as never);
+    expect(call("head")).toBe("row-heading");
+    expect(call("sub")).toBeUndefined();
+  });
 });

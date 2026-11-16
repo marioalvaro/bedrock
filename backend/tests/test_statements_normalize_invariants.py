@@ -200,9 +200,12 @@ def test_balanced_pairs_leave_the_balance_check_differences_unchanged(
         if c.difference is not None
     }
     chosen = sorted(complete)
+    # The annual BS shows only year-end (Q4) balances, so the first pair always lands on a Q4;
+    # otherwise a draw of only Q1..Q3 leaves the annual view untouched.
+    year_ends = [k for k in chosen if k[1] == "Q4"]
     adjustments: list[Adj] = []
     for n in range(10):
-        year, period = rng.choice(chosen)
+        year, period = rng.choice(year_ends if n == 0 else chosen)
         amount = Decimal(rng.randint(-5 * BILLION, 5 * BILLION))
         adjustments.append(Adj(2 * n + 1, rng.choice(assets).code, year, period, amount))
         adjustments.append(Adj(2 * n + 2, rng.choice(claims).code, year, period, amount))

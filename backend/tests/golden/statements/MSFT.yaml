@@ -104,6 +104,12 @@ expected_missing:
 # Concepts of the latest 10-K that the edgartools table recognizes but Bedrock does not map, each a
 # decision (map-xbrl run of 2026-10-09). test_mapping_coverage.py fails on a concept not listed here and
 # on a listed one that is mapped or gone.
+  interest_income: "M7b S5: Microsoft tags interest and dividends together (InvestmentIncomeNet, InvestmentIncomeInterestAndDividend), wider measures"
+  deferred_tax_assets: "M7b S5: a balance-sheet line only FY2009-10; after that inside other long-term assets"
+  deferred_tax_liabilities: "M7b S5: no FY2008 balance sheet (total assets start in FY2009)"
+  deferred_revenue_noncurrent: "M7b S5: no FY2008 balance sheet (total assets start in FY2009)"
+  pension_liabilities: "M7b S5: no defined benefit plan liability line"
+  cash_interest_paid: "M7b S5: only InterestPaid (includes capitalized interest, not a default)"
 acknowledged_unmapped:
   us-gaap:AvailableForSaleSecuritiesDebtSecurities: "investments-note total of debt securities; the balance-sheet investment lines are mapped"
   us-gaap:BuildingsAndImprovementsGross: "property-note component, gross of depreciation; ppe_net is the net balance-sheet line"
@@ -118,13 +124,10 @@ acknowledged_unmapped:
   us-gaap:InterestPaid: "supplemental cash disclosure of interest paid, not the expense"
   us-gaap:Land: "property-note component; ppe_net is the net balance-sheet line"
   us-gaap:LeaseholdImprovementsGross: "property-note component, gross of depreciation; ppe_net is the net balance-sheet line"
-  us-gaap:LongTermDebt: "total long-term debt including its current part (balance sheet: noncurrent line + current portion); long_term_debt is the noncurrent line"
   us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalAfterYearFive: "debt maturity schedule, not a balance-sheet line"
   us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInNextTwelveMonths: "debt maturity schedule, not a balance-sheet line"
   us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInYearFive: "debt maturity schedule, not a balance-sheet line"
   us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInYearFour: "debt maturity schedule, not a balance-sheet line"
   us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInYearThree: "debt maturity schedule, not a balance-sheet line"
   us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInYearTwo: "debt maturity schedule, not a balance-sheet line"
-  us-gaap:OperatingLeaseLiability: "current plus noncurrent operating lease liability; the canonical line is the noncurrent one"
-  us-gaap:ProceedsFromMaturitiesPrepaymentsAndCallsOfAvailableForSaleSecurities: "half of investment sales + maturities: the sales line is a custom tag from FY2019 that companyfacts omits, so no sum can cover the years (S3, map-xbrl run of 2026-10-09)"
   us-gaap:RestrictedInvestments: "investments-note detail, not a balance-sheet line"

@@ -6,12 +6,13 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy.orm import Session
 
+from bedrock.analysis.multiples import valuation_summary
 from bedrock.models.company import Company
 from bedrock.ratios.calculator import RatioInputs, compute_ratios
 from bedrock.ratios.caveats import load_caveats
 from bedrock.ratios.registry import RATIOS
 from bedrock.repositories import companies as companies_repo
-from bedrock.services.ratios import annual_ratios_from, ratios
+from bedrock.services.ratios import annual_ratios_from, current_ttm, multiples, ratios
 from bedrock.services.scenarios import load_history
 from bedrock.services.statements import statement_tables
 from bedrock.statements import build
@@ -31,8 +32,11 @@ def aapl_db(seed_db: Callable[..., None]) -> None:
 
 @pytest.fixture
 def aapl(aapl_db: None, db_session: Session) -> Company:
+    from .seed import read_recorded_filings
+
     company = companies_repo.get_by_ticker(db_session, "AAPL")
     assert company is not None
+    read_recorded_filings(db_session, company)  # as the fixture pipeline does (M7b S7)
     return company
 
 
@@ -165,3 +169,27 @@ def test_annual_ratios_from_loaded_tables_equal_the_annual_ratio_table(
     from_history = annual_ratios_from(db_session, aapl, history.annual)
 
     assert from_history == ratios(db_session, aapl, "annual", "normalized")
+
+
+# --- the multiples summary (one build of the statements per request, NFR-02) ---------------
+
+
+def test_multiples_solve_the_cells_once_and_equal_separate_builds(
+    db_session: Session, aapl: Company, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    current = current_ttm(db_session, aapl, "reported")
+    expected = (
+        current.close,
+        valuation_summary(ratios(db_session, aapl, "annual", "reported"), current.table),
+    )
+    calls: list[int] = []
+    real = build.solve_cells
+
+    def counting(*args, **kwargs):  # type: ignore[no-untyped-def]  # a spy on the real solver
+        calls.append(1)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(build, "solve_cells", counting)
+
+    assert multiples(db_session, aapl, "reported") == expected
+    assert len(calls) == 1

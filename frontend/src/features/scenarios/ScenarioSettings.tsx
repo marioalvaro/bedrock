@@ -150,7 +150,7 @@ export function ScenarioSettings({ ticker, scenario }: ScenarioSettingsProps) {
       >
         Save settings
       </Button>
-      <p className="text-muted-foreground self-center text-xs">Applies to Base, Bull and Bear</p>
+      <p className="text-muted-foreground self-center text-xs">Applies to Bull, Base and Bear</p>
       {error && (
         <p role="alert" className="text-destructive basis-full text-xs">
           {error}

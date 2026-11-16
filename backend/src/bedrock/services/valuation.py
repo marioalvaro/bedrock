@@ -21,7 +21,9 @@ from bedrock.repositories import comps as comps_repo
 from bedrock.repositories import prices as price_repo
 from bedrock.repositories import scenarios as scenarios_repo
 from bedrock.repositories import valuation_inputs as repo
+from bedrock.services import audit as audit_service
 from bedrock.services import comps as comps_service
+from bedrock.services import market as market_service
 from bedrock.services import ratios as ratios_service
 from bedrock.services.errors import CompsSetNotFound, InvalidValuationInput
 from bedrock.services.forecasts import CaseRun, run_case
@@ -112,6 +114,7 @@ class CaseValuation:
     valuation_date: date | None
     caveats: dict[str, str]  # by result key
     warnings: list[str]
+    inputs: ResolvedInputs
 
 
 @dataclass(frozen=True)
@@ -164,6 +167,8 @@ class _Context:
         self.close = price_repo.latest_close(session, company.id)
         self.shares = balance_sheet_shares(self.history.quarterly["BS"], self.history.annual["BS"])
         self.cases = scenarios_repo.cases_of(session, scenario.id)
+        # The market's discount defaults (risk-free rate, ERP, beta), the same for every case.
+        self.market_defaults = market_service.discount_defaults(session, company)
         self._ratios: RatioTable | None = None
         self._comparisons: dict[int, Any] = {}
 
@@ -211,19 +216,60 @@ def put_valuation_inputs(
     scenario, kase = get_case(session, company, scenario_id, case)
     values = _checked(session, company, rows)
     stamp = now.astimezone(UTC).replace(tzinfo=None) if now.tzinfo else now
+    before = _own_inputs(session, kase.id)
     repo.put_rows(session, kase.id, values, stamp)
+    _record_inputs(session, company, scenario, kase, "edit", before, stamp)
     session.commit()
     return valuation_inputs(session, company, scenario_id, case)
 
 
 def reset_valuation_inputs(
-    session: Session, company: Company, scenario_id: int, case: str
+    session: Session, company: Company, scenario_id: int, case: str, now: datetime
 ) -> InputsView:
     """Deletes every stored input of the case (it inherits Base or the defaults again)."""
-    _, kase = get_case(session, company, scenario_id, case)
+    scenario, kase = get_case(session, company, scenario_id, case)
+    before = _own_inputs(session, kase.id)
     repo.delete_all(session, kase.id)
+    stamp = now.astimezone(UTC).replace(tzinfo=None) if now.tzinfo else now
+    _record_inputs(session, company, scenario, kase, "reset", before, stamp)
     session.commit()
     return valuation_inputs(session, company, scenario_id, case)
+
+
+def _own_inputs(session: Session, case_id: int) -> dict[str, str | None]:
+    return {r.code: r.value for r in repo.list_rows(session, [case_id])}
+
+
+def _describe_input(code: str) -> tuple[str, str | None]:
+    """(label, unit) of a stored input; a code the catalog no longer has keeps its code."""
+    try:
+        definition = input_def(code)
+    except InvalidInput:
+        return code, None
+    return definition.label, definition.unit
+
+
+def _record_inputs(
+    session: Session,
+    company: Company,
+    scenario: Scenario,
+    kase: ScenarioCase,
+    action: str,
+    before: dict[str, str | None],
+    stamp: datetime,
+) -> None:
+    audit_service.record(
+        session,
+        company.id,
+        "valuation_input",
+        kase.id,
+        audit_service.case_scope(scenario.name, kase.case),
+        action,
+        before,
+        _own_inputs(session, kase.id),
+        _describe_input,
+        stamp,
+    )
 
 
 def _checked(
@@ -378,7 +424,7 @@ def _state(context: _Context, case: str) -> CaseState:
     else:
         resolved = run.drivers.resolved
         derived = derive(resolved, resolved.years[0], market)
-    inputs = resolve_inputs(base, own, case == "base", derived)
+    inputs = resolve_inputs(base, own, case == "base", derived, context.market_defaults)
     forecast = None if run is None else valuation_forecast(run.statements, run.drivers.resolved)
     return CaseState(scenario, case, context.history, run, forecast, inputs, market, error)
 
@@ -402,6 +448,7 @@ def _valued(context: _Context, state: CaseState) -> CaseValuation:
         valuation_date=getattr(details, "valuation_date", None),
         caveats=caveats,
         warnings=state.run.warnings,
+        inputs=state.inputs,
     )
 
 
@@ -422,7 +469,9 @@ def _own_history(
     row = next((r for r in context.ratios().rows if r.code == code), None)
     percentile = inputs.get(f"{code}_percentile")
     assert isinstance(percentile, Decimal)
-    return own_history_reference([] if row is None else row.values, percentile, label)
+    lookback = inputs.get(f"{code}_lookback")
+    years = None if lookback in (None, "all") else int(str(lookback))
+    return own_history_reference([] if row is None else row.values, percentile, label, years)
 
 
 def _peer_median(

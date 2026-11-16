@@ -234,6 +234,7 @@ export function guidanceEntry(overrides: Partial<GuidanceEntryOut> = {}): Guidan
     direction: "higher",
     given_on: "2023-11-02",
     source_note: null,
+    source: "management",
     actual: "391035000000",
     verdict: "beat",
     surprise: "0.015675",
@@ -303,8 +304,55 @@ export function guidance(overrides: Partial<GuidanceOut> = {}): GuidanceOut {
         hit_rate: "0.000000",
       },
     ],
+    consensus_summary: { beat: 0, in_range: 0, miss: 0, pending: 0, hit_rate: null },
+    consensus_by_metric: [],
     ...overrides,
   };
+}
+
+// A log with one analyst-consensus entry (read-only) beside management's FY2024 revenue.
+export function guidanceWithConsensus(): GuidanceOut {
+  return guidance({
+    entries: [
+      guidanceEntry({ id: 3 }),
+      guidanceEntry({
+        id: 7,
+        fiscal_year: 2026,
+        low: "476002000000",
+        high: "484000000000",
+        given_on: "2026-11-07",
+        source: "consensus",
+        source_note: "Analyst consensus (Yahoo, 37 analysts, as of 2026-11-07)",
+        actual: null,
+        verdict: "pending",
+        surprise: null,
+      }),
+    ],
+    summary: { beat: 1, in_range: 0, miss: 0, pending: 0, hit_rate: "1.000000" },
+    by_metric: [
+      {
+        metric: "revenue",
+        label: "Revenue",
+        beat: 1,
+        in_range: 0,
+        miss: 0,
+        pending: 0,
+        hit_rate: "1.000000",
+      },
+    ],
+    consensus_summary: { beat: 0, in_range: 0, miss: 0, pending: 1, hit_rate: null },
+    consensus_by_metric: [
+      {
+        metric: "revenue",
+        label: "Revenue",
+        beat: 0,
+        in_range: 0,
+        miss: 0,
+        pending: 1,
+        hit_rate: null,
+      },
+    ],
+  });
 }
 
 export function guidanceMetrics(): MetricChoiceOut[] {
@@ -323,6 +371,14 @@ export function guidanceMetrics(): MetricChoiceOut[] {
       group: "line",
       unit: "USD",
       default_direction: "lower",
+      quarterly: true,
+    },
+    {
+      metric: "eps_diluted",
+      label: "EPS (diluted)",
+      group: "line",
+      unit: "USD/shares",
+      default_direction: "higher",
       quarterly: true,
     },
     {

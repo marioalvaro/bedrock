@@ -1,6 +1,7 @@
 """The guidance log through the API (FR-ANL-09), on the recorded AAPL fixtures."""
 
 from collections.abc import Callable
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -9,12 +10,15 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from bedrock.models.company import Company
 from bedrock.models.guidance import Guidance
+from bedrock.statements import build
 
 API = "/api/v1"
 COMPANY = f"{API}/companies/AAPL"
 GUIDANCE = f"{COMPANY}/guidance"
 METRICS = f"{GUIDANCE}/metrics"
+HISTORY = f"{GUIDANCE}/history"
 BILLION = Decimal(1_000_000_000)
 
 REVENUE_FY2024 = Decimal(391_035_000_000)  # AAPL FY2024 10-K: net sales of 391,035 million
@@ -75,6 +79,7 @@ def _count(session: Session) -> int:
 def test_every_guidance_route_requires_a_session(client: TestClient) -> None:
     assert client.get(GUIDANCE).status_code == 401
     assert client.get(METRICS).status_code == 401
+    assert client.get(HISTORY, params={"metric": "revenue"}).status_code == 401
     assert client.post(GUIDANCE, json=ENTRY).status_code == 401
     assert client.put(f"{GUIDANCE}/1", json=ENTRY).status_code == 401
     assert client.delete(f"{GUIDANCE}/1").status_code == 401
@@ -83,6 +88,7 @@ def test_every_guidance_route_requires_a_session(client: TestClient) -> None:
 def test_an_unfollowed_ticker_is_a_404_on_every_route(authed_client: TestClient) -> None:
     assert authed_client.get(GUIDANCE).status_code == 404
     assert authed_client.get(METRICS).status_code == 404
+    assert authed_client.get(HISTORY, params={"metric": "revenue"}).status_code == 404
     assert authed_client.post(GUIDANCE, json=ENTRY).status_code == 404
     assert authed_client.put(f"{GUIDANCE}/1", json=ENTRY).status_code == 404
     assert authed_client.delete(f"{GUIDANCE}/1").status_code == 404
@@ -132,6 +138,7 @@ def test_the_created_entry_carries_every_field(aapl_client: TestClient) -> None:
         "direction",
         "given_on",
         "source_note",
+        "source",
         "actual",
         "verdict",
         "surprise",
@@ -508,3 +515,199 @@ def test_the_quarterly_flag_matches_what_a_quarter_accepts(aapl_client: TestClie
                 GUIDANCE, json={**ENTRY, "metric": metric["metric"], "fiscal_period": period}
             )
             assert response.status_code == (201 if accepted else 422), (metric, response.text)
+
+
+# --- consensus entries (docs/erd/analysis.md "Consensus guidance") ---------------------------
+
+
+def _consensus_entry(session: Session, **override: Any) -> int:
+    """A consensus entry as the daily refresh writes it (there is no route that creates one)."""
+    company = session.execute(select(Company).where(Company.ticker == "AAPL")).scalar_one()
+    fields: dict[str, Any] = {
+        "metric": "revenue",
+        "fiscal_year": 2024,
+        "fiscal_period": "FY",
+        "low": Decimal("385000000000"),
+        "high": Decimal("386000000000"),
+        "basis": "reported",
+        "direction": "higher",
+        "given_on": date(2024, 2, 1),
+        "source_note": "Analyst consensus (Yahoo, 30 analysts, as of 2024-02-01)",
+        "source": "consensus",
+        "created_at": datetime(2024, 2, 1),
+        "updated_at": datetime(2024, 2, 1),
+        **override,
+    }
+    row = Guidance(company_id=company.id, **fields)
+    session.add(row)
+    session.commit()
+    return row.id
+
+
+def test_a_posted_entry_is_management_guidance(aapl_client: TestClient) -> None:
+    assert post(aapl_client)["source"] == "management"
+
+
+def test_consensus_and_management_are_summarized_apart(
+    aapl_client: TestClient, db_session: Session
+) -> None:
+    post(aapl_client)  # 380-390 B: FY2024's 391 B beats it
+    consensus_id = _consensus_entry(db_session)  # 385-386 B, given later: also a beat
+
+    body = log(aapl_client)
+    by_id = {e["id"]: e for e in body["entries"]}
+    assert by_id[consensus_id]["source"] == "consensus"
+    assert all(e["latest"] for e in body["entries"])  # one record each
+    assert (body["summary"]["beat"], body["summary"]["pending"]) == (1, 0)
+    assert (body["consensus_summary"]["beat"], body["consensus_summary"]["pending"]) == (1, 0)
+    assert [m["metric"] for m in body["by_metric"]] == ["revenue"]
+    assert [m["metric"] for m in body["consensus_by_metric"]] == ["revenue"]
+
+
+def test_without_consensus_entries_the_consensus_summary_is_empty(aapl_client: TestClient) -> None:
+    post(aapl_client)
+    body = log(aapl_client)
+    assert body["consensus_summary"] == {
+        "beat": 0,
+        "in_range": 0,
+        "miss": 0,
+        "pending": 0,
+        "hit_rate": None,
+    }
+    assert body["consensus_by_metric"] == []
+
+
+def test_a_consensus_entry_cannot_be_edited_or_deleted(
+    aapl_client: TestClient, db_session: Session
+) -> None:
+    consensus_id = _consensus_entry(db_session)
+
+    edit = aapl_client.put(f"{GUIDANCE}/{consensus_id}", json=ENTRY)
+    remove = aapl_client.delete(f"{GUIDANCE}/{consensus_id}")
+
+    assert edit.status_code == 409 and "consensus" in edit.json()["detail"].lower()
+    assert remove.status_code == 409
+    (kept,) = log(aapl_client)["entries"]
+    assert (kept["id"], kept["low"], kept["source"]) == (consensus_id, "385000000000", "consensus")
+
+
+# --- actual history (the chart's earlier periods) ---------------------------------------------
+
+
+def history(client: TestClient, **params: str) -> dict[str, Any]:
+    response = client.get(HISTORY, params=params)
+    assert response.status_code == 200, response.text
+    body: dict[str, Any] = response.json()
+    return body
+
+
+def values_by_period(body: dict[str, Any]) -> dict[str, Decimal]:
+    return {
+        f"FY{p['fiscal_year']}" + ("" if p["fiscal_period"] == "FY" else p["fiscal_period"]): (
+            Decimal(p["value"])
+        )
+        for p in body["points"]
+    }
+
+
+def test_history_lists_every_annual_actual_oldest_first(aapl_client: TestClient) -> None:
+    body = history(aapl_client, metric="revenue", basis="reported", freq="annual")
+    assert (body["metric"], body["basis"], body["freq"]) == ("revenue", "reported", "annual")
+    points = body["points"]
+    assert len(points) > 5
+    assert all(p["fiscal_period"] == "FY" and p["value"] is not None for p in points)
+    years = [p["fiscal_year"] for p in points]
+    assert years == sorted(years) and len(set(years)) == len(years)
+    assert values_by_period(body)["FY2024"] == REVENUE_FY2024
+
+
+def test_history_defaults_to_reported_annual(aapl_client: TestClient) -> None:
+    body = history(aapl_client, metric="revenue")
+    assert (body["basis"], body["freq"]) == ("reported", "annual")
+
+
+def test_history_of_a_quarterly_line_matches_the_quarterly_table(aapl_client: TestClient) -> None:
+    body = history(aapl_client, metric="revenue", freq="quarterly")
+    keys = [(p["fiscal_year"], p["fiscal_period"]) for p in body["points"]]
+    assert all(period in {"Q1", "Q2", "Q3", "Q4"} for _, period in keys)
+    assert keys == sorted(keys)
+    expected = statement_value(aapl_client, "IS", "quarterly", "revenue", "FY2024Q3")
+    assert values_by_period(body)["FY2024Q3"] == expected
+
+
+def test_history_values_match_the_logs_actuals(aapl_client: TestClient) -> None:
+    annual = post(aapl_client, metric="gross_margin", low="0.4", high="0.45")
+    quarter = post(aapl_client, metric="gross_margin", fiscal_period="Q4", low="0.4", high="0.5")
+    yearly = values_by_period(history(aapl_client, metric="gross_margin"))
+    quarterly = values_by_period(history(aapl_client, metric="gross_margin", freq="quarterly"))
+    assert yearly["FY2024"] == Decimal(annual["actual"])
+    assert quarterly["FY2024Q4"] == Decimal(quarter["actual"])
+
+
+def test_history_of_a_kpi_reads_its_series_by_frequency(aapl_client: TestClient) -> None:
+    series = aapl_client.post(
+        f"{COMPANY}/segment-series",
+        json={"dimension": "kpi", "name": "Stores", "metric": "stores", "unit": "count"},
+    ).json()
+    values = {
+        "values": [
+            {"fiscal_year": 2024, "fiscal_period": "FY", "value": "535"},
+            {"fiscal_year": 2023, "fiscal_period": "FY", "value": "520"},
+            {"fiscal_year": 2024, "fiscal_period": "Q1", "value": "525"},
+        ]
+    }
+    assert aapl_client.put(
+        f"{COMPANY}/segment-series/{series['id']}/values", json=values
+    ).is_success
+    assert values_by_period(history(aapl_client, metric="kpi:stores")) == {
+        "FY2023": Decimal(520),
+        "FY2024": Decimal(535),
+    }
+    quarterly = history(aapl_client, metric="kpi:stores", freq="quarterly")
+    assert values_by_period(quarterly) == {"FY2024Q1": Decimal(525)}
+
+
+@pytest.mark.parametrize(
+    ("params", "needle"),
+    [
+        ({"metric": "nope"}, "nope"),
+        ({"metric": "kpi:gone"}, "KPI"),
+        ({"metric": "roe", "freq": "quarterly"}, "roe"),
+    ],
+)
+def test_history_of_an_unknown_or_unquarterly_metric_is_a_422(
+    aapl_client: TestClient, params: dict[str, str], needle: str
+) -> None:
+    response = aapl_client.get(HISTORY, params=params)
+    assert response.status_code == 422
+    assert needle in response.json()["detail"]
+
+
+def test_history_rejects_an_unknown_frequency_or_basis(aapl_client: TestClient) -> None:
+    assert (
+        aapl_client.get(HISTORY, params={"metric": "revenue", "freq": "monthly"}).status_code == 422
+    )
+    assert aapl_client.get(HISTORY, params={"metric": "revenue", "basis": "x"}).status_code == 422
+
+
+# --- cost ------------------------------------------------------------------------------------
+
+
+def test_the_log_builds_the_statements_once_per_basis(
+    aapl_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for basis in ("reported", "normalized"):
+        post(aapl_client, basis=basis)  # FY revenue: the annual tables
+        post(aapl_client, basis=basis, fiscal_period="Q3", low="1", high="2")  # a quarter
+    before = log(aapl_client)
+    calls: list[int] = []
+    real = build.solve_cells
+
+    def counting(*args, **kwargs):  # type: ignore[no-untyped-def]  # a spy on the real solver
+        calls.append(1)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(build, "solve_cells", counting)
+
+    assert log(aapl_client) == before
+    assert len(calls) == 2  # one solve per basis, annual and quarterly tables together

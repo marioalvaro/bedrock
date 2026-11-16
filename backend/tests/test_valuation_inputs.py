@@ -42,6 +42,7 @@ def test_the_catalog_is_in_the_erd_order() -> None:
         *[f"{m}_source" for m in TARGETS],
         *[f"{m}_multiple" for m in TARGETS],
         *[f"{m}_percentile" for m in TARGETS],
+        *[f"{m}_lookback" for m in TARGETS],
         *[f"{m}_year" for m in TARGETS],
         "comps_set_id",
     ]
@@ -68,6 +69,8 @@ def test_an_input_nobody_sets_takes_its_default() -> None:
         "ev_sales_multiple": None,
         "pe_percentile": D("0.5"),
         "ev_sales_percentile": D("0.5"),
+        "pe_lookback": "5",
+        "ev_sales_lookback": "5",
         "pe_year": 1,
         "ev_sales_year": 1,
         "comps_set_id": None,
@@ -302,3 +305,14 @@ def test_derive_without_a_resolution_derives_only_the_debt_weight() -> None:
     assert out["debt_weight"] == DerivedValue(None, NO_CLOSE)
     assert out["tax_rate"].value is None
     assert out["cost_of_debt"].follows == "risk_free_rate"
+
+
+@pytest.mark.parametrize("text", ["3", "4", "5", "10", "all"])
+def test_a_lookback_is_a_number_of_years_or_all(text: str) -> None:
+    assert parse_input("pe_lookback", text) == text
+
+
+@pytest.mark.parametrize("text", ["2", "7", "0", "", "ALL"])
+def test_a_lookback_outside_the_choices_is_refused(text: str) -> None:
+    with pytest.raises(InvalidInput):
+        parse_input("pe_lookback", text)

@@ -1,5 +1,6 @@
 # Canonical line items. File order is display order, each subtotal above its breakdown. `concepts` are filled per company by the map-xbrl skill (M1 S3).
-# Format and rules: docs/erd/data.md, "Canonical mapping file".
+# Format and rules: docs/erd/data.md, "Canonical mapping file". `required: true` marks a line every
+# company has: coverage counts it as a gap even when never reported (M7b S5, user 2026-11-14).
 items:
 - code: revenue
   statement: IS
@@ -13,6 +14,7 @@ items:
     - us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax
     - us-gaap:Revenues
     - us-gaap:SalesRevenueNet
+  required: true
   residual: false
 - code: cost_of_revenue
   statement: IS
@@ -26,6 +28,7 @@ items:
     - us-gaap:CostOfRevenue
     - us-gaap:CostOfGoodsAndServicesSold
     - us-gaap:CostOfGoodsSold
+  required: true
   residual: false
 - code: gross_profit
   statement: IS
@@ -38,6 +41,7 @@ items:
   concepts:
     - us-gaap:GrossProfit
   derive: revenue - cost_of_revenue
+  required: true
   residual: false
 - code: total_operating_costs
   statement: IS
@@ -61,6 +65,8 @@ items:
     - us-gaap:ResearchAndDevelopmentExpense
   residual: false
 - code: sga
+  # M7b S7, R8: the selling, marketing, advertising and administrative lines of the face
+  face_members: [SellingAndMarketingExpense, GeneralAndAdministrativeExpense, SellingExpense, MarketingExpense, MarketingAndAdvertisingExpense, AdvertisingExpense]
   statement: IS
   label: Selling, general & administrative
   kind: flow
@@ -70,6 +76,9 @@ items:
   rolls_into: ["-operating_income"]
   concepts:
     - us-gaap:SellingGeneralAndAdministrativeExpense
+    # M7b S3: "Sales and marketing" + "General and administrative" on two lines (NFLX, ORCL);
+    # anchored on selling, since a G&A line alone is a component of SG&A
+    - us-gaap:SellingAndMarketingExpense + us-gaap:GeneralAndAdministrativeExpense
   residual: false
 - code: other_operating_expenses
   statement: IS
@@ -92,6 +101,7 @@ items:
   rolls_into: [pretax_income]
   concepts:
     - us-gaap:OperatingIncomeLoss
+  required: true
   residual: false
 - code: pretax_income
   statement: IS
@@ -104,6 +114,7 @@ items:
   concepts:
     - us-gaap:IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest
     - us-gaap:IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments
+  required: true
   residual: false
 - code: interest_expense
   statement: IS
@@ -116,6 +127,22 @@ items:
   concepts:
     - us-gaap:InterestExpense
     - us-gaap:InterestExpenseNonoperating
+    - us-gaap:InterestAndDebtExpense  # M7b S3: BA "Interest and debt expense"
+  required: true
+  residual: false
+- code: interest_income
+  statement: IS
+  label: Interest income
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: pretax_income
+  rolls_into: [pretax_income]
+  # M7b S5: interest on nonoperating securities. InvestmentIncomeInterestAndDividend (dividends too)
+  # and InterestIncomeOperating (operating scope) are other measures
+  concepts:
+    - us-gaap:InvestmentIncomeInterest
+  forecast_fold: other_nonoperating_income
   residual: false
 - code: other_nonoperating_income
   statement: IS
@@ -126,7 +153,7 @@ items:
   parent: pretax_income
   rolls_into: [pretax_income]
   concepts: []
-  derive: pretax_income - operating_income + interest_expense
+  derive: pretax_income - operating_income + interest_expense - interest_income
   residual: true
 - code: net_income
   statement: IS
@@ -139,6 +166,7 @@ items:
   concepts:
     - us-gaap:ProfitLoss
     - us-gaap:NetIncomeLoss
+  required: true
   residual: false
 - code: income_tax
   statement: IS
@@ -150,6 +178,7 @@ items:
   rolls_into: ["-net_income"]
   concepts:
     - us-gaap:IncomeTaxExpenseBenefit
+  required: true
   residual: false
 - code: net_income_common
   statement: IS
@@ -163,6 +192,8 @@ items:
   derive: net_income - net_income_nci
   residual: false
 - code: net_income_nci
+  # M7b S7: R1b owns the zero of the NCI lines
+  zero_when_absent: false
   statement: IS
   label: Net income attributable to non-controlling interests
   kind: flow
@@ -192,6 +223,7 @@ items:
   parent: null
   concepts:
     - us-gaap:EarningsPerShareDiluted
+  required: true
   residual: false
 - code: dividends_per_share
   statement: IS
@@ -223,6 +255,7 @@ items:
   parent: null
   concepts:
     - us-gaap:WeightedAverageNumberOfDilutedSharesOutstanding
+  required: true
   residual: false
 - code: goodwill_impairment
   statement: IS
@@ -243,6 +276,7 @@ items:
   parent: null
   concepts:
     - us-gaap:Assets
+  required: true
   residual: false
 - code: total_current_assets
   statement: BS
@@ -263,6 +297,9 @@ items:
   parent: total_current_assets
   concepts:
     - us-gaap:CashAndCashEquivalentsAtCarryingValue
+    # M7b S4 combined line: cash and short-term investments reported as one line
+    - {concept: "us-gaap:CashCashEquivalentsAndShortTermInvestments", covers: [short_term_investments]}
+  required: true
   residual: false
 - code: short_term_investments
   statement: BS
@@ -296,6 +333,8 @@ items:
   parent: total_current_assets
   concepts:
     - us-gaap:InventoryNet
+    # M7b S3: inventory net of customer advances on long-term contracts, as BA presents it
+    - us-gaap:InventoryNetOfAllowancesCustomerAdvancesAndProgressBillings
   residual: false
 - code: other_current_assets
   statement: BS
@@ -337,6 +376,7 @@ items:
   concepts:
     - us-gaap:OperatingLeaseRightOfUseAsset
   residual: false
+  starts_with_standard: true
 - code: goodwill
   statement: BS
   label: Goodwill
@@ -370,6 +410,24 @@ items:
     - us-gaap:MarketableSecuritiesNoncurrent
     - us-gaap:AvailableForSaleSecuritiesNoncurrent
   residual: false
+- code: deferred_tax_assets
+  # M7b S7: companies fold this line into accrued or other liabilities (assets) without a
+  # combined concept, so a face without it does not prove a zero (R9 opts out)
+  zero_when_absent: false
+  statement: BS
+  label: Deferred tax assets
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_noncurrent_assets
+  # M7b S5: the balance-sheet line after jurisdictional netting. The noncurrent tag ranks first:
+  # before ASU 2015-17 the net tag can be the whole net position, current part included.
+  # DeferredTaxAssetsNet is the tax note's figure before netting, not the line
+  concepts:
+    - us-gaap:DeferredTaxAssetsNetNoncurrent
+    - us-gaap:DeferredIncomeTaxAssetsNet
+  forecast_fold: other_noncurrent_assets
+  residual: false
 - code: other_noncurrent_assets
   statement: BS
   label: Other non-current assets
@@ -378,7 +436,7 @@ items:
   sign: 1
   parent: total_noncurrent_assets
   concepts: []
-  derive: total_noncurrent_assets - ppe_net - operating_lease_rou - goodwill - intangibles - long_term_investments
+  derive: total_noncurrent_assets - ppe_net - operating_lease_rou - goodwill - intangibles - long_term_investments - deferred_tax_assets
   residual: true
 - code: total_liabilities
   statement: BS
@@ -391,6 +449,7 @@ items:
   concepts:
     - us-gaap:Liabilities
   derive: total_liabilities_and_equity - total_equity
+  required: true
   residual: false
 - code: total_current_liabilities
   statement: BS
@@ -413,6 +472,10 @@ items:
     - us-gaap:AccountsPayableCurrent
   residual: false
 - code: short_term_debt
+  # M7b S7, R8 (docs/erd/data-coverage.md "Structure rules"): disjoint parts of current debt by
+  # their us-gaap definitions, summed only from the lines a filing presents on the face (a member
+  # inside another, such as commercial paper under short-term borrowings, is dropped)
+  face_members: [CommercialPaper, ShortTermBorrowings, OtherShortTermBorrowings, NotesPayableCurrent, BankOverdrafts, LongTermDebtCurrent, FinanceLeaseLiabilityCurrent, CapitalLeaseObligationsCurrent, LongTermDebtAndCapitalLeaseObligationsCurrent, SecuredDebtCurrent]
   statement: BS
   label: Short-term debt
   kind: instant
@@ -421,8 +484,12 @@ items:
   parent: total_current_liabilities
   concepts:
     - us-gaap:DebtCurrent + us-gaap:FinanceLeaseLiabilityCurrent + us-gaap:CapitalLeaseObligationsCurrent
+  required: true
   residual: false
 - code: deferred_revenue_current
+  # M7b S7: companies fold this line into accrued or other liabilities (assets) without a
+  # combined concept, so a face without it does not prove a zero (R9 opts out)
+  zero_when_absent: false
   statement: BS
   label: Deferred revenue, current
   kind: instant
@@ -464,6 +531,8 @@ items:
   derive: total_liabilities - total_current_liabilities
   residual: false
 - code: long_term_debt
+  # M7b S7, R8: the noncurrent debt lines a filing may present apart (notes, loans, leases)
+  face_members: [LongTermNotesAndLoans, LongTermNotesPayable, SeniorLongTermNotes, LongTermLoansPayable, ConvertibleNotesPayable, FinanceLeaseLiabilityNoncurrent, CapitalLeaseObligationsNoncurrent, OtherLongTermDebtNoncurrent]
   statement: BS
   label: Long-term debt
   kind: instant
@@ -472,6 +541,8 @@ items:
   parent: total_noncurrent_liabilities
   concepts:
     - us-gaap:LongTermDebtNoncurrent + us-gaap:FinanceLeaseLiabilityNoncurrent + us-gaap:CapitalLeaseObligationsNoncurrent
+    - us-gaap:LongTermDebtAndCapitalLeaseObligations  # M7b S3: the noncurrent debt and lease total (BA)
+  required: true
   residual: false
 - code: operating_lease_liabilities_noncurrent
   statement: BS
@@ -483,6 +554,59 @@ items:
   concepts:
     - us-gaap:OperatingLeaseLiabilityNoncurrent
   residual: false
+  starts_with_standard: true
+- code: deferred_revenue_noncurrent
+  # M7b S7: companies fold this line into accrued or other liabilities (assets) without a
+  # combined concept, so a face without it does not prove a zero (R9 opts out)
+  zero_when_absent: false
+  statement: BS
+  label: Deferred revenue, non-current
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_noncurrent_liabilities
+  # M7b S5: in the order of deferred_revenue_current (the ASC 606 tag first)
+  concepts:
+    - us-gaap:ContractWithCustomerLiabilityNoncurrent
+    - us-gaap:DeferredRevenueNoncurrent
+  forecast_fold: other_noncurrent_liabilities
+  residual: false
+- code: deferred_tax_liabilities
+  # M7b S7: companies fold this line into accrued or other liabilities (assets) without a
+  # combined concept, so a face without it does not prove a zero (R9 opts out)
+  zero_when_absent: false
+  statement: BS
+  label: Deferred tax liabilities
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_noncurrent_liabilities
+  # M7b S5: as deferred_tax_assets (DeferredTaxLiabilities is the note's gross figure). A line
+  # "Deferred income taxes and other" is the combined entry: the other liabilities are inside it
+  concepts:
+    - us-gaap:DeferredTaxLiabilitiesNoncurrent
+    - us-gaap:DeferredIncomeTaxLiabilitiesNet
+    - concept: us-gaap:DeferredIncomeTaxesAndOtherLiabilitiesNoncurrent
+      covers: []
+  forecast_fold: other_noncurrent_liabilities
+  residual: false
+- code: pension_liabilities
+  # M7b S7: companies fold this line into accrued or other liabilities (assets) without a
+  # combined concept, so a face without it does not prove a zero (R9 opts out)
+  zero_when_absent: false
+  statement: BS
+  label: Pension and postretirement benefits
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_noncurrent_liabilities
+  # M7b S5: the defined benefit plans' noncurrent liability; the sum is the same scope on two lines
+  # (pension, other postretirement), anchored on pension
+  concepts:
+    - us-gaap:PensionAndOtherPostretirementDefinedBenefitPlansLiabilitiesNoncurrent
+    - us-gaap:DefinedBenefitPensionPlanLiabilitiesNoncurrent + us-gaap:OtherPostretirementDefinedBenefitPlanLiabilitiesNoncurrent
+  forecast_fold: other_noncurrent_liabilities
+  residual: false
 - code: other_noncurrent_liabilities
   statement: BS
   label: Other non-current liabilities
@@ -491,7 +615,7 @@ items:
   sign: 1
   parent: total_noncurrent_liabilities
   concepts: []
-  derive: total_noncurrent_liabilities - long_term_debt - operating_lease_liabilities_noncurrent
+  derive: total_noncurrent_liabilities - long_term_debt - operating_lease_liabilities_noncurrent - deferred_revenue_noncurrent - deferred_tax_liabilities - pension_liabilities
   residual: true
 - code: temporary_equity
   statement: BS
@@ -517,6 +641,7 @@ items:
     - us-gaap:StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest
     - us-gaap:StockholdersEquity
   derive: equity_parent + nci
+  required: true
   residual: false
 - code: equity_parent
   statement: BS
@@ -571,6 +696,8 @@ items:
   derive: equity_parent - common_stock_apic - retained_earnings - aoci
   residual: true
 - code: nci
+  # M7b S7: R1b owns the zero of the NCI lines (it reads the NCI-inclusive totals)
+  zero_when_absent: false
   statement: BS
   label: Non-controlling interests
   kind: instant
@@ -599,6 +726,7 @@ items:
   parent: null
   concepts: []
   derive: short_term_debt + long_term_debt
+  required: true
   residual: false
 - code: net_debt
   statement: BS
@@ -641,6 +769,47 @@ items:
     - us-gaap:TreasuryStockCommonShares
     - us-gaap:TreasuryStockShares
   residual: false
+# M7b S4: totals of a different scope, operands of the scope identities (never shown as missing)
+- code: long_term_debt_total
+  statement: BS
+  label: Long-term debt incl. current portion
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: null
+  concepts:
+    - us-gaap:LongTermDebt
+  residual: false
+- code: long_term_debt_current
+  statement: BS
+  label: Current portion of long-term debt
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: null
+  concepts:
+    - us-gaap:LongTermDebtCurrent
+  residual: false
+- code: operating_lease_liabilities_total
+  statement: BS
+  label: Operating lease liabilities, total
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: null
+  concepts:
+    - us-gaap:OperatingLeaseLiability
+  residual: false
+- code: operating_lease_liabilities_current
+  statement: BS
+  label: Operating lease liabilities, current
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: null
+  concepts:
+    - us-gaap:OperatingLeaseLiabilityCurrent
+  residual: false
 - code: cfo
   statement: CF
   label: Cash from operations
@@ -652,6 +821,7 @@ items:
   concepts:
     - us-gaap:NetCashProvidedByUsedInOperatingActivities
     - us-gaap:NetCashProvidedByUsedInOperatingActivitiesContinuingOperations
+  required: true
   residual: false
 - code: cf_net_income
   statement: CF
@@ -665,6 +835,8 @@ items:
     - us-gaap:NetIncomeLoss
   residual: false
 - code: d_and_a
+  # M7b S7, R8: depreciation and amortization when the face presents them apart (ORCL)
+  face_members: [Depreciation, AmortizationOfIntangibleAssets]
   statement: CF
   label: Depreciation & amortization
   kind: flow
@@ -708,6 +880,8 @@ items:
   concepts:
     - us-gaap:IncreaseDecreaseInAccountsReceivable
     - us-gaap:IncreaseDecreaseInReceivables
+    # M7b S4 combined line: trade and other receivables in one change (WMT)
+    - {concept: "us-gaap:IncreaseDecreaseInAccountsAndOtherReceivables", covers: []}
   residual: false
 - code: change_inventory
   statement: CF
@@ -728,6 +902,8 @@ items:
   parent: cfo
   concepts:
     - us-gaap:IncreaseDecreaseInAccountsPayable
+    # M7b S4 combined line: payables with accrued liabilities, which have no cash-flow row (DE, JNJ, ORCL)
+    - {concept: "us-gaap:IncreaseDecreaseInAccountsPayableAndAccruedLiabilities", covers: []}
   residual: false
 - code: other_operating_activities
   statement: CF
@@ -750,6 +926,7 @@ items:
   concepts:
     - us-gaap:NetCashProvidedByUsedInInvestingActivities
     - us-gaap:NetCashProvidedByUsedInInvestingActivitiesContinuingOperations
+  required: true
   residual: false
 - code: capex
   statement: CF
@@ -761,6 +938,7 @@ items:
   concepts:
     - us-gaap:PaymentsToAcquirePropertyPlantAndEquipment
     - us-gaap:PaymentsToAcquireProductiveAssets
+  required: true
   residual: false
 - code: acquisitions
   statement: CF
@@ -774,6 +952,8 @@ items:
     - us-gaap:PaymentsToAcquireBusinessesAndInterestInAffiliates
   residual: false
 - code: purchases_of_investments
+  # M7b S7, R8: the purchase lines of investments the face may present apart
+  face_members: [PaymentsToAcquireMarketableSecurities, PaymentsToAcquireHeldToMaturitySecurities, PaymentsToAcquireOtherInvestments]
   statement: CF
   label: Purchases of investments
   kind: flow
@@ -787,6 +967,8 @@ items:
     - us-gaap:PaymentsToAcquireAvailableForSaleSecurities
   residual: false
 - code: sales_maturities_of_investments
+  # M7b S7, R8: the sale and the maturity lines of investments the face may present apart
+  face_members: [ProceedsFromSaleOfAvailableForSaleSecurities, ProceedsFromSaleOfAvailableForSaleSecuritiesDebt, ProceedsFromMaturitiesPrepaymentsAndCallsOfAvailableForSaleSecurities, ProceedsFromSaleAndMaturityOfAvailableForSaleSecurities, ProceedsFromMaturitiesPrepaymentsAndCallsOfHeldToMaturitySecurities, ProceedsFromSaleOfShortTermInvestments, ProceedsFromSaleAndMaturityOfOtherInvestments, ProceedsFromSaleOfOtherInvestments]
   statement: CF
   label: Sales & maturities of investments
   kind: flow
@@ -818,8 +1000,11 @@ items:
   concepts:
     - us-gaap:NetCashProvidedByUsedInFinancingActivities
     - us-gaap:NetCashProvidedByUsedInFinancingActivitiesContinuingOperations
+  required: true
   residual: false
 - code: debt_issued
+  # M7b S7, R8: gross issuance lines of the face (a net change line is neither issued nor repaid)
+  face_members: [ProceedsFromIssuanceOfLongTermDebt, ProceedsFromShortTermDebt, ProceedsFromIssuanceOfDebt, ProceedsFromIssuanceOfSeniorLongTermDebt, ProceedsFromIssuanceOfCommercialPaper, ProceedsFromNotesPayable, ProceedsFromConvertibleDebt, ProceedsFromBankDebt, ProceedsFromShortTermDebtMaturingInThreeMonthsOrLess]
   statement: CF
   label: Debt issued
   kind: flow
@@ -831,6 +1016,8 @@ items:
     - us-gaap:ProceedsFromDebtMaturingInMoreThanThreeMonths
   residual: false
 - code: debt_repaid
+  # M7b S7, R8: gross repayment lines of the face
+  face_members: [RepaymentsOfLongTermDebt, RepaymentsOfShortTermDebt, RepaymentsOfDebt, RepaymentsOfSeniorDebt, RepaymentsOfCommercialPaper, RepaymentsOfNotesPayable, RepaymentsOfConvertibleDebt, RepaymentsOfBankDebt, RepaymentsOfShortTermDebtMaturingInThreeMonthsOrLess, RepaymentsOfLongTermDebtAndCapitalSecurities]
   statement: CF
   label: Debt repaid
   kind: flow
@@ -840,6 +1027,7 @@ items:
   concepts:
     - us-gaap:RepaymentsOfLongTermDebt + us-gaap:RepaymentsOfShortTermDebt
     - us-gaap:RepaymentsOfDebtMaturingInMoreThanThreeMonths
+    - us-gaap:RepaymentsOfDebt  # M7b S3: aggregate short- and long-term repayments (BA, NFLX, NKE, ORCL)
   residual: false
 - code: buybacks
   statement: CF
@@ -906,8 +1094,35 @@ items:
   parent: null
   concepts: []
   derive: cfo + capex
+  required: true
   residual: false
 
+- code: cash_taxes_paid
+  statement: CF
+  label: Cash paid for income taxes
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: null
+  # M7b S5: supplemental disclosure, a memo line. IncomeTaxesPaid is gross of refunds, and filers
+  # tag the same "cash paid for income taxes, net" line with it: equal to the net tag in every
+  # year where a development company tags both
+  concepts:
+    - us-gaap:IncomeTaxesPaidNet
+    - us-gaap:IncomeTaxesPaid
+  residual: false
+- code: cash_interest_paid
+  statement: CF
+  label: Cash paid for interest
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: null
+  # M7b S5: supplemental disclosure, a memo line, net of capitalized interest. InterestPaid
+  # includes capitalized interest, a wider measure (JNJ FY2012 576 against 492)
+  concepts:
+    - us-gaap:InterestPaidNet
+  residual: false
 # Accounting identities that fill an empty term from the others (docs/erd/data.md, "R1: identities").
 # Equations are in displayed values. Only terms under `solve` may be solved; modes: zero_only (the
 # result must be about 0 and is stored as an inferred 0), exact (a complete accounting definition),
@@ -934,3 +1149,11 @@ identities:
   - id: shares_outstanding_count
     equation: shares_outstanding = shares_issued - treasury_shares
     solve: {shares_outstanding: {mode: exact}}
+  # M7b S4 scope identities (docs/erd/data-coverage.md "Scope identities")
+  - id: long_term_debt_split
+    equation: long_term_debt_total = long_term_debt + long_term_debt_current
+    solve: {long_term_debt: {mode: exact}}
+    note: "debt only: the total concept carries no finance lease"
+  - id: operating_lease_split
+    equation: operating_lease_liabilities_total = operating_lease_liabilities_noncurrent + operating_lease_liabilities_current
+    solve: {operating_lease_liabilities_noncurrent: {mode: exact}}

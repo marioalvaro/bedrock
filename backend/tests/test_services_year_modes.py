@@ -316,7 +316,7 @@ def test_deleting_a_scenario_deletes_its_modes(db_session: Session, aapl: Compan
     _, span = _years(db_session, aapl)
     set_year_mode(db_session, aapl, other.id, span[0], "quarterly", NOW)
 
-    delete_scenario(db_session, aapl, other.id)
+    delete_scenario(db_session, aapl, other.id, NOW)
 
     from bedrock.models.scenario import ScenarioYearMode
 

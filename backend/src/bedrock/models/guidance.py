@@ -17,6 +17,7 @@ class Guidance(Base):
         CheckConstraint("fiscal_period IN ('FY', 'Q1', 'Q2', 'Q3', 'Q4')", name="fiscal_period"),
         CheckConstraint("basis IN ('reported', 'normalized')", name="basis"),
         CheckConstraint("direction IN ('higher', 'lower')", name="direction"),
+        CheckConstraint("source IN ('management', 'consensus')", name="source"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -33,6 +34,11 @@ class Guidance(Base):
     direction: Mapped[str] = mapped_column(String, nullable=False)
     given_on: Mapped[date] = mapped_column(Date, nullable=False)
     source_note: Mapped[str | None] = mapped_column(String, nullable=True)
+    # `management` (entered by the user) or `consensus` (logged by the daily consensus refresh,
+    # read-only); docs/erd/analysis.md "Consensus guidance".
+    source: Mapped[str] = mapped_column(
+        String, nullable=False, default="management", server_default="management"
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=utc_now, onupdate=utc_now

@@ -11,6 +11,8 @@ export function companyItem(overrides: Partial<CompanyListItem> = {}): CompanyLi
     source: "sec",
     sic: "3571",
     last_refreshed_at: new Date(Date.now() - 2 * 3_600_000).toISOString(),
+    filings_parsed: 0,
+    filings_total: 0,
     price: "231.40",
     price_date: "2026-10-07",
     market_cap: "3500000000000.00",
@@ -28,14 +30,25 @@ function coverageRow(overrides: Partial<CoverageOut> = {}): CoverageOut {
     cells: 100,
     filled: 95,
     fraction: "0.950000",
+    fraction_applicable: "0.950000",
     by_provenance: { reported: 80, derived: 10, zero_inferred: 3, approximated: 2, imported: 0 },
-    empty_by_cause: { no_filing_data: 0, structural: 1, rule_rejected: 1, not_reported: 3 },
+    empty_by_cause: {
+      no_filing_data: 0,
+      not_applicable: 0,
+      included_in: 0,
+      structural: 1,
+      rule_rejected: 1,
+      annual_only: 0,
+      extension_unclassified: 0,
+      not_reported: 3,
+    },
     ...overrides,
   };
 }
 
 export function mappingGaps(): MappingGapsOut {
   return {
+    unclassified_lines: [], // shown from M7b S8
     coverage: [
       coverageRow(),
       coverageRow({
@@ -43,16 +56,48 @@ export function mappingGaps(): MappingGapsOut {
         cells: 400,
         filled: 340,
         fraction: "0.887500",
-        by_provenance: { reported: 200, derived: 120, zero_inferred: 12, approximated: 8, imported: 0 },
-        empty_by_cause: { no_filing_data: 17, structural: 4, rule_rejected: 0, not_reported: 39 },
+        fraction_applicable: "0.887500",
+        by_provenance: {
+          reported: 200,
+          derived: 120,
+          zero_inferred: 12,
+          approximated: 8,
+          imported: 0,
+        },
+        empty_by_cause: {
+          no_filing_data: 17,
+          not_applicable: 0,
+          included_in: 0,
+          structural: 4,
+          rule_rejected: 0,
+          annual_only: 0,
+          extension_unclassified: 0,
+          not_reported: 39,
+        },
       }),
       coverageRow({
         statement: "BS",
         cells: 200,
         filled: 150,
         fraction: "0.750000",
-        by_provenance: { reported: 120, derived: 20, zero_inferred: 10, approximated: 0, imported: 0 },
-        empty_by_cause: { no_filing_data: 0, structural: 0, rule_rejected: 0, not_reported: 50 },
+        fraction_applicable: "0.750000",
+        by_provenance: {
+          reported: 120,
+          derived: 20,
+          zero_inferred: 10,
+          approximated: 0,
+          imported: 0,
+        },
+        empty_by_cause: {
+          no_filing_data: 0,
+          not_applicable: 0,
+          included_in: 0,
+          structural: 0,
+          rule_rejected: 0,
+          annual_only: 0,
+          extension_unclassified: 0,
+          not_reported: 50,
+        },
       }),
     ],
     rule_warnings: [

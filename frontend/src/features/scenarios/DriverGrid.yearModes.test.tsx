@@ -244,7 +244,7 @@ describe("year modes", () => {
       await userEvent.click(modeRadio("FY26E", "Annual"));
       const dialog = await screen.findByRole("alertdialog");
       expect(dialog).toHaveTextContent(
-        "FY26 returns to its annual values. The quarter values of Base, Bull and Bear are deleted.",
+        "FY26 returns to its annual values. The quarter values of Bull, Base and Bear are deleted.",
       );
       expect(setYearMode).not.toHaveBeenCalled();
     });

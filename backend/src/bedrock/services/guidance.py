@@ -17,6 +17,7 @@ from bedrock.analysis.guidance import (
     GuidanceEntry,
     GuidanceResult,
     GuidanceSummary,
+    Source,
     evaluate,
     quarter_margin,
     summarize,
@@ -29,15 +30,17 @@ from bedrock.repositories import guidance as repo
 from bedrock.repositories import segments as segments_repo
 from bedrock.services import ratios as ratios_service
 from bedrock.services.adjustments import AMOUNT_LIMIT
-from bedrock.services.errors import GuidanceNotFound, InvalidGuidance
+from bedrock.services.errors import GuidanceLocked, GuidanceNotFound, InvalidGuidance
 from bedrock.services.statements import canonical_items, statement_tables
 from bedrock.statements.build import StatementTable
 
 __all__ = [
     "GuidanceInput",
     "GuidanceLog",
+    "HistoryPoint",
     "LoggedEntry",
     "MetricChoice",
+    "actual_history",
     "create_entry",
     "delete_entry",
     "guidance_log",
@@ -50,6 +53,7 @@ YEAR_RANGE = (1000, 9999)  # four digits, as the segment import grammar
 _PERIOD_ORDER = {"FY": 0, "Q1": 1, "Q2": 2, "Q3": 3, "Q4": 4}
 
 Group = Literal["line", "ratio", "kpi"]
+Freq = Literal["annual", "quarterly"]
 # (code, fiscal_year, fiscal_period) -> value, for the lines of the statement tables read
 _LineValues = dict[tuple[str, int, str], Decimal | None]
 
@@ -78,6 +82,13 @@ class MetricChoice:
 
 
 @dataclass(frozen=True)
+class HistoryPoint:
+    fiscal_year: int
+    fiscal_period: str  # "FY" or "Q1".."Q4"
+    value: Decimal
+
+
+@dataclass(frozen=True)
 class LoggedEntry:
     stored: Guidance
     label: str
@@ -88,8 +99,9 @@ class LoggedEntry:
 @dataclass(frozen=True)
 class GuidanceLog:
     entries: list[LoggedEntry]  # by fiscal year, period (FY first), metric, given_on, id
-    summary: GuidanceSummary
-    labels: dict[str, str]  # metric -> label, for `summary.by_metric`
+    summary: GuidanceSummary  # management guidance
+    consensus_summary: GuidanceSummary  # analyst consensus, kept apart
+    labels: dict[str, str]  # metric -> label, for both summaries' `by_metric`
 
 
 def metric_choices(session: Session, company: Company) -> list[MetricChoice]:
@@ -143,8 +155,8 @@ def update_entry(
     session: Session, company: Company, guidance_id: int, data: GuidanceInput, now: datetime
 ) -> LoggedEntry:
     """Replaces the entry's fields under the rules of `create_entry`. Raises GuidanceNotFound
-    for an unknown id (or another company's)."""
-    stored = _stored(session, company, guidance_id)
+    for an unknown id (or another company's), GuidanceLocked for a consensus entry."""
+    stored = _editable(session, company, guidance_id)
     _validate(session, company, data)
     for name, value in _fields(data).items():
         setattr(stored, name, value)
@@ -154,8 +166,72 @@ def update_entry(
 
 
 def delete_entry(session: Session, company: Company, guidance_id: int) -> None:
-    repo.delete(session, _stored(session, company, guidance_id))
+    """Raises GuidanceNotFound for an unknown id, GuidanceLocked for a consensus entry."""
+    repo.delete(session, _editable(session, company, guidance_id))
     session.commit()
+
+
+def actual_history(
+    session: Session, company: Company, metric: str, basis: Basis, freq: Freq
+) -> list[HistoryPoint]:
+    """Every actual of `metric` in `freq`, oldest first, read as the log reads an entry's actual
+    (so a guided period's value is its entry's actual); periods without a value are left out.
+    An unknown metric, or a quarter of a metric that cannot be guided on one, is
+    `InvalidGuidance`."""
+    choice = next((c for c in metric_choices(session, company) if c.metric == metric), None)
+    if choice is None:
+        what = "KPI" if metric.startswith(KPI_PREFIX) else "metric"
+        raise InvalidGuidance(f"Unknown {what} {metric!r}")
+    if freq == "quarterly" and not choice.quarterly:
+        raise InvalidGuidance(
+            f"{metric} has no quarterly actuals; a quarter takes statement lines, KPIs and the "
+            f"margins {sorted(QUARTER_RATIOS)}"
+        )
+    values: dict[tuple[int, str], Decimal | None]
+    if choice.group == "kpi":
+        code = metric.removeprefix(KPI_PREFIX)
+        values = {(y, p): v for (c, y, p), v in _kpi_values(session, company).items() if c == code}
+    elif freq == "annual":
+        inputs = ratios_service.ratio_inputs(session, company, "annual", basis)
+        if choice.group == "ratio":
+            table = compute_ratios(inputs, "annual")
+            row = next(r for r in table.rows if r.code == metric)
+            values = {
+                (p.fiscal_year, p.fiscal_period): v
+                for p, v in zip(table.periods, row.values, strict=True)
+            }
+        else:
+            lines = _line_values([inputs.income, inputs.cash_flow, inputs.balance])
+            values = {(y, p): v for (c, y, p), v in lines.items() if c == metric}
+    else:
+        tables = statement_tables(
+            session,
+            company,
+            [("IS", "quarterly"), ("CF", "quarterly"), ("BS", "quarterly")],
+            basis,
+        )
+        lines = _line_values(list(tables.values()))
+        periods = {(y, p) for (_, y, p) in lines}
+        if choice.group == "ratio":
+            values = {
+                (y, p): quarter_margin(
+                    metric,
+                    {
+                        code: lines.get((code, y, p))
+                        for code in ("revenue", *QUARTER_RATIOS[metric])
+                    },
+                )
+                for y, p in periods
+            }
+        else:
+            values = {(y, p): lines.get((metric, y, p)) for y, p in periods}
+    return [
+        HistoryPoint(year, period, value)
+        for (year, period), value in sorted(
+            values.items(), key=lambda item: (item[0][0], _PERIOD_ORDER[item[0][1]])
+        )
+        if value is not None and (period == "FY") == (freq == "annual")
+    ]
 
 
 def _logged(session: Session, company: Company, guidance_id: int) -> LoggedEntry:
@@ -185,7 +261,12 @@ def _log(session: Session, company: Company, stored: Sequence[Guidance]) -> Guid
             )
         )
     labels = {e.stored.metric: e.label for e in entries}
-    return GuidanceLog(entries, summarize(results), labels)
+    return GuidanceLog(
+        entries,
+        summarize(r for r in results if r.entry.source == "management"),
+        summarize(r for r in results if r.entry.source == "consensus"),
+        labels,
+    )
 
 
 def _entry(stored: Guidance) -> GuidanceEntry:
@@ -199,6 +280,7 @@ def _entry(stored: Guidance) -> GuidanceEntry:
         basis=cast(Basis, stored.basis),
         direction=cast(Direction, stored.direction),
         given_on=stored.given_on,
+        source=cast(Source, stored.source),
     )
 
 
@@ -225,10 +307,23 @@ def _actuals(
     for basis in bases:
         mine = [g for g in stored if g.basis == basis and g.metric in catalogue]
         mine = [g for g in mine if catalogue[g.metric].group != "kpi"]
-        if any(g.fiscal_period == "FY" for g in mine):
-            inputs = ratios_service.ratio_inputs(session, company, "annual", basis)
-            lines = _line_values([inputs.income, inputs.cash_flow, inputs.balance])
-            table = compute_ratios(inputs, "annual")
+        annual = any(g.fiscal_period == "FY" for g in mine)
+        quarterly = any(g.fiscal_period != "FY" for g in mine)
+        if not (annual or quarterly):
+            continue
+        # One build of the statements per basis, the annual and quarterly tables together.
+        freqs: list[Freq] = []
+        if annual:
+            freqs.append("annual")
+        if quarterly:
+            freqs.append("quarterly")
+        built = statement_tables(
+            session, company, [(s, f) for f in freqs for s in ("IS", "CF", "BS")], basis
+        )
+        if annual:
+            by_statement = {s: built[(s, "annual")] for s in ("IS", "CF", "BS")}
+            lines = _line_values(list(by_statement.values()))
+            table = ratios_service.annual_ratios_from(session, company, by_statement)
             ratio_values: _LineValues = {
                 (row.code, p.fiscal_year, p.fiscal_period): v
                 for row in table.rows
@@ -240,13 +335,8 @@ def _actuals(
                     actuals[(basis, g.metric, g.fiscal_year, "FY")] = source.get(
                         (g.metric, g.fiscal_year, "FY")
                     )
-        if any(g.fiscal_period != "FY" for g in mine):
-            tables = statement_tables(
-                session,
-                company,
-                [("IS", "quarterly"), ("CF", "quarterly"), ("BS", "quarterly")],
-                basis,
-            )
+        if quarterly:
+            tables = {s: built[(s, "quarterly")] for s in ("IS", "CF", "BS")}
             lines = _line_values(list(tables.values()))
             for g in mine:
                 if g.fiscal_period == "FY":
@@ -333,6 +423,16 @@ def _stored(session: Session, company: Company, guidance_id: int) -> Guidance:
     stored = repo.get(session, company.id, guidance_id)
     if stored is None:
         raise GuidanceNotFound(str(guidance_id))
+    return stored
+
+
+def _editable(session: Session, company: Company, guidance_id: int) -> Guidance:
+    stored = _stored(session, company, guidance_id)
+    if stored.source == "consensus":
+        raise GuidanceLocked(
+            "Analyst consensus entries are logged by the daily refresh and cannot be edited or "
+            "deleted"
+        )
     return stored
 
 

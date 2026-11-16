@@ -8,7 +8,7 @@ from typing import Any
 
 import pandas as pd
 
-from bedrock.mapping.config import CanonicalItemDef
+from bedrock.mapping.config import CanonicalItemDef, signed_members
 from bedrock.mapping.vintage import BALANCE_DATE_TOLERANCE
 from bedrock.statements.cell_types import Derivation, Provenance
 from bedrock.statements.cells import compute_cells
@@ -57,6 +57,9 @@ class CellExplanation:
     # non-empty); `value` stays the reported figure
     adjustments: list[AppliedAdjustment] = field(default_factory=list)
     normalized_value: Decimal | None = None
+    # M7b S4: the codes inside a combined value; the line an empty cell's amount is inside
+    combined_with: tuple[str, ...] | None = None
+    included_in: str | None = None
 
 
 def explain_cell(
@@ -121,6 +124,8 @@ def explain_cell(
         vintages=vintages,
         adjustments=behind,
         normalized_value=normalized[(code, period.key)].value if behind else None,
+        combined_with=cell.combined_with,
+        included_in=cell.included_in,
     )
 
 
@@ -151,11 +156,11 @@ def _vintages(
     sign: int,
 ) -> list[Vintage]:
     """The cell's value as each filing reported it, oldest first. `concept` may be a summed
-    concept (`A + B`, see `map_facts`): its vintage at a filing is the sum of every member's latest
-    value filed on or before that filing, so the last vintage is the value the cell shows. A filing
-    counts when it carries any member and the anchor has a value by then."""
-    members = concept.split(" + ")
-    by_member: dict[str, list[dict[Hashable, Any]]] = {name: [] for name in members}
+    concept (`A + B - C`, see `map_facts`): its vintage at a filing is the weighted sum of every
+    member's latest value filed on or before that filing, so the last vintage is the value the
+    cell shows. A filing counts when it carries any member and the anchor has a value by then."""
+    weights = {name: weight for weight, _, name in signed_members(concept)}
+    by_member: dict[str, list[dict[Hashable, Any]]] = {name: [] for name in weights}
     for r in facts.to_dict("records"):
         if (
             r["taxonomy"] == taxonomy
@@ -179,13 +184,15 @@ def _vintages(
     filings = sorted({_filed_key(r): r for rows in by_member.values() for r in rows}.items())
     vintages: list[Vintage] = []
     for key, filing in filings:
-        known = [
-            [r for r in rows if _filed_key(r) <= key][-1:]  # the member's latest value as of then
-            for rows in by_member.values()
-        ]
-        if not known[0]:  # the anchor has no value yet
+        known = {
+            name: [r for r in rows if _filed_key(r) <= key][-1:]  # the latest value as of then
+            for name, rows in by_member.items()
+        }
+        if not next(iter(known.values())):  # the anchor has no value yet
             continue
-        total = sum((r["value"] for rows in known for r in rows), Decimal(0))
+        total = sum(
+            (r["value"] * weights[name] for name, rows in known.items() for r in rows), Decimal(0)
+        )
         vintages.append(
             Vintage(total * sign, filing["accession_no"], filing["form"], filing["filed_at"])
         )

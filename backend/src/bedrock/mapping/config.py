@@ -19,10 +19,36 @@ STATEMENTS = ("IS", "BS", "CF")
 KINDS = ("flow", "instant", "average")
 UNITS = ("USD", "USD/shares", "shares")
 DEFAULT_TAXONOMY = "us-gaap"
+# Taxonomies that are not a filer's own extension (docs/erd/data-coverage.md "Storage")
+STANDARD_TAXONOMIES = frozenset({"us-gaap", "dei", "srt", "ifrs-full"})
+# The override-file key that lists extension lines the user assigns to a residual (M7b S7)
+OTHER_LINES_KEY = "other_lines"
+ITEM_FIELDS = frozenset(
+    {
+        "code",
+        "statement",
+        "label",
+        "kind",
+        "unit",
+        "sign",
+        "parent",
+        "concepts",
+        "derive",
+        "residual",
+        "rolls_into",
+        "starts_with_standard",
+        "forecast_fold",
+        "required",
+        "face_members",
+        "zero_when_absent",
+    }
+)
 
 _CODE = r"[a-z][a-z0-9_]*"
 _FORMULA = re.compile(rf"^\s*({_CODE})(\s*[+-]\s*{_CODE})*\s*$")
 _TERM = re.compile(rf"([+-]?)\s*({_CODE})")
+# a member name holds no whitespace or sign of its own
+_BAD_NAME = re.compile(r"\s|^[+-]|[+-]$")
 
 
 class MappingConfigError(ValueError):
@@ -50,14 +76,43 @@ class CanonicalItemDef:
     # M3 S10c: a child line the user added in an import (`code` is `custom:<slug>`, `parent` a
     # canonical leaf or another custom line); it has no concept, formula or adjustment
     custom: bool = False
+    # M7b S2: a line an accounting standard introduced (ASC 842 leases); its cells before the
+    # company's first value are `not_applicable` in coverage, not gaps
+    starts_with_standard: bool = False
+    # M7b S4: the combined entries of `concepts` (docs/erd/data-coverage.md "Combined lines"), each
+    # as (entry, the canonical codes whose amount is inside it); empty when there are none
+    covers: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    # M7b S5: the residual a new row is added back into for the forecast (docs/erd/data-coverage.md
+    # "New canonical rows"), so the forecast keeps reading the residual it read before the row
+    forecast_fold: str | None = None
+    # M7b S5 (user, 2026-11-14): a line every company has. Coverage counts its empty cells as gaps
+    # even when the company never reports it; another line with no value in any period is
+    # `not_applicable` (statements/coverage.py)
+    required: bool = False
+    # M7b S7 (docs/erd/data-coverage.md "Structure rules"): concepts that are, by definition,
+    # disjoint parts of the line (R8 sums them from a filing's face), and whether the line may be
+    # inferred 0 when the face of a 10-K has none of it (R9)
+    face_members: tuple[str, ...] = ()
+    zero_when_absent: bool = True
 
 
-# Memo lines whose charge sits inside another line: adjust that line instead.
-MEMO_CODES = frozenset({"goodwill_impairment"})
+# Memo lines, never adjusted: a charge that sits inside another line (adjust that line instead), and
+# M7b S5's supplemental cash disclosures, which no statement total holds.
+MEMO_CODES = frozenset({"goodwill_impairment", "cash_taxes_paid", "cash_interest_paid"})
 
 # Lines that only feed an identity (R7): a company that does not report them has left nothing out,
 # so Data gaps does not list them.
-SUPPORT_CODES = frozenset({"shares_issued", "treasury_shares"})
+SUPPORT_CODES = frozenset(
+    {
+        "shares_issued",
+        "treasury_shares",
+        # M7b S4: the scope totals of docs/erd/data-coverage.md "Scope identities"
+        "long_term_debt_total",
+        "long_term_debt_current",
+        "operating_lease_liabilities_total",
+        "operating_lease_liabilities_current",
+    }
+)
 
 SOLVE_MODES = ("zero_only", "exact", "bounded")
 
@@ -79,6 +134,7 @@ class IdentityDef:
     equation: str
     terms: tuple[tuple[int, str], ...]
     solve: Mapping[str, SolveRule]
+    note: str = ""  # M7b S4: said after the formula of a solved cell (its scope), else empty
 
 
 def split_concept(text: str) -> tuple[str, str]:
@@ -87,10 +143,45 @@ def split_concept(text: str) -> tuple[str, str]:
     return (taxonomy, concept) if sep else (DEFAULT_TAXONOMY, text)
 
 
+# A member is added after `+` (spaces optional) and subtracted after ` - ` (a space on both
+# sides, since a taxonomy prefix such as `ifrs-full` holds a hyphen); a leading `-` negates the
+# anchor.
+_MEMBER_SEPARATOR = re.compile(r"\s*(\+)\s*|\s+(-)\s+")
+_LEADING_MINUS = re.compile(r"^\s*-\s*")
+
+
+def signed_members(entry: str) -> list[tuple[int, str, str]]:
+    """A concept entry `A + B - C` -> [(1, taxonomy, A), (1, taxonomy, B), (-1, taxonomy, C)]:
+    the weighted members of a summed concept, anchor first. A plain concept is a group of one,
+    `-A` a group of one subtracted member. Members are not validated here (see `_qualify_entry`)."""
+    anchor_weight = 1
+    rest = entry
+    if (lead := _LEADING_MINUS.match(entry)) is not None:
+        anchor_weight, rest = -1, entry[lead.end() :]
+    parts = _MEMBER_SEPARATOR.split(rest)
+    # split() returns [member, plus, minus, member, plus, minus, member, ...]
+    members = [(anchor_weight, parts[0])]
+    for at in range(1, len(parts), 3):
+        weight = -1 if parts[at + 1] == "-" else 1
+        members.append((weight, parts[at + 2]))
+    return [(weight, *split_concept(member.strip())) for weight, member in members]
+
+
+def covers_text(item: CanonicalItemDef, entry: str) -> str | None:
+    """How `concept_mapping.covers` stores an entry of `item`: None for a plain entry, else its
+    covered codes joined with `,` (an empty string for a combined entry that covers no row)."""
+    return next((",".join(codes) for e, codes in item.covers if e == entry), None)
+
+
+def covered_codes(text: str | None) -> tuple[str, ...] | None:
+    """`covers_text` read back: None for a plain entry, else the covered codes."""
+    return None if text is None else tuple(c for c in text.split(",") if c)
+
+
 def split_group(entry: str) -> list[tuple[str, str]]:
     """A concept entry `A + B` -> [(taxonomy, A), (taxonomy, B)]: the members of a summed concept,
-    anchor first. A plain concept is a group of one."""
-    return [split_concept(member.strip()) for member in entry.split("+")]
+    anchor first, without their weights (`signed_members`). A plain concept is a group of one."""
+    return [(taxonomy, concept) for _, taxonomy, concept in signed_members(entry)]
 
 
 def parse_formula(text: str) -> list[tuple[int, str]]:
@@ -111,12 +202,25 @@ def _read_items_file(path: Path) -> tuple[Any, Any]:
     return raw, None
 
 
+# path -> ((modification time, size), items): parsing the shipped file takes ~0.1 s, and every
+# refresh, mapping sync and filing read asks for it.
+_ITEMS_CACHE: dict[Path, tuple[tuple[int, int], tuple[CanonicalItemDef, ...]]] = {}
+
+
 def load_canonical_items(path: Path = DEFAULT_ITEMS_PATH) -> list[CanonicalItemDef]:
+    """The file's items, validated. Parsed once per file while its modification time and size
+    do not change; each call returns its own list of the (frozen) items."""
+    stat = path.stat()
+    stamp = (stat.st_mtime_ns, stat.st_size)
+    cached = _ITEMS_CACHE.get(path)
+    if cached is not None and cached[0] == stamp:
+        return list(cached[1])
     raw, _ = _read_items_file(path)
     if not isinstance(raw, list):
         raise MappingConfigError(f"{path.name} must be a list of items")
     items = [_item(entry) for entry in raw]
     _validate(items)
+    _ITEMS_CACHE[path] = (stamp, tuple(items))
     return items
 
 
@@ -158,18 +262,55 @@ def load_excludes(
     return {code: dropped for code, (_, dropped) in parsed.items() if dropped}
 
 
-def _read_overrides(
-    directory: Path, ticker: str, items: Sequence[CanonicalItemDef] | None
-) -> dict[str, tuple[list[str], list[str]]]:
+def load_other_lines(directory: Path, ticker: str) -> tuple[tuple[str, str], ...]:
+    """The extension lines the company's override file lists under `other_lines:` (M7b S7), as
+    (taxonomy, concept): lines on the face of a statement that the user assigns to the residual,
+    so the structure rules treat them as classified. Each is one extension concept, listed once;
+    a us-gaap line gets a triage verdict instead."""
+    raw = _override_file(directory, ticker)
+    entry = raw.get(OTHER_LINES_KEY)
+    if entry is None:
+        return ()
+    name = f"{ticker.upper()}.yaml"
+    if not isinstance(entry, list) or not all(isinstance(c, str) for c in entry):
+        raise MappingConfigError(f"{OTHER_LINES_KEY} must be a list of concepts in {name}")
+    lines: list[tuple[str, str]] = []
+    for text in entry:
+        members = signed_members(text)
+        if len(members) != 1 or members[0][0] != 1:
+            raise MappingConfigError(f"{OTHER_LINES_KEY}: {text!r} is not a single concept")
+        _, taxonomy, concept = members[0]
+        if not concept or _BAD_NAME.search(concept) or taxonomy in STANDARD_TAXONOMIES:
+            raise MappingConfigError(
+                f"{OTHER_LINES_KEY}: {text!r} must be an extension concept (a standard line "
+                "takes a verdict in concept_triage.yaml)"
+            )
+        if (taxonomy, concept) in lines:
+            raise MappingConfigError(f"{OTHER_LINES_KEY}: {text!r} is listed twice")
+        lines.append((taxonomy, concept))
+    return tuple(lines)
+
+
+def _override_file(directory: Path, ticker: str) -> dict[Any, Any]:
     path = directory / f"{ticker.upper()}.yaml"
     if not path.is_file():
         return {}
     raw = yaml.safe_load(path.read_text()) or {}
     if not isinstance(raw, dict):
         raise MappingConfigError(f"{path.name} must map codes to concept lists")
+    return raw
+
+
+def _read_overrides(
+    directory: Path, ticker: str, items: Sequence[CanonicalItemDef] | None
+) -> dict[str, tuple[list[str], list[str]]]:
+    path = directory / f"{ticker.upper()}.yaml"
+    raw = _override_file(directory, ticker)
     by_code = {i.code: i for i in items} if items is not None else None
     parsed: dict[str, tuple[list[str], list[str]]] = {}
     for code, entry in raw.items():
+        if code == OTHER_LINES_KEY:
+            continue
         item = None
         if by_code is not None:
             if code not in by_code:
@@ -178,7 +319,7 @@ def _read_overrides(
             if item.residual:
                 raise MappingConfigError("residual items cannot be overridden", code)
         concepts, exclude = _override_entry(path.name, code, entry)
-        added = _qualify(code, concepts)
+        added = _qualify(code, concepts, extension_sums=True)
         dropped: list[str] = []
         if exclude is not None:
             if item is None:
@@ -206,6 +347,10 @@ def _override_entry(file: str, code: str, entry: Any) -> tuple[list[str], list[s
             raise MappingConfigError(f"exclude must be `all` or a list of concepts in {file}", code)
     else:
         raise MappingConfigError(f"override must be a list of concepts in {file}", code)
+    if isinstance(concepts, list) and any(isinstance(c, dict) for c in concepts):
+        raise MappingConfigError(
+            f"a combined entry is a default, never an override, in {file}", code
+        )
     if not isinstance(concepts, list) or not all(isinstance(c, str) for c in concepts):
         raise MappingConfigError(f"override must be a list of concepts in {file}", code)
     return concepts, exclude
@@ -309,6 +454,9 @@ def _item(entry: Any) -> CanonicalItemDef:
     if not isinstance(entry, dict) or not isinstance(entry.get("code"), str):
         raise MappingConfigError(f"item without a code: {entry!r}")
     code = entry["code"]
+    unknown = sorted(str(k) for k in set(entry) - ITEM_FIELDS)
+    if unknown:
+        raise MappingConfigError(f"unknown field {unknown[0]!r}", code)
     for field in ("statement", "label", "kind", "unit", "sign"):
         if field not in entry:
             raise MappingConfigError(f"missing field {field!r}", code)
@@ -319,9 +467,28 @@ def _item(entry: Any) -> CanonicalItemDef:
             )
     if entry["sign"] not in (1, -1) or isinstance(entry["sign"], bool):
         raise MappingConfigError(f"sign must be 1 or -1, got {entry['sign']!r}", code)
-    concepts = entry.get("concepts") or []
-    if not isinstance(concepts, list) or not all(isinstance(c, str) for c in concepts):
-        raise MappingConfigError("concepts must be a list of strings", code)
+    concepts, covers = _concept_entries(code, entry.get("concepts") or [])
+    starts_with_standard = entry.get("starts_with_standard", False)
+    if not isinstance(starts_with_standard, bool):
+        raise MappingConfigError(
+            f"starts_with_standard must be true or false, got {starts_with_standard!r}", code
+        )
+    if starts_with_standard and (entry.get("residual") or entry.get("derive") is not None):
+        raise MappingConfigError(
+            "starts_with_standard is for a reported line, not a residual or a computed one", code
+        )
+    forecast_fold = _forecast_fold(code, entry)
+    required = entry.get("required", False)
+    if not isinstance(required, bool):
+        raise MappingConfigError(f"required must be true or false, got {required!r}", code)
+    if required and entry.get("residual"):
+        raise MappingConfigError("required is for a line coverage counts, not a residual", code)
+    face_members = _face_members(code, entry)
+    zero_when_absent = entry.get("zero_when_absent", True)
+    if not isinstance(zero_when_absent, bool):
+        raise MappingConfigError(
+            f"zero_when_absent must be true or false, got {zero_when_absent!r}", code
+        )
     return CanonicalItemDef(
         code=code,
         statement=entry["statement"],
@@ -332,9 +499,90 @@ def _item(entry: Any) -> CanonicalItemDef:
         parent=entry.get("parent"),
         concepts=tuple(_qualify(code, concepts)),
         derive=entry.get("derive"),
+        covers=covers,
         residual=bool(entry.get("residual", False)),
         rolls_into=_rolls_into(code, entry.get("rolls_into")),
+        starts_with_standard=starts_with_standard,
+        forecast_fold=forecast_fold,
+        required=required,
+        face_members=face_members,
+        zero_when_absent=zero_when_absent,
     )
+
+
+def _face_members(code: str, entry: dict[str, Any]) -> tuple[str, ...]:
+    """The item's `face_members`, each one qualified concept (never a sum), on a reported line;
+    a member that is another item's default concept is checked in `_validate`."""
+    raw = entry.get("face_members")
+    if raw is None:
+        return ()
+    if not isinstance(raw, list) or not all(isinstance(c, str) for c in raw):
+        raise MappingConfigError("face_members must be a list of concepts", code)
+    if entry.get("residual") or entry.get("derive") is not None:
+        raise MappingConfigError(
+            "face_members are for a reported line, not a residual or a computed one", code
+        )
+    members = []
+    for text in raw:
+        if len(signed_members(text)) != 1 or text.strip().startswith("-"):
+            raise MappingConfigError(f"a face member is one concept, not {text!r}", code)
+        members.append(_qualify_entry(code, text))
+    if len(set(members)) != len(members):
+        raise MappingConfigError("a face member is listed twice", code)
+    return tuple(members)
+
+
+def _forecast_fold(code: str, entry: dict[str, Any]) -> str | None:
+    """The item's `forecast_fold`: a code, on a reported line (no `derive`) with a parent; the
+    target is checked against the other items in `_validate`."""
+    target = entry.get("forecast_fold")
+    if target is None:
+        return None
+    if not isinstance(target, str) or not re.fullmatch(_CODE, target):
+        raise MappingConfigError(f"forecast_fold must be a code, got {target!r}", code)
+    if entry.get("residual") or entry.get("derive") is not None:
+        raise MappingConfigError("forecast_fold is for a reported line, not a computed one", code)
+    if entry.get("parent") is None:
+        raise MappingConfigError(
+            "forecast_fold needs a row with a parent (a memo row has none)", code
+        )
+    return target
+
+
+def _concept_entries(
+    code: str, raw: Any
+) -> tuple[list[str], tuple[tuple[str, tuple[str, ...]], ...]]:
+    """The item's concept entries as text, and its combined entries (`{concept, covers}`) as
+    (qualified entry, covered codes). A combined entry is a single concept and comes after every
+    plain entry; the covered codes are checked against the other items in `_validate`."""
+    if not isinstance(raw, list):
+        raise MappingConfigError("concepts must be a list of strings", code)
+    concepts: list[str] = []
+    covers: list[tuple[str, tuple[str, ...]]] = []
+    for entry in raw:
+        if isinstance(entry, str):
+            if covers:
+                raise MappingConfigError(
+                    "a combined entry comes after every plain entry of the item", code
+                )
+            concepts.append(entry)
+            continue
+        if not isinstance(entry, dict) or not isinstance(entry.get("concept"), str):
+            raise MappingConfigError(
+                "concepts must be a list of strings or {concept, covers}", code
+            )
+        if set(entry) != {"concept", "covers"}:
+            raise MappingConfigError("a combined entry takes exactly `concept` and `covers`", code)
+        codes = entry["covers"]
+        if not isinstance(codes, list) or not all(isinstance(c, str) for c in codes):
+            raise MappingConfigError("covers must be a list of codes", code)
+        if len(set(codes)) != len(codes):
+            raise MappingConfigError("a combined entry covers a code twice", code)
+        if len(signed_members(entry["concept"])) != 1 or entry["concept"].strip().startswith("-"):
+            raise MappingConfigError("a combined entry is a single concept, not a sum", code)
+        concepts.append(entry["concept"])
+        covers.append((_qualify_entry(code, entry["concept"]), tuple(codes)))
+    return concepts, tuple(covers)
 
 
 def _identity(entry: Any, by_code: dict[str, CanonicalItemDef]) -> IdentityDef:
@@ -346,6 +594,11 @@ def _identity(entry: Any, by_code: dict[str, CanonicalItemDef]) -> IdentityDef:
     identity_id, equation = entry["id"], entry["equation"]
     if not isinstance(identity_id, str) or not identity_id or not isinstance(equation, str):
         raise MappingConfigError(f"identity needs a text `id` and `equation`: {entry!r}")
+    if set(entry) - {"id", "equation", "solve", "note"}:
+        raise MappingConfigError(f"{identity_id}: unknown identity field in {entry!r}")
+    note = entry.get("note", "")
+    if not isinstance(note, str):
+        raise MappingConfigError(f"{identity_id}: the note must be text")
     terms = _equation_terms(identity_id, equation)
     for _, code in terms:
         if code not in by_code:
@@ -359,6 +612,7 @@ def _identity(entry: Any, by_code: dict[str, CanonicalItemDef]) -> IdentityDef:
         equation.strip(),
         terms,
         _solve_rules(identity_id, entry["solve"], terms, by_code),
+        note.strip(),
     )
 
 
@@ -413,25 +667,50 @@ def _max_ratio(identity_id: str, code: str, spec: dict[str, Any]) -> Decimal | N
     return ratio
 
 
-def _qualify(code: str, concepts: list[str]) -> list[str]:
+def _qualify(code: str, concepts: list[str], *, extension_sums: bool = False) -> list[str]:
     """Each entry as `taxonomy:Concept`, or `taxonomy:A + taxonomy:B` for a summed concept. The
     members of a sum are distinct and share one taxonomy; no entry may repeat (a concept may recur
-    as a member of another entry, which is how a sum falls back to its anchor alone)."""
-    qualified = [_qualify_entry(code, c) for c in concepts]
+    as a member of another entry, which is how a sum falls back to its anchor alone). With
+    `extension_sums` (an override file, M7b S7), a sum may also join us-gaap members and those of
+    one extension taxonomy: an extension line beside a us-gaap line on the face."""
+    qualified = [_qualify_entry(code, c, extension_sums) for c in concepts]
     if len(set(qualified)) != len(qualified):
         raise MappingConfigError("duplicate concept", code)
     return qualified
 
 
-def _qualify_entry(code: str, entry: str) -> str:
-    members = split_group(entry)
-    if any(not concept for _, concept in members):
+def _qualify_entry(code: str, entry: str, extension_sums: bool = False) -> str:
+    members = signed_members(entry)
+    names = [(taxonomy, concept) for _, taxonomy, concept in members]
+    if any(not concept or not taxonomy for taxonomy, concept in names):
         raise MappingConfigError(f"empty member in {entry!r}", code)
-    if len(set(members)) != len(members):
+    if any(_BAD_NAME.search(part) for name in names for part in name):  # `A + -B`, `A -B`
+        raise MappingConfigError(f"malformed member in {entry!r}", code)
+    if len(set(names)) != len(names):
         raise MappingConfigError(f"duplicate member in {entry!r}", code)
-    if len({taxonomy for taxonomy, _ in members}) > 1:
+    taxonomies = {taxonomy for taxonomy, _ in names}
+    mixed_ok = (
+        extension_sums
+        and len(taxonomies) == 2
+        and DEFAULT_TAXONOMY in taxonomies
+        and not (taxonomies - {DEFAULT_TAXONOMY}) & STANDARD_TAXONOMIES
+    )
+    if len(taxonomies) > 1 and not mixed_ok:
         raise MappingConfigError(f"members of {entry!r} must share a taxonomy", code)
-    return " + ".join(f"{taxonomy}:{concept}" for taxonomy, concept in members)
+    return join_members(members)
+
+
+def join_members(members: Sequence[tuple[int, str, str]]) -> str:
+    """The text of an entry from its weighted members: `-taxonomy:A + taxonomy:B - taxonomy:C`.
+    `signed_members` parses it back."""
+    text = ""
+    for at, (weight, taxonomy, concept) in enumerate(members):
+        if at:
+            text += " - " if weight < 0 else " + "
+        elif weight < 0:
+            text += "-"
+        text += f"{taxonomy}:{concept}"
+    return text
 
 
 def _validate(items: list[CanonicalItemDef]) -> None:
@@ -462,6 +741,57 @@ def _validate(items: list[CanonicalItemDef]) -> None:
                     raise MappingConfigError(
                         f"formula operand {operand!r} is on another statement", item.code
                     )
+
+    for item in items:
+        for _, covered in item.covers:
+            for target in covered:
+                other = by_code.get(target)
+                if other is None:
+                    raise MappingConfigError(f"covers unknown code {target!r}", item.code)
+                if target == item.code:
+                    raise MappingConfigError(
+                        "a combined entry cannot cover the item itself", item.code
+                    )
+                if other.residual:
+                    raise MappingConfigError(f"covers the residual {target!r}", item.code)
+                if other.statement != item.statement:
+                    raise MappingConfigError(
+                        f"covers {target!r}, which is not on the same statement", item.code
+                    )
+                if other.kind != item.kind:
+                    raise MappingConfigError(
+                        f"covers {target!r}, which is not of the same kind", item.code
+                    )
+
+    defaults = {
+        f"{taxonomy}:{concept}": item.code
+        for item in items
+        for entry in item.concepts
+        for _, taxonomy, concept in signed_members(entry)
+        if item.code not in SUPPORT_CODES  # an identity operand, not a line on the face
+    }
+    for item in items:
+        for member in item.face_members:
+            owner = defaults.get(member)
+            if owner is not None and owner != item.code:
+                raise MappingConfigError(
+                    f"face member {member!r} is a default concept of {owner!r}", item.code
+                )
+
+    for item in items:
+        if item.forecast_fold is None:
+            continue
+        residual = by_code.get(item.forecast_fold)
+        if residual is None or not residual.residual or residual.statement != item.statement:
+            raise MappingConfigError(
+                f"forecast_fold {item.forecast_fold!r} is not a residual of the same statement",
+                item.code,
+            )
+        if item.code not in {c for _, c in parse_formula(residual.derive or "")}:
+            raise MappingConfigError(
+                f"forecast_fold {item.forecast_fold!r}: its formula does not hold the row",
+                item.code,
+            )
 
     for item in items:  # walk each parent chain: a cycle never reaches a root
         seen = {item.code}

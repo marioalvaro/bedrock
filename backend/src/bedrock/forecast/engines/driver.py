@@ -13,7 +13,6 @@ from bedrock.forecast.history import (
     ForecastHistory,
     ScenarioSettings,
     SeriesHistory,
-    StatementValues,
     days,
     forecast_years,
     opening_period,
@@ -64,7 +63,16 @@ BALANCE_LINES = (
     + PARENT_EQUITY
     + ("nci",)
 )
-NOT_FORECAST = frozenset({"goodwill_impairment", "shares_issued", "treasury_shares"})
+# History lines with no driver; M7b S5's supplemental cash lines (memo) among them
+NOT_FORECAST = frozenset(
+    {
+        "goodwill_impairment",
+        "shares_issued",
+        "treasury_shares",
+        "cash_taxes_paid",
+        "cash_interest_paid",
+    }
+)
 EPS = frozenset({"eps_diluted", "eps_basic"})
 SHARE_LINES = ("shares_diluted", "shares_basic", "shares_outstanding")
 ZERO_CF = (
@@ -189,8 +197,8 @@ class _Run:
     warnings: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
-        self.annual = StatementValues(self.history.annual)
-        self.quarterly = StatementValues(self.history.quarterly)
+        self.annual = self.history.annual_values
+        self.quarterly = self.history.quarterly_values
         self.kinds = {
             row.code: row.kind
             for table in self.history.annual.values()

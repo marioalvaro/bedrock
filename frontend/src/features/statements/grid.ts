@@ -3,6 +3,8 @@ import { cellNotes, subjectNotes, type NoteIndex } from "@/features/notes/subjec
 import { formatPercent, formatValue, scaleLabel } from "@/lib/format";
 import type { Scale } from "@/lib/scale";
 
+export type EmptyCause = NonNullable<RowOut["empty_cause"][number]>;
+
 export type Provenance =
   | "reported"
   | "derived"
@@ -30,6 +32,12 @@ export interface GridRow {
   hasChildren: boolean; // a line item with a breakdown under it
   expanded: boolean; // whether that breakdown is shown
   custom: boolean; // a line the user added in an import (S10c)
+  // M7b S8, per period: the labels of the lines inside a combined value (an empty list when it
+  // covers no row; null when not combined), the label of the line an empty cell's amount is
+  // inside (null when not covered), and why an empty cell is empty (null when filled or unknown)
+  combinedWith: Record<string, string[] | null>;
+  includedIn: Record<string, string | null>;
+  emptyCause: Record<string, EmptyCause | null>;
 }
 
 export interface GridOptions {
@@ -49,13 +57,21 @@ function hasValue(values: (string | null)[]): boolean {
   return values.some((value) => value !== null);
 }
 
+// A line with a value, or with a cell whose amount is inside another line: "incl. in" is worth
+// seeing, an empty line is not.
+function hasContent(line: RowOut): boolean {
+  return hasValue(line.values) || line.included_in.some((code) => code !== null);
+}
+
+const NO_MARKS = { combinedWith: {}, includedIn: {}, emptyCause: {} };
+
 // The line items a statement shows. The payload is a flat list in display order with a depth,
 // each subtotal above its breakdown, so a line has a breakdown when the next shown line is deeper.
 // A line with no value in any period shows only when `showEmpty` is on and it is adjustable; each
 // otherwise hidden ancestor of such a line shows too, so the line keeps its real parent.
 function shownLines(payload: StatementOut, showEmpty: boolean): RowOut[] {
   const lines = payload.rows;
-  const shown = lines.map((line) => hasValue(line.values));
+  const shown = lines.map(hasContent);
   if (showEmpty) {
     lines.forEach((line, index) => {
       if (shown[index] || !line.adjustable) return;
@@ -96,7 +112,8 @@ function subRow(
     code: line.code,
     label,
     parentLabel: line.label,
-    depth: line.depth + 1,
+    // At the line's own depth: one level in, it would line up with the line's breakdown.
+    depth: line.depth,
     unit: "%",
     kind,
     values: byPeriod(keys, values),
@@ -108,6 +125,7 @@ function subRow(
     hasChildren: false,
     expanded: false,
     custom: false,
+    ...NO_MARKS,
   };
 }
 
@@ -118,6 +136,8 @@ function subRow(
 export function toGridRows(payload: StatementOut, options: GridOptions): GridRow[] {
   const keys = payload.periods.map((period) => period.key);
   const rows: GridRow[] = [];
+  const labels = new Map(payload.rows.map((line) => [line.code, line.label]));
+  const labelOf = (code: string) => labels.get(code) ?? code;
 
   const lines = shownLines(payload, options.showEmpty ?? false);
   const open: { depth: number; expanded: boolean }[] = []; // the ancestors of the current line
@@ -143,6 +163,15 @@ export function toGridRows(payload: StatementOut, options: GridOptions): GridRow
       hasChildren,
       expanded,
       custom: line.custom,
+      combinedWith: byPeriod(
+        keys,
+        line.combined_with.map((codes) => codes?.map(labelOf) ?? null),
+      ),
+      includedIn: byPeriod(
+        keys,
+        line.included_in.map((code) => (code === null ? null : labelOf(code))),
+      ),
+      emptyCause: byPeriod(keys, line.empty_cause),
     });
     if (options.yoy) {
       const yoy = subRow(line, keys, "yoy", "YoY", line.yoy);
@@ -174,6 +203,7 @@ export function toGridRows(payload: StatementOut, options: GridOptions): GridRow
       hasChildren: false,
       expanded: false,
       custom: false,
+      ...NO_MARKS,
     });
   }
 
@@ -190,7 +220,43 @@ const OTHER_PREFIX = "other:";
 export function canExplain(row: GridRow, period: PeriodOut): boolean {
   if (row.kind !== "line" || period.key.startsWith("TTM") || period.is_forecast) return false;
   if (row.code.startsWith(OTHER_PREFIX)) return false;
-  return row.values[period.key] !== null || row.adjustable;
+  return row.values[period.key] !== null || row.adjustable || isIncluded(row, period.key);
+}
+
+function isIncluded(row: GridRow, key: string): boolean {
+  return row.values[key] === null && (row.includedIn[key] ?? null) !== null;
+}
+
+function isInapplicable(row: GridRow, key: string): boolean {
+  return row.values[key] === null && row.emptyCause[key] === "not_applicable";
+}
+
+// A value that holds other lines too (a combined line, M7b S4): the grid marks it.
+export function isCombined(row: GridRow, key: string): boolean {
+  return row.values[key] !== null && (row.combinedWith[key] ?? null) !== null;
+}
+
+// The tooltip of a carrier or a covered cell; undefined for any other cell.
+export function cellTitle(row: GridRow, key: string): string | undefined {
+  if (isCombined(row, key)) return includesText(row.combinedWith[key] as string[]);
+  if (isIncluded(row, key)) return includedInText(row.includedIn[key] as string);
+  return undefined;
+}
+
+// What a combined value holds, by label; the grid's tooltip and the cell sheet say the same.
+export function includesText(labels: readonly string[]): string {
+  return labels.length > 0
+    ? `Includes ${labels.join(", ")}`
+    : "Includes other lines with no row of their own";
+}
+
+export function includedInText(label: string): string {
+  return `Included in ${label}`;
+}
+
+// A covered or inapplicable cell reads as a note, not as a figure.
+export function cellStateClasses(row: GridRow, key: string): string[] {
+  return isIncluded(row, key) || isInapplicable(row, key) ? ["cell-muted"] : [];
 }
 
 // The statement header names the USD scale; rows in another unit say so themselves.
@@ -206,6 +272,8 @@ export function cellText(row: GridRow, key: string, scale: Scale): string {
     return row.ok?.[key] ? "✓" : formatValue(value, row.unit, scale);
   }
   if (row.kind === "yoy" || row.kind === "common_size") return formatPercent(value);
+  if (isIncluded(row, key)) return `incl. in ${row.includedIn[key]}`;
+  if (isInapplicable(row, key)) return "n/a";
   const text = formatValue(value, row.unit, scale);
   return value === null ? text : provenanceMark(row.provenance[key]) + text;
 }

@@ -31,6 +31,7 @@ EXPOSE 8000
 CMD ["sh", "-c", "alembic upgrade head && exec uvicorn bedrock.main:create_app --factory --host 0.0.0.0 --port 8000 --workers 3"]
 
 # --- dev: app + dev deps, auto-reload (source is bind-mounted by compose) ---
+# Reload on src/ only: an edit to tests/ or docs must not restart the app.
 FROM app AS dev
 RUN uv sync --frozen
-CMD ["sh", "-c", "alembic upgrade head && exec uvicorn bedrock.main:create_app --factory --host 0.0.0.0 --port 8000 --reload"]
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn bedrock.main:create_app --factory --host 0.0.0.0 --port 8000 --reload --reload-dir src"]

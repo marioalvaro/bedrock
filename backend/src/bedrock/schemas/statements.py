@@ -1,4 +1,4 @@
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from datetime import date
 from decimal import Decimal
 from typing import Literal
@@ -9,6 +9,7 @@ from bedrock.schemas.adjustments import CellAdjustmentOut
 from bedrock.services.adjustments import CellAdjustment
 from bedrock.services.statements import MappingGaps
 from bedrock.statements.build import StatementTable
+from bedrock.statements.coverage import Cause
 from bedrock.statements.explain import CellExplanation
 from bedrock.statements.periods import Period
 
@@ -57,6 +58,13 @@ class RowOut(BaseModel):
     adjustable: bool  # a normalization adjustment may target this line
     custom: bool  # a custom line, or the `Other` row of a custom breakdown
     parent: str | None  # the line a custom row sits under
+    # M7b S4: per period, the codes inside a combined value (empty when it covers no row; null
+    # when not combined), and the line an empty cell's amount is inside (null when not covered)
+    combined_with: list[list[str] | None]
+    included_in: list[str | None]
+    # M7b S8: per period, why the cell is empty (`statements/coverage.py::CAUSES`); null for a
+    # filled cell, a row coverage does not count (residuals, support and custom lines) and TTM
+    empty_cause: list[Cause | None]
 
 
 class BalanceCheckOut(BaseModel):
@@ -86,8 +94,11 @@ class StatementOut(BaseModel):
         basis: Literal["reported", "normalized"],
         currency: str,
         forecast_keys: Collection[str] = (),
+        causes: Mapping[tuple[str, str], Cause] | None = None,
     ) -> "StatementOut":
-        """`forecast_keys`: the periods that are forecast, not actual."""
+        """`forecast_keys`: the periods that are forecast, not actual. `causes`: the cause of each
+        empty cell by (code, period key), as `table_coverage` gives them."""
+        why = causes or {}
         return cls(
             ticker=ticker,
             statement=statement,
@@ -110,6 +121,9 @@ class StatementOut(BaseModel):
                     adjustable=r.adjustable,
                     custom=r.custom,
                     parent=r.parent,
+                    combined_with=[None if c is None else list(c) for c in r.combined_with],
+                    included_in=r.included_in,
+                    empty_cause=[why.get((r.code, p.key)) for p in table.periods],
                 )
                 for r in table.rows
             ],
@@ -169,6 +183,9 @@ class CellDetailOut(BaseModel):
     # the value with them applied; null when no adjustment changes the cell, or when normalization
     # empties it (then `adjustments` is non-empty)
     normalized_value: Decimal | None
+    # M7b S4: as on the statement row (docs/erd/data-coverage.md "Combined lines")
+    combined_with: list[str] | None
+    included_in: str | None
 
     @classmethod
     def from_explanation(
@@ -210,6 +227,8 @@ class CellDetailOut(BaseModel):
             ],
             adjustments=[CellAdjustmentOut.from_cell(a) for a in adjustments],
             normalized_value=cell.normalized_value,
+            combined_with=None if cell.combined_with is None else list(cell.combined_with),
+            included_in=cell.included_in,
         )
 
 
@@ -246,9 +265,15 @@ class ProvenanceCountsOut(BaseModel):
 
 
 class CauseCountsOut(BaseModel):
-    no_filing_data: int  # the statement has no data at all in the period
+    """Empty cells by cause, in the order a cell takes them (docs/erd/data-coverage.md)."""
+
+    no_filing_data: int  # no anchor of the statement has a value in the period
+    not_applicable: int  # a rule proves the line cannot exist in the period
+    included_in: int  # the value is inside another line (M7b S4)
     structural: int  # the company maps no concept to the line and it has no formula
     rule_rejected: int  # a rule produced a value that a guard refused
+    annual_only: int  # quarterly: the year has a value and none of its quarters has
+    extension_unclassified: int  # an unclassified filing line in the item's block (M7b S7)
     not_reported: int  # everything else
 
 
@@ -257,8 +282,10 @@ class CoverageOut(BaseModel):
     freq: Literal["annual", "quarterly"]
     cells: int
     filled: int
-    # filled / (cells - no_filing_data) as a fraction; null when there is nothing to cover
+    # strict: filled / (cells - no_filing_data) as a fraction; null when there is nothing to cover
     fraction: Decimal | None
+    # filled / (cells - no_filing_data - not_applicable - included_in); null likewise
+    fraction_applicable: Decimal | None
     by_provenance: ProvenanceCountsOut
     empty_by_cause: CauseCountsOut
 
@@ -273,11 +300,25 @@ class RuleWarningOut(BaseModel):
     reason: str
 
 
+class UnclassifiedLineOut(BaseModel):
+    """A face line of the newest 10-K or 10-Q nobody classified (M7b S7): map it in the
+    company's override file, or list it under `other_lines:`."""
+
+    statement: Literal["IS", "BS", "CF"]
+    taxonomy: str
+    concept: str
+    label: str
+    latest_value: Decimal
+    latest_period_end: date
+    filings: list[str]  # accession numbers, newest first
+
+
 class MappingGapsOut(BaseModel):
     missing_items: list[MissingItemOut]
     unmapped_concepts: list[UnmappedConceptOut]
     coverage: list[CoverageOut]
     rule_warnings: list[RuleWarningOut]
+    unclassified_lines: list[UnclassifiedLineOut]
 
     @classmethod
     def from_gaps(cls, gaps: MappingGaps) -> "MappingGapsOut":
@@ -319,6 +360,7 @@ class MappingGapsOut(BaseModel):
                     cells=c.cells,
                     filled=c.filled,
                     fraction=c.fraction,
+                    fraction_applicable=c.fraction_applicable,
                     by_provenance=ProvenanceCountsOut(**c.by_provenance),
                     empty_by_cause=CauseCountsOut(**c.empty_by_cause),
                 )
@@ -335,5 +377,17 @@ class MappingGapsOut(BaseModel):
                     reason=w.warning.reason,
                 )
                 for w in gaps.rule_warnings
+            ],
+            unclassified_lines=[
+                UnclassifiedLineOut(
+                    statement=u.statement,
+                    taxonomy=u.taxonomy,
+                    concept=u.concept,
+                    label=u.label,
+                    latest_value=u.latest_value,
+                    latest_period_end=u.latest_period_end,
+                    filings=u.filings,
+                )
+                for u in gaps.unclassified_lines
             ],
         )

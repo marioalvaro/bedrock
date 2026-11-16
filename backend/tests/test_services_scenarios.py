@@ -353,9 +353,9 @@ def test_another_company_s_scenario_is_not_found(
     with pytest.raises(ScenarioNotFound):
         update_scenario(db_session, aapl, other.id, SettingsInput(name="X"), NOW)
     with pytest.raises(ScenarioNotFound):
-        delete_scenario(db_session, aapl, other.id)
+        delete_scenario(db_session, aapl, other.id, NOW)
     with pytest.raises(ScenarioNotFound):
-        delete_scenario(db_session, aapl, 999_999)
+        delete_scenario(db_session, aapl, 999_999, NOW)
     with pytest.raises(ScenarioNotFound):
         reset_case(db_session, aapl, other.id, "bull", NOW)
 
@@ -364,7 +364,7 @@ def test_the_default_scenario_cannot_be_deleted(db_session: Session, aapl: Compa
     main = _main(db_session, aapl)
 
     with pytest.raises(ScenarioConflict, match="The default scenario cannot be deleted"):
-        delete_scenario(db_session, aapl, main.id)
+        delete_scenario(db_session, aapl, main.id, NOW)
 
 
 def test_deleting_a_scenario_deletes_its_cases_and_driver_rows(
@@ -378,7 +378,7 @@ def test_deleting_a_scenario_deletes_its_cases_and_driver_rows(
         - len(_rows(db_session, extra, "bear"))
     )
 
-    delete_scenario(db_session, aapl, extra.id)
+    delete_scenario(db_session, aapl, extra.id, NOW)
 
     assert [s.name for s in list_scenarios(db_session, aapl, NOW)] == ["Main"]
     assert _case_names(db_session, extra) == set()
@@ -1203,3 +1203,28 @@ def test_one_put_can_hold_an_annual_and_a_quarterly_row_of_the_same_driver(
     twice = DriverRowInput("tax_rate", "value", [(annual_year, D("0.2"))])
     with pytest.raises(InvalidDrivers, match="tax_rate is given twice"):
         put_drivers(db_session, aapl, main.id, "bull", [annual, twice], NOW)
+
+
+def test_the_history_a_forecast_reads_folds_the_new_rows_into_their_residuals(
+    db_session: Session, aapl: Company
+) -> None:
+    """M7b S5: `deferred_tax_liabilities` (and the other folded rows) are added back into
+    `other_noncurrent_liabilities`, so the forecast reads the residual it read before the row."""
+    from bedrock.services.statements import statement_tables
+
+    history = load_history(db_session, aapl)
+    shown = statement_tables(db_session, aapl, [("BS", "annual")], "normalized")[("BS", "annual")]
+
+    codes = {r.code for t in history.annual.values() for r in t.rows}
+    assert "deferred_tax_liabilities" not in codes and "interest_income" not in codes
+    assert {"cash_taxes_paid", "cash_interest_paid"} <= codes  # memo rows stay
+    key = "FY2015"
+    row = {r.code: r.values[[p.key for p in shown.periods].index(key)] for r in shown.rows}
+    folded = history.annual_values.get("other_noncurrent_liabilities", key)
+    assert row["deferred_tax_liabilities"] is not None
+    assert folded == (
+        row["other_noncurrent_liabilities"]
+        + row["deferred_tax_liabilities"]
+        + (row["deferred_revenue_noncurrent"] or 0)
+        + (row["pension_liabilities"] or 0)
+    )

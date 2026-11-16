@@ -16,7 +16,7 @@ from bedrock.ratios.explain import RatioExplanation, explain_ratio
 from bedrock.repositories import prices as price_repo
 from bedrock.services.errors import RatioCellNotFound
 from bedrock.services.statements import Basis, statement_tables
-from bedrock.statements.build import StatementTable
+from bedrock.statements.build import Freq, StatementTable
 
 
 def ratios(session: Session, company: Company, freq: RatioFreq, basis: Basis) -> RatioTable:
@@ -45,31 +45,32 @@ def ratio_cell(
         raise RatioCellNotFound(f"{code} {fiscal_year} {fiscal_period}") from error
 
 
+_TABLES: dict[RatioFreq, list[tuple[str, Freq]]] = {
+    "annual": [("IS", "annual"), ("CF", "annual"), ("BS", "annual")],
+    "ttm": [("IS", "ttm"), ("CF", "ttm"), ("BS", "quarterly"), ("IS", "quarterly")],
+}
+
+
 def ratio_inputs(session: Session, company: Company, freq: RatioFreq, basis: Basis) -> RatioInputs:
     """The `RatioInputs` of `freq` on `basis` from one load of the company's facts (annual: annual
     IS, CF, BS; ttm: TTM IS and CF, quarterly BS and IS), untrimmed. Also read by the analysis
     engines (QoE flags, capital allocation). `prices` holds the company's stored closes."""
+    wanted = _TABLES["annual" if freq == "annual" else "ttm"]  # any other freq reads as TTM
+    tables = statement_tables(session, company, wanted, basis)
+    return replace(_inputs(tables, freq), prices=price_repo.closes(session, company.id))
+
+
+def _inputs(tables: Mapping[tuple[str, Freq], StatementTable], freq: RatioFreq) -> RatioInputs:
     if freq == "annual":
-        tables = statement_tables(
-            session, company, [("IS", "annual"), ("CF", "annual"), ("BS", "annual")], basis
-        )
-        inputs = RatioInputs(
+        return RatioInputs(
             tables[("IS", "annual")], tables[("CF", "annual")], tables[("BS", "annual")]
         )
-    else:
-        tables = statement_tables(
-            session,
-            company,
-            [("IS", "ttm"), ("CF", "ttm"), ("BS", "quarterly"), ("IS", "quarterly")],
-            basis,
-        )
-        inputs = RatioInputs(
-            tables[("IS", "ttm")],
-            tables[("CF", "ttm")],
-            tables[("BS", "quarterly")],
-            tables[("IS", "quarterly")],
-        )
-    return replace(inputs, prices=price_repo.closes(session, company.id))
+    return RatioInputs(
+        tables[("IS", "ttm")],
+        tables[("CF", "ttm")],
+        tables[("BS", "quarterly")],
+        tables[("IS", "quarterly")],
+    )
 
 
 def annual_ratios_from(
@@ -110,7 +111,12 @@ def current_ttm(session: Session, company: Company, basis: Basis) -> CurrentTtm:
     """One load of the company's TTM inputs, priced at the latest close (no close: the table is
     the plain TTM one and the price-based numbers are null)."""
     close = price_repo.latest_close(session, company.id)
-    inputs = ratio_inputs(session, company, "ttm", basis)
+    return _current(company, ratio_inputs(session, company, "ttm", basis), close)
+
+
+def _current(
+    company: Company, inputs: RatioInputs, close: tuple[date, Decimal] | None
+) -> CurrentTtm:
     if close is not None:
         inputs = replace(inputs, as_of=close[0])
     table = compute_ratios(inputs, "ttm", _caveats().get(company.ticker.upper(), ()))
@@ -121,7 +127,12 @@ def multiples(
     session: Session, company: Company, basis: Basis
 ) -> tuple[tuple[date, Decimal] | None, list[MultipleSummary]]:
     """The latest close and the valuation summary: annual history against the current multiples
-    (TTM figures at the latest close). Without stored prices every number is null."""
-    annual = ratios(session, company, "annual", basis)
-    current = current_ttm(session, company, basis)
+    (TTM figures at the latest close), from one build of the statements. Without stored prices
+    every number is null."""
+    tables = statement_tables(session, company, [*_TABLES["annual"], *_TABLES["ttm"]], basis)
+    prices = price_repo.closes(session, company.id)
+    caveats = _caveats().get(company.ticker.upper(), ())
+    annual = compute_ratios(replace(_inputs(tables, "annual"), prices=prices), "annual", caveats)
+    close = price_repo.latest_close(session, company.id)
+    current = _current(company, replace(_inputs(tables, "ttm"), prices=prices), close)
     return current.close, valuation_summary(annual, current.table)

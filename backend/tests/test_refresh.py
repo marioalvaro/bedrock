@@ -1,25 +1,34 @@
 """refresh_company: the use-case behind `POST /companies/{ticker}/refresh` and `bedrock refresh`."""
 
-from datetime import UTC, datetime
+from dataclasses import replace
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from bedrock.ingest.parse import parse_companyfacts
-from bedrock.ingest.protocol import CompanyRef, SourceNotConfigured, SourceUnavailable
+from bedrock.ingest.protocol import (
+    CompanyRef,
+    PricePayload,
+    PriceRow,
+    SourceNotConfigured,
+    SourceUnavailable,
+)
 from bedrock.ingest.sources import Sources
 from bedrock.models.canonical_item import CanonicalItem
 from bedrock.models.company import Company
 from bedrock.models.concept_mapping import ConceptMapping
+from bedrock.models.consensus_estimate import ConsensusEstimate
 from bedrock.models.corporate_action import CorporateAction
 from bedrock.models.filing import Filing
+from bedrock.models.filing_line import FilingLine
 from bedrock.models.price_daily import PriceDaily
 from bedrock.models.raw_fact import RawFact
-from bedrock.services.companies import CompanyNotFound
+from bedrock.services.companies import CompanyNotFound, add_company
 from bedrock.services.refresh import refresh_company
 
-from .fakes import FakeEdgar, FakePrices
+from .fakes import FakeConsensus, FakeEdgar, FakeFilings, FakePrices
 from .seed import follow
 
 NOW = datetime(2026, 10, 8, 14, 30, tzinfo=UTC)
@@ -58,7 +67,7 @@ def test_refresh_syncs_the_canonical_items_and_the_mappings_of_the_followed_comp
 
     refresh_company(db_session, _sources(), "AAPL", NOW)
 
-    assert _count(db_session, CanonicalItem) == 84
+    assert _count(db_session, CanonicalItem) == 95
     overrides = db_session.execute(
         select(ConceptMapping.concept).where(ConceptMapping.company_id.is_not(None))
     ).scalars()
@@ -130,7 +139,8 @@ def test_the_ticker_is_case_insensitive(db_session: Session) -> None:
     assert db_session.execute(select(Company.ticker)).scalar_one() == "AAPL"
 
 
-def test_prices_are_asked_for_only_what_follows_the_last_stored_day(db_session: Session) -> None:
+def test_prices_are_asked_for_from_the_last_stored_day_on(db_session: Session) -> None:
+    # The last stored day is fetched again: during the session it was a provisional close.
     prices = FakePrices()
     follow(db_session, FakeEdgar(), "AAPL")
     refresh_company(db_session, _sources(prices=prices), "AAPL", NOW)
@@ -138,21 +148,41 @@ def test_prices_are_asked_for_only_what_follows_the_last_stored_day(db_session: 
 
     refresh_company(db_session, _sources(prices=prices), "AAPL", NOW)
 
-    assert prices.calls == [None, last]
+    assert prices.calls == [None, last - timedelta(days=1)]
 
 
-def test_prices_are_not_asked_for_when_the_last_stored_day_is_today(db_session: Session) -> None:
-    # yfinance fails for a start date after "now", and there is nothing newer to fetch anyway.
-    prices = FakePrices()
+class MovingPrices(FakePrices):
+    """The recorded prices, with the last day's close moved: a later quote of the same day."""
+
+    def fetch(self, company: CompanyRef, since: date | None) -> PricePayload:
+        payload = super().fetch(company, since)
+        last = max(r.date for r in _all_rows())
+        rows = [
+            replace(r, close=r.close + 1, adj_close=r.adj_close + 1) if r.date == last else r
+            for r in payload.rows
+        ]
+        return replace(payload, rows=rows)
+
+
+def _all_rows() -> list[PriceRow]:
+    return FakePrices().fetch(AAPL, None).rows
+
+
+def test_a_later_refresh_the_same_day_updates_that_day_s_close(db_session: Session) -> None:
     follow(db_session, FakeEdgar(), "AAPL")
-    refresh_company(db_session, _sources(prices=prices), "AAPL", NOW)
-    last = max(r.date for r in FakePrices().fetch(AAPL, None).rows)
-    same_day = datetime(last.year, last.month, last.day, 20, 0, tzinfo=UTC)
+    refresh_company(db_session, _sources(), "AAPL", NOW)
+    last = max(_all_rows(), key=lambda r: r.date)
+    same_day = datetime(last.date.year, last.date.month, last.date.day, 20, 0, tzinfo=UTC)
 
-    result = refresh_company(db_session, _sources(prices=prices), "AAPL", same_day)
+    result = refresh_company(db_session, _sources(prices=MovingPrices()), "AAPL", same_day)
 
-    assert prices.calls == [None]
+    stored = db_session.get(PriceDaily, (_company_id(db_session), last.date))
+    assert stored is not None and stored.close == last.close + 1
     assert result.new_prices == 0 and result.warnings == []
+
+
+def _company_id(session: Session) -> int:
+    return session.execute(select(Company.id)).scalar_one()
 
 
 def test_refresh_stores_the_split_history(db_session: Session) -> None:
@@ -180,15 +210,153 @@ def test_splits_come_with_every_price_fetch_and_a_second_refresh_adds_none(
     assert again.new_splits == 0
 
 
-def test_splits_are_not_asked_for_when_prices_are_current_today(db_session: Session) -> None:
-    # The splits ride on the price fetch, which is skipped when the last stored day is today.
+# --- filing-level XBRL (M7b S6) -----------------------------------------------------------------
+
+AAPL_FY2024_10K = "0000320193-24-000123"  # recorded under fixtures/edgar/filings/
+
+
+def _with_filings(filings: FakeFilings) -> Sources:
+    return Sources(edgar=FakeEdgar(), prices=FakePrices(), filings=filings)
+
+
+def _mark_newer_filings_tried(session: Session, accession: str) -> None:
+    """So the four newest untried filings start at the recorded one."""
+    filed = session.execute(
+        select(Filing.filed_at).where(Filing.accession_no == accession)
+    ).scalar_one()
+    for filing in session.execute(select(Filing).where(Filing.filed_at > filed)).scalars():
+        filing.xbrl_status = "absent"
+    session.commit()
+
+
+def test_refresh_reads_the_four_newest_filings_not_tried_and_counts_their_lines(
+    db_session: Session,
+) -> None:
     follow(db_session, FakeEdgar(), "AAPL")
     refresh_company(db_session, _sources(), "AAPL", NOW)
-    last = max(r.date for r in FakePrices().fetch(AAPL, None).rows)
-    same_day = datetime(last.year, last.month, last.day, 20, 0, tzinfo=UTC)
-    prices = FakePrices()
+    _mark_newer_filings_tried(db_session, AAPL_FY2024_10K)
+    filings = FakeFilings()
 
-    result = refresh_company(db_session, _sources(prices=prices), "AAPL", same_day)
+    result = refresh_company(db_session, _with_filings(filings), "AAPL", LATER)
 
-    assert prices.calls == []
-    assert result.new_splits == 0
+    assert len(filings.calls) == 4 and filings.calls[0] == AAPL_FY2024_10K
+    assert result.new_filing_lines == _count(db_session, FilingLine) > 0
+    assert result.warnings == []
+
+
+def test_a_first_load_reads_the_newest_four_filings(db_session: Session) -> None:
+    follow(db_session, FakeEdgar(), "AAPL")
+    filings = FakeFilings()
+
+    result = refresh_company(db_session, _with_filings(filings), "AAPL", NOW)
+
+    assert len(filings.calls) == 4
+    # of the four newest, the FY2025 10-K and the FY2026 Q3 10-Q are recorded (M7b S7)
+    assert result.new_filing_lines > 0
+
+
+def test_a_filings_failure_is_a_warning_and_the_companyfacts_are_kept(
+    db_session: Session,
+) -> None:
+    follow(db_session, FakeEdgar(), "AAPL")
+    refresh_company(db_session, _sources(), "AAPL", NOW)
+    _mark_newer_filings_tried(db_session, AAPL_FY2024_10K)
+    failing = FakeFilings(fail={AAPL_FY2024_10K: SourceUnavailable("HTTP 503")})
+
+    result = refresh_company(db_session, _with_filings(failing), "AAPL", LATER)
+
+    assert len(result.warnings) == 1 and AAPL_FY2024_10K in result.warnings[0]
+    assert _count(db_session, RawFact) > 0
+
+
+def test_a_filings_source_that_is_not_configured_is_a_warning(db_session: Session) -> None:
+    follow(db_session, FakeEdgar(), "AAPL")
+    filings = FakeFilings()
+    filings.raises = SourceNotConfigured("SEC_USER_AGENT is not set")
+
+    result = refresh_company(db_session, _with_filings(filings), "AAPL", NOW)
+
+    assert result.warnings == ["filings not read: SEC_USER_AGENT is not set"]
+    assert result.new_facts == _count(db_session, RawFact) > 0
+
+
+def test_without_a_filings_source_refresh_tries_no_filing(db_session: Session) -> None:
+    follow(db_session, FakeEdgar(), "AAPL")
+
+    result = refresh_company(db_session, _sources(), "AAPL", NOW)
+
+    assert result.new_filing_lines == 0
+    assert _count(db_session, FilingLine) == 0
+    assert (
+        db_session.execute(
+            select(func.count()).select_from(Filing).where(Filing.xbrl_status.is_not(None))
+        ).scalar_one()
+        == 0
+    )
+
+
+def test_an_unexpected_filings_error_is_a_warning_after_the_refresh_is_stored(
+    db_session: Session,
+) -> None:
+    follow(db_session, FakeEdgar(), "AAPL")
+    filings = FakeFilings()
+    filings.raises = RuntimeError("disk full")
+
+    result = refresh_company(db_session, _with_filings(filings), "AAPL", NOW)
+
+    assert result.warnings == ["filings not read: disk full"]
+    assert result.new_facts == _count(db_session, RawFact) > 0
+
+
+# --- the analyst consensus is fetched with a refresh, not only by the scheduler (2026-11-15) ----
+
+
+def test_refresh_fetches_the_analyst_consensus(db_session: Session) -> None:
+    follow(db_session, FakeEdgar(), "AAPL")
+    consensus = FakeConsensus()
+    sources = replace(_sources(), consensus=consensus)
+
+    result = refresh_company(db_session, sources, "AAPL", NOW)
+
+    assert consensus.calls == ["AAPL"]
+    assert _count(db_session, ConsensusEstimate) == len(FakeConsensus().fetch(AAPL)) > 0
+    assert result.warnings == []
+
+
+def test_following_a_company_fetches_its_analyst_consensus(db_session: Session) -> None:
+    sources = replace(_sources(), consensus=FakeConsensus())
+
+    add_company(db_session, sources, "AAPL", NOW)
+
+    assert _count(db_session, ConsensusEstimate) > 0
+
+
+def test_a_consensus_failure_is_a_warning_and_the_refresh_is_kept(db_session: Session) -> None:
+    follow(db_session, FakeEdgar(), "AAPL")
+    sources = replace(_sources(), consensus=FakeConsensus(raises=SourceUnavailable("yahoo down")))
+
+    result = refresh_company(db_session, sources, "AAPL", NOW)
+
+    assert result.warnings == ["consensus not updated: yahoo down"]
+    assert _count(db_session, RawFact) > 0
+    assert _count(db_session, ConsensusEstimate) == 0
+
+
+def test_an_unexpected_consensus_error_is_a_warning_after_the_refresh_is_stored(
+    db_session: Session,
+) -> None:
+    follow(db_session, FakeEdgar(), "AAPL")
+    sources = replace(_sources(), consensus=FakeConsensus(raises=RuntimeError("boom")))
+
+    result = refresh_company(db_session, sources, "AAPL", NOW)
+
+    assert result.warnings == ["consensus not updated: boom"]
+    assert _count(db_session, RawFact) > 0
+
+
+def test_without_a_consensus_source_refresh_stores_no_consensus(db_session: Session) -> None:
+    follow(db_session, FakeEdgar(), "AAPL")
+
+    refresh_company(db_session, _sources(), "AAPL", NOW)
+
+    assert _count(db_session, ConsensusEstimate) == 0

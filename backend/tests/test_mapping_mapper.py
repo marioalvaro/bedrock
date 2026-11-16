@@ -343,3 +343,117 @@ def test_an_excluded_default_is_not_mapped_for_that_company_only() -> None:
 
     assert value_at(plain, "gross_profit", FY23) == 50
     assert excluded.empty
+
+
+# M7b S3: signed members (docs/erd/data-coverage.md "Signed members")
+FLOW = [item("deferred_taxes", "CF", sign=1)]
+FY_FLOW = (date(2022, 7, 1), date(2023, 6, 30))
+
+
+def test_a_subtracted_member_is_taken_away_and_named_with_a_minus() -> None:
+    latest = facts(
+        [
+            fact("CommercialPaper", None, FY23[1], 100, accession="0001-24-000007"),
+            fact("LongTermDebtCurrent", None, FY23[1], 25),
+            fact("Rebates", None, FY23[1], 10),
+        ]
+    )
+    rows = (
+        ("short_term_debt", "CommercialPaper", 0),
+        ("short_term_debt", "LongTermDebtCurrent", 0),
+        ("short_term_debt", "-Rebates", 0),
+    )
+
+    out = map_facts(latest, mappings(*rows), STD)
+
+    row = out.iloc[0]
+    assert row["value"] == 115
+    assert row["concept"] == "CommercialPaper + LongTermDebtCurrent - Rebates"
+    assert row["accession_no"] == "0001-24-000007"
+
+
+def test_a_missing_subtracted_member_is_skipped_like_any_other_member() -> None:
+    latest = facts([fact("CommercialPaper", None, FY23[1], 100)])
+    rows = (("short_term_debt", "CommercialPaper", 0), ("short_term_debt", "-Rebates", 0))
+
+    out = map_facts(latest, mappings(*rows), STD)
+
+    assert (out.iloc[0]["value"], out.iloc[0]["concept"]) == (100, "CommercialPaper")
+
+
+def test_a_lone_subtracted_concept_flips_the_fact_before_the_items_sign() -> None:
+    # `-IncreaseDecreaseInDeferredIncomeTaxes`: -306 tagged for a 306 add-back
+    latest = facts([fact("IncreaseDecreaseInDeferredIncomeTaxes", *FY_FLOW, -306)])
+    flipped = [item("deferred_taxes", "CF", sign=-1)]
+
+    out = map_facts(
+        latest, mappings(("deferred_taxes", "-IncreaseDecreaseInDeferredIncomeTaxes", 0)), FLOW
+    )
+    out_flipped = map_facts(
+        latest,
+        mappings(("deferred_taxes", "-IncreaseDecreaseInDeferredIncomeTaxes", 0)),
+        flipped,
+    )
+
+    assert (out.iloc[0]["value"], out.iloc[0]["concept"]) == (
+        306,
+        "-IncreaseDecreaseInDeferredIncomeTaxes",
+    )
+    assert out_flipped.iloc[0]["value"] == -306  # the item's sign applies after the weight
+
+
+def test_a_group_whose_subtracted_anchor_is_missing_does_not_count() -> None:
+    latest = facts([fact("B", *FY_FLOW, 40), fact("C", *FY_FLOW, 7)])
+    rows = (
+        ("deferred_taxes", "-A", 0),
+        ("deferred_taxes", "B", 0),
+        ("deferred_taxes", "C", 1),
+    )
+
+    out = map_facts(latest, mappings(*rows), FLOW)
+
+    assert (out.iloc[0]["value"], out.iloc[0]["concept"]) == (7, "C")
+
+
+def test_a_subtracted_anchor_leads_the_provenance_with_a_minus() -> None:
+    latest = facts([fact("A", *FY_FLOW, 50), fact("B", *FY_FLOW, 8)])
+
+    out = map_facts(latest, mappings(("deferred_taxes", "-A", 0), ("deferred_taxes", "B", 0)), FLOW)
+
+    assert (out.iloc[0]["value"], out.iloc[0]["concept"]) == (-42, "-A + B")
+
+
+def test_a_combined_fact_carries_the_codes_it_covers() -> None:
+    out = map_facts(
+        facts(
+            [
+                fact("AccountsPayableAndAccruedLiabilitiesCurrent", None, FY23[1], 50),
+                fact("AccountsPayableCurrent", None, FY24[1], 30),
+                fact("IncreaseDecreaseInAccountsPayableAndAccruedLiabilities", *FY23, 4),
+            ]
+        ),
+        mappings(
+            ("accounts_payable", "AccountsPayableCurrent", 0),
+            (
+                "accounts_payable",
+                "AccountsPayableAndAccruedLiabilitiesCurrent",
+                1,
+                False,
+                "accrued_liabilities",
+            ),
+            (
+                "change_payables",
+                "IncreaseDecreaseInAccountsPayableAndAccruedLiabilities",
+                0,
+                False,
+                "",
+            ),
+        ),
+        [item("accounts_payable", "BS", kind="instant"), item("change_payables", "CF")],
+    )
+
+    assert "covers" in CANONICAL_COLUMNS
+    covers = {(r["code"], r["period_end"]): r["covers"] for r in out.to_dict("records")}
+    assert covers[("accounts_payable", FY23[1])] == ("accrued_liabilities",)
+    assert covers[("accounts_payable", FY24[1])] is None  # a plain entry
+    assert covers[("change_payables", FY23[1])] == ()  # combined, covering no row

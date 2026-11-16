@@ -8,7 +8,11 @@ import {
   guidanceQueryOptions,
   useDeleteGuidance,
 } from "@/api/context";
-import type { GuidanceEntryOut, GuidanceSummaryOut } from "@/api/generated/types.gen";
+import type {
+  GuidanceEntryOut,
+  GuidanceSummaryOut,
+  MetricSummaryOut,
+} from "@/api/generated/types.gen";
 import { UnitToggle } from "@/components/UnitToggle";
 import {
   AlertDialog,
@@ -29,6 +33,7 @@ import {
 } from "@/lib/format";
 import { useScale, type Scale } from "@/lib/scale";
 
+import { GuidanceChart } from "./GuidanceChart";
 import { GuidanceForm } from "./GuidanceForm";
 
 const VERDICTS: Record<GuidanceEntryOut["verdict"], { text: string; className?: string }> = {
@@ -55,13 +60,50 @@ function rangeText(entry: GuidanceEntryOut, scale: Scale): string {
   return `${low} – ${formatGuidanceValue(entry.high, entry.unit, scale)}`;
 }
 
+const hasSource = (entries: GuidanceEntryOut[], source: GuidanceEntryOut["source"]) =>
+  entries.some((e) => e.source === source);
+
+// The verdict counts per metric of one source (management guidance or analyst consensus).
+function ByMetricTable({ label, rows }: { label: string; rows: MetricSummaryOut[] }) {
+  return (
+    <div className="overflow-x-auto px-2">
+      <table aria-label={label} className={TABLE}>
+        <thead>
+          <tr className={HEAD}>
+            <th className={`${CELL} text-left font-normal`}>Metric</th>
+            <th className={`${CELL} num text-right font-normal`}>Beat</th>
+            <th className={`${CELL} num text-right font-normal`}>In range</th>
+            <th className={`${CELL} num text-right font-normal`}>Miss</th>
+            <th className={`${CELL} num text-right font-normal`}>Pending</th>
+            <th className={`${CELL} num text-right font-normal`}>Hit rate</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((m) => (
+            <tr key={m.metric}>
+              <td className={CELL}>{m.label}</td>
+              <td className={`${CELL} num text-right`}>{m.beat}</td>
+              <td className={`${CELL} num text-right`}>{m.in_range}</td>
+              <td className={`${CELL} num text-right`}>{m.miss}</td>
+              <td className={`${CELL} num text-right`}>{m.pending}</td>
+              <td className={`${CELL} num text-right`}>{formatHitRate(m.hit_rate)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 interface GuidanceViewProps {
   ticker: string;
 }
 
 /**
- * The Guidance tab: the hit/miss summary of the latest entries, the counts per metric and every
- * entry with its actual, surprise and verdict (revisions muted); add, edit and delete. See
+ * The Guidance tab: the actual-vs-predictions chart of one metric (annual or quarterly), the
+ * hit/miss summary of the latest entries, the counts per metric and, last, the log of every entry
+ * with its actual, surprise and verdict (revisions muted); add, edit and delete. Analyst
+ * consensus entries (logged daily by the backend) are tagged, summarized apart and read-only. See
  * erd/workspace.md "Frontend (M3)".
  */
 export function GuidanceView({ ticker }: GuidanceViewProps) {
@@ -106,33 +148,26 @@ export function GuidanceView({ ticker }: GuidanceViewProps) {
       )}
       {data && data.entries.length > 0 && (
         <div className="space-y-4 py-3">
-          <p className="px-4 text-sm">{summaryText(data.summary)}</p>
-          <div className="overflow-x-auto px-2">
-            <table aria-label="By metric" className={TABLE}>
-              <thead>
-                <tr className={HEAD}>
-                  <th className={`${CELL} text-left font-normal`}>Metric</th>
-                  <th className={`${CELL} num text-right font-normal`}>Beat</th>
-                  <th className={`${CELL} num text-right font-normal`}>In range</th>
-                  <th className={`${CELL} num text-right font-normal`}>Miss</th>
-                  <th className={`${CELL} num text-right font-normal`}>Pending</th>
-                  <th className={`${CELL} num text-right font-normal`}>Hit rate</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.by_metric.map((m) => (
-                  <tr key={m.metric}>
-                    <td className={CELL}>{m.label}</td>
-                    <td className={`${CELL} num text-right`}>{m.beat}</td>
-                    <td className={`${CELL} num text-right`}>{m.in_range}</td>
-                    <td className={`${CELL} num text-right`}>{m.miss}</td>
-                    <td className={`${CELL} num text-right`}>{m.pending}</td>
-                    <td className={`${CELL} num text-right`}>{formatHitRate(m.hit_rate)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <GuidanceChart ticker={ticker} entries={data.entries} />
+          {hasSource(data.entries, "management") && (
+            <>
+              <p className="px-4 text-sm">
+                <span className="text-muted-foreground mr-2">Management guidance</span>
+                {summaryText(data.summary)}
+              </p>
+              <ByMetricTable label="By metric" rows={data.by_metric} />
+            </>
+          )}
+          {hasSource(data.entries, "consensus") && (
+            <>
+              <p className="px-4 text-sm">
+                <span className="text-muted-foreground mr-2">Analyst consensus</span>
+                {summaryText(data.consensus_summary)}
+              </p>
+              <ByMetricTable label="Consensus by metric" rows={data.consensus_by_metric} />
+            </>
+          )}
+          <h2 className="border-border border-t px-4 pt-3 text-sm font-medium">Log</h2>
           <div className="overflow-x-auto px-2">
             <table aria-label="Entries" className={TABLE}>
               <thead>
@@ -164,6 +199,11 @@ export function GuidanceView({ ticker }: GuidanceViewProps) {
                       <td className={CELL}>
                         {entry.label}
                         {!entry.latest && <span className="ml-1 text-xs">rev.</span>}
+                        {entry.source === "consensus" && (
+                          <span className="border-border text-muted-foreground ml-2 rounded border px-1 text-xs">
+                            Consensus
+                          </span>
+                        )}
                       </td>
                       <td className={CELL}>
                         {formatFiscalPeriod(entry.fiscal_year, entry.fiscal_period)}
@@ -186,22 +226,26 @@ export function GuidanceView({ ticker }: GuidanceViewProps) {
                         </span>
                       </td>
                       <td className={`${CELL} text-right`}>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label={`Edit ${entryName(entry)}`}
-                          onClick={() => setForm(entry)}
-                        >
-                          <Pencil />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label={`Delete ${entryName(entry)}`}
-                          onClick={() => setToDelete(entry)}
-                        >
-                          <Trash2 />
-                        </Button>
+                        {entry.source === "management" && (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              aria-label={`Edit ${entryName(entry)}`}
+                              onClick={() => setForm(entry)}
+                            >
+                              <Pencil />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              aria-label={`Delete ${entryName(entry)}`}
+                              onClick={() => setToDelete(entry)}
+                            >
+                              <Trash2 />
+                            </Button>
+                          </>
+                        )}
                       </td>
                     </tr>
                   );

@@ -68,8 +68,11 @@ def test_annual_income_statement_has_the_documented_shape(aapl_client: TestClien
         "adjustable",
         "custom",
         "parent",
+        "combined_with",
+        "included_in",
+        "empty_cause",
     }
-    for field in ("values", "provenance", "yoy", "common_size"):
+    for field in ("values", "provenance", "yoy", "common_size", "combined_with", "included_in"):
         assert len(revenue[field]) == len(periods)  # type: ignore[arg-type]
 
 
@@ -412,6 +415,7 @@ def test_mapping_gaps_carry_coverage_and_rule_warnings(aapl_client: TestClient) 
         "cells",
         "filled",
         "fraction",
+        "fraction_applicable",
         "by_provenance",
         "empty_by_cause",
     }
@@ -424,11 +428,20 @@ def test_mapping_gaps_carry_coverage_and_rule_warnings(aapl_client: TestClient) 
     }
     assert set(income["empty_by_cause"]) == {
         "no_filing_data",
+        "not_applicable",
+        "included_in",
         "structural",
         "rule_rejected",
+        "annual_only",
+        "extension_unclassified",
         "not_reported",
     }
     assert isinstance(income["fraction"], str)
+    assert Decimal(income["fraction"]) <= Decimal(income["fraction_applicable"])
+    # M7b S2: the quarterly tables read the annual one (`annual_only`), the balance sheet's
+    # lease lines start with ASC 842 (`not_applicable`)
+    assert sum(c["empty_by_cause"]["annual_only"] for c in coverage if c["freq"] == "quarterly")
+    assert coverage[2]["empty_by_cause"]["not_applicable"] > 0  # BS annual
     assert income["cells"] == income["filled"] + sum(income["empty_by_cause"].values())
     assert income["filled"] == sum(income["by_provenance"].values())
     assert gaps["rule_warnings"]
@@ -443,3 +456,151 @@ def test_the_openapi_schema_types_decimals_as_strings(app: FastAPI) -> None:
     row = schemas["RowOut"]["properties"]["values"]["items"]
     assert any(option.get("type") == "string" for option in row["anyOf"])
     assert not any(option.get("type") == "number" for option in row["anyOf"])
+
+
+# --- M7b S4: combined lines in the payload ---------------------------------------------------
+
+
+def _combined_frame():  # type: ignore[no-untyped-def]
+    from bedrock.mapping.mapper import map_facts
+    from bedrock.mapping.vintage import select_vintage
+    from tests.engine_data import facts
+    from tests.test_combined_lines import BS_ITEMS, BS_MAP, COMBINED, balances
+
+    raw = balances(LiabilitiesCurrent=(100, 100, 100, 100), **{COMBINED: (60, 61, 62, 63)})
+    return raw, map_facts(select_vintage(facts(raw)), BS_MAP, BS_ITEMS)
+
+
+def test_statement_rows_carry_combined_with_and_included_in() -> None:
+    from bedrock.schemas.statements import StatementOut
+    from bedrock.statements.build import build_statement
+    from tests.test_combined_lines import BS_ITEMS
+
+    _, canonical = _combined_frame()
+    table = build_statement(canonical, BS_ITEMS, "BS", "annual")
+    body = StatementOut.from_table(
+        table, ticker="ACME", statement="BS", freq="annual", basis="reported", currency="USD"
+    ).model_dump(mode="json")
+    at = [p["key"] for p in body["periods"]].index("FY2023")
+    rows = {r["code"]: r for r in body["rows"]}
+
+    assert rows["accounts_payable"]["combined_with"][at] == ["accrued_liabilities"]
+    assert rows["accounts_payable"]["included_in"][at] is None
+    assert rows["accrued_liabilities"]["included_in"][at] == "accounts_payable"
+    assert rows["accrued_liabilities"]["combined_with"][at] is None
+
+
+def test_the_cell_detail_carries_combined_with_and_included_in() -> None:
+    from bedrock.schemas.statements import CellDetailOut
+    from bedrock.statements.explain import explain_cell
+    from tests.engine_data import facts
+    from tests.test_combined_lines import BS_ITEMS
+
+    raw, canonical = _combined_frame()
+    carrier = explain_cell(canonical, facts(raw), BS_ITEMS, "accounts_payable", 2023, "FY")
+    covered = explain_cell(canonical, facts(raw), BS_ITEMS, "accrued_liabilities", 2023, "FY")
+
+    out = CellDetailOut.from_explanation(carrier, []).model_dump(mode="json")
+    assert (out["combined_with"], out["included_in"]) == (["accrued_liabilities"], None)
+    out = CellDetailOut.from_explanation(covered, []).model_dump(mode="json")
+    assert (out["combined_with"], out["included_in"]) == (None, "accounts_payable")
+
+
+def test_mapping_gaps_carry_the_unclassified_face_lines(aapl_client: TestClient) -> None:
+    gaps = aapl_client.get("/api/v1/companies/AAPL/mapping-gaps").json()
+
+    assert gaps["unclassified_lines"] == []  # no filing of the test company is parsed
+
+
+# --- M7b S8: the cause of each empty cell in the payload ----------------------------------------
+
+CAUSES = {
+    "no_filing_data",
+    "not_applicable",
+    "included_in",
+    "structural",
+    "rule_rejected",
+    "annual_only",
+    "extension_unclassified",
+    "not_reported",
+}
+
+
+def test_every_row_carries_an_empty_cause_aligned_with_the_periods(
+    aapl_client: TestClient,
+) -> None:
+    body = _statement(aapl_client, "BS", "annual")
+    periods = body["periods"]
+    rows = body["rows"]
+
+    for row in rows:  # type: ignore[attr-defined]
+        assert len(row["empty_cause"]) == len(periods)  # type: ignore[arg-type]
+        for value, cause in zip(row["values"], row["empty_cause"], strict=True):
+            if value is not None:
+                assert cause is None, row["code"]
+            elif cause is not None:
+                assert cause in CAUSES
+
+
+def test_a_line_before_its_standard_is_not_applicable(aapl_client: TestClient) -> None:
+    body = _statement(aapl_client, "BS", "annual")
+    keys = [p["key"] for p in body["periods"]]  # type: ignore[attr-defined]
+    row = _row(body, "operating_lease_rou")
+    causes = dict(zip(keys, row["empty_cause"], strict=True))  # type: ignore[call-overload]
+
+    assert causes["FY2015"] == "not_applicable"  # ASC 842 starts in FY2020 for AAPL
+    assert causes[keys[-1]] is None
+
+
+def test_an_empty_canonical_cell_always_has_a_cause(aapl_client: TestClient) -> None:
+    body = _statement(aapl_client, "IS", "annual")
+    revenue = _row(body, "revenue")
+    assert all(c is None for c in revenue["empty_cause"])  # type: ignore[attr-defined]
+    empties = [
+        (r["code"], c)  # type: ignore[index]
+        for r in body["rows"]  # type: ignore[attr-defined]
+        for v, c in zip(r["values"], r["empty_cause"], strict=True)  # type: ignore[index]
+        if v is None and r["kind"] != "residual" and not r["custom"]  # type: ignore[index]
+    ]
+    assert empties and all(c in CAUSES for _, c in empties)
+
+
+def test_quarterly_cells_of_a_line_reported_only_in_the_10k_are_annual_only(
+    aapl_client: TestClient,
+) -> None:
+    body = _statement(aapl_client, "IS", "quarterly")
+    causes = {c for r in body["rows"] for c in r["empty_cause"]}  # type: ignore[attr-defined,index]
+    assert "annual_only" in causes
+
+
+def test_ttm_cells_carry_no_cause(aapl_client: TestClient) -> None:
+    body = _statement(aapl_client, "IS", "ttm")
+    assert all(
+        c is None
+        for r in body["rows"]  # type: ignore[attr-defined]
+        for c in r["empty_cause"]  # type: ignore[index]
+    )
+
+
+def test_a_covered_cell_has_the_cause_included_in() -> None:
+    from bedrock.schemas.statements import StatementOut
+    from bedrock.statements.coverage import table_coverage
+    from tests.test_coverage import combined_items, combined_table
+
+    table = combined_table()
+    items = combined_items()
+    coverage = table_coverage(table, items, {i.code for i in items}, [])
+    body = StatementOut.from_table(
+        table,
+        ticker="ACME",
+        statement="BS",
+        freq="annual",
+        basis="reported",
+        currency="USD",
+        causes=coverage.causes,
+    ).model_dump(mode="json")
+    at = [p["key"] for p in body["periods"]].index("FY2023")
+    rows = {r["code"]: r for r in body["rows"]}
+
+    assert rows["accrued_liabilities"]["empty_cause"][at] == "included_in"
+    assert rows["accounts_payable"]["empty_cause"][at] is None

@@ -41,8 +41,13 @@ def aapl_db(seed_db: Callable[..., None]) -> None:
 
 @pytest.fixture
 def aapl(aapl_db: None, db_session: Session) -> Company:
+    """Apple followed and its recorded filings read, as after a backfill (M7b S7): the database
+    then holds what the fixture pipeline builds from, face lines and extension facts included."""
+    from .seed import read_recorded_filings
+
     company = companies_repo.get_by_ticker(db_session, "AAPL")
     assert company is not None
+    read_recorded_filings(db_session, company)
     return company
 
 
@@ -256,7 +261,9 @@ def test_mapping_gaps_carry_the_coverage_of_every_statement_and_frequency(
     for result in gaps.coverage:
         tables = pipeline.annual if result.freq == "annual" else pipeline.quarterly
         table = tables[result.statement]
-        expected = table_coverage(table, pipeline.items, mapped, table.rule_warnings)
+        # as the service does since M7b S2: the annual table of the statement gives `annual_only`
+        annual = pipeline.annual[result.statement]
+        expected = table_coverage(table, pipeline.items, mapped, table.rule_warnings, annual=annual)
         assert result == expected
 
 
@@ -309,3 +316,74 @@ def test_the_cells_are_solved_once_for_all_the_tables_a_request_builds(
     build(db_session, aapl)
 
     assert len(calls) == 1
+
+
+# --- M7b S7: structure rules from the parsed filings ----------------------------------------
+
+
+def _r9_zeros(session: Session, who: Company) -> int:
+    from bedrock.services.statements import statement_tables as tables_of
+
+    tables = tables_of(session, who, [("BS", "annual"), ("CF", "annual"), ("IS", "annual")])
+    return sum(
+        1
+        for table in tables.values()
+        for row in table.rows
+        for provenance in row.provenance
+        if provenance == "zero_inferred"
+        and row.code not in {"nci", "net_income_nci"}
+        and row.code != "temporary_equity"
+    )
+
+
+def test_a_full_load_carries_the_parsed_face_lines_and_the_rules_apply(
+    db_session: Session, seed_db: Callable[..., None]
+) -> None:
+    from bedrock.ingest.sources import Sources
+    from bedrock.services.filings import ingest_filings
+    from bedrock.services.statements import load_inputs
+
+    from .fakes import FakeEdgar, FakeFilings, FakePrices
+
+    seed_db("MSFT")
+    who = companies_repo.get_by_ticker(db_session, "MSFT")
+    assert who is not None
+    before = _r9_zeros(db_session, who)
+    assert load_inputs(db_session, who).rules.filing_lines is None  # nothing parsed yet
+
+    sources = Sources(edgar=FakeEdgar(), prices=FakePrices(), filings=FakeFilings())
+    ingest_filings(db_session, sources, who, limit=None)
+
+    face = load_inputs(db_session, who).rules.filing_lines
+    assert face is not None
+    assert "0001193125-26-323660" in set(face.lines["accession_no"])
+    assert ("msft", "DepreciationAmortizationAndOther") in set(
+        zip(face.facts["taxonomy"], face.facts["concept"], strict=True)
+    )  # an extension line's amount is a stored filing fact
+    assert _r9_zeros(db_session, who) > before
+
+
+def test_the_fiscal_periods_are_listed_without_reading_the_filing_lines(
+    db_session: Session, aapl: Company, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A note or an adjustment only checks its period exists: the calendar comes from the mapped
+    facts and the imports, so the face lines and their facts (S7) are not loaded for it."""
+    from bedrock.repositories import facts as facts_repo
+    from bedrock.repositories import filing_lines as lines_repo
+    from bedrock.services.statements import fiscal_periods, load_inputs
+    from bedrock.statements.imports import company_calendar
+    from bedrock.statements.periods import annual_periods, quarterly_periods
+
+    from .spies import count_calls
+
+    loaded = load_inputs(db_session, aapl)
+    calendar = company_calendar(loaded.canonical, loaded.rules.imported)
+    expected = {
+        (p.fiscal_year, p.fiscal_period)
+        for p in annual_periods(calendar) + quarterly_periods(calendar)
+    }
+    line_reads = count_calls(monkeypatch, lines_repo, "lines_for")
+    fact_reads = count_calls(monkeypatch, facts_repo, "load_facts")
+
+    assert fiscal_periods(db_session, aapl) == expected
+    assert line_reads == [] and len(fact_reads) == 1

@@ -257,6 +257,49 @@ def test_vintages_of_a_summed_cell_use_the_sign_of_the_item() -> None:
 FY23_YEAR = (date(2022, 7, 1), date(2023, 6, 30))
 
 
+def test_vintages_of_a_signed_cell_apply_each_members_weight_per_filing() -> None:
+    vintages = facts(
+        [
+            fact("Gross", *FY23_YEAR, 100, accession="K-2023", filed=date(2023, 8, 1)),
+            fact("Rebates", *FY23_YEAR, 30, accession="K-2023", filed=date(2023, 8, 1)),
+            # the next 10-K restates the subtracted member only
+            fact("Rebates", *FY23_YEAR, 20, accession="K-2024", filed=date(2024, 8, 1)),
+        ]
+    )
+    items = [item("revenue")]
+    maps = mappings(("revenue", "Gross", 0), ("revenue", "-Rebates", 0))
+    canonical = map_facts(select_vintage(vintages), maps, items)
+
+    cell = explain_cell(canonical, vintages, items, "revenue", 2023, "FY")
+
+    assert cell.value == 80
+    assert cell.source is not None and cell.source.concept == "Gross - Rebates"
+    assert [(v.accession_no, v.value) for v in cell.vintages] == [("K-2023", 70), ("K-2024", 80)]
+
+
+def test_vintages_of_a_lone_subtracted_concept_are_flipped_then_signed() -> None:
+    vintages = facts(
+        [
+            fact("IncreaseDecreaseInDeferredIncomeTaxes", *FY23_YEAR, -306, accession="K-2023"),
+            fact(
+                "IncreaseDecreaseInDeferredIncomeTaxes",
+                *FY23_YEAR,
+                -300,
+                accession="K-2024",
+                filed=date(2024, 8, 1),
+            ),
+        ]
+    )
+    items = [item("deferred_taxes", "CF")]
+    maps = mappings(("deferred_taxes", "-IncreaseDecreaseInDeferredIncomeTaxes", 0))
+    canonical = map_facts(select_vintage(vintages), maps, items)
+
+    cell = explain_cell(canonical, vintages, items, "deferred_taxes", 2023, "FY")
+
+    assert cell.value == 300
+    assert [v.value for v in cell.vintages] == [306, 300]
+
+
 BS_ITEMS = [
     item("total_assets", "BS", kind="instant"),
     item("total_liabilities", "BS", kind="instant"),

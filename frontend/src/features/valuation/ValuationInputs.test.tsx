@@ -255,6 +255,14 @@ describe("display rules", () => {
         .map((o) => o.textContent),
     ).toEqual(["FY26E", "FY27E", "FY28E", "FY29E", "FY30E"]);
     expect(screen.queryByRole("combobox", { name: "P/FCF year" })).toBeNull();
+    // Own history reads the latest N fiscal years; a manual multiple has no history to read.
+    expect(select("P/E lookback")).toHaveValue("5");
+    expect(
+      within(select("P/E lookback"))
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["3 years", "4 years", "5 years", "10 years", "All years"]);
+    expect(screen.queryByRole("combobox", { name: "EV/EBITDA lookback" })).toBeNull();
   });
 
   it("sends a target's year and source", async () => {

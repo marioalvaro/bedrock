@@ -10,6 +10,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from bedrock.forecast import registry
 from bedrock.forecast.history import default_drivers
 from bedrock.forecast.interface import SeriesInput, annual_values
 from bedrock.models.company import Company
@@ -198,3 +199,16 @@ def test_the_memo_is_keyed_on_the_series_values() -> None:
     assert again is first
     assert engines_service.fit_cache_info().misses == 2
     assert engines_service.fit_cache_info().hits == 1
+
+
+def test_a_memoized_blend_reuses_the_memoized_parts() -> None:
+    engines_service.fit_cache_clear()
+    data = SeriesInput(annual_values(2010, [1.0, 2.0, 1.5, 2.5, 2.0, 3.0, 2.5, 3.5]))
+    engines_service.memo_fit("arima", data, 3)
+    engines_service.memo_fit("ets", data, 3)
+
+    blended = engines_service.memo_fit("blend", data, 3)
+
+    assert engines_service.fit_cache_info().misses == 3  # the blend itself; its parts are hits
+    assert engines_service.fit_cache_info().hits == 2
+    assert blended.point.equals(registry.fit("blend", data, 3).point)

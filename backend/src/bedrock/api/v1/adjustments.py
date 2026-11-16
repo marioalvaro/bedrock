@@ -49,5 +49,6 @@ def delete_adjustment(
     adjustment_id: int,
     company: Company = Depends(followed_company),
     session: Session = Depends(get_session),
+    now: datetime = Depends(get_clock),
 ) -> None:
-    service.delete_adjustment(session, company, adjustment_id)
+    service.delete_adjustment(session, company, adjustment_id, now)

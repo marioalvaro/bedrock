@@ -4,7 +4,7 @@ from decimal import Decimal
 from typing import Any, NamedTuple
 
 import pandas as pd
-from sqlalchemy import Select, insert, select, tuple_
+from sqlalchemy import Select, func, insert, select, tuple_
 from sqlalchemy.orm import Session
 
 from bedrock.ingest.parse import ParsedFacts
@@ -29,8 +29,12 @@ FACT_COLUMNS = [
 _FactKey = tuple[int, str, str, str, date | None, date]
 
 
-def insert_parsed(session: Session, company: Company, parsed: ParsedFacts) -> tuple[int, int]:
-    """Append the filings and facts not stored yet; returns (new_filings, new_facts).
+def insert_parsed(
+    session: Session, company: Company, parsed: ParsedFacts, source: str = "companyfacts"
+) -> tuple[int, int]:
+    """Append the filings and facts not stored yet; returns (new_filings, new_facts). `source`
+    says where the facts were read: `companyfacts`, or `filing` for a filing's own XBRL (whose
+    filing is stored already, so `parsed.filings` may be empty).
 
     SQLite's UNIQUE treats NULLs as distinct, so a fact with no `period_start` (an instant)
     is compared against the stored keys here instead of relying on the constraint."""
@@ -80,6 +84,7 @@ def insert_parsed(session: Session, company: Company, parsed: ParsedFacts) -> tu
                 "fiscal_period": fact.fiscal_period,
                 "frame": fact.frame,
                 "value": fact.value,
+                "source": source,
             }
         )
     if rows:
@@ -129,6 +134,23 @@ def load_latest_annual_facts(session: Session, company_id: int) -> pd.DataFrame:
     return _frame(session.execute(_joined().where(RawFact.filing_id == filing_id)).all())
 
 
+def annual_filing_dates(session: Session, company_id: int) -> list[date]:
+    """The distinct filing dates of the company's 10-Ks (amendments left out), ascending."""
+    stmt = (
+        select(Filing.filed_at)
+        .where(Filing.company_id == company_id, Filing.form == "10-K")
+        .distinct()
+        .order_by(Filing.filed_at)
+    )
+    return list(session.execute(stmt).scalars())
+
+
+def latest_filing_date(session: Session, company_id: int) -> date | None:
+    """The date of the company's newest filing of any form; None with no filings."""
+    stmt = select(func.max(Filing.filed_at)).where(Filing.company_id == company_id)
+    return session.execute(stmt).scalar_one_or_none()
+
+
 def load_cover_shares(session: Session, company_id: int) -> pd.DataFrame:
     """The cover-page share counts (`dei:EntityCommonStockSharesOutstanding`) in the canonical
     frame's shape, as `shares_outstanding` instants. A cover fact is dated weeks after the period
@@ -166,6 +188,7 @@ def load_cover_shares(session: Session, company_id: int) -> pd.DataFrame:
             r[6],
             r[7],
             "instant",
+            None,
         )
         for r in session.execute(stmt)
     ]

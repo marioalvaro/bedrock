@@ -84,6 +84,83 @@ export type AdjustmentOut = {
 };
 
 /**
+ * AuditPageOut
+ */
+export type AuditPageOut = {
+    /**
+     * Next Before Id
+     */
+    next_before_id: number | null;
+    /**
+     * Rows
+     */
+    rows: Array<AuditRowOut>;
+};
+
+/**
+ * AuditRationaleIn
+ */
+export type AuditRationaleIn = {
+    /**
+     * Rationale
+     */
+    rationale: string | null;
+};
+
+/**
+ * AuditRowOut
+ *
+ * One changed field. A null `old_value` or `new_value` means absent (a driver or input with
+ * no stored value of its own).
+ */
+export type AuditRowOut = {
+    /**
+     * Action
+     */
+    action: 'create' | 'edit' | 'delete' | 'import' | 'reset' | 'mode';
+    /**
+     * Changed At
+     */
+    changed_at: string;
+    /**
+     * Entity
+     */
+    entity: 'driver' | 'year_mode' | 'engine_choice' | 'valuation_input' | 'scenario' | 'adjustment';
+    /**
+     * Field
+     */
+    field: string;
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * New Value
+     */
+    new_value: string | null;
+    /**
+     * Old Value
+     */
+    old_value: string | null;
+    /**
+     * Rationale
+     */
+    rationale: string | null;
+    /**
+     * Scope
+     */
+    scope: string | null;
+    /**
+     * Unit
+     */
+    unit: string | null;
+};
+
+/**
  * AuthStatus
  */
 export type AuthStatus = {
@@ -91,6 +168,71 @@ export type AuthStatus = {
      * Authenticated
      */
     authenticated: boolean;
+};
+
+/**
+ * BackfillStartedOut
+ *
+ * A filing backfill was started; follow it with `filings_parsed` on the company.
+ */
+export type BackfillStartedOut = {
+    /**
+     * Ticker
+     */
+    ticker: string;
+};
+
+/**
+ * BacktestOriginOut
+ */
+export type BacktestOriginOut = {
+    /**
+     * As Of Date
+     */
+    as_of_date: string;
+    /**
+     * Runs
+     */
+    runs: Array<BacktestRunOut>;
+};
+
+/**
+ * BacktestOut
+ *
+ * `ran_at` is null and the lists are empty before the first run; `stale`: a newer 10-K exists
+ * than the run's origins imply.
+ */
+export type BacktestOut = {
+    /**
+     * Origins
+     */
+    origins: Array<BacktestOriginOut>;
+    /**
+     * Ran At
+     */
+    ran_at: string | null;
+    /**
+     * Stale
+     */
+    stale: boolean;
+    /**
+     * Summary
+     */
+    summary: Array<ScoreRowOut>;
+};
+
+/**
+ * BacktestRunOut
+ */
+export type BacktestRunOut = {
+    /**
+     * Error
+     */
+    error: string | null;
+    /**
+     * Method
+     */
+    method: string;
 };
 
 /**
@@ -262,12 +404,30 @@ export type CapitalRowOut = {
 
 /**
  * CauseCountsOut
+ *
+ * Empty cells by cause, in the order a cell takes them (docs/erd/data-coverage.md).
  */
 export type CauseCountsOut = {
+    /**
+     * Annual Only
+     */
+    annual_only: number;
+    /**
+     * Extension Unclassified
+     */
+    extension_unclassified: number;
+    /**
+     * Included In
+     */
+    included_in: number;
     /**
      * No Filing Data
      */
     no_filing_data: number;
+    /**
+     * Not Applicable
+     */
+    not_applicable: number;
     /**
      * Not Reported
      */
@@ -395,6 +555,10 @@ export type CellDetailOut = {
      * Code
      */
     code: string;
+    /**
+     * Combined With
+     */
+    combined_with: Array<string> | null;
     derivation: DerivationOut | null;
     filing: FilingOut | null;
     /**
@@ -405,6 +569,10 @@ export type CellDetailOut = {
      * Fiscal Year
      */
     fiscal_year: number;
+    /**
+     * Included In
+     */
+    included_in: string | null;
     /**
      * Label
      */
@@ -482,6 +650,18 @@ export type CompanyListItem = {
      * Ev Ebitda
      */
     ev_ebitda: string | null;
+    /**
+     * Filings Parsed
+     *
+     * 10-K and 10-Q filings (amendments included) whose XBRL is read
+     */
+    filings_parsed: number;
+    /**
+     * Filings Total
+     *
+     * 10-K and 10-Q filings, amendments included
+     */
+    filings_total: number;
     /**
      * Fiscal Year End Month
      */
@@ -795,6 +975,46 @@ export type ConceptClassificationOut = {
 };
 
 /**
+ * ConsensusEstimateOut
+ *
+ * Analysts' consensus range for a revenue or EPS period, placed on a fiscal period.
+ */
+export type ConsensusEstimateOut = {
+    /**
+     * Analysts
+     */
+    analysts: number | null;
+    /**
+     * As Of
+     */
+    as_of: string;
+    /**
+     * Avg
+     */
+    avg: string | null;
+    /**
+     * Fiscal Period
+     */
+    fiscal_period: string;
+    /**
+     * Fiscal Year
+     */
+    fiscal_year: number;
+    /**
+     * High
+     */
+    high: string;
+    /**
+     * Low
+     */
+    low: string;
+    /**
+     * Metric
+     */
+    metric: string;
+};
+
+/**
  * CorporateActionOut
  */
 export type CorporateActionOut = {
@@ -834,6 +1054,10 @@ export type CoverageOut = {
      * Fraction
      */
     fraction: string | null;
+    /**
+     * Fraction Applicable
+     */
+    fraction_applicable: string | null;
     /**
      * Freq
      */
@@ -1823,6 +2047,10 @@ export type GuidanceEntryOut = {
      */
     metric: string;
     /**
+     * Source
+     */
+    source: 'management' | 'consensus';
+    /**
      * Source Note
      */
     source_note: string | null;
@@ -1842,6 +2070,30 @@ export type GuidanceEntryOut = {
      * Verdict
      */
     verdict: 'beat' | 'in_range' | 'miss' | 'pending';
+};
+
+/**
+ * GuidanceHistoryOut
+ *
+ * Every actual of one metric in one frequency, oldest first (the chart's earlier periods).
+ */
+export type GuidanceHistoryOut = {
+    /**
+     * Basis
+     */
+    basis: 'reported' | 'normalized';
+    /**
+     * Freq
+     */
+    freq: 'annual' | 'quarterly';
+    /**
+     * Metric
+     */
+    metric: string;
+    /**
+     * Points
+     */
+    points: Array<HistoryPointOut>;
 };
 
 /**
@@ -1892,12 +2144,20 @@ export type GuidanceIn = {
 
 /**
  * GuidanceOut
+ *
+ * `summary` and `by_metric` count management guidance; `consensus_summary` and
+ * `consensus_by_metric` the analyst consensus, kept apart.
  */
 export type GuidanceOut = {
     /**
      * By Metric
      */
     by_metric: Array<MetricSummaryOut>;
+    /**
+     * Consensus By Metric
+     */
+    consensus_by_metric: Array<MetricSummaryOut>;
+    consensus_summary: GuidanceSummaryOut;
     /**
      * Entries
      */
@@ -1960,6 +2220,24 @@ export type HistoryPeriodOut = {
      * Label
      */
     label: string;
+};
+
+/**
+ * HistoryPointOut
+ */
+export type HistoryPointOut = {
+    /**
+     * Fiscal Period
+     */
+    fiscal_period: 'FY' | 'Q1' | 'Q2' | 'Q3' | 'Q4';
+    /**
+     * Fiscal Year
+     */
+    fiscal_year: number;
+    /**
+     * Value
+     */
+    value: string;
 };
 
 /**
@@ -2231,6 +2509,10 @@ export type MappingGapsOut = {
      * Rule Warnings
      */
     rule_warnings: Array<RuleWarningOut>;
+    /**
+     * Unclassified Lines
+     */
+    unclassified_lines: Array<UnclassifiedLineOut>;
     /**
      * Unmapped Concepts
      */
@@ -2962,6 +3244,10 @@ export type RefreshResultOut = {
      */
     new_facts: number;
     /**
+     * New Filing Lines
+     */
+    new_filing_lines: number;
+    /**
      * New Filings
      */
     new_filings: number;
@@ -3000,6 +3286,10 @@ export type RowOut = {
      */
     code: string;
     /**
+     * Combined With
+     */
+    combined_with: Array<Array<string> | null>;
+    /**
      * Common Size
      */
     common_size: Array<string | null>;
@@ -3015,6 +3305,14 @@ export type RowOut = {
      * Depth
      */
     depth: number;
+    /**
+     * Empty Cause
+     */
+    empty_cause: Array<'no_filing_data' | 'not_applicable' | 'included_in' | 'structural' | 'rule_rejected' | 'annual_only' | 'extension_unclassified' | 'not_reported' | null>;
+    /**
+     * Included In
+     */
+    included_in: Array<string | null>;
     /**
      * Kind
      */
@@ -3176,6 +3474,63 @@ export type ScenarioSettingsIn = {
      * Volume Kpi
      */
     volume_kpi?: string | null;
+};
+
+/**
+ * ScoreRowOut
+ *
+ * Errors of one line or driver at one horizon. `method` is the case of a snapshot and the
+ * engine of a backtest; `hit_rate` is null when no row of the group has a range.
+ */
+export type ScoreRowOut = {
+    /**
+     * Bias
+     */
+    bias: string | null;
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Freq
+     */
+    freq: 'annual' | 'quarterly';
+    /**
+     * Hit Rate
+     */
+    hit_rate: string | null;
+    /**
+     * Horizon
+     */
+    horizon: number;
+    /**
+     * Kind
+     */
+    kind: 'line' | 'driver';
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Mape
+     */
+    mape: string | null;
+    /**
+     * Method
+     */
+    method: string;
+    /**
+     * N
+     */
+    n: number;
+    /**
+     * N Range
+     */
+    n_range: number;
+    /**
+     * Unit
+     */
+    unit: string;
 };
 
 /**
@@ -3577,6 +3932,314 @@ export type SensitivityGridOut = {
 };
 
 /**
+ * SnapshotCaseOut
+ */
+export type SnapshotCaseOut = {
+    /**
+     * Case
+     */
+    case: 'base' | 'bull' | 'bear';
+    /**
+     * Drivers
+     */
+    drivers: Array<SnapshotDriverOut>;
+    /**
+     * Error
+     */
+    error: string | null;
+    /**
+     * Lines
+     */
+    lines: Array<SnapshotLineOut>;
+    /**
+     * Valuation
+     */
+    valuation: Array<SnapshotValuationOut>;
+    /**
+     * Warnings
+     */
+    warnings: Array<string>;
+};
+
+/**
+ * SnapshotDetailOut
+ */
+export type SnapshotDetailOut = {
+    /**
+     * Cases
+     */
+    cases: Array<SnapshotCaseOut>;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Data As Of
+     */
+    data_as_of: string | null;
+    /**
+     * Failed Cases
+     */
+    failed_cases: Array<string>;
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Note
+     */
+    note: string | null;
+    /**
+     * Revenue Mape
+     */
+    revenue_mape: string | null;
+    /**
+     * Scenario Id
+     */
+    scenario_id: number | null;
+    /**
+     * Scenario Name
+     */
+    scenario_name: string;
+    /**
+     * Scored Periods
+     */
+    scored_periods: number;
+};
+
+/**
+ * SnapshotDriverCellOut
+ */
+export type SnapshotDriverCellOut = {
+    /**
+     * Actual
+     */
+    actual: string | null;
+    /**
+     * Fiscal Period
+     */
+    fiscal_period: string;
+    /**
+     * Fiscal Year
+     */
+    fiscal_year: number;
+    /**
+     * Forecast
+     */
+    forecast: string;
+    /**
+     * Horizon
+     */
+    horizon: number;
+    /**
+     * In Range
+     */
+    in_range: boolean | null;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * P05
+     */
+    p05: string | null;
+    /**
+     * P95
+     */
+    p95: string | null;
+    /**
+     * Pct Error
+     */
+    pct_error: string | null;
+    /**
+     * Source
+     */
+    source: string | null;
+};
+
+/**
+ * SnapshotDriverOut
+ */
+export type SnapshotDriverOut = {
+    /**
+     * Cells
+     */
+    cells: Array<SnapshotDriverCellOut>;
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Unit
+     */
+    unit: string;
+};
+
+/**
+ * SnapshotIn
+ */
+export type SnapshotIn = {
+    /**
+     * Note
+     */
+    note?: string | null;
+};
+
+/**
+ * SnapshotLineCellOut
+ */
+export type SnapshotLineCellOut = {
+    /**
+     * Actual
+     */
+    actual: string | null;
+    /**
+     * Fiscal Period
+     */
+    fiscal_period: string;
+    /**
+     * Fiscal Year
+     */
+    fiscal_year: number;
+    /**
+     * Forecast
+     */
+    forecast: string;
+    /**
+     * Horizon
+     */
+    horizon: number;
+    /**
+     * In Range
+     */
+    in_range: boolean | null;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Pct Error
+     */
+    pct_error: string | null;
+};
+
+/**
+ * SnapshotLineOut
+ */
+export type SnapshotLineOut = {
+    /**
+     * Cells
+     */
+    cells: Array<SnapshotLineCellOut>;
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Unit
+     */
+    unit: string;
+};
+
+/**
+ * SnapshotListOut
+ */
+export type SnapshotListOut = {
+    /**
+     * Snapshots
+     */
+    snapshots: Array<SnapshotOut>;
+    /**
+     * Summary
+     */
+    summary: Array<ScoreRowOut>;
+};
+
+/**
+ * SnapshotOut
+ */
+export type SnapshotOut = {
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Data As Of
+     */
+    data_as_of: string | null;
+    /**
+     * Failed Cases
+     */
+    failed_cases: Array<string>;
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Note
+     */
+    note: string | null;
+    /**
+     * Revenue Mape
+     */
+    revenue_mape: string | null;
+    /**
+     * Scenario Id
+     */
+    scenario_id: number | null;
+    /**
+     * Scenario Name
+     */
+    scenario_name: string;
+    /**
+     * Scored Periods
+     */
+    scored_periods: number;
+};
+
+/**
+ * SnapshotValuationOut
+ */
+export type SnapshotValuationOut = {
+    /**
+     * Enterprise Value
+     */
+    enterprise_value: string | null;
+    /**
+     * Equity Value
+     */
+    equity_value: string | null;
+    /**
+     * Error
+     */
+    error: string | null;
+    /**
+     * Key
+     */
+    key: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Upside
+     */
+    upside: string | null;
+    /**
+     * Value Per Share
+     */
+    value_per_share: string | null;
+};
+
+/**
  * SourceOut
  */
 export type SourceOut = {
@@ -3884,6 +4547,43 @@ export type TornadoOut = {
      * Scenario Id
      */
     scenario_id: number;
+};
+
+/**
+ * UnclassifiedLineOut
+ *
+ * A face line of the newest 10-K or 10-Q nobody classified (M7b S7): map it in the
+ * company's override file, or list it under `other_lines:`.
+ */
+export type UnclassifiedLineOut = {
+    /**
+     * Concept
+     */
+    concept: string;
+    /**
+     * Filings
+     */
+    filings: Array<string>;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Latest Period End
+     */
+    latest_period_end: string;
+    /**
+     * Latest Value
+     */
+    latest_value: string;
+    /**
+     * Statement
+     */
+    statement: 'IS' | 'BS' | 'CF';
+    /**
+     * Taxonomy
+     */
+    taxonomy: string;
 };
 
 /**
@@ -4628,6 +5328,173 @@ export type UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutRespon
 
 export type UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutResponse = UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutResponses[keyof UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutResponses];
 
+export type ListAuditApiV1CompaniesTickerAuditGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: {
+        /**
+         * Entity
+         */
+        entity?: 'driver' | 'year_mode' | 'engine_choice' | 'valuation_input' | 'scenario' | 'adjustment' | null;
+        /**
+         * Limit
+         */
+        limit?: number;
+        /**
+         * Before Id
+         */
+        before_id?: number | null;
+    };
+    url: '/api/v1/companies/{ticker}/audit';
+};
+
+export type ListAuditApiV1CompaniesTickerAuditGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListAuditApiV1CompaniesTickerAuditGetError = ListAuditApiV1CompaniesTickerAuditGetErrors[keyof ListAuditApiV1CompaniesTickerAuditGetErrors];
+
+export type ListAuditApiV1CompaniesTickerAuditGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: AuditPageOut;
+};
+
+export type ListAuditApiV1CompaniesTickerAuditGetResponse = ListAuditApiV1CompaniesTickerAuditGetResponses[keyof ListAuditApiV1CompaniesTickerAuditGetResponses];
+
+export type SetAuditRationaleApiV1CompaniesTickerAuditRowIdPatchData = {
+    body: AuditRationaleIn;
+    path: {
+        /**
+         * Row Id
+         */
+        row_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/audit/{row_id}';
+};
+
+export type SetAuditRationaleApiV1CompaniesTickerAuditRowIdPatchErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SetAuditRationaleApiV1CompaniesTickerAuditRowIdPatchError = SetAuditRationaleApiV1CompaniesTickerAuditRowIdPatchErrors[keyof SetAuditRationaleApiV1CompaniesTickerAuditRowIdPatchErrors];
+
+export type SetAuditRationaleApiV1CompaniesTickerAuditRowIdPatchResponses = {
+    /**
+     * Successful Response
+     */
+    200: AuditRowOut;
+};
+
+export type SetAuditRationaleApiV1CompaniesTickerAuditRowIdPatchResponse = SetAuditRationaleApiV1CompaniesTickerAuditRowIdPatchResponses[keyof SetAuditRationaleApiV1CompaniesTickerAuditRowIdPatchResponses];
+
+export type BackfillFilingsApiV1CompaniesTickerBackfillFilingsPostData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/backfill-filings';
+};
+
+export type BackfillFilingsApiV1CompaniesTickerBackfillFilingsPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type BackfillFilingsApiV1CompaniesTickerBackfillFilingsPostError = BackfillFilingsApiV1CompaniesTickerBackfillFilingsPostErrors[keyof BackfillFilingsApiV1CompaniesTickerBackfillFilingsPostErrors];
+
+export type BackfillFilingsApiV1CompaniesTickerBackfillFilingsPostResponses = {
+    /**
+     * Successful Response
+     */
+    202: BackfillStartedOut;
+};
+
+export type BackfillFilingsApiV1CompaniesTickerBackfillFilingsPostResponse = BackfillFilingsApiV1CompaniesTickerBackfillFilingsPostResponses[keyof BackfillFilingsApiV1CompaniesTickerBackfillFilingsPostResponses];
+
+export type GetBacktestApiV1CompaniesTickerBacktestGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/backtest';
+};
+
+export type GetBacktestApiV1CompaniesTickerBacktestGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetBacktestApiV1CompaniesTickerBacktestGetError = GetBacktestApiV1CompaniesTickerBacktestGetErrors[keyof GetBacktestApiV1CompaniesTickerBacktestGetErrors];
+
+export type GetBacktestApiV1CompaniesTickerBacktestGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: BacktestOut;
+};
+
+export type GetBacktestApiV1CompaniesTickerBacktestGetResponse = GetBacktestApiV1CompaniesTickerBacktestGetResponses[keyof GetBacktestApiV1CompaniesTickerBacktestGetResponses];
+
+export type RunBacktestApiV1CompaniesTickerBacktestPostData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/backtest';
+};
+
+export type RunBacktestApiV1CompaniesTickerBacktestPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type RunBacktestApiV1CompaniesTickerBacktestPostError = RunBacktestApiV1CompaniesTickerBacktestPostErrors[keyof RunBacktestApiV1CompaniesTickerBacktestPostErrors];
+
+export type RunBacktestApiV1CompaniesTickerBacktestPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: BacktestOut;
+};
+
+export type RunBacktestApiV1CompaniesTickerBacktestPostResponse = RunBacktestApiV1CompaniesTickerBacktestPostResponses[keyof RunBacktestApiV1CompaniesTickerBacktestPostResponses];
+
 export type GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetData = {
     body?: never;
     path: {
@@ -4958,6 +5825,81 @@ export type CreateEntryApiV1CompaniesTickerGuidancePostResponses = {
 };
 
 export type CreateEntryApiV1CompaniesTickerGuidancePostResponse = CreateEntryApiV1CompaniesTickerGuidancePostResponses[keyof CreateEntryApiV1CompaniesTickerGuidancePostResponses];
+
+export type ListConsensusApiV1CompaniesTickerGuidanceConsensusGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/guidance/consensus';
+};
+
+export type ListConsensusApiV1CompaniesTickerGuidanceConsensusGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListConsensusApiV1CompaniesTickerGuidanceConsensusGetError = ListConsensusApiV1CompaniesTickerGuidanceConsensusGetErrors[keyof ListConsensusApiV1CompaniesTickerGuidanceConsensusGetErrors];
+
+export type ListConsensusApiV1CompaniesTickerGuidanceConsensusGetResponses = {
+    /**
+     * Response List Consensus Api V1 Companies  Ticker  Guidance Consensus Get
+     *
+     * Successful Response
+     */
+    200: Array<ConsensusEstimateOut>;
+};
+
+export type ListConsensusApiV1CompaniesTickerGuidanceConsensusGetResponse = ListConsensusApiV1CompaniesTickerGuidanceConsensusGetResponses[keyof ListConsensusApiV1CompaniesTickerGuidanceConsensusGetResponses];
+
+export type GetHistoryApiV1CompaniesTickerGuidanceHistoryGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query: {
+        /**
+         * Metric
+         */
+        metric: string;
+        /**
+         * Basis
+         */
+        basis?: 'reported' | 'normalized';
+        /**
+         * Freq
+         */
+        freq?: 'annual' | 'quarterly';
+    };
+    url: '/api/v1/companies/{ticker}/guidance/history';
+};
+
+export type GetHistoryApiV1CompaniesTickerGuidanceHistoryGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetHistoryApiV1CompaniesTickerGuidanceHistoryGetError = GetHistoryApiV1CompaniesTickerGuidanceHistoryGetErrors[keyof GetHistoryApiV1CompaniesTickerGuidanceHistoryGetErrors];
+
+export type GetHistoryApiV1CompaniesTickerGuidanceHistoryGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: GuidanceHistoryOut;
+};
+
+export type GetHistoryApiV1CompaniesTickerGuidanceHistoryGetResponse = GetHistoryApiV1CompaniesTickerGuidanceHistoryGetResponses[keyof GetHistoryApiV1CompaniesTickerGuidanceHistoryGetResponses];
 
 export type ListMetricsApiV1CompaniesTickerGuidanceMetricsGetData = {
     body?: never;
@@ -6503,6 +7445,40 @@ export type PutEnginesApiV1CompaniesTickerScenariosScenarioIdEnginesPutResponses
 
 export type PutEnginesApiV1CompaniesTickerScenariosScenarioIdEnginesPutResponse = PutEnginesApiV1CompaniesTickerScenariosScenarioIdEnginesPutResponses[keyof PutEnginesApiV1CompaniesTickerScenariosScenarioIdEnginesPutResponses];
 
+export type CreateSnapshotApiV1CompaniesTickerScenariosScenarioIdSnapshotsPostData = {
+    body: SnapshotIn;
+    path: {
+        /**
+         * Scenario Id
+         */
+        scenario_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/scenarios/{scenario_id}/snapshots';
+};
+
+export type CreateSnapshotApiV1CompaniesTickerScenariosScenarioIdSnapshotsPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateSnapshotApiV1CompaniesTickerScenariosScenarioIdSnapshotsPostError = CreateSnapshotApiV1CompaniesTickerScenariosScenarioIdSnapshotsPostErrors[keyof CreateSnapshotApiV1CompaniesTickerScenariosScenarioIdSnapshotsPostErrors];
+
+export type CreateSnapshotApiV1CompaniesTickerScenariosScenarioIdSnapshotsPostResponses = {
+    /**
+     * Successful Response
+     */
+    201: SnapshotOut;
+};
+
+export type CreateSnapshotApiV1CompaniesTickerScenariosScenarioIdSnapshotsPostResponse = CreateSnapshotApiV1CompaniesTickerScenariosScenarioIdSnapshotsPostResponses[keyof CreateSnapshotApiV1CompaniesTickerScenariosScenarioIdSnapshotsPostResponses];
+
 export type GetValuationSummaryApiV1CompaniesTickerScenariosScenarioIdValuationGetData = {
     body?: never;
     path: {
@@ -6870,6 +7846,70 @@ export type ImportSegmentsApiV1CompaniesTickerSegmentsImportPostResponses = {
 };
 
 export type ImportSegmentsApiV1CompaniesTickerSegmentsImportPostResponse = ImportSegmentsApiV1CompaniesTickerSegmentsImportPostResponses[keyof ImportSegmentsApiV1CompaniesTickerSegmentsImportPostResponses];
+
+export type ListSnapshotsApiV1CompaniesTickerSnapshotsGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/snapshots';
+};
+
+export type ListSnapshotsApiV1CompaniesTickerSnapshotsGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListSnapshotsApiV1CompaniesTickerSnapshotsGetError = ListSnapshotsApiV1CompaniesTickerSnapshotsGetErrors[keyof ListSnapshotsApiV1CompaniesTickerSnapshotsGetErrors];
+
+export type ListSnapshotsApiV1CompaniesTickerSnapshotsGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: SnapshotListOut;
+};
+
+export type ListSnapshotsApiV1CompaniesTickerSnapshotsGetResponse = ListSnapshotsApiV1CompaniesTickerSnapshotsGetResponses[keyof ListSnapshotsApiV1CompaniesTickerSnapshotsGetResponses];
+
+export type GetSnapshotApiV1CompaniesTickerSnapshotsSnapshotIdGetData = {
+    body?: never;
+    path: {
+        /**
+         * Snapshot Id
+         */
+        snapshot_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/snapshots/{snapshot_id}';
+};
+
+export type GetSnapshotApiV1CompaniesTickerSnapshotsSnapshotIdGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetSnapshotApiV1CompaniesTickerSnapshotsSnapshotIdGetError = GetSnapshotApiV1CompaniesTickerSnapshotsSnapshotIdGetErrors[keyof GetSnapshotApiV1CompaniesTickerSnapshotsSnapshotIdGetErrors];
+
+export type GetSnapshotApiV1CompaniesTickerSnapshotsSnapshotIdGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: SnapshotDetailOut;
+};
+
+export type GetSnapshotApiV1CompaniesTickerSnapshotsSnapshotIdGetResponse = GetSnapshotApiV1CompaniesTickerSnapshotsSnapshotIdGetResponses[keyof GetSnapshotApiV1CompaniesTickerSnapshotsSnapshotIdGetResponses];
 
 export type GetStatementApiV1CompaniesTickerStatementsGetData = {
     body?: never;

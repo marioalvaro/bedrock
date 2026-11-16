@@ -75,8 +75,7 @@ expected_missing:
   accrued_liabilities: "inside 'Accounts payable and accrued expenses', no separate line"
   acquisitions: "no acquisition line in years without a purchase (the cash flow omits zero lines)"
   aoci: "no XBRL balance sheet before FY2008"
-  change_payables: "the cash flow line is 'Accounts payable and accrued expenses' (tagged with accruals), not payables"
-  cost_of_revenue: "us-gaap tag until FY2017; from FY2018 a `de:` fact that companyfacts omits"
+  cost_of_revenue: "us-gaap tag until FY2017; from FY2018 `CostOfRevenue` with dimensional facts only (M7b S7: no extension tag on the 10-K faces of FY2019-25)"
   deferred_revenue_current: "no balance-sheet line (contract liabilities sit inside accrued expenses)"
   equity_parent: "no XBRL balance sheet before FY2008"
   goodwill: "no XBRL balance sheet before FY2008"
@@ -113,6 +112,13 @@ expected_missing:
 # Concepts of the latest 10-K that the edgartools table recognizes but Bedrock does not map, each a
 # decision (map-xbrl run of 2026-10-14). test_mapping_coverage.py fails on a concept not listed here and
 # on a listed one that is mapped or gone.
+  interest_income: "M7b S5: Deere's InvestmentIncomeInterest is the finance arm's interest inside revenue, excluded in its override"
+  deferred_tax_assets: "M7b S5: FY2007-13 the net deferred tax asset is untagged (only the tax note's gross DeferredTaxAssetsNet)"
+  deferred_tax_liabilities: "M7b S5: FY2007-13 the net deferred tax liability is untagged (only the tax note's gross DeferredTaxLiabilities)"
+  deferred_revenue_noncurrent: "M7b S5: no non-current deferred revenue line"
+  pension_liabilities: "M7b S5: no noncurrent pension or postretirement liability tag in companyfacts"
+  cash_taxes_paid: "M7b S5: FY2007 not tagged"
+  cash_interest_paid: "M7b S5: FY2007 not tagged"
 acknowledged_unmapped:
   us-gaap:AccountsPayableAndAccruedLiabilitiesCurrentAndNoncurrent: "the balance-sheet line combines payables and accruals (13,909 in FY2025), so it is not accounts payable"
   us-gaap:AvailableForSaleSecuritiesDebtMaturitiesWithoutSingleMaturityDateFairValue: "investment-note maturity bucket (234 in FY2025), not a balance-sheet line"
@@ -123,9 +129,7 @@ acknowledged_unmapped:
   us-gaap:FinanceLeaseInterestExpense: "lease-note component (5 in FY2025) of interest expense, which is mapped as the whole line"
   us-gaap:FinanceLeaseLiabilityUndiscountedExcessAmount: "lease maturity-note detail (undiscounted excess), not a balance-sheet line"
   us-gaap:IncomeLossFromContinuingOperationsBeforeIncomeTaxesDomestic: "domestic part of pretax income (2,700 against 6,257 consolidated), mapped as the total"
-  us-gaap:IncreaseDecreaseInAccountsPayableAndAccruedLiabilities: "cash flow line combines payables with accruals, not the change in accounts payable"
   us-gaap:IncreaseDecreaseInIncomeTaxesPayableNetOfIncomeTaxesReceivable: "change in income taxes payable or receivable, a separate cash-flow line, not trade receivables"
-  us-gaap:InterestPaidNet: "cash paid for interest (3,080 in FY2025), a supplemental disclosure, not the expense line (3,170, mapped)"
   us-gaap:InventoryFinishedGoodsNetOfReserves: "component of inventories in the inventory note; the total is mapped"
   us-gaap:InventoryLIFOReserve: "inventory-note adjustment (2,721 in FY2025), not a balance-sheet line"
   us-gaap:InventoryRawMaterialsAndSuppliesNetOfReserves: "component of inventories in the inventory note; the total is mapped"
@@ -136,7 +140,6 @@ acknowledged_unmapped:
   us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInYearThree: "debt-note maturity schedule, not a balance-sheet line"
   us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInYearTwo: "debt-note maturity schedule, not a balance-sheet line"
   us-gaap:OperatingLeaseLeaseIncomeLeasePayments: "lease income of the equipment on operating leases (1,472 in FY2025), a part of revenue; revenue is the total line"
-  us-gaap:OperatingLeaseLiability: "total operating lease liability (314 in FY2025) including its current part; the noncurrent line is not tagged"
   us-gaap:OtherCostOfOperatingRevenue: "cost-of-revenue note component (82 in FY2025), not the cost of sales line (a `de:` fact)"
   us-gaap:PropertySubjectToOrAvailableForOperatingLeaseAccumulatedDepreciation: "accumulated depreciation of equipment on operating leases (note), not inventory"
   us-gaap:PropertySubjectToOrAvailableForOperatingLeaseGross: "gross equipment on operating leases (9,270 in FY2025), a note figure, not property and equipment"

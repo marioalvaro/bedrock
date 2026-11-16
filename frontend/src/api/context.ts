@@ -10,6 +10,7 @@ import {
   deleteSetApiV1CompaniesTickerCompsSetsSetIdDelete,
   getComparisonApiV1CompaniesTickerCompsSetsSetIdComparisonGet,
   getGuidanceApiV1CompaniesTickerGuidanceGet,
+  getHistoryApiV1CompaniesTickerGuidanceHistoryGet,
   getPeerSuggestionsApiV1CompaniesTickerPeerSuggestionsGet,
   listMetricsApiV1CompaniesTickerGuidanceMetricsGet,
   listSetsApiV1CompaniesTickerCompsSetsGet,
@@ -33,6 +34,7 @@ import type {
   CompsSetIn,
   CompsSetOut,
   GuidanceEntryOut,
+  GuidanceHistoryOut,
   GuidanceIn,
   GuidanceOut,
   ImportIssueOut,
@@ -56,6 +58,13 @@ import type { Basis } from "@/api/statements";
 // and `guidanceKey` (the log), whose actuals follow the normalized statements.
 export const segmentsKey = (ticker: string) => [...companyKey(ticker), "segments"] as const;
 export const guidanceKey = (ticker: string) => [...companyKey(ticker), "guidance"] as const;
+// Under `guidanceKey`, so whatever refreshes the log (an adjustment, a segment change) refreshes it.
+export const guidanceHistoryKey = (
+  ticker: string,
+  metric: string,
+  basis: GuidanceHistoryOut["basis"],
+  freq: GuidanceHistoryOut["freq"],
+) => [...guidanceKey(ticker), "history", metric, basis, freq] as const;
 export const guidanceMetricsKey = (ticker: string) =>
   [...companyKey(ticker), "guidance-metrics"] as const;
 export const compsKey = (ticker: string) => [...companyKey(ticker), "comps"] as const;
@@ -176,6 +185,27 @@ export const guidanceQueryOptions = (ticker: string) =>
         throw new ApiError(200, "Unexpected response");
       }
       return log;
+    },
+  });
+
+/** GET …/guidance/history: every actual of one metric, oldest first (the chart's earlier periods). */
+export const guidanceHistoryQueryOptions = (
+  ticker: string,
+  metric: string,
+  basis: GuidanceHistoryOut["basis"],
+  freq: GuidanceHistoryOut["freq"],
+) =>
+  queryOptions<GuidanceHistoryOut>({
+    queryKey: guidanceHistoryKey(ticker, metric, basis, freq),
+    queryFn: async () => {
+      const history = await unwrap(
+        getHistoryApiV1CompaniesTickerGuidanceHistoryGet({
+          path: { ticker },
+          query: { metric, basis, freq },
+        }),
+      );
+      if (!Array.isArray(history?.points)) throw new ApiError(200, "Unexpected response");
+      return history;
     },
   });
 

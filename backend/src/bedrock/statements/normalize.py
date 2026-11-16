@@ -133,7 +133,11 @@ def apply_adjustments(
         ):
             continue  # recomputed below / nothing to adjust
         out[cell_key] = Cell(
-            (current.value or Decimal(0)) + delta, "normalized", current.source, current.derivation
+            (current.value or Decimal(0)) + delta,
+            "normalized",
+            current.source,
+            current.derivation,
+            combined_with=current.combined_with,  # an adjusted combined value is still combined
         )
         applied[cell_key] = entries[cell_key]
         changed[cell_key] = delta

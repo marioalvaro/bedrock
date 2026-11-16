@@ -8,8 +8,10 @@ import { ApiError } from "@/api/errors";
 import type { CompanyListItem } from "@/api/generated/types.gen";
 import type { StatementType } from "@/api/statements";
 import { Button } from "@/components/ui/button";
+import { BacktestView } from "@/features/backtest/BacktestView";
 import { CapitalView } from "@/features/capital/CapitalView";
 import { CompsView } from "@/features/comps/CompsView";
+import { FilingsStatus } from "@/features/filings/FilingsStatus";
 import { ForecastView } from "@/features/forecast/ForecastView";
 import { GuidanceView } from "@/features/guidance/GuidanceView";
 import { NotesView } from "@/features/notes/NotesView";
@@ -29,31 +31,40 @@ const statementTab = (type: StatementType) => (company: CompanyListItem) => (
   <StatementView ticker={company.ticker} cik={company.cik} type={type} />
 );
 
-const TABS: { slug: string; label: string; render: (company: CompanyListItem) => ReactNode }[] = [
-  { slug: "overview", label: "Overview", render: (company) => <Overview company={company} /> },
-  { slug: "income", label: "Income", render: statementTab("IS") },
-  { slug: "balance", label: "Balance", render: statementTab("BS") },
-  { slug: "cash-flow", label: "Cash Flow", render: statementTab("CF") },
-  { slug: "ratios", label: "Ratios", render: (c) => <RatiosView ticker={c.ticker} /> },
-  { slug: "quality", label: "Quality", render: (c) => <QualityView ticker={c.ticker} /> },
-  { slug: "capital", label: "Capital", render: (c) => <CapitalView ticker={c.ticker} /> },
-  { slug: "segments", label: "Segments", render: (c) => <SegmentsView ticker={c.ticker} /> },
-  {
-    slug: "seasonality",
-    label: "Seasonality",
-    render: (c) => <SeasonalityView ticker={c.ticker} />,
-  },
-  { slug: "comps", label: "Comps", render: (c) => <CompsView ticker={c.ticker} /> },
-  { slug: "guidance", label: "Guidance", render: (c) => <GuidanceView ticker={c.ticker} /> },
-  { slug: "valuation", label: "Valuation", render: (c) => <ValuationView ticker={c.ticker} /> },
-  {
-    slug: "forecast",
-    label: "Forecast",
-    render: (c) => <ForecastView ticker={c.ticker} />,
-  },
-  { slug: "scenarios", label: "Scenarios", render: (c) => <ScenariosView ticker={c.ticker} /> },
-  { slug: "notes", label: "Notes", render: (c) => <NotesView ticker={c.ticker} /> },
+type Tab = { slug: string; label: string; render: (company: CompanyListItem) => ReactNode };
+
+// Grouped by function: overview | statements | analysis | forward-looking | notes. The nav draws a
+// thin divider between groups.
+const TAB_GROUPS: Tab[][] = [
+  [{ slug: "overview", label: "Overview", render: (company) => <Overview company={company} /> }],
+  [
+    { slug: "income", label: "Income", render: statementTab("IS") },
+    { slug: "balance", label: "Balance", render: statementTab("BS") },
+    { slug: "cash-flow", label: "Cash Flow", render: statementTab("CF") },
+    { slug: "segments", label: "Segments", render: (c) => <SegmentsView ticker={c.ticker} /> },
+  ],
+  [
+    { slug: "ratios", label: "Ratios", render: (c) => <RatiosView ticker={c.ticker} /> },
+    { slug: "capital", label: "Capital", render: (c) => <CapitalView ticker={c.ticker} /> },
+    { slug: "quality", label: "Quality", render: (c) => <QualityView ticker={c.ticker} /> },
+    {
+      slug: "seasonality",
+      label: "Seasonality",
+      render: (c) => <SeasonalityView ticker={c.ticker} />,
+    },
+    { slug: "comps", label: "Comps", render: (c) => <CompsView ticker={c.ticker} /> },
+  ],
+  [
+    { slug: "guidance", label: "Guidance", render: (c) => <GuidanceView ticker={c.ticker} /> },
+    { slug: "forecast", label: "Forecast", render: (c) => <ForecastView ticker={c.ticker} /> },
+    { slug: "scenarios", label: "Scenarios", render: (c) => <ScenariosView ticker={c.ticker} /> },
+    { slug: "valuation", label: "Valuation", render: (c) => <ValuationView ticker={c.ticker} /> },
+    { slug: "backtest", label: "Backtest", render: (c) => <BacktestView ticker={c.ticker} /> },
+  ],
+  [{ slug: "notes", label: "Notes", render: (c) => <NotesView ticker={c.ticker} /> }],
 ];
+
+const TABS: Tab[] = TAB_GROUPS.flat();
 
 // The tabs that share the picked scenario and case (`?scenario`, `?case`), so moving between them
 // keeps both.
@@ -107,7 +118,8 @@ export function Company() {
         <span data-testid="header-market-cap" className="num text-muted-foreground">
           {formatCompact(company.market_cap)}
         </span>
-        <span className="ml-auto flex items-center gap-2">
+        <span className="ml-auto flex flex-wrap items-center gap-2">
+          <FilingsStatus company={company} />
           <span className="text-muted-foreground text-xs">
             Refreshed {formatRelative(company.last_refreshed_at, now)}
           </span>
@@ -132,16 +144,28 @@ export function Company() {
           </p>
         ))}
       </div>
-      <nav className="border-border flex gap-4 overflow-x-auto border-b px-4 text-sm">
-        {TABS.map(({ slug, label }) => (
-          <NavLink
-            key={slug}
-            to={tabPath(company.ticker, slug, params)}
-            end
-            className={tabClassName}
+      <nav className="border-border flex items-stretch overflow-x-auto border-b px-4 text-sm">
+        {TAB_GROUPS.map((group, index) => (
+          <div
+            key={group[0]!.slug}
+            role="group"
+            className={
+              index === 0
+                ? "flex gap-4 pr-4"
+                : "border-border my-2 flex gap-4 border-l px-4 [&>a]:-my-2 last:pr-0"
+            }
           >
-            {label}
-          </NavLink>
+            {group.map(({ slug, label }) => (
+              <NavLink
+                key={slug}
+                to={tabPath(company.ticker, slug, params)}
+                end
+                className={tabClassName}
+              >
+                {label}
+              </NavLink>
+            ))}
+          </div>
         ))}
       </nav>
       <Fragment key={active.slug}>{active.render(company)}</Fragment>

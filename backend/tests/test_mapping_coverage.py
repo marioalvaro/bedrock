@@ -14,9 +14,9 @@ from bedrock.mapping.candidates import (
     DEFAULT_VENDOR_PATH,
     load_candidate_index,
 )
-from bedrock.mapping.gaps import unmapped_concepts
+from bedrock.mapping.gaps import unclassified_lines, unmapped_concepts
 from bedrock.mapping.triage import DEFAULT_TRIAGE_PATH, ConceptVerdict, load_concept_triage
-from tests.statements_pipeline import latest_10k_facts, run_pipeline
+from tests.statements_pipeline import filing_fixtures, latest_10k_facts, run_pipeline
 from tests.test_statements_golden import TICKERS, golden
 
 
@@ -88,5 +88,29 @@ def test_every_verdict_applies_to_a_concept_one_of_the_four_companies_leaves_unm
         index = load_candidate_index(DEFAULT_VENDOR_PATH, DEFAULT_CROSSWALK_PATH, pipeline.items)
         unmapped = unmapped_concepts(latest_10k_facts(ticker), pipeline.mappings, index)
         used |= {(u.taxonomy, u.concept) for u in unmapped}
+    for ticker in DEVELOPMENT:  # M7b S7: the face lines of the recorded filings
+        lines, _ = filing_fixtures(ticker)
+        used |= set(zip(lines["taxonomy"], lines["concept"], strict=True))
 
     assert sorted(set(triage) - used) == []  # a verdict nobody needs any more is stale
+
+
+# --- M7b S7: every us-gaap face line of the development filings is classified ----------------
+
+DEVELOPMENT = ("AAPL", "MSFT", "COST", "DE", "BA", "JNJ", "NFLX", "NKE", "ORCL", "WMT")
+
+
+@pytest.mark.parametrize("ticker", DEVELOPMENT)
+def test_every_us_gaap_face_line_of_the_newest_10k_and_10q_is_classified(ticker: str) -> None:
+    pipeline = run_pipeline(ticker)
+    open_lines = [
+        f"{u.statement} {u.concept} ({u.label})"
+        for u in unclassified_lines(pipeline.rules.filing_lines, pipeline.items)
+        if u.taxonomy == "us-gaap"
+    ]
+
+    assert open_lines == [], (
+        f"{ticker}: a us-gaap line on the face of the newest 10-K or 10-Q has no mapping, face "
+        "member or verdict. Add a verdict to mapping/concept_triage.yaml whose codes name every "
+        "canonical line the line may hold."
+    )

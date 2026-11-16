@@ -1,8 +1,9 @@
 """The guidance log (FR-ANL-09): judging guidance ranges against actuals. Pure.
 
 An entry guides one metric in one fiscal period on one basis. `evaluate` judges each entry against
-the actual it is given, marks which entry of each (metric, period, basis) is the latest revision,
-and `summarize` turns the results into the hit/miss record, counting the latest entries only.
+the actual it is given, marks which entry of each (metric, period, basis, source) is the latest
+revision, and `summarize` turns the results into the hit/miss record, counting the latest entries
+only.
 """
 
 from collections.abc import Iterable, Mapping, Sequence
@@ -16,6 +17,7 @@ from bedrock.statements.build import RATIO_PLACES
 Basis = Literal["reported", "normalized"]
 Direction = Literal["higher", "lower"]
 Verdict = Literal["beat", "in_range", "miss", "pending"]
+Source = Literal["management", "consensus"]
 
 # Metrics where a smaller actual is the good outcome; every other metric defaults to `higher`.
 LOWER_IS_BETTER = frozenset(
@@ -61,6 +63,7 @@ class GuidanceEntry:
     basis: Basis
     direction: Direction
     given_on: date
+    source: Source = "management"
 
 
 @dataclass(frozen=True)
@@ -69,7 +72,7 @@ class GuidanceResult:
     actual: Decimal | None
     verdict: Verdict
     surprise: Decimal | None  # (actual - midpoint) / |midpoint|, not flipped for `lower`
-    latest: bool  # the last revision of its (metric, period, basis)
+    latest: bool  # the last revision of its (metric, period, basis, source)
 
 
 @dataclass(frozen=True)
@@ -97,19 +100,25 @@ def evaluate(
 ) -> list[GuidanceResult]:
     """One result per entry, in the order given. An entry whose key is not in `actuals` (or is
     None there) is pending. Among entries with the same (metric, fiscal_year, fiscal_period,
-    basis) the latest `given_on` is the latest revision (ties: the highest id)."""
-    newest: dict[tuple[str, int, str, str], tuple[date, int]] = {}
+    basis, source) the latest `given_on` is the latest revision (ties: the highest id): the
+    analysts' consensus never supersedes management's guidance, nor the reverse."""
+    newest: dict[tuple[str, int, str, str, str], tuple[date, int]] = {}
     for e in entries:
-        key = (e.metric, e.fiscal_year, e.fiscal_period, e.basis)
-        newest[key] = max(newest.get(key, (e.given_on, e.id)), (e.given_on, e.id))
+        newest[_revision_key(e)] = max(
+            newest.get(_revision_key(e), (e.given_on, e.id)), (e.given_on, e.id)
+        )
     return [
         _judge(
             e,
             actuals.get((e.basis, e.metric, e.fiscal_year, e.fiscal_period)),
-            newest[(e.metric, e.fiscal_year, e.fiscal_period, e.basis)] == (e.given_on, e.id),
+            newest[_revision_key(e)] == (e.given_on, e.id),
         )
         for e in entries
     ]
+
+
+def _revision_key(e: GuidanceEntry) -> tuple[str, int, str, str, str]:
+    return (e.metric, e.fiscal_year, e.fiscal_period, e.basis, e.source)
 
 
 def summarize(results: Iterable[GuidanceResult]) -> GuidanceSummary:

@@ -45,3 +45,21 @@ describe("motion tokens", () => {
     expect(source).not.toMatch(/\bduration-\d+/);
   });
 });
+
+// Grid row roles and the overlay-scrollbar fix, checked as text like the motion rules.
+describe("grid rows", () => {
+  it("tints a sub-row (YoY, common size, % of CFO) with a faint muted background", () => {
+    expect(css).toMatch(/\.ag-row\.row-sub\s*\{[^}]*background-color:[^;}]*var\(--muted\)/);
+  });
+
+  it("gives a heading row a band and a top rule", () => {
+    expect(css).toMatch(/\.ag-row\.row-heading\s*\{[^}]*background-color:[^;}]*var\(--muted\)/);
+    expect(css).toMatch(/\.ag-row\.row-heading\s*\{[^}]*border-top:[^;}]*var\(--border\)/);
+  });
+
+  it("keeps an overlay horizontal scrollbar below the last row, not on top of it", () => {
+    expect(css).toMatch(
+      /\.ag-body-horizontal-scroll\.ag-scrollbar-invisible\s*\{[^}]*position:\s*relative/,
+    );
+  });
+});

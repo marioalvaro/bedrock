@@ -72,8 +72,9 @@ def delete_scenario(
     scenario_id: int,
     company: Company = Depends(followed_company),
     session: Session = Depends(get_session),
+    now: datetime = Depends(get_clock),
 ) -> None:
-    service.delete_scenario(session, company, scenario_id)
+    service.delete_scenario(session, company, scenario_id, now)
 
 
 @router.get("/companies/{ticker}/scenarios/{scenario_id}/years")

@@ -1,8 +1,13 @@
+from collections.abc import Callable
+
+import pytest
 from fastapi.testclient import TestClient
 
 
-def _add(client: TestClient, ticker: str = "AAPL") -> None:
-    assert client.post("/api/v1/companies", json={"ticker": ticker}).status_code == 201
+@pytest.fixture
+def aapl_client(seed_db: Callable[..., None], authed_client: TestClient) -> TestClient:
+    seed_db("AAPL")  # the followed company from the session's template, not a fresh ingest (G42)
+    return authed_client
 
 
 def test_listing_requires_a_session(client: TestClient) -> None:
@@ -13,10 +18,9 @@ def test_an_unfollowed_company_is_a_404(authed_client: TestClient) -> None:
     assert authed_client.get("/api/v1/companies/AAPL/corporate-actions").status_code == 404
 
 
-def test_aapl_lists_its_splits_oldest_first(authed_client: TestClient) -> None:
-    _add(authed_client)
+def test_aapl_lists_its_splits_oldest_first(aapl_client: TestClient) -> None:
 
-    response = authed_client.get("/api/v1/companies/aapl/corporate-actions")
+    response = aapl_client.get("/api/v1/companies/aapl/corporate-actions")
 
     assert response.status_code == 200
     actions = response.json()
@@ -37,10 +41,9 @@ def test_aapl_lists_its_splits_oldest_first(authed_client: TestClient) -> None:
     assert set(actions[0]) == {"type", "effective_date", "ratio", "source"}
 
 
-def test_a_refresh_does_not_duplicate_the_actions(authed_client: TestClient) -> None:
-    _add(authed_client)
-    before = authed_client.get("/api/v1/companies/AAPL/corporate-actions").json()
+def test_a_refresh_does_not_duplicate_the_actions(aapl_client: TestClient) -> None:
+    before = aapl_client.get("/api/v1/companies/AAPL/corporate-actions").json()
 
-    authed_client.post("/api/v1/companies/AAPL/refresh")
+    aapl_client.post("/api/v1/companies/AAPL/refresh")
 
-    assert authed_client.get("/api/v1/companies/AAPL/corporate-actions").json() == before
+    assert aapl_client.get("/api/v1/companies/AAPL/corporate-actions").json() == before

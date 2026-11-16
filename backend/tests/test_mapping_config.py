@@ -4,15 +4,18 @@ import pytest
 
 from bedrock.mapping.config import (
     DEFAULT_ITEMS_PATH,
+    MEMO_CODES,
     CanonicalItemDef,
     MappingConfigError,
     formula_order,
     is_adjustable,
     load_canonical_items,
     load_excludes,
+    load_other_lines,
     load_overrides,
     parse_formula,
     propagation_targets,
+    signed_members,
     split_concept,
     split_group,
 )
@@ -230,6 +233,94 @@ def test_a_malformed_summed_concept_is_rejected(tmp_path: Path, entry: str) -> N
     assert error.code == "cost_of_revenue"
 
 
+# M7b S3: signed members (docs/erd/data-coverage.md "Signed members")
+@pytest.mark.parametrize(
+    ("entry", "members"),
+    [
+        ("A - B", [(1, "us-gaap", "A"), (-1, "us-gaap", "B")]),
+        ("-A", [(-1, "us-gaap", "A")]),
+        ("- A", [(-1, "us-gaap", "A")]),
+        ("A + B - C", [(1, "us-gaap", "A"), (1, "us-gaap", "B"), (-1, "us-gaap", "C")]),
+        ("-us-gaap:A + B", [(-1, "us-gaap", "A"), (1, "us-gaap", "B")]),
+        ("ifrs-full:A - ifrs-full:B", [(1, "ifrs-full", "A"), (-1, "ifrs-full", "B")]),
+        ("A+B", [(1, "us-gaap", "A"), (1, "us-gaap", "B")]),
+    ],
+)
+def test_signed_members_give_each_member_its_weight_anchor_first(
+    entry: str, members: list[tuple[int, str, str]]
+) -> None:
+    assert signed_members(entry) == members
+    assert split_group(entry) == [(t, c) for _, t, c in members]
+
+
+def test_signed_entries_are_qualified_with_their_signs(tmp_path: Path) -> None:
+    text = VALID.replace(
+        "concepts: [CostOfRevenue]",
+        'concepts: ["CostOfRevenue - OtherCost", "-Foo", "A + B - C", "- Bar + Baz"]',
+    )
+
+    items = {i.code: i for i in load_canonical_items(write(tmp_path, text))}
+
+    assert items["cost_of_revenue"].concepts == (
+        "us-gaap:CostOfRevenue - us-gaap:OtherCost",
+        "-us-gaap:Foo",
+        "us-gaap:A + us-gaap:B - us-gaap:C",
+        "-us-gaap:Bar + us-gaap:Baz",
+    )
+    assert all(
+        signed_members(entry) == signed_members(original)
+        for entry, original in zip(
+            items["cost_of_revenue"].concepts,
+            ["CostOfRevenue - OtherCost", "-Foo", "A + B - C", "- Bar + Baz"],
+            strict=True,
+        )
+    )  # the qualified text parses back to the same members
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        "A - A",  # a member twice, whatever its sign
+        "A + B - A",
+        "A - ",  # empty member
+        "A - - B",
+        "-",
+        "A -B",  # a sign needs a space on both sides, or it is part of a name
+        "A - aapl:B",  # mixed taxonomies
+        "A  B",  # whitespace inside a name
+        "A + -B",  # a sign inside a member: `-B` would be a name and never match a fact
+        "A+-B",
+        "A - +B",
+        "us-gaap:-A",
+    ],
+)
+def test_a_malformed_signed_entry_is_rejected(tmp_path: Path, entry: str) -> None:
+    error = fail_with(tmp_path, VALID.replace("[CostOfRevenue]", f'["{entry}"]'))
+
+    assert error.code == "cost_of_revenue"
+
+
+def test_a_signed_override_is_qualified_like_a_default(tmp_path: Path) -> None:
+    (tmp_path / "ACME.yaml").write_text('cost_of_revenue: ["CostOfRevenue - Rebates"]\n')
+
+    assert load_overrides(tmp_path, "ACME") == {
+        "cost_of_revenue": ["us-gaap:CostOfRevenue - us-gaap:Rebates"]
+    }
+
+
+def test_a_signed_default_can_be_excluded_by_its_text(tmp_path: Path) -> None:
+    items = load_canonical_items(
+        write(tmp_path, VALID.replace("[CostOfRevenue]", '["CostOfRevenue - Rebates", Other]'))
+    )
+    (tmp_path / "ACME.yaml").write_text(
+        'cost_of_revenue: {exclude: ["CostOfRevenue - us-gaap:Rebates"]}\n'
+    )
+
+    assert load_excludes(tmp_path, "ACME", items) == {
+        "cost_of_revenue": ["us-gaap:CostOfRevenue - us-gaap:Rebates"]
+    }
+
+
 def test_the_same_summed_concept_twice_is_rejected(tmp_path: Path) -> None:
     text = VALID.replace("[CostOfRevenue]", "[A + B, us-gaap:A + B]")
 
@@ -347,10 +438,10 @@ def test_load_overrides_rejects_unknown_codes_and_duplicates(tmp_path: Path) -> 
         load_overrides(tmp_path, "Y", items)
 
 
-def test_shipped_canonical_items_load_with_84_codes() -> None:
+def test_shipped_canonical_items_load_with_95_codes() -> None:
     items = load_canonical_items(DEFAULT_ITEMS_PATH)
 
-    assert len(items) == 84
+    assert len(items) == 95  # M7b S4 adds the four scope totals, S5 the seven new rows
     assert {i.statement for i in items} == {"IS", "BS", "CF"}
     by_code = {i.code: i for i in items}
     assert by_code["eps_diluted"].kind == "average"
@@ -738,3 +829,623 @@ def test_is_adjustable_follows_the_erd_rules() -> None:
         "shares_outstanding",
     ):  # fmt: skip
         assert code not in adjustable, code
+
+
+# --- M7b S2: lines a standard introduced (docs/erd/data-coverage.md, "Coverage semantics") ----
+
+
+def test_starts_with_standard_defaults_to_false_and_reads_true(tmp_path: Path) -> None:
+    text = VALID.replace(
+        "concepts: [CostOfRevenue]", "concepts: [CostOfRevenue]\n  starts_with_standard: true"
+    )
+
+    items = {i.code: i for i in load_canonical_items(write(tmp_path, text))}
+
+    assert items["cost_of_revenue"].starts_with_standard is True
+    assert items["revenue"].starts_with_standard is False
+
+
+@pytest.mark.parametrize("value", ['"yes"', "1", "null"])
+def test_starts_with_standard_must_be_a_bool(tmp_path: Path, value: str) -> None:
+    text = VALID.replace(
+        "concepts: [CostOfRevenue]", f"concepts: [CostOfRevenue]\n  starts_with_standard: {value}"
+    )
+
+    error = fail_with(tmp_path, text)
+
+    assert error.code == "cost_of_revenue"
+    assert "starts_with_standard" in str(error)
+
+
+def test_starts_with_standard_is_rejected_on_a_computed_item(tmp_path: Path) -> None:
+    text = VALID.replace(
+        "derive: revenue - cost_of_revenue",
+        "derive: revenue - cost_of_revenue\n  starts_with_standard: true",
+    )
+
+    assert fail_with(tmp_path, text).code == "gross_profit"
+
+
+def test_starts_with_standard_is_rejected_on_a_residual(tmp_path: Path) -> None:
+    text = """
+- code: other_current_assets
+  statement: BS
+  label: Other
+  kind: instant
+  unit: USD
+  sign: 1
+  residual: true
+  derive: total_current_assets - cash
+  starts_with_standard: true
+- code: cash
+  statement: BS
+  label: Cash
+  kind: instant
+  unit: USD
+  sign: 1
+- code: total_current_assets
+  statement: BS
+  label: TCA
+  kind: instant
+  unit: USD
+  sign: 1
+"""
+    assert fail_with(tmp_path, text).code == "other_current_assets"
+
+
+def test_shipped_items_mark_the_two_lease_lines_as_starting_with_a_standard() -> None:
+    items = load_canonical_items(DEFAULT_ITEMS_PATH)
+
+    assert {i.code for i in items if i.starts_with_standard} == {
+        "operating_lease_rou",
+        "operating_lease_liabilities_noncurrent",
+    }
+
+
+# --- M7b S4: combined lines ------------------------------------------------------------------
+
+COMBINED = """
+- code: total_current_liabilities
+  statement: BS
+  label: Total current liabilities
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: null
+  concepts: [LiabilitiesCurrent]
+- code: accounts_payable
+  statement: BS
+  label: Accounts payable
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_current_liabilities
+  concepts:
+    - AccountsPayableCurrent
+    - {concept: AccountsPayableAndAccruedLiabilitiesCurrent, covers: [accrued_liabilities]}
+- code: accrued_liabilities
+  statement: BS
+  label: Accrued liabilities
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_current_liabilities
+  concepts: [AccruedLiabilitiesCurrent]
+- code: other_current_liabilities
+  statement: BS
+  label: Other current liabilities
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_current_liabilities
+  concepts: []
+  derive: total_current_liabilities - accounts_payable - accrued_liabilities
+  residual: true
+- code: revenue
+  statement: IS
+  label: Revenue
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: null
+  concepts: [Revenues]
+- code: change_payables
+  statement: CF
+  label: Change in payables
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: null
+  concepts: [IncreaseDecreaseInAccountsPayable]
+"""
+
+AP_COMBINED = (
+    "    - {concept: AccountsPayableAndAccruedLiabilitiesCurrent, covers: [accrued_liabilities]}"
+)
+
+
+def test_a_combined_entry_is_a_concept_with_the_codes_it_covers(tmp_path: Path) -> None:
+    items = {i.code: i for i in load_canonical_items(write(tmp_path, COMBINED))}
+    payable = items["accounts_payable"]
+    assert payable.concepts == (
+        "us-gaap:AccountsPayableCurrent",
+        "us-gaap:AccountsPayableAndAccruedLiabilitiesCurrent",
+    )
+    assert payable.covers == (
+        ("us-gaap:AccountsPayableAndAccruedLiabilitiesCurrent", ("accrued_liabilities",)),
+    )
+    assert items["accrued_liabilities"].covers == ()
+
+
+def test_a_combined_entry_may_cover_no_row(tmp_path: Path) -> None:
+    text = COMBINED.replace(
+        "  concepts: [IncreaseDecreaseInAccountsPayable]",
+        "  concepts:\n    - IncreaseDecreaseInAccountsPayable\n"
+        "    - {concept: IncreaseDecreaseInAccountsPayableAndAccruedLiabilities, covers: []}",
+    )
+    items = {i.code: i for i in load_canonical_items(write(tmp_path, text))}
+    assert items["change_payables"].covers == (
+        ("us-gaap:IncreaseDecreaseInAccountsPayableAndAccruedLiabilities", ()),
+    )
+
+
+@pytest.mark.parametrize(
+    ("entry", "message"),
+    [
+        # a plain entry after a combined one
+        (f"{AP_COMBINED}\n    - AccountsPayableTradeCurrent", "after every plain entry"),
+        # a sum cannot be combined
+        (
+            "    - {concept: 'AccountsPayableCurrent + OtherLiabilitiesCurrent', "
+            "covers: [accrued_liabilities]}",
+            "single concept",
+        ),
+        ("    - {concept: X, covers: [accounts_payable]}", "itself"),
+        ("    - {concept: X, covers: [other_current_liabilities]}", "residual"),
+        ("    - {concept: X, covers: [revenue]}", "same statement"),
+        ("    - {concept: X, covers: [unknown_code]}", "unknown"),
+        ("    - {concept: X, covers: [accrued_liabilities, accrued_liabilities]}", "twice"),
+        ("    - {concept: X}", "covers"),
+        ("    - {concept: X, covers: accrued_liabilities}", "list"),
+        ("    - {concept: X, covers: [], extra: 1}", "covers"),
+        ("    - {covers: []}", "concept"),
+        ("    - 7", "concept"),
+    ],
+)
+def test_a_malformed_combined_entry_is_rejected(tmp_path: Path, entry: str, message: str) -> None:
+    text = COMBINED.replace(AP_COMBINED, entry)
+    with pytest.raises(MappingConfigError, match=message):
+        load_canonical_items(write(tmp_path, text))
+
+
+def test_a_covered_code_has_the_carriers_kind(tmp_path: Path) -> None:
+    text = COMBINED.replace(
+        "  concepts: [Revenues]",
+        "  concepts: [Revenues]\n- code: change_accrued\n"
+        "  statement: BS\n  label: x\n  kind: flow\n  unit: USD\n  sign: 1\n  parent: null\n"
+        "  concepts: [Y]",
+    ).replace("covers: [accrued_liabilities]}", "covers: [change_accrued]}")
+    with pytest.raises(MappingConfigError, match="kind"):
+        load_canonical_items(write(tmp_path, text))
+
+
+def test_an_override_cannot_hold_a_combined_entry(tmp_path: Path) -> None:
+    items = load_canonical_items(write(tmp_path, COMBINED))
+    (tmp_path / "ACME.yaml").write_text(
+        "accounts_payable:\n  - {concept: X, covers: [accrued_liabilities]}\n"
+    )
+    with pytest.raises(MappingConfigError, match="override"):
+        load_overrides(tmp_path, "ACME", items)
+
+
+def test_a_combined_default_can_be_excluded_by_its_concept(tmp_path: Path) -> None:
+    items = load_canonical_items(write(tmp_path, COMBINED))
+    (tmp_path / "ACME.yaml").write_text(
+        "accounts_payable:\n  exclude: [AccountsPayableAndAccruedLiabilitiesCurrent]\n"
+    )
+    assert load_excludes(tmp_path, "ACME", items) == {
+        "accounts_payable": ["us-gaap:AccountsPayableAndAccruedLiabilitiesCurrent"]
+    }
+
+
+# --- M7b S5: new rows folded back into their residual for the forecast (docs/erd/data-coverage.md,
+# "New canonical rows") ---------------------------------------------------------------------------
+
+FOLD = """
+- code: total_current_assets
+  statement: BS
+  label: Total current assets
+  kind: instant
+  unit: USD
+  sign: 1
+  concepts: [AssetsCurrent]
+- code: cash
+  statement: BS
+  label: Cash
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_current_assets
+  concepts: [Cash]
+- code: prepaid
+  statement: BS
+  label: Prepaid
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_current_assets
+  concepts: [PrepaidExpenseCurrent]
+  forecast_fold: other_current_assets
+- code: other_current_assets
+  statement: BS
+  label: Other current assets
+  kind: instant
+  unit: USD
+  sign: 1
+  parent: total_current_assets
+  residual: true
+  derive: total_current_assets - cash - prepaid
+- code: revenue
+  statement: IS
+  label: Revenue
+  kind: flow
+  unit: USD
+  sign: 1
+  concepts: [Revenues]
+- code: other_income
+  statement: IS
+  label: Other
+  kind: flow
+  unit: USD
+  sign: 1
+  residual: true
+  derive: revenue
+"""
+
+
+def test_forecast_fold_names_the_residual_a_new_row_folds_into(tmp_path: Path) -> None:
+    items = {i.code: i for i in load_canonical_items(write(tmp_path, FOLD))}
+
+    assert items["prepaid"].forecast_fold == "other_current_assets"
+    assert items["cash"].forecast_fold is None
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "code"),
+    [
+        # not a code
+        ("forecast_fold: other_current_assets", "forecast_fold: [other_current_assets]", "prepaid"),
+        # an unknown code
+        ("forecast_fold: other_current_assets", "forecast_fold: nowhere", "prepaid"),
+        # not a residual
+        ("forecast_fold: other_current_assets", "forecast_fold: cash", "prepaid"),
+        # a residual on another statement
+        ("forecast_fold: other_current_assets", "forecast_fold: other_income", "prepaid"),
+        # a residual whose formula does not hold the row
+        (
+            "derive: total_current_assets - cash - prepaid",
+            "derive: total_current_assets - cash",
+            "prepaid",
+        ),
+        # a row with no parent (a memo row)
+        (
+            "parent: total_current_assets\n  concepts: [PrepaidExpenseCurrent]",
+            "concepts: [PrepaidExpenseCurrent]",
+            "prepaid",
+        ),
+        # a computed row
+        ("concepts: [PrepaidExpenseCurrent]", "derive: cash", "prepaid"),
+    ],
+)  # fmt: skip
+def test_a_misplaced_forecast_fold_is_rejected(
+    tmp_path: Path, old: str, new: str, code: str
+) -> None:
+    assert old in FOLD
+    error = fail_with(tmp_path, FOLD.replace(old, new))
+
+    assert error.code == code
+    assert "forecast_fold" in str(error)
+
+
+def test_forecast_fold_is_rejected_on_a_residual(tmp_path: Path) -> None:
+    text = FOLD.replace(
+        "derive: total_current_assets - cash - prepaid",
+        "derive: total_current_assets - cash - prepaid\n  forecast_fold: other_current_assets",
+    )
+
+    error = fail_with(tmp_path, text)
+
+    assert error.code == "other_current_assets"
+    assert "forecast_fold" in str(error)
+
+
+S5_ROWS = {  # code: (statement, parent, forecast_fold)
+    "interest_income": ("IS", "pretax_income", "other_nonoperating_income"),
+    "deferred_tax_assets": ("BS", "total_noncurrent_assets", "other_noncurrent_assets"),
+    "deferred_revenue_noncurrent": (
+        "BS",
+        "total_noncurrent_liabilities",
+        "other_noncurrent_liabilities",
+    ),
+    "deferred_tax_liabilities": (
+        "BS",
+        "total_noncurrent_liabilities",
+        "other_noncurrent_liabilities",
+    ),
+    "pension_liabilities": ("BS", "total_noncurrent_liabilities", "other_noncurrent_liabilities"),
+    "cash_taxes_paid": ("CF", None, None),
+    "cash_interest_paid": ("CF", None, None),
+}
+
+
+def test_shipped_items_add_the_s5_rows_under_their_parents_folded_for_the_forecast() -> None:
+    by_code = {i.code: i for i in load_canonical_items(DEFAULT_ITEMS_PATH)}
+
+    for code, (statement, parent, fold) in S5_ROWS.items():
+        assert (by_code[code].statement, by_code[code].parent) == (statement, parent), code
+        assert by_code[code].forecast_fold == fold, code
+        assert by_code[code].unit == "USD" and by_code[code].concepts, code
+    # only the S5 rows fold: the forecast models every other row
+    assert {c for c, i in by_code.items() if i.forecast_fold} == {
+        c for c, (_, _, fold) in S5_ROWS.items() if fold
+    }
+
+
+def test_the_s5_memo_rows_are_memo_codes_and_never_adjustable() -> None:
+    by_code = {i.code: i for i in load_canonical_items(DEFAULT_ITEMS_PATH)}
+
+    assert {"cash_taxes_paid", "cash_interest_paid"} <= MEMO_CODES
+    assert not is_adjustable(by_code["cash_taxes_paid"])
+    assert not is_adjustable(by_code["cash_interest_paid"])
+    assert by_code["cash_taxes_paid"].kind == by_code["cash_interest_paid"].kind == "flow"
+
+
+def test_the_residuals_take_the_s5_rows_out() -> None:
+    by_code = {i.code: i for i in load_canonical_items(DEFAULT_ITEMS_PATH)}
+
+    assert by_code["other_nonoperating_income"].derive == (
+        "pretax_income - operating_income + interest_expense - interest_income"
+    )
+    assert by_code["other_noncurrent_assets"].derive == (
+        "total_noncurrent_assets - ppe_net - operating_lease_rou - goodwill - intangibles"
+        " - long_term_investments - deferred_tax_assets"
+    )
+    assert by_code["other_noncurrent_liabilities"].derive == (
+        "total_noncurrent_liabilities - long_term_debt - operating_lease_liabilities_noncurrent"
+        " - deferred_revenue_noncurrent - deferred_tax_liabilities - pension_liabilities"
+    )
+    assert by_code["interest_income"].rolls_into == (("pretax_income", 1),)
+
+
+# --- M7b S5 (user, 2026-11-14): `required`, a line every company has: a gap even if never reported
+
+
+def test_required_defaults_to_false_and_reads_true(tmp_path: Path) -> None:
+    text = VALID.replace("concepts: [CostOfRevenue]", "concepts: [CostOfRevenue]\n  required: true")
+
+    items = {i.code: i for i in load_canonical_items(write(tmp_path, text))}
+
+    assert items["cost_of_revenue"].required is True
+    assert items["revenue"].required is False
+
+
+@pytest.mark.parametrize("value", ["maybe", "1", "[true]"])  # YAML reads `yes` as true
+def test_required_must_be_a_bool(tmp_path: Path, value: str) -> None:
+    text = VALID.replace(
+        "concepts: [CostOfRevenue]", f"concepts: [CostOfRevenue]\n  required: {value}"
+    )
+
+    error = fail_with(tmp_path, text)
+
+    assert error.code == "cost_of_revenue" and "required" in str(error)
+
+
+def test_required_is_rejected_on_a_residual(tmp_path: Path) -> None:
+    text = FOLD.replace(
+        "derive: total_current_assets - cash - prepaid",
+        "derive: total_current_assets - cash - prepaid\n  required: true",
+    )
+
+    error = fail_with(tmp_path, text)
+
+    assert error.code == "other_current_assets" and "required" in str(error)
+
+
+REQUIRED = {
+    "revenue", "cost_of_revenue", "gross_profit", "operating_income", "interest_expense",
+    "pretax_income", "income_tax", "net_income", "eps_diluted", "shares_diluted",
+    "cash", "total_assets", "short_term_debt", "long_term_debt", "total_debt",
+    "total_liabilities", "total_equity",
+    "cfo", "capex", "cfi", "cff", "free_cash_flow",
+}  # fmt: skip
+
+
+def test_the_shipped_required_lines_are_the_basic_ones() -> None:
+    items = load_canonical_items(DEFAULT_ITEMS_PATH)
+
+    assert {i.code for i in items if i.required} == REQUIRED
+
+
+# M7b S7: structure-rule fields (docs/erd/data-coverage.md "Structure rules")
+STRUCTURE = (
+    VALID
+    + """
+- code: opex
+  statement: IS
+  label: Opex
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: gross_profit
+  concepts: [OperatingExpenses]
+  face_members: [SellingExpense, "us-gaap:MarketingExpense"]
+  zero_when_absent: false
+"""
+)
+
+
+def test_face_members_and_zero_when_absent_are_read(tmp_path: Path) -> None:
+    items = {i.code: i for i in load_canonical_items(write(tmp_path, STRUCTURE))}
+
+    assert items["opex"].face_members == ("us-gaap:SellingExpense", "us-gaap:MarketingExpense")
+    assert items["opex"].zero_when_absent is False
+    assert items["revenue"].face_members == ()
+    assert items["revenue"].zero_when_absent is True
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        # a face member that is a default concept of another item
+        ("face_members: [SellingExpense", "face_members: [CostOfRevenue"),
+        # a sum is not a face member: each member is one line
+        ("face_members: [SellingExpense", 'face_members: ["SellingExpense + Foo"'),
+        ('"us-gaap:MarketingExpense"]', '"us-gaap:SellingExpense"]'),  # twice
+        (
+            'face_members: [SellingExpense, "us-gaap:MarketingExpense"]',
+            "face_members: Foo",
+        ),  # not a list
+        ("zero_when_absent: false", "zero_when_absent: no-thanks"),
+        ("zero_when_absent: false", "zero_when_absnt: false"),  # an unknown key
+    ],
+)
+def test_malformed_structure_fields_are_rejected(tmp_path: Path, old: str, new: str) -> None:
+    error = fail_with(tmp_path, STRUCTURE.replace(old, new))
+
+    assert error.code == "opex"
+
+
+def test_face_members_on_a_computed_or_residual_item_are_rejected(tmp_path: Path) -> None:
+    computed = VALID.replace(
+        "  derive: revenue - cost_of_revenue",
+        "  derive: revenue - cost_of_revenue\n  face_members: [Foo]",
+    )
+    assert fail_with(tmp_path, computed).code == "gross_profit"
+    residual = (
+        VALID
+        + """
+- code: other_cost
+  statement: IS
+  label: Other
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: gross_profit
+  residual: true
+  derive: gross_profit - revenue
+  face_members: [Foo]
+"""
+    )
+    assert fail_with(tmp_path, residual).code == "other_cost"
+
+
+def test_the_shipped_items_have_face_members_for_the_eight_first_items() -> None:
+    items = {i.code: i for i in load_canonical_items(DEFAULT_ITEMS_PATH)}
+
+    with_members = {code for code, item in items.items() if item.face_members}
+    assert with_members == {
+        "short_term_debt",
+        "long_term_debt",
+        "sga",
+        "debt_issued",
+        "debt_repaid",
+        "sales_maturities_of_investments",
+        "purchases_of_investments",
+        "d_and_a",
+    }
+
+
+def test_other_lines_are_read_from_the_override_file(tmp_path: Path) -> None:
+    items = load_canonical_items(write(tmp_path, VALID))
+    (tmp_path / "X.yaml").write_text("revenue: [x:Rev]\nother_lines: [x:Gain, 'x:OtherCharge']\n")
+
+    assert load_other_lines(tmp_path, "x") == (("x", "Gain"), ("x", "OtherCharge"))
+    assert load_overrides(tmp_path, "X", items) == {"revenue": ["x:Rev"]}  # not a code
+    assert load_other_lines(tmp_path, "NOFILE") == ()
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "other_lines: x:Gain\n",  # not a list
+        "other_lines: ['x:A + x:B']\n",  # a sum
+        "other_lines: [x:Gain, x:Gain]\n",  # twice
+        "other_lines: [OtherNonoperatingIncome]\n",  # a us-gaap line has a triage verdict instead
+    ],
+)
+def test_malformed_other_lines_are_rejected(tmp_path: Path, text: str) -> None:
+    (tmp_path / "X.yaml").write_text(text)
+
+    with pytest.raises(MappingConfigError):
+        load_other_lines(tmp_path, "X")
+
+
+def test_an_override_sum_may_join_us_gaap_and_the_company_extension(tmp_path: Path) -> None:
+    items = load_canonical_items(write(tmp_path, VALID))
+    (tmp_path / "X.yaml").write_text('revenue: ["x:Sales + us-gaap:OtherRevenue"]\n')
+
+    assert load_overrides(tmp_path, "X", items) == {"revenue": ["x:Sales + us-gaap:OtherRevenue"]}
+
+
+@pytest.mark.parametrize("entry", ["x:A + y:B", "x:A + y:B + us-gaap:C", "x:A + dei:B"])
+def test_an_override_sum_of_two_extensions_is_rejected(tmp_path: Path, entry: str) -> None:
+    items = load_canonical_items(write(tmp_path, VALID))
+    (tmp_path / "X.yaml").write_text(f'revenue: ["{entry}"]\n')
+
+    with pytest.raises(MappingConfigError):
+        load_overrides(tmp_path, "X", items)
+
+
+def test_a_face_member_may_be_the_concept_of_a_support_line(tmp_path: Path) -> None:
+    support = (
+        STRUCTURE
+        + """
+- code: long_term_debt_current
+  statement: IS
+  label: Support
+  kind: flow
+  unit: USD
+  sign: 1
+  parent: null
+  concepts: [SellingExpense]
+"""
+    )  # a support line only feeds an identity: it is no line on the face
+
+    items = {i.code: i for i in load_canonical_items(write(tmp_path, support))}
+
+    assert "us-gaap:SellingExpense" in items["opex"].face_members
+
+
+# --- the items file is parsed once while it does not change (test speed, 2026-11-15) -----------
+
+
+def test_an_unchanged_items_file_is_parsed_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    import yaml
+
+    from tests.spies import count_calls
+
+    first = load_canonical_items()
+    parses = count_calls(monkeypatch, yaml, "safe_load")
+
+    again = load_canonical_items()
+
+    assert again == first and parses == []
+    again.clear()  # the caller's list is its own: the next load is whole
+    assert load_canonical_items() == first
+
+
+def test_a_changed_items_file_is_read_again(tmp_path: Path) -> None:
+    import os
+
+    path = tmp_path / "canonical_items.yaml"
+    path.write_text(
+        "- {code: revenue, statement: IS, label: Revenue, kind: flow, unit: USD, sign: 1}\n"
+    )
+    assert [i.label for i in load_canonical_items(path)] == ["Revenue"]
+
+    path.write_text(
+        "- {code: revenue, statement: IS, label: Sales, kind: flow, unit: USD, sign: 1}\n"
+    )
+    os.utime(path, ns=(1, 1))  # same size or not, a new modification time is a new file
+
+    assert [i.label for i in load_canonical_items(path)] == ["Sales"]

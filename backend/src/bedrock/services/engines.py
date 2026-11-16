@@ -1,8 +1,8 @@
 """Engine choices of a scenario and the engine defaults they set (FR-FCST-07, -08, -11; docs/erd/
-forecasting.md "Statistical engines (M6)" → Service). Imports no other service; `services/
-scenarios.py` calls it."""
+forecasting.md "Statistical engines (M6)" → Service). Of the other services it imports only
+`services/audit.py`; `services/scenarios.py` calls it."""
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
@@ -26,6 +26,7 @@ from bedrock.forecast.history import ForecastHistory, ScenarioSettings, scenario
 from bedrock.forecast.interface import ForecastResult, SeriesInput
 from bedrock.models.scenario import Scenario
 from bedrock.repositories import engines as repo
+from bedrock.services import audit as audit_service
 from bedrock.services.errors import InvalidEngineChoice
 
 __all__ = [
@@ -69,7 +70,8 @@ def _fit(
     code: str, freq: str, first: str, values: tuple[float, ...], horizon: int
 ) -> ForecastResult:
     index = pd.period_range(first, periods=len(values), freq=freq)
-    return registry.fit(code, SeriesInput(pd.Series(values, index=index, dtype=float)), horizon)
+    data = SeriesInput(pd.Series(values, index=index, dtype=float))
+    return _MEMO_ENGINES[code].forecast(data, horizon, {})
 
 
 def memo_fit(code: str, data: SeriesInput, horizon: int) -> ForecastResult:
@@ -84,6 +86,10 @@ def memo_fit(code: str, data: SeriesInput, horizon: int) -> ForecastResult:
         tuple(float(v) for v in data.values),
         horizon,
     )
+
+
+# The blend's parts go through the memo too, so a blend reuses Auto's ARIMA and ETS fits.
+_MEMO_ENGINES = registry.engines_with(memo_fit)
 
 
 def fit_cache_info() -> Any:
@@ -145,7 +151,7 @@ def put_engine_choices(
 ) -> None:
     """Checks every (driver code, engine) row, then writes them in one transaction: `auto`
     deletes the driver's row. Raises InvalidEngineChoice (nothing written)."""
-    drivers = {d.code for d in scenario_drivers(history, settings)}
+    drivers = {d.code: d.label for d in scenario_drivers(history, settings)}
     method = settings.revenue_method
     seen: set[str] = set()
     for code, engine in rows:
@@ -158,8 +164,29 @@ def put_engine_choices(
         seen.add(code)
         if engine == "stl" and code not in SEASONAL:
             raise InvalidEngineChoice(f"STL applies to ratio and days drivers only: {code}")
+    before = _choice_texts(session, scenario.id, seen)
     repo.put(session, scenario.id, {c: None if e == "auto" else e for c, e in rows}, stamp)
+    audit_service.record(
+        session,
+        scenario.company_id,
+        "engine_choice",
+        scenario.id,
+        scenario.name,
+        "edit",
+        before,
+        _choice_texts(session, scenario.id, seen),
+        lambda code: (f"{drivers[code]} engine", None),
+        stamp,
+    )
     session.commit()
+
+
+def _choice_texts(
+    session: Session, scenario_id: int, codes: Collection[str]
+) -> dict[str, str | None]:
+    """The audit trail's value of each driver's choice: a missing row is `auto`."""
+    choices = engine_choices(session, scenario_id)
+    return {code: choices.get(code, "auto") for code in codes}
 
 
 def inspect_driver(

@@ -1,7 +1,16 @@
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import Date, ForeignKey, Index, Integer, Numeric, String, UniqueConstraint
+from sqlalchemy import (
+    CheckConstraint,
+    Date,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from bedrock.models.base import Base
@@ -35,3 +44,11 @@ class RawFact(Base):
     fiscal_period: Mapped[str | None] = mapped_column(String, nullable=True)
     frame: Mapped[str | None] = mapped_column(String, nullable=True)
     value: Mapped[Decimal] = mapped_column(Numeric(28, 10), nullable=False)
+    # Where the fact was read: `companyfacts`, or `filing` for an extension-taxonomy fact read
+    # from the filing's own XBRL (M7b S6).
+    source: Mapped[str] = mapped_column(
+        String,
+        CheckConstraint("source IN ('companyfacts', 'filing')", name="ck_raw_fact_source"),
+        nullable=False,
+        server_default="companyfacts",
+    )

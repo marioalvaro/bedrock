@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  getBacktestApiV1CompaniesTickerBacktestGet,
   getForecastApiV1CompaniesTickerScenariosScenarioIdCasesCaseForecastGet,
   getCapitalAllocationApiV1CompaniesTickerCapitalAllocationGet,
   getCompanyApiV1CompaniesTickerGet,
@@ -41,12 +42,14 @@ vi.mock("@/api/generated/sdk.gen", () => ({
   getCapitalAllocationApiV1CompaniesTickerCapitalAllocationGet: vi.fn(),
   getSegmentsApiV1CompaniesTickerSegmentsGet: vi.fn(),
   getSeasonalityApiV1CompaniesTickerSeasonalityGet: vi.fn(() => new Promise(() => {})),
+  getBacktestApiV1CompaniesTickerBacktestGet: vi.fn(() => new Promise(() => {})),
   listNotesApiV1CompaniesTickerNotesGet: vi.fn(),
   listLinksApiV1CompaniesTickerNotesLinksGet: vi.fn(),
   listSetsApiV1CompaniesTickerCompsSetsGet: vi.fn(),
   getGuidanceApiV1CompaniesTickerGuidanceGet: vi.fn(),
   listMetricsApiV1CompaniesTickerGuidanceMetricsGet: vi.fn(),
   refreshApiV1CompaniesTickerRefreshPost: vi.fn(),
+  backfillFilingsApiV1CompaniesTickerBackfillFilingsPost: vi.fn(),
   listScenariosApiV1CompaniesTickerScenariosGet: vi.fn(),
   getDriversApiV1CompaniesTickerScenariosScenarioIdCasesCaseDriversGet: vi.fn(
     () => new Promise(() => {}),
@@ -122,6 +125,16 @@ describe("company header", () => {
     expect(screen.getByTestId("header-price")).toHaveTextContent("231.40");
     expect(screen.getByTestId("header-market-cap")).toHaveTextContent("3.5T");
     expect(screen.getByText("Refreshed 2h ago")).toBeInTheDocument();
+  });
+
+  it("shows how many filings are read, with a button to read them all", async () => {
+    vi.mocked(getCompanyApiV1CompaniesTickerGet).mockResolvedValue(
+      okResult(companyItem({ filings_parsed: 12, filings_total: 70 })) as never,
+    );
+    renderAt("/c/AAPL");
+
+    expect(await screen.findByText("Filings read: 12 of 70")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Read all filings" })).toBeEnabled();
   });
 
   it("says when the company is not followed", async () => {
@@ -254,27 +267,44 @@ describe("tabs", () => {
     expect(screen.getByRole("link", { name: "Notes" })).toHaveAttribute("aria-current", "page");
   });
 
-  it("lists the fifteen tabs in order, the analysis tabs after Cash Flow", async () => {
+  it("lists the sixteen tabs in order, in four groups after the overview", async () => {
     renderAt("/c/AAPL");
     await screen.findByRole("heading", { name: "AAPL" });
 
-    const links = within(screen.getByRole("navigation")).getAllByRole("link");
+    const nav = screen.getByRole("navigation");
+    const links = within(nav).getAllByRole("link");
     expect(links.map((link) => link.textContent)).toEqual([
       "Overview",
       "Income",
       "Balance",
       "Cash Flow",
-      "Ratios",
-      "Quality",
-      "Capital",
       "Segments",
+      "Ratios",
+      "Capital",
+      "Quality",
       "Seasonality",
       "Comps",
       "Guidance",
-      "Valuation",
       "Forecast",
       "Scenarios",
+      "Valuation",
+      "Backtest",
       "Notes",
+    ]);
+    // Statements | analysis | forward-looking | notes, each group after a divider.
+    const groups = within(nav)
+      .getAllByRole("group")
+      .map((group) =>
+        within(group)
+          .getAllByRole("link")
+          .map((link) => link.textContent),
+      );
+    expect(groups).toEqual([
+      ["Overview"],
+      ["Income", "Balance", "Cash Flow", "Segments"],
+      ["Ratios", "Capital", "Quality", "Seasonality", "Comps"],
+      ["Guidance", "Forecast", "Scenarios", "Valuation", "Backtest"],
+      ["Notes"],
     ]);
     expect(screen.getByRole("link", { name: "Ratios" })).toHaveAttribute("href", "/c/AAPL/ratios");
     expect(screen.getByRole("link", { name: "Quality" })).toHaveAttribute(
@@ -362,6 +392,15 @@ describe("tabs", () => {
     );
   });
 
+  it("does not carry the picked scenario to the Backtest tab", async () => {
+    renderAt("/c/AAPL/scenarios?scenario=2&case=bull");
+    await screen.findByRole("heading", { name: "AAPL" });
+    expect(screen.getByRole("link", { name: "Backtest" })).toHaveAttribute(
+      "href",
+      "/c/AAPL/backtest",
+    );
+  });
+
   it("carries a lone ?case without adding a ?scenario", async () => {
     renderAt("/c/AAPL/scenarios?case=bear");
     await screen.findByRole("heading", { name: "AAPL" });
@@ -379,6 +418,7 @@ describe("tabs", () => {
     ["comps", "Comps", listSetsApiV1CompaniesTickerCompsSetsGet],
     ["guidance", "Guidance", getGuidanceApiV1CompaniesTickerGuidanceGet],
     ["scenarios", "Scenarios", listScenariosApiV1CompaniesTickerScenariosGet],
+    ["backtest", "Backtest", getBacktestApiV1CompaniesTickerBacktestGet],
   ])("routes /%s to its view and marks the tab", async (slug, name, sdk) => {
     renderAt(`/c/AAPL/${slug}`);
 

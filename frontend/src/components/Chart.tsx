@@ -1,4 +1,4 @@
-import { BarChart, LineChart } from "echarts/charts";
+import { BarChart, CustomChart, LineChart } from "echarts/charts";
 import {
   GridComponent,
   LegendComponent,
@@ -14,10 +14,12 @@ import { useMemo } from "react";
 import { usePrefersReducedMotion } from "@/lib/motion";
 import { useTheme, type Theme } from "@/lib/theme";
 
-// Only what the app draws is bundled: line and bar charts with axes, legend, tooltip and mark lines.
+// Only what the app draws is bundled: line, bar and custom (whiskers) charts with axes, legend,
+// tooltip and mark lines.
 echarts.use([
   LineChart,
   BarChart,
+  CustomChart,
   GridComponent,
   LegendComponent,
   MarkLineComponent,
@@ -96,7 +98,7 @@ export function Chart({ option, ariaLabel, height = 260, colors = SERIES_TOKENS 
   const theme = useTheme();
   const reduced = usePrefersReducedMotion();
 
-  // `colors` is a module-level constant at every caller, so the memo holds across renders.
+  // `colors` is a module-level constant or a memoized array at every caller, so the memo holds.
   const palette = useMemo(() => readPalette(theme, colors), [theme, colors]);
 
   const themed = useMemo<EChartsOption>(

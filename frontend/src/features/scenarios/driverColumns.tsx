@@ -122,7 +122,7 @@ export function columnDefs(
       return (
         <select
           aria-label={`${driver.label} engine`}
-          title="Applies to Base, Bull and Bear"
+          title="Applies to Bull, Base and Bear"
           disabled={!editable || engineSaving}
           className="h-6 max-w-full bg-transparent text-xs"
           value={driver.engine}

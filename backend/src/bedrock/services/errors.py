@@ -13,6 +13,10 @@ class CompanyExists(Exception):
     """The company is already followed."""
 
 
+class BackfillRunning(Exception):
+    """A filing backfill of this company is already running."""
+
+
 class CellNotFound(Exception):
     """No such statement cell: an unknown item code or a period the company does not have."""
 
@@ -84,6 +88,11 @@ class GuidanceNotFound(Exception):
 
 class InvalidGuidance(Exception):
     """The guidance entry breaks a rule (metric, period, range); the message says which."""
+
+
+class GuidanceLocked(Exception):
+    """The entry is analyst consensus, logged by the daily refresh: it cannot be edited or
+    deleted."""
 
 
 class NoteNotFound(Exception):
@@ -159,6 +168,26 @@ class InvalidValuationInput(Exception):
     says which. Nothing was written."""
 
 
+class SnapshotNotFound(Exception):
+    """No snapshot with this id on the company (another company's id counts as unknown)."""
+
+
+class InvalidSnapshot(Exception):
+    """A snapshot's note breaks a rule; the message says which. Nothing was written."""
+
+
+class AuditRowNotFound(Exception):
+    """No audit row with this id on the company (another company's id counts as unknown)."""
+
+
+class InvalidAuditRow(Exception):
+    """An audit row's rationale breaks a rule; the message says which. Nothing was written."""
+
+
+class InvalidBacktest(Exception):
+    """The company cannot be back-tested (no 10-K to start from); the message says why."""
+
+
 class InvalidSensitivity(Exception):
     """A sensitivity request names an unknown or inapplicable input, or the same input twice."""
 
@@ -171,6 +200,7 @@ class UnknownLineItem(Exception):
 DOMAIN_ERRORS = (
     CompanyNotFound,
     CompanyExists,
+    BackfillRunning,
     CellNotFound,
     RatioCellNotFound,
     AdjustmentNotFound,
@@ -188,6 +218,7 @@ DOMAIN_ERRORS = (
     InvalidCompsSet,
     GuidanceNotFound,
     InvalidGuidance,
+    GuidanceLocked,
     InvalidNote,
     InvalidImport,
     InvalidStatementImport,
@@ -201,6 +232,11 @@ DOMAIN_ERRORS = (
     InvalidSeasonality,
     InvalidValuationInput,
     InvalidSensitivity,
+    AuditRowNotFound,
+    InvalidAuditRow,
+    SnapshotNotFound,
+    InvalidSnapshot,
+    InvalidBacktest,
     UnknownLineItem,
     ForecastUnavailable,
     UnknownTicker,
@@ -240,10 +276,16 @@ def user_message(error: Exception) -> str:
             return f"No such import: {error}"
         case ScenarioNotFound():
             return f"No such scenario: {error}"
+        case SnapshotNotFound():
+            return f"No such snapshot: {error}"
+        case AuditRowNotFound():
+            return f"No such audit row: {error}"
         case ForecastUnavailable():
             return error.detail
         case CompanyExists():
             return f"{error} is already followed"
+        case BackfillRunning():
+            return f"A filing backfill of {error} is already running"
         case SourceNotConfigured():
             return f"Data source not configured: {error}"
         case SourceUnavailable():

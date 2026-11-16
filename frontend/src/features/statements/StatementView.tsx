@@ -27,9 +27,12 @@ import { CellDetailSheet, type CellTarget } from "./CellDetailSheet";
 import {
   canExplain,
   cellNoteCount,
+  cellStateClasses,
   cellText,
+  cellTitle,
   csvLabel,
   expandableCodes,
+  isCombined,
   lineNoteCount,
   noteIndex,
   provenanceClasses,
@@ -147,10 +150,28 @@ function columnDefs(
     headerClass: ["num", "ag-right-aligned-header"],
     valueGetter: ({ data }) => data?.values[period.key] ?? null,
     valueFormatter: ({ data }) => (data ? cellText(data, period.key, scale) : ""),
+    // A carrier (M7b S4) gets a marker and a cell inside a carrier a tooltip naming the other.
+    cellRenderer: ({
+      data,
+      valueFormatted,
+    }: {
+      data?: GridRow;
+      valueFormatted?: string | null;
+    }) => {
+      const title = data ? cellTitle(data, period.key) : undefined;
+      if (!data || title === undefined) return valueFormatted ?? "";
+      return (
+        <span title={title}>
+          {isCombined(data, period.key) && <span className="combined-mark" aria-hidden />}
+          {valueFormatted}
+        </span>
+      );
+    },
     cellClass: ({ data }: CellClassParams<GridRow>) => {
       if (!data) return "num";
       const classes = ["num", "ag-right-aligned-cell", ...growthClass(data, period.key)];
       classes.push(...provenanceClasses(data.provenance[period.key]));
+      classes.push(...cellStateClasses(data, period.key));
       if (canExplain(data, period)) classes.push("cursor-pointer", "hover:underline");
       if (cellNoteCount(notes, data, period) > 0) classes.push("has-note");
       if (data.kind === "balance_check" && data.ok?.[period.key] === false) {
@@ -210,6 +231,10 @@ export function StatementView({ ticker, cik, type }: StatementViewProps) {
   const rows = useMemo(
     () => (data ? toGridRows(data, { yoy, commonSize, expanded, showEmpty }) : []),
     [data, yoy, commonSize, expanded, showEmpty],
+  );
+  const lineLabels = useMemo(
+    () => Object.fromEntries((data?.rows ?? []).map((row) => [row.code, row.label])),
+    [data],
   );
   const columns = useMemo(
     () => (data ? columnDefs(data, scale, notes, toggle, openLineNotes) : []),
@@ -321,6 +346,9 @@ export function StatementView({ ticker, cik, type }: StatementViewProps) {
           rowData={rows}
           columnDefs={columns}
           getRowId={(row) => row.id}
+          getRowClass={(row) =>
+            row.kind === "yoy" || row.kind === "common_size" ? "row-sub" : undefined
+          }
           onCellClicked={({ data: row, column }) => {
             const period = data.periods.find((p) => p.key === column.getColId());
             if (!row || !period || !canExplain(row, period)) return;
@@ -332,6 +360,7 @@ export function StatementView({ ticker, cik, type }: StatementViewProps) {
               custom: row.custom,
               fiscalYear: period.fiscal_year,
               fiscalPeriod: period.fiscal_period,
+              lineLabels,
             });
           }}
         />

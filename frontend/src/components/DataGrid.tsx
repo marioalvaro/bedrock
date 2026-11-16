@@ -11,9 +11,18 @@ import {
   type CellClickedEvent,
   type CellValueChangedEvent,
   type GetRowIdParams,
+  type RowClassParams,
 } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
-import { useCallback, useImperativeHandle, useMemo, useRef, useState, type Ref } from "react";
+import {
+  useCallback,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Ref,
+} from "react";
 
 import { usePrefersReducedMotion } from "@/lib/motion";
 import { useTheme } from "@/lib/theme";
@@ -31,6 +40,8 @@ interface DataGridProps<T> {
   onCellClicked?: (event: CellClickedEvent<T>) => void;
   // Fires when an editable column's edit is committed with a changed value.
   onCellValueChanged?: (event: CellValueChangedEvent<T>) => void;
+  // A row role class: `row-sub` (a child figure of the row above) or `row-heading` (a section).
+  getRowClass?: (row: T) => string | undefined;
   ref?: Ref<DataGridHandle>;
 }
 
@@ -68,6 +79,7 @@ export function DataGrid<T>({
   getRowId,
   onCellClicked,
   onCellValueChanged,
+  getRowClass,
   ref,
 }: DataGridProps<T>) {
   const theme = useTheme();
@@ -79,6 +91,17 @@ export function DataGrid<T>({
   // The parent's closure changes on every render, but the row-id function is a pure mapping of
   // the row: read it once, so AG Grid always sees the same function.
   const [getAgRowId] = useState(() => (params: GetRowIdParams<T>) => getRowId(params.data));
+
+  // AG Grid redraws every row when this function's identity changes: hand it one function that
+  // reads the latest prop.
+  const rowClass = useRef(getRowClass);
+  useLayoutEffect(() => {
+    rowClass.current = getRowClass;
+  });
+  const [getAgRowClass] = useState(
+    () => (params: RowClassParams<T>) =>
+      params.data === undefined ? undefined : rowClass.current?.(params.data),
+  );
 
   useImperativeHandle(
     ref,
@@ -102,6 +125,7 @@ export function DataGrid<T>({
       rowData={rowData}
       columnDefs={columnDefs}
       getRowId={getAgRowId}
+      getRowClass={getAgRowClass}
       animateRows={animateRows}
       domLayout="autoHeight"
       suppressColumnVirtualisation

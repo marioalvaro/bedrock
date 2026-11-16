@@ -3,13 +3,14 @@ from datetime import date
 from decimal import Decimal
 
 import pandas as pd
+import pytest
 
 from bedrock.mapping.mapper import CANONICAL_COLUMNS, map_facts
 from bedrock.mapping.vintage import select_vintage
 from bedrock.statements.cells import DerivationInput, compute_cells
 from bedrock.statements.explain import explain_cell
 from bedrock.statements.periods import fiscal_calendar
-from bedrock.statements.splits import split_adjust, split_factor
+from bedrock.statements.splits import adjust, split_adjust, split_factor
 from tests.engine_data import canon, canon_frame, fact, facts, item, mappings
 
 FILED = date(2015, 10, 28)
@@ -200,3 +201,17 @@ def test_quarterly_q4_over_adjusted_values_still_sums() -> None:
     assert cells[("shares_x", "FY2015")].value == 1600
     q4 = cells[("shares_x", "FY2015Q4")]
     assert q4.value == 1600 - 1200 and q4.provenance == "derived"
+
+
+@pytest.mark.parametrize(
+    ("value", "unit", "factor", "expected"),
+    [
+        (Decimal("100"), "shares", Decimal(4), Decimal("400")),
+        (Decimal("10"), "USD/shares", Decimal(4), Decimal("2.5")),
+        (Decimal("10"), "USD", Decimal(1), Decimal("10")),
+    ],
+)
+def test_adjust_restates_a_value_into_todays_shares(
+    value: Decimal, unit: str, factor: Decimal, expected: Decimal
+) -> None:
+    assert adjust(value, unit, factor) == expected

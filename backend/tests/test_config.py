@@ -86,6 +86,7 @@ HOSTILE_ENV = {
     "DATABASE_URL": "sqlite:////nonexistent-bedrock/bedrock.db",
     "SEC_USER_AGENT": "hostile-agent",
     "FRED_API_KEY": "hostile-key",
+    "SCHEDULED_REFRESH": "true",
     "APP_PASSWORD_HASH": "hostile-hash",
     "SESSION_SECRET": "hostile-secret",
     "SESSION_IDLE_MINUTES": "0",

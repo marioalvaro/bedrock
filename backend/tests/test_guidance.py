@@ -13,6 +13,7 @@ from bedrock.analysis.guidance import (
     Direction,
     GuidanceEntry,
     GuidanceResult,
+    Source,
     evaluate,
     quarter_margin,
     summarize,
@@ -34,6 +35,7 @@ def entry(
     basis: Basis = "reported",
     direction: Direction = "higher",
     given_on: date = date(2024, 1, 1),
+    source: Source = "management",
 ) -> GuidanceEntry:
     return GuidanceEntry(
         id=id,
@@ -45,6 +47,7 @@ def entry(
         basis=basis,
         direction=direction,
         given_on=given_on,
+        source=source,
     )
 
 
@@ -160,6 +163,17 @@ def test_entries_of_different_keys_are_each_latest() -> None:
         entry(5, basis="normalized"),
     ]
     assert all(r.latest for r in evaluate(entries, {}))
+
+
+def test_a_consensus_revision_does_not_supersede_management_guidance() -> None:
+    # Analyst consensus is a separate record: its later revision leaves management's latest.
+    managed = entry(1, given_on=date(2024, 1, 1))
+    consensus = entry(2, given_on=date(2024, 6, 1), source="consensus")
+    assert [r.latest for r in evaluate([managed, consensus], {})] == [True, True]
+
+
+def test_an_entry_is_management_guidance_unless_said_otherwise() -> None:
+    assert entry().source == "management"
 
 
 def test_results_keep_the_order_of_the_entries() -> None:

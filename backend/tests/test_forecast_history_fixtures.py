@@ -1,18 +1,22 @@
 """Driver history and defaults of the recorded companies (AAPL, MSFT, COST, DE)."""
 
+from dataclasses import replace
 from decimal import Decimal
 
 import pytest
 
+from bedrock.forecast import history as history_module
 from bedrock.forecast.drivers import DRIVERS, Follows
 from bedrock.forecast.history import (
     ScenarioSettings,
     StatementValues,
     default_drivers,
+    forecast_years,
     historical_drivers,
     historical_quarter_drivers,
     history_quarters,
     history_years,
+    opening_period,
 )
 from tests.forecast_data import fixture_history
 
@@ -36,13 +40,15 @@ def test_deere_needs_only_gross_margin() -> None:
     assert missing_required("DE") == {"gross_margin"}
 
 
-def test_microsoft_d_and_a_has_no_history_and_follows_capex() -> None:
+def test_microsoft_d_and_a_history_comes_from_its_extension_line() -> None:
+    # M7b S7: "Depreciation, amortization, and other" (msft:DepreciationAmortizationAndOther) is
+    # mapped in Microsoft's override file, so D&A has history (FY2022-26, 6.5% to 11.6% of revenue;
+    # 10-K FY2026 0001193125-26-323660: D&A 38,534) and no longer follows capex.
     history = fixture_history("MSFT")
     got = historical_drivers(history, GROWTH)
-    assert [got[("d_and_a_pct_revenue", fy)] for fy in history_years(history)] == [None] * 5
-    assert default_drivers(history, GROWTH)["d_and_a_pct_revenue"] == Follows(
-        "capex_pct_revenue", resolved=True
-    )
+    ratios = [got[("d_and_a_pct_revenue", fy)] for fy in history_years(history)]
+    assert all(r is not None and Decimal("0.05") < r < Decimal("0.15") for r in ratios)
+    assert not isinstance(default_drivers(history, GROWTH)["d_and_a_pct_revenue"], Follows)
 
 
 def test_apple_fy2024_ratios_equal_the_10k() -> None:
@@ -88,3 +94,35 @@ def test_quarterly_history_of_the_recorded_companies_follows_the_rules(ticker: s
         assert interest is None or Decimal(0) <= interest < Decimal("0.2")  # an annual rate
     # nothing is read past the opening quarter
     assert {key for (_, key) in got} == {p.key for p in quarters}
+
+
+# --- the history's cell lookups are built once (NFR-02) ---------------------------------------
+
+
+def test_the_history_builds_its_cell_lookups_once() -> None:
+    history = replace(fixture_history("AAPL"))  # a fresh instance: nothing cached yet
+
+    assert history.annual_values is history.annual_values
+    assert history.quarterly_values is history.quarterly_values
+    assert history.annual_values.cells == StatementValues(history.annual).cells
+    assert history.quarterly_values.periods == StatementValues(history.quarterly).periods
+
+
+def test_repeated_history_reads_build_no_more_lookups(monkeypatch: pytest.MonkeyPatch) -> None:
+    history = replace(fixture_history("AAPL"))
+    built: list[int] = []
+    real = history_module.StatementValues.__init__
+
+    def counting(self, tables):  # type: ignore[no-untyped-def]  # a spy on the real constructor
+        built.append(1)
+        real(self, tables)
+
+    monkeypatch.setattr(history_module.StatementValues, "__init__", counting)
+    for _ in range(3):
+        opening_period(history)
+        history_years(history)
+        history_quarters(history)
+        forecast_years(history, 5)
+        default_drivers(history, GROWTH)
+
+    assert len(built) <= 2  # the annual and the quarterly lookup

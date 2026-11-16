@@ -15,7 +15,12 @@ import { createQueryClient } from "@/lib/query-client";
 import { setScale } from "@/lib/scale";
 import { note, noteLink, noteLinks } from "@/test/context";
 import { errorResult, okResult } from "@/test/responses";
-import { balanceStatement, customIncomeStatement, incomeStatement } from "@/test/statements";
+import {
+  balanceStatement,
+  combinedBalanceStatement,
+  customIncomeStatement,
+  incomeStatement,
+} from "@/test/statements";
 
 import { StatementView } from "./StatementView";
 
@@ -76,6 +81,8 @@ const cellDetail = {
   ],
   adjustments: [],
   normalized_value: null,
+  combined_with: null,
+  included_in: null,
 };
 
 const emptyCellDetail = (code: string, label: string, fiscalYear: number) => ({
@@ -297,6 +304,28 @@ describe("StatementView", () => {
       expect(up).toHaveClass("text-positive", "italic");
       expect(down).toHaveClass("text-negative", "italic");
       expect(screen.getAllByRole("gridcell", { name: "YoY" })[0]).toHaveClass("italic");
+    });
+
+    it("tints the YoY row as a sub-row of its line, pinned label included", async () => {
+      renderView();
+      await userEvent.click(await screen.findByRole("button", { name: "YoY" }));
+
+      const subRows = [...document.querySelectorAll("[row-id$=':yoy']")];
+      expect(subRows.length).toBeGreaterThan(0);
+      for (const el of subRows) expect(el).toHaveClass("row-sub");
+      const lines = [...document.querySelectorAll("[row-id]")].filter(
+        (el) => !el.getAttribute("row-id")!.includes(":"),
+      );
+      for (const el of lines) expect(el).not.toHaveClass("row-sub");
+    });
+
+    it("tints the common-size row as a sub-row too", async () => {
+      renderView();
+      await userEvent.click(await screen.findByRole("button", { name: "Common size" }));
+
+      const subRows = [...document.querySelectorAll("[row-id$=':common_size']")];
+      expect(subRows.length).toBeGreaterThan(0);
+      for (const el of subRows) expect(el).toHaveClass("row-sub");
     });
 
     it("leaves a missing growth figure neutral", async () => {
@@ -1093,5 +1122,62 @@ describe("StatementView import and custom lines", () => {
     expect(lines).toContain('"Products","","150000"');
     expect(lines).toContain('"Services","","50000"');
     expect(lines).toContain('"Other Cost of revenue","","10352"');
+  });
+});
+
+describe("combined lines and inapplicable cells (M7b S8)", () => {
+  async function renderCombined() {
+    vi.mocked(getStatementApiV1CompaniesTickerStatementsGet).mockResolvedValue(
+      okResult(combinedBalanceStatement()) as never,
+    );
+    renderView("BS");
+    await userEvent.click(await screen.findByRole("button", { name: "Expand all" }));
+    await screen.findByText("Accrued liabilities");
+  }
+
+  it("marks a carrier cell and names what it includes", async () => {
+    await renderCombined();
+    const carrier = cell("accounts_payable", "FY2024");
+    expect(carrier.querySelector(".combined-mark")).not.toBeNull();
+    expect(within(carrier).getByTitle("Includes Accrued liabilities")).toHaveTextContent("68,000");
+    expect(cell("total_current_liabilities", "FY2024").querySelector(".combined-mark")).toBeNull();
+  });
+
+  it("shows a covered cell as included in its carrier, muted and without a number", async () => {
+    await renderCombined();
+    const covered = cell("accrued_liabilities", "FY2024");
+    expect(covered).toHaveTextContent("incl. in Accounts payable");
+    expect(covered).toHaveClass("cell-muted");
+    expect(within(covered).getByTitle("Included in Accounts payable")).toBeInTheDocument();
+  });
+
+  it("shows a muted n/a for a cell that cannot exist", async () => {
+    await renderCombined();
+    expect(cell("operating_lease_rou", "FY2023")).toHaveTextContent("n/a");
+    expect(cell("operating_lease_rou", "FY2023")).toHaveClass("cell-muted");
+  });
+
+  it("writes empty cells for covered and inapplicable cells in the CSV", async () => {
+    const download = captureDownload();
+    await renderCombined();
+    await userEvent.click(screen.getByRole("button", { name: "Download CSV" }));
+    const lines = (await readText(download.blobs[0]!)).trim().split(/\r?\n/);
+    expect(lines).toContain('"Accrued liabilities","",""');
+    expect(lines).toContain('"Operating lease right-of-use assets","","10000"');
+    expect(lines).toContain('"Accounts payable","62000","68000"');
+  });
+
+  it("opens the cell details from a covered cell", async () => {
+    vi.mocked(getCellApiV1CompaniesTickerStatementsCellGet).mockResolvedValue(
+      okResult(emptyCellDetail("accrued_liabilities", "Accrued liabilities", 2024)) as never,
+    );
+    await renderCombined();
+    await userEvent.click(cell("accrued_liabilities", "FY2024"));
+    await waitFor(() =>
+      expect(getCellApiV1CompaniesTickerStatementsCellGet).toHaveBeenCalledWith({
+        path: { ticker: "AAPL" },
+        query: { code: "accrued_liabilities", fiscal_year: 2024, fiscal_period: "FY" },
+      }),
+    );
   });
 });

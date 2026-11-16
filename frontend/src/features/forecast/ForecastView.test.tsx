@@ -91,6 +91,9 @@ function forecastBalance(): ForecastOut {
         custom: false,
         parent: null,
         common_size_base: null,
+        combined_with: [null, null],
+        included_in: [null, null],
+        empty_cause: [null, null],
       },
     ],
     balance_check: [
@@ -170,14 +173,14 @@ describe("ForecastView", () => {
   describe("case toggle", () => {
     const group = () => screen.getByRole("radiogroup", { name: "Case" });
 
-    it("offers Base, Bull and Bear beside the scenario picker, Base picked by default", async () => {
+    it("offers Bull, Base and Bear beside the scenario picker, Base picked by default", async () => {
       renderView();
       await loaded();
       expect(
         within(group())
           .getAllByRole("radio")
           .map((radio) => radio.textContent),
-      ).toEqual(["Base", "Bull", "Bear"]);
+      ).toEqual(["Bull", "Base", "Bear"]);
       expect(within(group()).getByRole("radio", { name: "Base" })).toBeChecked();
     });
 

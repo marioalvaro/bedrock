@@ -122,6 +122,171 @@
         "title": "AdjustmentOut",
         "type": "object"
       },
+      "AuditPageOut": {
+        "properties": {
+          "next_before_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Before Id"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/AuditRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rows",
+          "next_before_id"
+        ],
+        "title": "AuditPageOut",
+        "type": "object"
+      },
+      "AuditRationaleIn": {
+        "additionalProperties": false,
+        "properties": {
+          "rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale"
+          }
+        },
+        "required": [
+          "rationale"
+        ],
+        "title": "AuditRationaleIn",
+        "type": "object"
+      },
+      "AuditRowOut": {
+        "description": "One changed field. A null `old_value` or `new_value` means absent (a driver or input with\nno stored value of its own).",
+        "properties": {
+          "action": {
+            "enum": [
+              "create",
+              "edit",
+              "delete",
+              "import",
+              "reset",
+              "mode"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "changed_at": {
+            "format": "date-time",
+            "title": "Changed At",
+            "type": "string"
+          },
+          "entity": {
+            "enum": [
+              "driver",
+              "year_mode",
+              "engine_choice",
+              "valuation_input",
+              "scenario",
+              "adjustment"
+            ],
+            "title": "Entity",
+            "type": "string"
+          },
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "new_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Value"
+          },
+          "old_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Old Value"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          }
+        },
+        "required": [
+          "id",
+          "entity",
+          "scope",
+          "field",
+          "label",
+          "unit",
+          "old_value",
+          "new_value",
+          "action",
+          "rationale",
+          "changed_at"
+        ],
+        "title": "AuditRowOut",
+        "type": "object"
+      },
       "AuthStatus": {
         "properties": {
           "authenticated": {
@@ -133,6 +298,110 @@
           "authenticated"
         ],
         "title": "AuthStatus",
+        "type": "object"
+      },
+      "BackfillStartedOut": {
+        "description": "A filing backfill was started; follow it with `filings_parsed` on the company.",
+        "properties": {
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticker"
+        ],
+        "title": "BackfillStartedOut",
+        "type": "object"
+      },
+      "BacktestOriginOut": {
+        "properties": {
+          "as_of_date": {
+            "format": "date",
+            "title": "As Of Date",
+            "type": "string"
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/BacktestRunOut"
+            },
+            "title": "Runs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "as_of_date",
+          "runs"
+        ],
+        "title": "BacktestOriginOut",
+        "type": "object"
+      },
+      "BacktestOut": {
+        "description": "`ran_at` is null and the lists are empty before the first run; `stale`: a newer 10-K exists\nthan the run's origins imply.",
+        "properties": {
+          "origins": {
+            "items": {
+              "$ref": "#/components/schemas/BacktestOriginOut"
+            },
+            "title": "Origins",
+            "type": "array"
+          },
+          "ran_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ran At"
+          },
+          "stale": {
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "summary": {
+            "items": {
+              "$ref": "#/components/schemas/ScoreRowOut"
+            },
+            "title": "Summary",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ran_at",
+          "stale",
+          "origins",
+          "summary"
+        ],
+        "title": "BacktestOut",
+        "type": "object"
+      },
+      "BacktestRunOut": {
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          }
+        },
+        "required": [
+          "method",
+          "error"
+        ],
+        "title": "BacktestRunOut",
         "type": "object"
       },
       "BalanceCheckOut": {
@@ -440,9 +709,26 @@
         "type": "object"
       },
       "CauseCountsOut": {
+        "description": "Empty cells by cause, in the order a cell takes them (docs/erd/data-coverage.md).",
         "properties": {
+          "annual_only": {
+            "title": "Annual Only",
+            "type": "integer"
+          },
+          "extension_unclassified": {
+            "title": "Extension Unclassified",
+            "type": "integer"
+          },
+          "included_in": {
+            "title": "Included In",
+            "type": "integer"
+          },
           "no_filing_data": {
             "title": "No Filing Data",
+            "type": "integer"
+          },
+          "not_applicable": {
+            "title": "Not Applicable",
             "type": "integer"
           },
           "not_reported": {
@@ -460,8 +746,12 @@
         },
         "required": [
           "no_filing_data",
+          "not_applicable",
+          "included_in",
           "structural",
           "rule_rejected",
+          "annual_only",
+          "extension_unclassified",
           "not_reported"
         ],
         "title": "CauseCountsOut",
@@ -629,6 +919,20 @@
             "title": "Code",
             "type": "string"
           },
+          "combined_with": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Combined With"
+          },
           "derivation": {
             "anyOf": [
               {
@@ -656,6 +960,17 @@
           "fiscal_year": {
             "title": "Fiscal Year",
             "type": "integer"
+          },
+          "included_in": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Included In"
           },
           "label": {
             "title": "Label",
@@ -735,7 +1050,9 @@
           "derivation",
           "vintages",
           "adjustments",
-          "normalized_value"
+          "normalized_value",
+          "combined_with",
+          "included_in"
         ],
         "title": "CellDetailOut",
         "type": "object"
@@ -822,6 +1139,16 @@
               }
             ],
             "title": "Ev Ebitda"
+          },
+          "filings_parsed": {
+            "description": "10-K and 10-Q filings (amendments included) whose XBRL is read",
+            "title": "Filings Parsed",
+            "type": "integer"
+          },
+          "filings_total": {
+            "description": "10-K and 10-Q filings, amendments included",
+            "title": "Filings Total",
+            "type": "integer"
           },
           "fiscal_year_end_month": {
             "title": "Fiscal Year End Month",
@@ -943,6 +1270,8 @@
           "source",
           "sic",
           "last_refreshed_at",
+          "filings_parsed",
+          "filings_total",
           "price",
           "price_date",
           "market_cap",
@@ -1420,6 +1749,73 @@
         "title": "ConceptClassificationOut",
         "type": "object"
       },
+      "ConsensusEstimateOut": {
+        "description": "Analysts' consensus range for a revenue or EPS period, placed on a fiscal period.",
+        "properties": {
+          "analysts": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analysts"
+          },
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "avg": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg"
+          },
+          "fiscal_period": {
+            "title": "Fiscal Period",
+            "type": "string"
+          },
+          "fiscal_year": {
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "high": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "High",
+            "type": "string"
+          },
+          "low": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Low",
+            "type": "string"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          }
+        },
+        "required": [
+          "metric",
+          "fiscal_year",
+          "fiscal_period",
+          "low",
+          "avg",
+          "high",
+          "analysts",
+          "as_of"
+        ],
+        "title": "ConsensusEstimateOut",
+        "type": "object"
+      },
       "CorporateActionOut": {
         "properties": {
           "effective_date": {
@@ -1478,6 +1874,18 @@
             ],
             "title": "Fraction"
           },
+          "fraction_applicable": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fraction Applicable"
+          },
           "freq": {
             "enum": [
               "annual",
@@ -1502,6 +1910,7 @@
           "cells",
           "filled",
           "fraction",
+          "fraction_applicable",
           "by_provenance",
           "empty_by_cause"
         ],
@@ -3417,6 +3826,14 @@
             "title": "Metric",
             "type": "string"
           },
+          "source": {
+            "enum": [
+              "management",
+              "consensus"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
           "source_note": {
             "anyOf": [
               {
@@ -3480,6 +3897,7 @@
           "direction",
           "given_on",
           "source_note",
+          "source",
           "actual",
           "verdict",
           "surprise",
@@ -3488,6 +3906,46 @@
           "updated_at"
         ],
         "title": "GuidanceEntryOut",
+        "type": "object"
+      },
+      "GuidanceHistoryOut": {
+        "description": "Every actual of one metric in one frequency, oldest first (the chart's earlier periods).",
+        "properties": {
+          "basis": {
+            "enum": [
+              "reported",
+              "normalized"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
+          "freq": {
+            "enum": [
+              "annual",
+              "quarterly"
+            ],
+            "title": "Freq",
+            "type": "string"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryPointOut"
+            },
+            "title": "Points",
+            "type": "array"
+          }
+        },
+        "required": [
+          "metric",
+          "basis",
+          "freq",
+          "points"
+        ],
+        "title": "GuidanceHistoryOut",
         "type": "object"
       },
       "GuidanceIn": {
@@ -3589,6 +4047,7 @@
         "type": "object"
       },
       "GuidanceOut": {
+        "description": "`summary` and `by_metric` count management guidance; `consensus_summary` and\n`consensus_by_metric` the analyst consensus, kept apart.",
         "properties": {
           "by_metric": {
             "items": {
@@ -3596,6 +4055,16 @@
             },
             "title": "By Metric",
             "type": "array"
+          },
+          "consensus_by_metric": {
+            "items": {
+              "$ref": "#/components/schemas/MetricSummaryOut"
+            },
+            "title": "Consensus By Metric",
+            "type": "array"
+          },
+          "consensus_summary": {
+            "$ref": "#/components/schemas/GuidanceSummaryOut"
           },
           "entries": {
             "items": {
@@ -3616,7 +4085,9 @@
           "ticker",
           "entries",
           "summary",
-          "by_metric"
+          "by_metric",
+          "consensus_summary",
+          "consensus_by_metric"
         ],
         "title": "GuidanceOut",
         "type": "object"
@@ -3692,6 +4163,37 @@
           "label"
         ],
         "title": "HistoryPeriodOut",
+        "type": "object"
+      },
+      "HistoryPointOut": {
+        "properties": {
+          "fiscal_period": {
+            "enum": [
+              "FY",
+              "Q1",
+              "Q2",
+              "Q3",
+              "Q4"
+            ],
+            "title": "Fiscal Period",
+            "type": "string"
+          },
+          "fiscal_year": {
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "value": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fiscal_year",
+          "fiscal_period",
+          "value"
+        ],
+        "title": "HistoryPointOut",
         "type": "object"
       },
       "IgnoredCellOut": {
@@ -4133,6 +4635,13 @@
             "title": "Rule Warnings",
             "type": "array"
           },
+          "unclassified_lines": {
+            "items": {
+              "$ref": "#/components/schemas/UnclassifiedLineOut"
+            },
+            "title": "Unclassified Lines",
+            "type": "array"
+          },
           "unmapped_concepts": {
             "items": {
               "$ref": "#/components/schemas/UnmappedConceptOut"
@@ -4145,7 +4654,8 @@
           "missing_items",
           "unmapped_concepts",
           "coverage",
-          "rule_warnings"
+          "rule_warnings",
+          "unclassified_lines"
         ],
         "title": "MappingGapsOut",
         "type": "object"
@@ -5573,6 +6083,10 @@
             "title": "New Facts",
             "type": "integer"
           },
+          "new_filing_lines": {
+            "title": "New Filing Lines",
+            "type": "integer"
+          },
           "new_filings": {
             "title": "New Filings",
             "type": "integer"
@@ -5603,6 +6117,7 @@
           "new_facts",
           "new_prices",
           "new_splits",
+          "new_filing_lines",
           "last_refreshed_at",
           "warnings"
         ],
@@ -5619,6 +6134,23 @@
           "code": {
             "title": "Code",
             "type": "string"
+          },
+          "combined_with": {
+            "items": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Combined With",
+            "type": "array"
           },
           "common_size": {
             "items": {
@@ -5653,6 +6185,44 @@
           "depth": {
             "title": "Depth",
             "type": "integer"
+          },
+          "empty_cause": {
+            "items": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "no_filing_data",
+                    "not_applicable",
+                    "included_in",
+                    "structural",
+                    "rule_rejected",
+                    "annual_only",
+                    "extension_unclassified",
+                    "not_reported"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Empty Cause",
+            "type": "array"
+          },
+          "included_in": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Included In",
+            "type": "array"
           },
           "kind": {
             "title": "Kind",
@@ -5744,7 +6314,10 @@
           "common_size_base",
           "adjustable",
           "custom",
-          "parent"
+          "parent",
+          "combined_with",
+          "included_in",
+          "empty_cause"
         ],
         "title": "RowOut",
         "type": "object"
@@ -6023,6 +6596,107 @@
           }
         },
         "title": "ScenarioSettingsIn",
+        "type": "object"
+      },
+      "ScoreRowOut": {
+        "description": "Errors of one line or driver at one horizon. `method` is the case of a snapshot and the\nengine of a backtest; `hit_rate` is null when no row of the group has a range.",
+        "properties": {
+          "bias": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bias"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "freq": {
+            "enum": [
+              "annual",
+              "quarterly"
+            ],
+            "title": "Freq",
+            "type": "string"
+          },
+          "hit_rate": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hit Rate"
+          },
+          "horizon": {
+            "title": "Horizon",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "line",
+              "driver"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "mape": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mape"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "n_range": {
+            "title": "N Range",
+            "type": "integer"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "code",
+          "label",
+          "unit",
+          "method",
+          "freq",
+          "horizon",
+          "n",
+          "mape",
+          "bias",
+          "hit_rate",
+          "n_range"
+        ],
+        "title": "ScoreRowOut",
         "type": "object"
       },
       "SeasonalFactorOut": {
@@ -6734,6 +7408,618 @@
         "title": "SensitivityGridOut",
         "type": "object"
       },
+      "SnapshotCaseOut": {
+        "properties": {
+          "case": {
+            "enum": [
+              "base",
+              "bull",
+              "bear"
+            ],
+            "title": "Case",
+            "type": "string"
+          },
+          "drivers": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotDriverOut"
+            },
+            "title": "Drivers",
+            "type": "array"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotLineOut"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
+          "valuation": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotValuationOut"
+            },
+            "title": "Valuation",
+            "type": "array"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "case",
+          "error",
+          "warnings",
+          "lines",
+          "drivers",
+          "valuation"
+        ],
+        "title": "SnapshotCaseOut",
+        "type": "object"
+      },
+      "SnapshotDetailOut": {
+        "properties": {
+          "cases": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotCaseOut"
+            },
+            "title": "Cases",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "data_as_of": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data As Of"
+          },
+          "failed_cases": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Failed Cases",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "revenue_mape": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revenue Mape"
+          },
+          "scenario_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Id"
+          },
+          "scenario_name": {
+            "title": "Scenario Name",
+            "type": "string"
+          },
+          "scored_periods": {
+            "title": "Scored Periods",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "scenario_id",
+          "scenario_name",
+          "note",
+          "created_at",
+          "data_as_of",
+          "failed_cases",
+          "scored_periods",
+          "revenue_mape",
+          "cases"
+        ],
+        "title": "SnapshotDetailOut",
+        "type": "object"
+      },
+      "SnapshotDriverCellOut": {
+        "properties": {
+          "actual": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual"
+          },
+          "fiscal_period": {
+            "title": "Fiscal Period",
+            "type": "string"
+          },
+          "fiscal_year": {
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "forecast": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Forecast",
+            "type": "string"
+          },
+          "horizon": {
+            "title": "Horizon",
+            "type": "integer"
+          },
+          "in_range": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "In Range"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "p05": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P05"
+          },
+          "p95": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P95"
+          },
+          "pct_error": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pct Error"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          }
+        },
+        "required": [
+          "fiscal_year",
+          "fiscal_period",
+          "label",
+          "horizon",
+          "forecast",
+          "actual",
+          "pct_error",
+          "in_range",
+          "source",
+          "p05",
+          "p95"
+        ],
+        "title": "SnapshotDriverCellOut",
+        "type": "object"
+      },
+      "SnapshotDriverOut": {
+        "properties": {
+          "cells": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotDriverCellOut"
+            },
+            "title": "Cells",
+            "type": "array"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "label",
+          "unit",
+          "cells"
+        ],
+        "title": "SnapshotDriverOut",
+        "type": "object"
+      },
+      "SnapshotIn": {
+        "additionalProperties": false,
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "title": "SnapshotIn",
+        "type": "object"
+      },
+      "SnapshotLineCellOut": {
+        "properties": {
+          "actual": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual"
+          },
+          "fiscal_period": {
+            "title": "Fiscal Period",
+            "type": "string"
+          },
+          "fiscal_year": {
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "forecast": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Forecast",
+            "type": "string"
+          },
+          "horizon": {
+            "title": "Horizon",
+            "type": "integer"
+          },
+          "in_range": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "In Range"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "pct_error": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pct Error"
+          }
+        },
+        "required": [
+          "fiscal_year",
+          "fiscal_period",
+          "label",
+          "horizon",
+          "forecast",
+          "actual",
+          "pct_error",
+          "in_range"
+        ],
+        "title": "SnapshotLineCellOut",
+        "type": "object"
+      },
+      "SnapshotLineOut": {
+        "properties": {
+          "cells": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotLineCellOut"
+            },
+            "title": "Cells",
+            "type": "array"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "label",
+          "unit",
+          "cells"
+        ],
+        "title": "SnapshotLineOut",
+        "type": "object"
+      },
+      "SnapshotListOut": {
+        "properties": {
+          "snapshots": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotOut"
+            },
+            "title": "Snapshots",
+            "type": "array"
+          },
+          "summary": {
+            "items": {
+              "$ref": "#/components/schemas/ScoreRowOut"
+            },
+            "title": "Summary",
+            "type": "array"
+          }
+        },
+        "required": [
+          "snapshots",
+          "summary"
+        ],
+        "title": "SnapshotListOut",
+        "type": "object"
+      },
+      "SnapshotOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "data_as_of": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data As Of"
+          },
+          "failed_cases": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Failed Cases",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "revenue_mape": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revenue Mape"
+          },
+          "scenario_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Id"
+          },
+          "scenario_name": {
+            "title": "Scenario Name",
+            "type": "string"
+          },
+          "scored_periods": {
+            "title": "Scored Periods",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "scenario_id",
+          "scenario_name",
+          "note",
+          "created_at",
+          "data_as_of",
+          "failed_cases",
+          "scored_periods",
+          "revenue_mape"
+        ],
+        "title": "SnapshotOut",
+        "type": "object"
+      },
+      "SnapshotValuationOut": {
+        "properties": {
+          "enterprise_value": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enterprise Value"
+          },
+          "equity_value": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Equity Value"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "upside": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upside"
+          },
+          "value_per_share": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Per Share"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "value_per_share",
+          "equity_value",
+          "enterprise_value",
+          "upside",
+          "error"
+        ],
+        "title": "SnapshotValuationOut",
+        "type": "object"
+      },
       "SourceOut": {
         "properties": {
           "concept": {
@@ -7319,6 +8605,60 @@
           "bars"
         ],
         "title": "TornadoOut",
+        "type": "object"
+      },
+      "UnclassifiedLineOut": {
+        "description": "A face line of the newest 10-K or 10-Q nobody classified (M7b S7): map it in the\ncompany's override file, or list it under `other_lines:`.",
+        "properties": {
+          "concept": {
+            "title": "Concept",
+            "type": "string"
+          },
+          "filings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Filings",
+            "type": "array"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "latest_period_end": {
+            "format": "date",
+            "title": "Latest Period End",
+            "type": "string"
+          },
+          "latest_value": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Latest Value",
+            "type": "string"
+          },
+          "statement": {
+            "enum": [
+              "IS",
+              "BS",
+              "CF"
+            ],
+            "title": "Statement",
+            "type": "string"
+          },
+          "taxonomy": {
+            "title": "Taxonomy",
+            "type": "string"
+          }
+        },
+        "required": [
+          "statement",
+          "taxonomy",
+          "concept",
+          "label",
+          "latest_value",
+          "latest_period_end",
+          "filings"
+        ],
+        "title": "UnclassifiedLineOut",
         "type": "object"
       },
       "UnmappedConceptOut": {
@@ -8629,6 +9969,286 @@
         ]
       }
     },
+    "/api/v1/companies/{ticker}/audit": {
+      "get": {
+        "operationId": "list_audit_api_v1_companies__ticker__audit_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "entity",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "driver",
+                    "year_mode",
+                    "engine_choice",
+                    "valuation_input",
+                    "scenario",
+                    "adjustment"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entity"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditPageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Audit",
+        "tags": [
+          "accountability"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/audit/{row_id}": {
+      "patch": {
+        "operationId": "set_audit_rationale_api_v1_companies__ticker__audit__row_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "row_id",
+            "required": true,
+            "schema": {
+              "title": "Row Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuditRationaleIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditRowOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Audit Rationale",
+        "tags": [
+          "accountability"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/backfill-filings": {
+      "post": {
+        "description": "Read the XBRL of every filing not read yet, in a worker thread; 409 while one runs.",
+        "operationId": "backfill_filings_api_v1_companies__ticker__backfill_filings_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackfillStartedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Backfill Filings",
+        "tags": [
+          "companies"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/backtest": {
+      "get": {
+        "operationId": "get_backtest_api_v1_companies__ticker__backtest_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Backtest",
+        "tags": [
+          "accountability"
+        ]
+      },
+      "post": {
+        "operationId": "run_backtest_api_v1_companies__ticker__backtest_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Backtest",
+        "tags": [
+          "accountability"
+        ]
+      }
+    },
     "/api/v1/companies/{ticker}/capital-allocation": {
       "get": {
         "operationId": "get_capital_allocation_api_v1_companies__ticker__capital_allocation_get",
@@ -9136,6 +10756,131 @@
           }
         },
         "summary": "Create Entry",
+        "tags": [
+          "guidance"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/guidance/consensus": {
+      "get": {
+        "operationId": "list_consensus_api_v1_companies__ticker__guidance_consensus_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ConsensusEstimateOut"
+                  },
+                  "title": "Response List Consensus Api V1 Companies  Ticker  Guidance Consensus Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Consensus",
+        "tags": [
+          "guidance"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/guidance/history": {
+      "get": {
+        "operationId": "get_history_api_v1_companies__ticker__guidance_history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "metric",
+            "required": true,
+            "schema": {
+              "title": "Metric",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "basis",
+            "required": false,
+            "schema": {
+              "default": "reported",
+              "enum": [
+                "reported",
+                "normalized"
+              ],
+              "title": "Basis",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "freq",
+            "required": false,
+            "schema": {
+              "default": "annual",
+              "enum": [
+                "annual",
+                "quarterly"
+              ],
+              "title": "Freq",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuidanceHistoryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get History",
         "tags": [
           "guidance"
         ]
@@ -11759,6 +13504,67 @@
         ]
       }
     },
+    "/api/v1/companies/{ticker}/scenarios/{scenario_id}/snapshots": {
+      "post": {
+        "operationId": "create_snapshot_api_v1_companies__ticker__scenarios__scenario_id__snapshots_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scenario_id",
+            "required": true,
+            "schema": {
+              "title": "Scenario Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SnapshotIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Snapshot",
+        "tags": [
+          "accountability"
+        ]
+      }
+    },
     "/api/v1/companies/{ticker}/scenarios/{scenario_id}/valuation": {
       "get": {
         "operationId": "get_valuation_summary_api_v1_companies__ticker__scenarios__scenario_id__valuation_get",
@@ -12356,6 +14162,99 @@
         "summary": "Import Segments",
         "tags": [
           "segments"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/snapshots": {
+      "get": {
+        "operationId": "list_snapshots_api_v1_companies__ticker__snapshots_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Snapshots",
+        "tags": [
+          "accountability"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/snapshots/{snapshot_id}": {
+      "get": {
+        "operationId": "get_snapshot_api_v1_companies__ticker__snapshots__snapshot_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Snapshot",
+        "tags": [
+          "accountability"
         ]
       }
     },

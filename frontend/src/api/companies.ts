@@ -4,6 +4,7 @@ import { ApiError, unwrap } from "@/api/errors";
 import {
   addCompanyApiV1CompaniesPost,
   addManualCompanyApiV1CompaniesManualPost,
+  backfillFilingsApiV1CompaniesTickerBackfillFilingsPost,
   getCompaniesApiV1CompaniesGet,
   getCompanyApiV1CompaniesTickerGet,
   refreshApiV1CompaniesTickerRefreshPost,
@@ -16,15 +17,21 @@ import type { ManualCompanyCreate } from "@/api/generated/types.gen";
 export const companiesQueryKey = ["companies"] as const;
 export const companyKey = (ticker: string) => ["companies", ticker] as const;
 
+// The backend refreshes prices hourly in US market hours (core/scheduler.py): an open page polls
+// so the shown price follows. React Query pauses the poll while the tab is in the background.
+const PRICE_POLL_MS = 15 * 60_000;
+
 export const companiesQueryOptions = queryOptions({
   queryKey: companiesQueryKey,
   queryFn: () => unwrap(getCompaniesApiV1CompaniesGet()),
+  refetchInterval: PRICE_POLL_MS,
 });
 
 export const companyQueryOptions = (ticker: string) =>
   queryOptions({
     queryKey: companyKey(ticker),
     queryFn: () => unwrap(getCompanyApiV1CompaniesTickerGet({ path: { ticker } })),
+    refetchInterval: PRICE_POLL_MS,
   });
 
 // The API's reason for a failed company action (404/409/503/502 carry one), else a fallback.
@@ -68,5 +75,14 @@ export function useRefreshCompany(ticker: string) {
   return useMutation({
     mutationFn: () => unwrap(refreshApiV1CompaniesTickerRefreshPost({ path: { ticker } })),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: companiesQueryKey }),
+  });
+}
+
+/** POST …/backfill-filings (202): reads every 10-K and 10-Q not read yet, in a worker thread. A 409
+ * means a backfill already runs for the company; either way, progress is `filings_parsed`. */
+export function useBackfillFilings(ticker: string) {
+  return useMutation({
+    mutationFn: () =>
+      unwrap(backfillFilingsApiV1CompaniesTickerBackfillFilingsPost({ path: { ticker } })),
   });
 }

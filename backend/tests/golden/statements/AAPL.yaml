@@ -109,18 +109,20 @@ expected_missing:
 # Concepts of the latest 10-K that the edgartools table recognizes but Bedrock does not map, each a
 # decision (map-xbrl run of 2026-10-09). test_mapping_coverage.py fails on a concept not listed here and
 # on a listed one that is mapped or gone.
+  interest_income: "M7b S5: Apple tags interest and dividend income together (InvestmentIncomeInterestAndDividend), a wider measure"
+  deferred_tax_assets: "M7b S5: FY2007-21 the noncurrent deferred tax asset is untagged (inside other non-current assets); tagged from FY2022"
+  deferred_tax_liabilities: "M7b S5: FY2007-08 not tagged; from FY2019 inside other non-current liabilities, no line"
+  deferred_revenue_noncurrent: "M7b S5: FY2007 not tagged; from FY2019 inside other non-current liabilities, no line"
+  pension_liabilities: "M7b S5: no defined benefit plan liability line"
+  cash_interest_paid: "M7b S5: FY2007-15 only InterestPaid (includes capitalized interest, not a default); from FY2024 no longer disclosed"
 acknowledged_unmapped:
   us-gaap:DebtInstrumentCarryingAmount: "debt-note amount of the notes (long-term total with its current part), not a balance-sheet line; the short- and long-term debt lines are mapped"
   us-gaap:DebtInstrumentUnamortizedDiscountPremiumAndDebtIssuanceCostsNet: "debt-note deduction for discount and issuance costs, not a balance-sheet line"
   us-gaap:FinanceLeaseLiabilityUndiscountedExcessAmount: "lease maturity-note detail (undiscounted excess), not a balance-sheet line"
-  us-gaap:GeneralAndAdministrativeExpense: "component of SG&A: Apple reports SG&A as one line (27,601 = 19,524 + 8,077 in FY2025), so mapping it would double count"
   us-gaap:IncreaseDecreaseInOtherReceivables: "change in vendor non-trade receivables, a separate cash-flow line; change_receivables is accounts receivable"
-  us-gaap:LongTermDebt: "total long-term debt including its current part (balance sheet: noncurrent line + current portion); long_term_debt is the noncurrent line"
   us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalAfterYearFive: "debt maturity schedule, not a balance-sheet line"
   us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInNextTwelveMonths: "debt maturity schedule, not a balance-sheet line"
   us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInYearFive: "debt maturity schedule, not a balance-sheet line"
   us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInYearFour: "debt maturity schedule, not a balance-sheet line"
   us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInYearThree: "debt maturity schedule, not a balance-sheet line"
   us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInYearTwo: "debt maturity schedule, not a balance-sheet line"
-  us-gaap:OperatingLeaseLiability: "current plus noncurrent operating lease liability; the canonical line is the noncurrent one"
-  us-gaap:SellingAndMarketingExpense: "component of SG&A: Apple reports SG&A as one line (27,601 = 19,524 + 8,077 in FY2025), so mapping it would double count"

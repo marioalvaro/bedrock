@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     session_idle_minutes: int = 720
     cookie_secure: bool = False
     static_dir: Path | None = None
+    # Prices hourly in US market hours and the market series daily (core/scheduler.py).
+    scheduled_refresh: bool = True
 
     @field_validator("database_url", "sec_user_agent", "fred_api_key", "static_dir", mode="before")
     @classmethod

@@ -3,10 +3,11 @@ opening period and the forecast years (docs/erd/forecasting.md "Drivers (M4)", "
 periods"). Pure."""
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from decimal import Decimal
 from enum import Enum
+from functools import cached_property
 from typing import Literal
 
 from bedrock.forecast.drivers import (
@@ -24,7 +25,8 @@ from bedrock.forecast.drivers import (
     segment_id,
 )
 from bedrock.forecast.errors import ForecastUnavailable
-from bedrock.statements.build import StatementTable
+from bedrock.mapping.config import CanonicalItemDef, parse_formula
+from bedrock.statements.build import Row, StatementTable
 from bedrock.statements.periods import Period
 
 HISTORY_YEARS = 5  # shown beside the forecast years
@@ -66,6 +68,16 @@ class ForecastHistory:
     segment_series: tuple[SeriesHistory, ...]
     latest_fy_end: date | None
 
+    # Every value of the tables by (code, period key), built on first use and shared: a request
+    # reads them in each forecast run (a tornado runs the driver model ~40 times). Read-only.
+    @cached_property
+    def annual_values(self) -> "StatementValues":
+        return StatementValues(self.annual)
+
+    @cached_property
+    def quarterly_values(self) -> "StatementValues":
+        return StatementValues(self.quarterly)
+
 
 @dataclass(frozen=True)
 class ScenarioSettings:
@@ -94,12 +106,64 @@ class StatementValues:
         return self.cells.get((code, key))
 
 
+def fold_rows(
+    tables: Mapping[str, StatementTable], items: Sequence[CanonicalItemDef]
+) -> dict[str, StatementTable]:
+    """The tables with every `forecast_fold` row added back into its residual and dropped
+    (docs/erd/data-coverage.md "New canonical rows"), so the forecast reads the residuals it read
+    before the row existed. A residual cell takes the row's value back as its formula took it out
+    (`- row` adds it, `+ row` subtracts it); an empty row leaves the cell as it is, an empty
+    residual stays empty, and the residual keeps its provenance. A folded residual's YoY and
+    common-size are cleared: the forecast reads values only."""
+    by_code = {item.code: item for item in items}
+    weights: dict[str, tuple[str, int]] = {}  # row -> (residual, the row's sign in its formula)
+    for item in items:
+        if item.forecast_fold is not None:  # `mapping/config.py` checks the formula holds the row
+            formula = parse_formula(by_code[item.forecast_fold].derive or "")
+            weight = next(w for w, operand in formula if operand == item.code)
+            weights[item.code] = (item.forecast_fold, weight)
+    return {statement: _fold_table(table, weights) for statement, table in tables.items()}
+
+
+def _fold_table(table: StatementTable, weights: Mapping[str, tuple[str, int]]) -> StatementTable:
+    by_code = {row.code: row for row in table.rows}
+    # a row folds only beside its residual: without it, it stays rather than losing its value
+    folded = {
+        code: target
+        for code, (target, _) in weights.items()
+        if code in by_code and target in by_code
+    }
+    if not folded:
+        return table
+    sums: dict[str, list[Decimal | None]] = {}
+    for code, target in folded.items():
+        current = sums.setdefault(target, list(by_code[target].values))
+        weight = weights[code][1]
+        current[:] = [
+            _unfold(total, value, weight)
+            for total, value in zip(current, by_code[code].values, strict=True)
+        ]
+    rows = [_folded_row(row, sums[row.code]) if row.code in sums else row for row in table.rows]
+    return replace(table, rows=[row for row in rows if row.code not in folded])
+
+
+def _unfold(total: Decimal | None, value: Decimal | None, weight: int) -> Decimal | None:
+    if total is None or value is None:
+        return total
+    return total - weight * value
+
+
+def _folded_row(row: Row, values: list[Decimal | None]) -> Row:
+    empty: list[Decimal | None] = [None] * len(values)
+    return replace(row, values=values, yoy=empty, common_size=list(empty))
+
+
 def opening_period(history: ForecastHistory) -> Period:
     """The latest quarter (the latest FY for a company with no quarters) whose balance sheet has
     its totals and whose revenue is not null. Raises ForecastUnavailable."""
-    values = StatementValues(history.quarterly)
+    values = history.quarterly_values
     if not values.periods:
-        values = StatementValues(history.annual)
+        values = history.annual_values
     for period in reversed(values.periods):
         if all(values.get(code, period.key) is not None for code in OPENING_TOTALS):
             return period
@@ -116,13 +180,13 @@ def forecast_years(history: ForecastHistory, horizon_years: int) -> list[int]:
 
 def history_years(history: ForecastHistory) -> list[int]:
     """The last HISTORY_YEARS actual fiscal years, oldest first."""
-    return [p.fiscal_year for p in StatementValues(history.annual).periods][-HISTORY_YEARS:]
+    return [p.fiscal_year for p in history.annual_values.periods][-HISTORY_YEARS:]
 
 
 def history_quarters(history: ForecastHistory) -> list[Period]:
     """The last QUARTER_HISTORY actual quarters, up to the opening period, oldest first; none for
     a company with no quarterly statements."""
-    quarters = StatementValues(history.quarterly).periods
+    quarters = history.quarterly_values.periods
     if not quarters:
         return []
     opening = opening_period(history)
@@ -214,7 +278,7 @@ class _Reader:
         self.history = history
         self.settings = settings
         self.quarterly = quarterly
-        self.values = StatementValues(history.quarterly if quarterly else history.annual)
+        self.values = history.quarterly_values if quarterly else history.annual_values
         self.by_year = {p.fiscal_year: p for p in self.values.periods}
         self.order = {p.key: i for i, p in enumerate(self.values.periods)}
         self.series = {s.id: s for s in history.segment_series}

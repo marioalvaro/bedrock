@@ -3,6 +3,8 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
+import { createSnapshotApiV1CompaniesTickerScenariosScenarioIdSnapshotsPost } from "@/api/generated/sdk.gen";
+import { snapshotOut } from "@/test/accountability";
 import { segments } from "@/test/context";
 import { errorResult, okResult } from "@/test/responses";
 import { bullGrid, driverGrid, scenario, scenarios } from "@/test/scenarios";
@@ -26,6 +28,7 @@ import {
 } from "@/test/scenariosView";
 
 vi.mock("@/api/generated/sdk.gen", () => ({
+  createSnapshotApiV1CompaniesTickerScenariosScenarioIdSnapshotsPost: vi.fn(),
   listScenariosApiV1CompaniesTickerScenariosGet: vi.fn(),
   createScenarioApiV1CompaniesTickerScenariosPost: vi.fn(),
   updateScenarioApiV1CompaniesTickerScenariosScenarioIdPut: vi.fn(),
@@ -45,6 +48,116 @@ vi.mock("@/api/generated/sdk.gen", () => ({
 vi.mock("echarts-for-react/esm/core", () => ({ default: () => null }));
 
 setupScenariosView();
+
+const createSnapshot = vi.mocked(
+  createSnapshotApiV1CompaniesTickerScenariosScenarioIdSnapshotsPost,
+);
+
+describe("snapshot", () => {
+  async function openDialog(path?: string) {
+    await renderLoaded(path);
+    await userEvent.click(screen.getByRole("button", { name: "Snapshot" }));
+    return screen.findByRole("alertdialog");
+  }
+  const note = () => screen.getByRole("textbox", { name: "Note" });
+  const save = () => screen.getByRole("button", { name: "Save" });
+
+  it("opens a dialog named after the scenario, saying what happens", async () => {
+    const dialog = await openDialog();
+    expect(within(dialog).getByRole("heading", { name: "Snapshot Main" })).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        "Base, Bull and Bear are saved as they stand, and scored as actuals arrive. A snapshot cannot be changed.",
+      ),
+    ).toBeInTheDocument();
+    expect(note()).toHaveAttribute("maxlength", "500");
+  });
+
+  it("names the picked scenario and posts to it", async () => {
+    createSnapshot.mockResolvedValue(okResult(snapshotOut({ scenario_id: 2 }), 201) as never);
+    const dialog = await openDialog("/c/AAPL/scenarios?scenario=2");
+    expect(within(dialog).getByRole("heading", { name: "Snapshot Cycle" })).toBeInTheDocument();
+    await userEvent.click(save());
+    await waitFor(() =>
+      expect(createSnapshot).toHaveBeenCalledWith({
+        path: { ticker: "AAPL", scenario_id: 2 },
+        body: { note: null },
+      }),
+    );
+  });
+
+  it("sends the note, trimmed", async () => {
+    createSnapshot.mockResolvedValue(okResult(snapshotOut(), 201) as never);
+    await openDialog();
+    await userEvent.type(note(), "  Before the print ");
+    await userEvent.click(save());
+    await waitFor(() =>
+      expect(createSnapshot).toHaveBeenCalledWith({
+        path: { ticker: "AAPL", scenario_id: 1 },
+        body: { note: "Before the print" },
+      }),
+    );
+  });
+
+  it("saves on Enter in the note", async () => {
+    createSnapshot.mockResolvedValue(okResult(snapshotOut(), 201) as never);
+    await openDialog();
+    await userEvent.type(note(), "Typed{Enter}");
+    await waitFor(() =>
+      expect(createSnapshot).toHaveBeenCalledWith({
+        path: { ticker: "AAPL", scenario_id: 1 },
+        body: { note: "Typed" },
+      }),
+    );
+  });
+
+  it("replaces the text with Saved and a link to the snapshots", async () => {
+    createSnapshot.mockResolvedValue(okResult(snapshotOut(), 201) as never);
+    const dialog = await openDialog();
+    await userEvent.click(save());
+    expect(await within(dialog).findByText(/^Saved/)).toBeInTheDocument();
+    expect(within(dialog).getByRole("link")).toHaveAttribute(
+      "href",
+      "/c/AAPL/backtest?view=snapshots",
+    );
+    expect(within(dialog).queryByText(/A snapshot cannot be changed/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+  });
+
+  it("disables Save while it runs", async () => {
+    createSnapshot.mockReturnValue(new Promise(() => {}) as never);
+    await openDialog();
+    await userEvent.click(save());
+    await waitFor(() => expect(save()).toBeDisabled());
+  });
+
+  it("shows the API's detail, keeps the dialog and the note", async () => {
+    createSnapshot.mockResolvedValue(errorResult(422, { detail: "No case could run" }) as never);
+    await openDialog();
+    await userEvent.type(note(), "Keep me");
+    await userEvent.click(save());
+    expect(await screen.findByRole("alert")).toHaveTextContent("No case could run");
+    expect(note()).toHaveValue("Keep me");
+  });
+
+  it("falls back to a plain text on an error without a detail", async () => {
+    createSnapshot.mockResolvedValue(errorResult(500, {}) as never);
+    await openDialog();
+    await userEvent.click(save());
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not save the snapshot.");
+  });
+
+  it("forgets the note when cancelled and reopened", async () => {
+    await openDialog();
+    await userEvent.type(note(), "Discard me");
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: "Snapshot" }));
+    await screen.findByRole("alertdialog");
+    expect(note()).toHaveValue("");
+    expect(createSnapshot).not.toHaveBeenCalled();
+  });
+});
 
 describe("picker", () => {
   it("lists the scenarios, the default first and picked by default", async () => {
@@ -138,7 +251,7 @@ describe("picker", () => {
     await userEvent.click(screen.getByRole("button", { name: "Delete" }));
     const dialog = await screen.findByRole("alertdialog");
     expect(dialog).toHaveTextContent("Delete Cycle?");
-    expect(dialog).toHaveTextContent("its Base, Bull and Bear cases");
+    expect(dialog).toHaveTextContent("its Bull, Base and Bear cases");
     list.mockResolvedValue(okResult(scenarios().slice(0, 1)) as never);
     await userEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
     expect(remove).toHaveBeenCalledWith({ path: { ticker: "AAPL", scenario_id: 2 } });
@@ -236,7 +349,7 @@ describe("settings", () => {
   it("says the settings apply to the three cases, and keeps them across a case switch", async () => {
     await renderLoaded();
     const form = screen.getByRole("form", { name: "Scenario settings" });
-    expect(form).toHaveTextContent("Applies to Base, Bull and Bear");
+    expect(form).toHaveTextContent("Applies to Bull, Base and Bear");
     await userEvent.selectOptions(screen.getByLabelText("Revenue build"), "segments");
     await userEvent.click(screen.getByRole("radio", { name: "Bull" }));
     expect(screen.getByLabelText("Revenue build")).toHaveValue("segments"); // the draft stays
@@ -384,14 +497,14 @@ describe("new scenario", () => {
 describe("case toggle", () => {
   const radio = (name: string) => screen.getByRole("radio", { name });
 
-  it("offers Base, Bull and Bear, Base picked by default", async () => {
+  it("offers Bull, Base and Bear, Base picked by default", async () => {
     await renderLoaded();
     const group = screen.getByRole("radiogroup", { name: "Case" });
     expect(
       within(group)
         .getAllByRole("radio")
         .map((r) => r.textContent),
-    ).toEqual(["Base", "Bull", "Bear"]);
+    ).toEqual(["Bull", "Base", "Bear"]);
     expect(radio("Base")).toBeChecked();
   });
 

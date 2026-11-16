@@ -41,6 +41,8 @@ import {
 import type { Scale } from "@/lib/scale";
 import { NotesPanel } from "@/features/notes/NotesPanel";
 
+import { includedInText, includesText } from "./grid";
+
 export interface CellTarget {
   code: string;
   label: string;
@@ -49,6 +51,9 @@ export interface CellTarget {
   custom?: boolean; // a line added in an import: it takes no notes
   fiscalYear: number;
   fiscalPeriod: string;
+  // The statement's line labels by code, to name a combined line's parts (M7b S8); a code
+  // missing here is shown as the code
+  lineLabels?: Readonly<Record<string, string>>;
 }
 
 interface CellDetailSheetProps {
@@ -333,6 +338,7 @@ function Body({
     return <p className="text-destructive p-4 text-sm">Could not load the cell details.</p>;
 
   const money = (value: string) => formatValue(value, target.unit, scale);
+  const labelOf = (code: string) => target.lineLabels?.[code] ?? code;
 
   return (
     <div className="overflow-y-auto px-4 pb-4">
@@ -351,6 +357,13 @@ function Body({
           </>
         )}
       </Field>
+      {(data.combined_with !== null || data.included_in !== null) && (
+        <Field name="Combined line">
+          {data.combined_with !== null
+            ? includesText(data.combined_with.map(labelOf))
+            : includedInText(labelOf(data.included_in as string))}
+        </Field>
+      )}
       {data.source && data.source.taxonomy !== IMPORT_FORM && (
         <Field name="Source tag">
           <code className="break-all">

@@ -21,3 +21,15 @@ describe("createQueryClient retry policy", () => {
     expect(retry(3, new ApiError(503))).toBe(false);
   });
 });
+
+describe("createQueryClient freshness", () => {
+  const queries = createQueryClient().getDefaultOptions().queries;
+
+  it("keeps data fresh for five minutes: mutations invalidate what they change", () => {
+    expect(queries?.staleTime).toBe(5 * 60_000);
+  });
+
+  it("does not refetch every query when the window regains focus", () => {
+    expect(queries?.refetchOnWindowFocus).toBe(false);
+  });
+});

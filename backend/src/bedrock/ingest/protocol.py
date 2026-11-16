@@ -1,7 +1,10 @@
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, ClassVar, Protocol, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, Protocol, TypeVar
+
+if TYPE_CHECKING:
+    from bedrock.analysis.consensus import ConsensusRow, EpsHistoryRow
 
 P = TypeVar("P", covariant=True)
 
@@ -72,5 +75,44 @@ class EdgarLike(DataSource[EdgarPayload], Protocol):
     def resolve(self, ticker: str) -> CompanyProfile: ...
 
 
+class FilingsLike(Protocol):
+    """What the services need from the EDGAR filing archive: `EdgarFilingsSource`, or a test
+    double. `fetch` gives one filing's XBRL files by name, {} when it has no XBRL instance, and
+    raises SourceUnavailable."""
+
+    def fetch(self, company: CompanyRef, accession_no: str) -> dict[str, bytes]: ...
+
+
 class PricesLike(DataSource[PricePayload], Protocol):
     """What the services need from the price source: `YFinanceSource`, or a test double."""
+
+
+@dataclass(frozen=True)
+class SeriesPayload:
+    """One market series as fetched: `(date, value)` rows oldest first, values as published."""
+
+    series_id: str
+    title: str
+    frequency: str  # daily | monthly
+    source: str  # fred | yfinance | damodaran
+    rows: list[tuple[date, Decimal]]
+
+
+class MarketLike(Protocol):
+    """What the services need for the market defaults: `MarketSource`, or a test double. Each
+    call raises SourceUnavailable on its own failure."""
+
+    def risk_free(self, today: date) -> SeriesPayload: ...
+
+    def erp(self, today: date) -> SeriesPayload: ...
+
+    def index(self, today: date) -> SeriesPayload: ...
+
+
+class ConsensusLike(Protocol):
+    """What the services need for the analyst consensus: `YFinanceConsensus`, or a test double.
+    Raises SourceUnavailable."""
+
+    def fetch(self, company: CompanyRef) -> "list[ConsensusRow]": ...
+
+    def history(self, company: CompanyRef) -> "list[EpsHistoryRow]": ...

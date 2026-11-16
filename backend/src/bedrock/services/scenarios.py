@@ -1,9 +1,9 @@
 """Scenarios of a followed company, their three cases and the drivers of each case (FR-FCST-02..05;
 docs/erd/forecasting.md "Scenarios and cases", "API")."""
 
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Literal, get_args
 
@@ -46,6 +46,7 @@ from bedrock.forecast.history import (
     ScenarioSettings,
     SeriesHistory,
     default_drivers,
+    fold_rows,
     forecast_years,
     historical_drivers,
     historical_quarter_drivers,
@@ -65,6 +66,8 @@ from bedrock.models.scenario import (
 )
 from bedrock.repositories import scenarios as repo
 from bedrock.repositories import segments as segments_repo
+from bedrock.repositories.numeric import plain
+from bedrock.services import audit as audit_service
 from bedrock.services import engines as engines_service
 from bedrock.services.engines import EngineChoices
 from bedrock.services.errors import (
@@ -74,7 +77,7 @@ from bedrock.services.errors import (
     ScenarioConflict,
     ScenarioNotFound,
 )
-from bedrock.services.statements import statement_tables
+from bedrock.services.statements import canonical_items, statement_tables
 from bedrock.services.year_modes import (
     built_from_quarters,
     check_mode_rules,
@@ -123,6 +126,14 @@ DEFAULT_OFFSETS = {"revenue_growth": Decimal("0.03"), "gross_margin": Decimal("0
 SEGMENT_OFFSET = DEFAULT_OFFSETS["revenue_growth"]
 STATEMENTS = ("IS", "BS", "CF")
 KPI_UNITS = {"volume_kpi": "count", "price_kpi": "USD_per_unit"}
+# What the audit trail logs of a scenario, with the labels it stores.
+SETTING_LABELS = {
+    "name": "Name",
+    "revenue_method": "Revenue method",
+    "segment_dimension": "Segment dimension",
+    "volume_kpi": "Volume KPI",
+    "price_kpi": "Price KPI",
+}
 
 
 @dataclass(frozen=True)
@@ -168,17 +179,18 @@ class ScenarioDrivers:
     engines: EngineDefaults  # what the scenario's engine choices set (empty maps for `mean`)
 
 
-def _naive_utc(moment: datetime) -> datetime:
+def naive_utc(moment: datetime) -> datetime:
     return moment.astimezone(UTC).replace(tzinfo=None) if moment.tzinfo else moment
 
 
-def load_history(session: Session, company: Company) -> ForecastHistory:
+def load_history(session: Session, company: Company, as_of: date | None = None) -> ForecastHistory:
     """The company's normalized annual and quarterly IS/BS/CF tables (untrimmed, one load), its
-    segment and KPI series with their FY values, and its latest fiscal year end."""
+    segment and KPI series with their FY values, and its latest fiscal year end. With `as_of`, the
+    history as known on that date; segment values have no date, so it has no series."""
     freqs: tuple[Freq, ...] = ("annual", "quarterly")
     wanted = [(s, f) for f in freqs for s in STATEMENTS]
-    tables = statement_tables(session, company, wanted, "normalized")
-    series = segments_repo.list_series(session, company.id)
+    tables = statement_tables(session, company, wanted, "normalized", as_of=as_of)
+    series = [] if as_of is not None else segments_repo.list_series(session, company.id)
     fy_values: dict[int, dict[int, Decimal]] = {s.id: {} for s in series}
     quarter_values: dict[int, dict[tuple[int, str], Decimal]] = {s.id: {} for s in series}
     for v in segments_repo.list_values(session, list(fy_values)):
@@ -187,9 +199,11 @@ def load_history(session: Session, company: Company) -> ForecastHistory:
         else:
             quarter_values[v.series_id][(v.fiscal_year, v.fiscal_period)] = v.value
     annual_periods = tables[("IS", "annual")].periods
+    items = canonical_items()
     return ForecastHistory(
-        annual={s: tables[(s, "annual")] for s in STATEMENTS},
-        quarterly={s: tables[(s, "quarterly")] for s in STATEMENTS},
+        # M7b S5: new rows go back into their residuals, so the forecast reads what it read before
+        annual=fold_rows({s: tables[(s, "annual")] for s in STATEMENTS}, items),
+        quarterly=fold_rows({s: tables[(s, "quarterly")] for s in STATEMENTS}, items),
         segment_series=tuple(
             SeriesHistory(
                 s.id, s.dimension, s.name, s.metric, s.unit, fy_values[s.id], quarter_values[s.id]
@@ -206,7 +220,7 @@ def ensure_defaults(session: Session, company: Company, now: datetime) -> None:
     if repo.list_for(session, company.id):
         return
     history = load_history(session, company)  # before the first write: no lock held
-    stamp = _naive_utc(now)
+    stamp = naive_utc(now)
     try:
         main = repo.add(
             session,
@@ -263,13 +277,14 @@ def create_scenario(
     ensure_defaults(session, company, now)
     default = _default_scenario(session, company)
     name = _check_name(session, company, data.name or "", None)
-    stamp = _naive_utc(now)
+    stamp = naive_utc(now)
     scenario = _copy(default, name, stamp)
     _apply(scenario, data)
     _check_settings(session, company, scenario)
     history = load_history(session, company)  # before the first write: no lock held
     repo.add(session, scenario)
     _add_cases(session, scenario, history, stamp)
+    _record_scenario(session, scenario, "create", {}, _setting_texts(scenario), stamp)
     session.commit()
     return scenario
 
@@ -282,6 +297,7 @@ def update_scenario(
     another dimension, gives Bull and Bear their offset on each segment series of the dimension
     without own rows. Raises ScenarioNotFound."""
     scenario = get_scenario(session, company, scenario_id)
+    logged = _setting_texts(scenario)
     before = (scenario.revenue_method, scenario.segment_dimension)
     if data.name is not None:
         scenario.name = _check_name(session, company, data.name, scenario.id)
@@ -291,21 +307,24 @@ def update_scenario(
     except InvalidScenario:
         session.rollback()
         raise
-    stamp = _naive_utc(now)
+    stamp = naive_utc(now)
     scenario.updated_at = stamp
     after = (scenario.revenue_method, scenario.segment_dimension)
     if after[0] == "segments" and after != before:
         _segment_offsets(session, company, scenario, stamp)
+    session.flush()
+    _record_scenario(session, scenario, "edit", logged, _setting_texts(scenario), stamp)
     session.commit()
     return scenario
 
 
-def delete_scenario(session: Session, company: Company, scenario_id: int) -> None:
+def delete_scenario(session: Session, company: Company, scenario_id: int, now: datetime) -> None:
     """Deletes the scenario, its cases and their driver rows. Raises ScenarioNotFound, and
     ScenarioConflict for the default scenario."""
     scenario = get_scenario(session, company, scenario_id)
     if scenario.is_default:
         raise ScenarioConflict("The default scenario cannot be deleted")
+    _record_scenario(session, scenario, "delete", _setting_texts(scenario), {}, naive_utc(now))
     repo.delete_scenario(session, scenario)
     session.commit()
 
@@ -319,7 +338,8 @@ def reset_case(
     scenario, kase = get_case(session, company, scenario_id, case)
     history = load_history(session, company)
     forecast_years(history, FORECAST_HORIZON.years)
-    stamp = _naive_utc(now)
+    stamp = naive_utc(now)
+    before = _driver_texts(repo.list_rows(session, [kase.id]))
     repo.delete_all_rows(session, kase.id)
     repo.add_rows(
         session, _case_rows(kase, _default_rows(case, settings_of(scenario), history), stamp)
@@ -327,6 +347,8 @@ def reset_case(
     for year in built_from_quarters(session, scenario, history):
         repo.add_rows(session, _fill_year(session, scenario, case, kase, history, year, stamp))
     kase.updated_at = scenario.updated_at = stamp
+    catalog = scenario_drivers(history, settings_of(scenario))
+    _record_drivers(session, scenario, kase, before, "reset", catalog, stamp)
     session.commit()
     return _grid(session, scenario, case, history)
 
@@ -365,9 +387,10 @@ def set_year_mode(
         )
     if fiscal_year not in {y for y, _ in forecast_quarters(history)}:
         raise InvalidScenario(f"FY{fiscal_year} is not in the quarterly span")
-    if (mode == "quarterly") == (fiscal_year in built_from_quarters(session, scenario, history)):
+    was_quarterly = fiscal_year in built_from_quarters(session, scenario, history)
+    if (mode == "quarterly") == was_quarterly:
         return year_modes_of(session, scenario, history)  # already so: nothing to write
-    stamp = _naive_utc(now)
+    stamp = naive_utc(now)
     cases = repo.cases_of(session, scenario.id)
     if mode == "quarterly":
         # every case is resolved before the first write: the fills read the rows as they are now
@@ -383,6 +406,19 @@ def set_year_mode(
     scenario.updated_at = stamp
     for kase in cases.values():
         kase.updated_at = stamp
+    session.flush()
+    audit_service.record(
+        session,
+        company.id,
+        "year_mode",
+        scenario.id,
+        scenario.name,
+        "mode",
+        {f"FY{fiscal_year}": "quarterly" if was_quarterly else "annual"},
+        {f"FY{fiscal_year}": mode},
+        lambda _: (f"FY{fiscal_year % 100:02d} set by", None),
+        stamp,
+    )
     session.commit()
     return year_modes_of(session, scenario, history)
 
@@ -448,6 +484,36 @@ def _apply(scenario: Scenario, data: SettingsInput) -> None:
         value = getattr(data, field)
         if value is not None:
             setattr(scenario, field, value)
+
+
+def _setting_texts(scenario: Scenario) -> dict[str, str | None]:
+    return {field: getattr(scenario, field) for field in SETTING_LABELS}
+
+
+def _describe_setting(field: str) -> tuple[str, str | None]:
+    return SETTING_LABELS[field], None
+
+
+def _record_scenario(
+    session: Session,
+    scenario: Scenario,
+    action: str,
+    before: Mapping[str, str | None],
+    after: Mapping[str, str | None],
+    stamp: datetime,
+) -> None:
+    audit_service.record(
+        session,
+        scenario.company_id,
+        "scenario",
+        scenario.id,
+        scenario.name,
+        action,
+        before,
+        after,
+        _describe_setting,
+        stamp,
+    )
 
 
 def _check_name(session: Session, company: Company, name: str, own_id: int | None) -> str:
@@ -634,7 +700,7 @@ def put_engines(
     """Sets the given drivers' engines (`auto` deletes the row); the other drivers are untouched.
     Raises ScenarioNotFound, ForecastUnavailable and InvalidEngineChoice (nothing written)."""
     scenario, history, settings, years = _engine_context(session, company, scenario_id)
-    engines_service.put_engine_choices(session, scenario, history, settings, rows, _naive_utc(now))
+    engines_service.put_engine_choices(session, scenario, history, settings, rows, naive_utc(now))
     return engines_service.engine_choices_view(session, scenario, history, settings, years)
 
 
@@ -832,7 +898,7 @@ def put_drivers(
     if any(r.freq == "quarterly" for r in rows) and not history_quarters(history):
         raise ForecastUnavailable("No quarterly history")
     allowed = {d.code: d for d in scenario_drivers(history, settings)}
-    stamp = _naive_utc(now)
+    stamp = naive_utc(now)
     seen: set[tuple[str, str]] = set()
     new: list[DriverValue] = []
     stores: dict[int, bool] = {}
@@ -842,12 +908,13 @@ def put_drivers(
         stores[number] = bool(values)
         new.extend(values)
     stored = repo.list_rows(session, [kase.id])
+    before = _driver_texts(stored)
     quarterly_years = set(built_from_quarters(session, scenario, history))
     for row in rows:
         check_mode_rules(row.values, row.quarters, quarterly_years)
     for number, row in enumerate(rows):
         _drop_replaced(session, kase, row, stored, stores[number], quarterly_years)
-    _replace_rows(session, scenario, kase, set(), new, stamp)
+    _replace_rows(session, scenario, kase, set(), new, stamp, before, "edit", allowed.values())
     every_quarter = bool(rows) and all(r.freq == "quarterly" for r in rows)
     return _grid(session, scenario, case, history, "quarterly" if every_quarter else "annual")
 
@@ -901,12 +968,76 @@ def _replace_rows(
     codes: set[str],
     rows: list[DriverValue],
     stamp: datetime,
+    before: Mapping[str, str | None],
+    action: str,
+    catalog: Iterable[DriverDef],
 ) -> None:
-    """Deletes every stored row of `codes` in the case and adds `rows`; one transaction."""
+    """Deletes every stored row of `codes` in the case, adds `rows` and logs the difference from
+    `before` (the case's rows as they were on entry to the use case); one transaction."""
     repo.delete_rows(session, kase.id, codes)
     repo.add_rows(session, rows)
     kase.updated_at = scenario.updated_at = stamp
+    _record_drivers(session, scenario, kase, before, action, catalog, stamp)
     session.commit()
+
+
+def _driver_texts(rows: Iterable[DriverValue]) -> dict[str, str | None]:
+    """The audit trail's field and value text of each driver row."""
+    return {
+        f"{r.driver_code}|{r.fiscal_year}|{r.fiscal_period}": (
+            f"{'offset:' if r.kind == 'offset' else ''}{format(plain(r.value), 'f')}"
+        )
+        for r in rows
+    }
+
+
+def _describe_driver(catalog: Iterable[DriverDef]) -> audit_service.Describe:
+    """(label, unit) of a driver field. A stored code the method no longer lists keeps its
+    catalog name, and one the catalog no longer has its code."""
+    by_code = {d.code: d for d in catalog}
+
+    def describe(field: str) -> tuple[str, str | None]:
+        code, year, period = field.rsplit("|", 2)
+        definition = by_code.get(code)
+        if definition is None:
+            try:
+                definition = driver_def(code)
+            except UnknownDriver:
+                definition = None
+        name = code if definition is None else definition.label
+        when = (
+            f"FY{int(year) % 100:02d}" if period == "FY" else _quarter_label(int(year), period, "")
+        )
+        return f"{name} {when}", None if definition is None else definition.unit
+
+    return describe
+
+
+def _record_drivers(
+    session: Session,
+    scenario: Scenario,
+    kase: ScenarioCase,
+    before: Mapping[str, str | None],
+    action: str,
+    catalog: Iterable[DriverDef],
+    stamp: datetime,
+) -> None:
+    """Logs how the case's stored rows differ from `before`. The rows are read back from the
+    database, so a value is logged as it was stored (Numeric(28, 10) rounds what was typed)."""
+    session.flush()
+    session.expire_all()
+    audit_service.record(
+        session,
+        scenario.company_id,
+        "driver",
+        kase.id,
+        audit_service.case_scope(scenario.name, kase.case),
+        action,
+        before,
+        _driver_texts(repo.list_rows(session, [kase.id])),
+        _describe_driver(catalog),
+        stamp,
+    )
 
 
 def export_drivers(
@@ -956,7 +1087,7 @@ def import_drivers(
     if dry_run:
         return DriverImportResult(result.changes, None)
     if result.rows:
-        stamp = _naive_utc(now)
+        stamp = naive_utc(now)
         new = [
             DriverValue(
                 case_id=kase.id,
@@ -972,7 +1103,9 @@ def import_drivers(
             for rows in result.rows.values()
             for r in rows
         ]
-        _replace_rows(session, scenario, kase, set(result.rows), new, stamp)
+        before = _driver_texts(own)
+        codes = set(result.rows)
+        _replace_rows(session, scenario, kase, codes, new, stamp, before, "import", catalog)
     return DriverImportResult(result.changes, _grid(session, scenario, case, history))
 
 

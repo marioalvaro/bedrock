@@ -121,6 +121,11 @@ describe("RatiosView", () => {
     ]);
     const heading = labelCell("category:Profitability");
     expect(heading.querySelector(".font-medium")).not.toBeNull();
+    // The heading band spans the row (pinned label and periods), ratio rows stay plain.
+    for (const el of document.querySelectorAll('[row-id="category:Profitability"]'))
+      expect(el).toHaveClass("row-heading");
+    for (const el of document.querySelectorAll('[row-id="gross_margin"]'))
+      expect(el).not.toHaveClass("row-heading");
     expect(cell("category:Profitability", "FY2024")).toHaveTextContent("");
   });
 

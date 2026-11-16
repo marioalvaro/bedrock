@@ -3,21 +3,31 @@ import { describe, expect, it } from "vitest";
 import type { PeriodOut, StatementOut } from "@/api/generated/types.gen";
 import { noteLink, noteLinks } from "@/test/context";
 import { forecastIncome } from "@/test/scenarios";
-import { balanceStatement, customIncomeStatement, incomeStatement } from "@/test/statements";
+import {
+  balanceStatement,
+  combinedBalanceStatement,
+  customIncomeStatement,
+  incomeStatement,
+} from "@/test/statements";
 
 import {
   canExplain,
   cellNoteCount,
+  cellStateClasses,
+  cellText,
+  cellTitle,
   csvLabel,
   expandableCodes,
   forecastColumnClass,
   isBuiltFromQuarters,
+  isCombined,
   lineNoteCount,
   noteIndex,
   provenanceClasses,
   provenanceMark,
   rowUnitHint,
   toGridRows,
+  type GridRow,
 } from "./grid";
 
 const NONE: ReadonlySet<string> = new Set();
@@ -76,7 +86,7 @@ describe("toGridRows", () => {
       kind: "yoy",
       label: "YoY",
       unit: "%",
-      depth: 1,
+      depth: 0, // revenue's own depth
       values: { FY2023: null, FY2024: "0.020219" },
     });
   });
@@ -106,10 +116,13 @@ describe("toGridRows", () => {
     ]);
   });
 
-  it("indents a sub-row one level below its line", () => {
-    const rows = toGridRows(incomeStatement(), { ...OPEN, yoy: true });
+  it("keeps a sub-row at its line's depth, so it never reads as part of the breakdown", () => {
+    // User 2026-11-07: under an expanded parent, a YoY one level in lined up with the children.
+    const rows = toGridRows(incomeStatement(), { ...OPEN, yoy: true, commonSize: true });
+    const line = rows.find((row) => row.id === "cost_of_revenue")!;
 
-    expect(rows.find((row) => row.id === "cost_of_revenue:yoy")?.depth).toBe(2);
+    expect(rows.find((row) => row.id === "cost_of_revenue:yoy")?.depth).toBe(line.depth);
+    expect(rows.find((row) => row.id === "cost_of_revenue:common_size")?.depth).toBe(line.depth);
   });
 
   it("labels a common-size sub-row with the row it divides by", () => {
@@ -702,5 +715,71 @@ describe("a forecast payload", () => {
     expect(canExplain(revenue!, estimate!)).toBe(false);
     expect(canExplain({ ...revenue!, adjustable: true }, estimate!)).toBe(false);
     expect(canExplain(revenue!, actual!)).toBe(true);
+  });
+});
+
+describe("combined lines and inapplicable cells (M7b S8)", () => {
+  const payload = combinedBalanceStatement();
+  const rows = toGridRows(payload, { ...OFF, expanded: all(payload) });
+  const byCode = (code: string) => rows.find((row) => row.code === code) as GridRow;
+  const fy2024 = payload.periods[1] as PeriodOut;
+
+  it("keeps a line whose every cell is inside another line", () => {
+    expect(rows.map((row) => row.code)).toContain("accrued_liabilities");
+  });
+
+  it("names the covered lines on a carrier cell", () => {
+    const payables = byCode("accounts_payable");
+    expect(cellTitle(payables, "FY2024")).toBe("Includes Accrued liabilities");
+    expect(isCombined(payables, "FY2024")).toBe(true);
+    expect(cellText(payables, "FY2024", "B")).toBe("68.0");
+  });
+
+  it("says so when a carrier covers no row of its own", () => {
+    const cash = byCode("cash");
+    expect(isCombined(cash, "FY2024")).toBe(true);
+    expect(cellTitle(cash, "FY2024")).toBe("Includes other lines with no row of their own");
+  });
+
+  it("shows a covered cell as included in its carrier, with no number", () => {
+    const accrued = byCode("accrued_liabilities");
+    expect(cellText(accrued, "FY2024", "B")).toBe("incl. in Accounts payable");
+    expect(cellTitle(accrued, "FY2024")).toBe("Included in Accounts payable");
+    expect(isCombined(accrued, "FY2024")).toBe(false);
+    expect(cellStateClasses(accrued, "FY2024")).toEqual(["cell-muted"]);
+  });
+
+  it("opens the cell details on a covered cell", () => {
+    expect(canExplain(byCode("accrued_liabilities"), fy2024)).toBe(true);
+  });
+
+  it("shows n/a for a cell that cannot exist", () => {
+    const lease = byCode("operating_lease_rou");
+    expect(cellText(lease, "FY2023", "B")).toBe("n/a");
+    expect(cellStateClasses(lease, "FY2023")).toEqual(["cell-muted"]);
+    expect(cellText(lease, "FY2024", "B")).toBe("10.0");
+    expect(cellStateClasses(lease, "FY2024")).toEqual([]);
+  });
+
+  it("leaves an empty cell of another cause as a dash", () => {
+    const [revenue] = toGridRows(
+      incomeStatement({
+        rows: [
+          {
+            ...(incomeStatement().rows[0] as StatementOut["rows"][number]),
+            values: [null, "1"],
+            empty_cause: ["not_reported", null],
+          },
+        ],
+      }),
+      OFF,
+    );
+    expect(cellText(revenue as GridRow, "FY2023", "B")).toBe("—");
+    expect(cellTitle(revenue as GridRow, "FY2023")).toBeUndefined();
+  });
+
+  it("keeps the value of a covered or inapplicable cell empty for the CSV export", () => {
+    expect(byCode("accrued_liabilities").values.FY2024).toBeNull();
+    expect(byCode("operating_lease_rou").values.FY2023).toBeNull();
   });
 });

@@ -1,13 +1,20 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
-from bedrock.api.deps import get_clock, get_session, get_sources
+from bedrock.api.deps import (
+    get_backfills,
+    get_clock,
+    get_session,
+    get_session_factory,
+    get_sources,
+)
 from bedrock.ingest.sources import Sources
 from bedrock.schemas.company import CompanyCreate, CompanyListItem, ManualCompanyCreate
-from bedrock.schemas.refresh import RefreshResultOut
+from bedrock.schemas.refresh import BackfillStartedOut, RefreshResultOut
 from bedrock.services import companies as service
+from bedrock.services.filings import BackfillRunner
 from bedrock.services.refresh import refresh_company
 
 router = APIRouter(tags=["companies"])
@@ -57,3 +64,16 @@ def refresh(
     now: datetime = Depends(get_clock),
 ) -> RefreshResultOut:
     return RefreshResultOut.from_result(refresh_company(session, sources, ticker, now))
+
+
+@router.post("/companies/{ticker}/backfill-filings", status_code=202)
+def backfill_filings(
+    ticker: str,
+    session: Session = Depends(get_session),
+    session_factory: sessionmaker[Session] = Depends(get_session_factory),
+    sources: Sources = Depends(get_sources),
+    backfills: BackfillRunner = Depends(get_backfills),
+) -> BackfillStartedOut:
+    """Read the XBRL of every filing not read yet, in a worker thread; 409 while one runs."""
+    company = backfills.start(session, session_factory, sources, ticker)
+    return BackfillStartedOut(ticker=company.ticker)

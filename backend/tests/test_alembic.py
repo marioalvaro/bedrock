@@ -11,17 +11,22 @@ from sqlalchemy.exc import IntegrityError
 from bedrock.core.config import load_settings
 from bedrock.models import (
     adjustment,
+    audit_log,
     canonical_item,
     company,
     comps_member,
     comps_set,
     concept_mapping,
+    consensus_estimate,
     corporate_action,
     custom_line,
     driver_value,
     filing,
+    filing_line,
+    forecast_run,
     guidance,
     imported_fact,
+    macro,
     note,
     off_balance_item,
     price_daily,
@@ -39,17 +44,22 @@ from bedrock.models.base import Base
 # Importing registers every table on Base.metadata, so the drift test below sees them all.
 _MODELS = (
     adjustment,
+    audit_log,
     canonical_item,
     company,
     comps_member,
     comps_set,
     concept_mapping,
+    consensus_estimate,
     corporate_action,
     custom_line,
     driver_value,
     filing,
+    filing_line,
+    forecast_run,
     guidance,
     imported_fact,
+    macro,
     note,
     off_balance_item,
     price_daily,
@@ -1654,3 +1664,526 @@ def test_0015_downgrade_drops_the_table_and_up_again_recreates_it(
 
     _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
     assert "driver_engine_choice" in inspect(engine).get_table_names()
+
+
+def _macro_series(connection: Connection, series_id: str = "DGS10") -> None:
+    connection.execute(
+        text(
+            "INSERT INTO macro_series (series_id, title, frequency, source, fetched_at) "
+            "VALUES (:id, 'T', 'daily', 'fred', '2026-11-07 12:00:00')"
+        ),
+        {"id": series_id},
+    )
+
+
+def _macro_observation(
+    connection: Connection, series_id: str = "DGS10", day: str = "2026-11-06"
+) -> None:
+    connection.execute(
+        text("INSERT INTO macro_observation (series_id, date, value) VALUES (:id, :day, 4.2)"),
+        {"id": series_id, "day": day},
+    )
+
+
+def test_0016_creates_the_macro_tables_with_their_keys(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        _macro_series(connection)
+        _macro_observation(connection)
+    for bad in (
+        lambda c: _macro_series(c),  # the same series twice
+        lambda c: _macro_observation(c),  # the same date twice
+        lambda c: _macro_observation(c, series_id="NOPE"),  # no such series
+    ):
+        with pytest.raises(IntegrityError), engine.begin() as connection:
+            connection.execute(text("PRAGMA foreign_keys=ON"))
+            bad(connection)
+
+
+def test_0016_observations_go_with_their_series_and_downgrade_drops_both(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+        _macro_series(connection)
+        _macro_observation(connection)
+        connection.execute(text("DELETE FROM macro_series"))
+        assert connection.execute(text("SELECT count(*) FROM macro_observation")).scalar() == 0
+
+    _run_alembic(tmp_path, monkeypatch, ("downgrade", "0015"))
+    names = inspect(engine).get_table_names()
+    assert "macro_series" not in names and "macro_observation" not in names
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    assert "macro_observation" in inspect(engine).get_table_names()
+
+
+def _consensus(connection: Connection, company_id: int, period: str = "0y") -> None:
+    connection.execute(
+        text(
+            "INSERT INTO consensus_estimate (company_id, period, metric, low, avg, high, analysts,"
+            " year_ago_revenue, fetched_at) VALUES (:company, :period, 'revenue', 1, 2, 3, 4, 5,"
+            " '2026-11-07 12:00:00')"
+        ),
+        {"company": company_id, "period": period},
+    )
+
+
+def test_0017_creates_the_consensus_table_and_downgrade_drops_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+        owner = _company(connection, "AAA")
+        other = _company(connection, "BBB")
+        _consensus(connection, owner)
+        _consensus(connection, owner, period="+1y")
+        _consensus(connection, other)
+    with pytest.raises(IntegrityError), engine.begin() as connection:
+        _consensus(connection, owner)  # the same (company, period, metric) twice
+    with engine.begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+        connection.execute(text("DELETE FROM company WHERE id = :id"), {"id": owner})
+        assert connection.execute(text("SELECT count(*) FROM consensus_estimate")).scalar() == 1
+
+    _run_alembic(tmp_path, monkeypatch, ("downgrade", "0016"))
+    assert "consensus_estimate" not in inspect(engine).get_table_names()
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    assert "consensus_estimate" in inspect(engine).get_table_names()
+
+
+def _guidance_row(connection: Connection, company_id: int, **cols: object) -> int:
+    row = {
+        "company_id": company_id,
+        "metric": "revenue",
+        "fiscal_year": 2026,
+        "fiscal_period": "FY",
+        "low": 1,
+        "high": 2,
+        "basis": "reported",
+        "direction": "higher",
+        "given_on": "2026-11-07",
+        "created_at": "2026-11-07 12:00:00",
+        "updated_at": "2026-11-07 12:00:00",
+        **cols,
+    }
+    return _insert(connection, "guidance", **row)
+
+
+def test_0018_tags_existing_guidance_as_management_and_checks_the_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0017"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        owner = _company(connection, "AAA")
+        _guidance_row(connection, owner)
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    with engine.begin() as connection:
+        assert connection.execute(text("SELECT source FROM guidance")).scalars().all() == [
+            "management"
+        ]
+        _guidance_row(connection, owner, source="consensus")
+    with pytest.raises(IntegrityError), engine.begin() as connection:
+        _guidance_row(connection, owner, source="rumour")
+
+    _run_alembic(tmp_path, monkeypatch, ("downgrade", "0017"))
+    columns = {c["name"] for c in inspect(engine).get_columns("guidance")}
+    assert "source" not in columns
+    with engine.connect() as connection:
+        assert connection.execute(text("SELECT count(*) FROM guidance")).scalar() == 2
+
+
+_ACCOUNTABILITY_TABLES = {
+    "forecast_snapshot",
+    "forecast_run",
+    "forecast_value",
+    "valuation_run",
+    "audit_log",
+}
+
+
+def _snapshot(connection: Connection, company_id: int, scenario_id: int | None) -> int:
+    return _insert(
+        connection,
+        "forecast_snapshot",
+        company_id=company_id,
+        scenario_id=scenario_id,
+        scenario_name="Main",
+        created_at=_NOW,
+    )
+
+
+def _stored_run(connection: Connection, company_id: int, **cols: object) -> int:
+    row = {
+        "company_id": company_id,
+        "kind": "backtest",
+        "method": "auto",
+        "as_of_date": "2024-11-01",
+        "created_at": _NOW,
+        "engines_json": "{}",
+        **cols,
+    }
+    names = ", ".join(f'"{k}"' for k in row)  # `case` is a keyword
+    marks = ", ".join(f":{k}" for k in row)
+    result = connection.execute(text(f"INSERT INTO forecast_run ({names}) VALUES ({marks})"), row)
+    return int(result.lastrowid)
+
+
+def _stored_value(connection: Connection, run_id: int, **cols: object) -> None:
+    row = {
+        "forecast_run_id": run_id,
+        "kind": "line",
+        "code": "revenue",
+        "fiscal_year": 2025,
+        "fiscal_period": "FY",
+        "horizon": 1,
+        "point": "1.5",
+        **cols,
+    }
+    _insert(connection, "forecast_value", **row)
+
+
+def _valuation(connection: Connection, run_id: int, **cols: object) -> None:
+    row = {
+        "forecast_run_id": run_id,
+        "method_code": "dcf",
+        "label": "DCF",
+        "inputs_json": "{}",
+        **cols,
+    }
+    _insert(connection, "valuation_run", **row)
+
+
+def _audit(connection: Connection, company_id: int) -> None:
+    _insert(
+        connection,
+        "audit_log",
+        company_id=company_id,
+        entity="driver",
+        entity_id=1,
+        field="gross_margin|2027|FY",
+        label="Gross margin FY27",
+        action="edit",
+        changed_at=_NOW,
+    )
+
+
+def _seed_accountability(connection: Connection) -> tuple[int, int]:
+    """A company with a scenario, a snapshot with a run, a value and a valuation, and an audit
+    row; returns (company id, scenario id)."""
+    _scenario_with_case(connection, "AAA")
+    company_id = int(connection.execute(text("SELECT id FROM company")).scalar_one())
+    scenario_id = _scenario_id(connection)
+    snapshot_id = _snapshot(connection, company_id, scenario_id)
+    run_id = _stored_run(
+        connection,
+        company_id,
+        kind="snapshot",
+        method=None,
+        snapshot_id=snapshot_id,
+        case="base",
+    )
+    _stored_value(connection, run_id)
+    _valuation(connection, run_id)
+    _audit(connection, company_id)
+    return company_id, scenario_id
+
+
+def _count(connection: Connection, table: str) -> int:
+    return int(connection.execute(text(f"SELECT count(*) FROM {table}")).scalar_one())
+
+
+def test_0019_creates_the_accountability_tables_with_their_keys_and_checks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    inspector = inspect(engine)
+    assert _ACCOUNTABILITY_TABLES <= set(inspector.get_table_names())
+    assert inspector.get_pk_constraint("forecast_value")["constrained_columns"] == [
+        "forecast_run_id",
+        "kind",
+        "code",
+        "fiscal_year",
+        "fiscal_period",
+    ]
+    assert ["company_id", "created_at"] in [
+        i["column_names"] for i in inspector.get_indexes("forecast_snapshot")
+    ]
+    assert ["company_id", "id"] in [i["column_names"] for i in inspector.get_indexes("audit_log")]
+    assert ["company_id"] in [i["column_names"] for i in inspector.get_indexes("filing")]
+    with engine.begin() as connection:
+        company_id, _ = _seed_accountability(connection)
+        run_id = _stored_run(connection, company_id)
+        _stored_value(connection, run_id)
+    for table, bad in (
+        ("run", dict(kind="live", as_of_date="2020-02-02")),
+        ("run", dict(kind="snapshot", case="worst", method=None, as_of_date="2020-01-01")),
+        ("run", dict(as_of_date=None)),
+        ("run", dict(method=None, as_of_date="2020-03-03")),  # a backtest run names its method
+        ("run", dict(kind="snapshot", as_of_date="2020-04-04")),  # a snapshot run names its case
+        ("run", dict(company_id=999_999, as_of_date="2020-01-01")),
+        ("run", dict(as_of_date="2024-11-01")),  # one run per origin and method
+        ("value", dict()),  # the primary key
+        ("value", dict(kind="ratio")),
+        ("value", dict(code="cash", point=None)),
+        ("value", dict(code="cash", forecast_run_id=999_999)),
+    ):
+        with pytest.raises(IntegrityError), engine.begin() as connection:
+            connection.execute(text("PRAGMA foreign_keys=ON"))
+            if table == "run":
+                _stored_run(connection, **{"company_id": company_id, **bad})  # type: ignore[arg-type]
+            else:
+                _stored_value(connection, **{"run_id": run_id, **bad})  # type: ignore[arg-type]
+
+
+def test_0019_a_company_delete_cascades_to_every_table(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    with create_engine(database_url).begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+        _seed_accountability(connection)
+        assert all(_count(connection, t) == 1 for t in _ACCOUNTABILITY_TABLES)
+        connection.execute(text("DELETE FROM company"))
+        assert all(_count(connection, t) == 0 for t in _ACCOUNTABILITY_TABLES)
+
+
+def test_0019_deleting_a_scenario_keeps_the_snapshot_without_its_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    with create_engine(database_url).begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+        _seed_accountability(connection)
+        connection.execute(text("DELETE FROM scenario"))
+        kept = connection.execute(
+            text("SELECT scenario_id, scenario_name FROM forecast_snapshot")
+        ).one()
+        assert tuple(kept) == (None, "Main")
+        assert _count(connection, "forecast_run") == 1
+        assert _count(connection, "forecast_value") == 1
+
+
+def test_0019_downgrade_drops_only_the_new_tables_and_up_again_recreates_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0019"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        _seed_accountability(connection)
+    before = set(inspect(engine).get_table_names())
+
+    _run_alembic(tmp_path, monkeypatch, ("downgrade", "0018"))
+    inspector = inspect(engine)
+    assert before - set(inspector.get_table_names()) == _ACCOUNTABILITY_TABLES
+    assert ["company_id"] not in [i["column_names"] for i in inspector.get_indexes("filing")]
+    with engine.begin() as connection:
+        assert _count(connection, "scenario") == 1
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    assert _ACCOUNTABILITY_TABLES <= set(inspect(engine).get_table_names())
+
+
+def _seed_mapping(connection: Connection) -> None:
+    connection.execute(
+        text(
+            "INSERT INTO canonical_item (code, statement, label, kind, unit, sign, display_order)"
+            " VALUES ('revenue', 'IS', 'Revenue', 'flow', 'USD', 1, 0)"
+        )
+    )
+    connection.execute(
+        text(
+            "INSERT INTO concept_mapping (canonical_code, taxonomy, concept, priority)"
+            " VALUES ('revenue', 'us-gaap', 'Revenues', 0)"
+        )
+    )
+
+
+def test_0020_adds_weight_default_one_and_a_nullable_covers_to_concept_mapping(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0019"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        _seed_mapping(connection)
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    columns = {c["name"]: c for c in inspect(engine).get_columns("concept_mapping")}
+    assert columns["weight"]["nullable"] is False
+    assert columns["covers"]["nullable"] is True
+    with engine.begin() as connection:
+        assert tuple(
+            connection.execute(text("SELECT weight, covers FROM concept_mapping")).one()
+        ) == (1, None)
+        with pytest.raises(IntegrityError):
+            connection.execute(
+                text(
+                    "INSERT INTO concept_mapping (canonical_code, taxonomy, concept, priority,"
+                    " weight) VALUES ('revenue', 'us-gaap', 'Other', 1, NULL)"
+                )
+            )
+
+
+def test_0020_downgrade_drops_only_the_two_columns_and_keeps_the_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        _seed_mapping(connection)
+
+    _run_alembic(tmp_path, monkeypatch, ("downgrade", "0019"))
+    names = {c["name"] for c in inspect(engine).get_columns("concept_mapping")}
+    assert names == {"id", "canonical_code", "taxonomy", "concept", "priority", "company_id"}
+    with engine.begin() as connection:
+        assert _count(connection, "concept_mapping") == 1
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    names = {c["name"] for c in inspect(engine).get_columns("concept_mapping")}
+    assert {"weight", "covers"} <= names
+
+
+def _seed_filing_and_fact(connection: Connection) -> tuple[int, int]:
+    company_id = _company(connection, "AAA")
+    filing_id = _insert(
+        connection,
+        "filing",
+        company_id=company_id,
+        accession_no="0000000001-24-000001",
+        form="10-K",
+        filed_at="2024-11-01",
+        period_end="2024-09-28",
+    )
+    _insert(
+        connection,
+        "raw_fact",
+        company_id=company_id,
+        filing_id=filing_id,
+        taxonomy="us-gaap",
+        concept="Assets",
+        unit="USD",
+        period_end="2024-09-28",
+        value=5,
+    )
+    return company_id, filing_id
+
+
+def _line(connection: Connection, filing_id: int, **cols: object) -> int:
+    row: dict[str, object] = {
+        "filing_id": filing_id,
+        "statement": "CF",
+        "position": 1,
+        "taxonomy": "msft",
+        "concept": "DepreciationAmortizationAndOther",
+        "label": "Depreciation, amortization, and other",
+        "calc_parent_taxonomy": "us-gaap",
+        "calc_parent_concept": "NetCashProvidedByUsedInOperatingActivities",
+        "calc_weight": 1,
+    }
+    row.update(cols)
+    return _insert(connection, "filing_line", **row)
+
+
+def test_0021_adds_the_filing_xbrl_columns_and_fact_source_and_keeps_the_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0020"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        _seed_filing_and_fact(connection)
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+
+    filing_columns = {c["name"]: c for c in inspect(engine).get_columns("filing")}
+    assert filing_columns["xbrl_status"]["nullable"] is True
+    assert filing_columns["xbrl_parser_version"]["nullable"] is True
+    fact_columns = {c["name"]: c for c in inspect(engine).get_columns("raw_fact")}
+    assert fact_columns["source"]["nullable"] is False
+    with engine.begin() as connection:
+        assert tuple(
+            connection.execute(text("SELECT xbrl_status, xbrl_parser_version FROM filing")).one()
+        ) == (None, None)
+        assert connection.execute(text("SELECT source FROM raw_fact")).scalar_one() == (
+            "companyfacts"
+        )
+
+
+def test_0021_checks_hold_at_the_database_level(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        _, filing_id = _seed_filing_and_fact(connection)
+    bad = [
+        "UPDATE filing SET xbrl_status = 'maybe'",
+        "UPDATE raw_fact SET source = 'guess'",
+        "UPDATE raw_fact SET source = NULL",
+    ]
+    for statement in bad:
+        with engine.begin() as connection, pytest.raises(IntegrityError):
+            connection.execute(text(statement))
+    with engine.begin() as connection, pytest.raises(IntegrityError):
+        _line(connection, filing_id, statement="EQ")
+
+
+def test_0021_filing_line_is_unique_per_statement_and_concept_and_cascades_from_filing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        _, filing_id = _seed_filing_and_fact(connection)
+        _line(connection, filing_id)
+        _line(connection, filing_id, statement="IS")  # the same concept on another statement
+    with engine.begin() as connection, pytest.raises(IntegrityError):
+        _line(connection, filing_id, position=2)
+
+    indexes = {i["name"]: i["column_names"] for i in inspect(engine).get_indexes("filing_line")}
+    assert indexes["ix_filing_line_filing_id"] == ["filing_id"]
+    with engine.begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+        connection.execute(text("DELETE FROM filing"))
+        assert _count(connection, "filing_line") == 0
+        assert _count(connection, "raw_fact") == 0
+
+
+def test_0021_downgrade_drops_only_what_it_added_and_keeps_the_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        _, filing_id = _seed_filing_and_fact(connection)
+        _line(connection, filing_id)
+
+    _run_alembic(tmp_path, monkeypatch, ("downgrade", "0020"))
+
+    assert "filing_line" not in inspect(engine).get_table_names()
+    assert {c["name"] for c in inspect(engine).get_columns("filing")} == {
+        "id",
+        "company_id",
+        "accession_no",
+        "form",
+        "filed_at",
+        "fiscal_year",
+        "fiscal_period",
+        "period_end",
+    }
+    assert "source" not in {c["name"] for c in inspect(engine).get_columns("raw_fact")}
+    with engine.begin() as connection:
+        assert _count(connection, "filing") == 1
+        assert _count(connection, "raw_fact") == 1
+        assert _count(connection, "company") == 1
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
+    assert "filing_line" in inspect(engine).get_table_names()

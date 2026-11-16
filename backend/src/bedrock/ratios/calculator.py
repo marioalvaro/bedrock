@@ -1,7 +1,7 @@
 """Ratios over the statement tables of one basis (docs/erd/analysis.md "Definitions (M2)"). Pure."""
 
 from bisect import bisect_right
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -19,7 +19,7 @@ from bedrock.ratios.registry import (
     Unit,
     validate,
 )
-from bedrock.statements.build import RATIO_PLACES, StatementTable
+from bedrock.statements.build import RATIO_PLACES, Row, StatementTable
 from bedrock.statements.periods import Period
 
 RatioFreq = Literal["annual", "ttm"]
@@ -103,12 +103,36 @@ def compute_ratios(
                 category=ratio.category,
                 unit=ratio.unit,
                 definition=ratio.definition,
-                caveat=next((c.text for c in caveats if ratio.code in c.codes), None),
+                caveat=row_caveat(evaluator, ratio, caveats),
                 values=[row[i] for i in kept],
             )
             for ratio, row in zip(ratios, grid, strict=True)
         ],
     )
+
+
+def row_caveat(ops: "Operands", ratio: Ratio, caveats: Sequence[Caveat]) -> str | None:
+    """A ratio row's caveat: the company's text from `caveats.yaml`, then the generated text for
+    an operand line that holds or sits inside a combined line (M7b S4)."""
+    texts = [
+        next((c.text for c in caveats if ratio.code in c.codes), None),
+        generated_caveat(ops.combined_operands(ratio)),
+    ]
+    return " ".join(t for t in texts if t) or None
+
+
+def generated_caveat(includes: Mapping[str, Sequence[str]]) -> str | None:
+    """ "<label> includes <labels>." for each carrier line, by label; a carrier whose combined
+    concept covers no canonical row "includes other lines reported with it"."""
+    sentences = []
+    for carrier, covered in includes.items():
+        if not covered:
+            sentences.append(f"{carrier} includes other lines reported with it.")
+        elif len(covered) == 1:
+            sentences.append(f"{carrier} includes {covered[0]}.")
+        else:
+            sentences.append(f"{carrier} includes {', '.join(covered[:-1])} and {covered[-1]}.")
+    return " ".join(sentences) or None
 
 
 def _merged(ratios: Sequence[Ratio]) -> tuple[Ratio, ...]:
@@ -125,6 +149,19 @@ def _series(tables: Sequence[StatementTable]) -> dict[str, tuple[str, Series]]:
         for row in table.rows:
             if row.code not in found:
                 found[row.code] = (row.kind, dict(zip(points, row.values, strict=True)))
+    return found
+
+
+def _carriers(tables: Sequence[StatementTable]) -> dict[str, dict[Point, str]]:
+    """code -> the carrier whose combined value holds the line's amount, by point (the cells
+    marked `included_in`); the first table holding a code wins, as in `_series`."""
+    found: dict[str, dict[Point, str]] = {}
+    for table in tables:
+        points = [(p.fiscal_year, p.fiscal_period) for p in table.periods]
+        for row in table.rows:
+            if row.code not in found:
+                marks = zip(points, row.included_in, strict=True)
+                found[row.code] = {point: carrier for point, carrier in marks if carrier}
     return found
 
 
@@ -152,6 +189,11 @@ class Operands:
     ) -> None:
         self._freq = freq
         self._lines = _series([inputs.income, inputs.cash_flow, inputs.balance])
+        self._carriers = _carriers([inputs.income, inputs.cash_flow, inputs.balance])
+        self._rows: dict[str, Row] = {}
+        for table in (inputs.income, inputs.cash_flow, inputs.balance, inputs.quarterly_income):
+            for row in table.rows if table is not None else ():
+                self._rows.setdefault(row.code, row)
         quarterly = inputs.quarterly_income
         self._quarterly = _series([quarterly]) if quarterly is not None else {}
         self._ratios = {r.code: r for r in _merged(ratios)}
@@ -181,6 +223,46 @@ class Operands:
             return ratio.ttm
         return ratio.numerator, ratio.denominator
 
+    def line_codes(self, ratio: Ratio) -> list[str]:
+        """The canonical lines `ratio` reads at this frequency, through its metrics and the
+        ratios it is built from, each once, in the order met."""
+        found: dict[str, None] = {}
+        pending = [t for t in self.operands_of(ratio) if t is not None]
+        seen: set[str] = set()
+        while pending:
+            for _, code in parse_formula(pending.pop(0)):
+                if code in seen:
+                    continue
+                seen.add(code)
+                if code in CANONICAL_CODES:
+                    found[code] = None
+                elif (metric := _METRICS.get(code)) is not None:
+                    pending.extend(metric.inputs)
+                elif code in self._ratios:
+                    pending.extend(t for t in self.operands_of(self._ratios[code]) if t is not None)
+        return list(found)
+
+    def combined_operands(self, ratio: Ratio) -> dict[str, tuple[str, ...]]:
+        """By carrier label, the labels of the lines inside it, for every operand line of `ratio`
+        that holds a combined value, or whose amount is inside one, in any period of the inputs."""
+        includes: dict[str, dict[str, None]] = {}
+        for code in self.line_codes(ratio):
+            row = self._rows.get(code)
+            if row is None:
+                continue
+            for codes in row.combined_with:
+                if codes is not None:
+                    inner = includes.setdefault(self._label(code), {})
+                    inner.update((self._label(c), None) for c in codes)
+            for carrier in row.included_in:
+                if carrier is not None:
+                    includes.setdefault(self._label(carrier), {})[row.label] = None
+        return {carrier: tuple(inner) for carrier, inner in includes.items()}
+
+    def _label(self, code: str) -> str:
+        row = self._rows.get(code)
+        return code if row is None else row.label
+
     def _compute(self, ratio: Ratio, point: Point) -> Decimal | None:
         numerator, denominator = self.operands_of(ratio)
         num = self.operand(numerator, point, ratio.avg_numerator)
@@ -194,8 +276,10 @@ class Operands:
         return (num / den * ratio.scale).quantize(RATIO_PLACES)
 
     def operand(self, text: str, point: Point, average: bool = False) -> Decimal | None:
-        """A code or `+`/`-` formula at `point` (None when any term is None); with `average`, the
-        mean of it at `point` and a year earlier (None unless both exist)."""
+        """A code or `+`/`-` formula at `point` (None when any term is None, except a line whose
+        amount is inside a combined line that is a term of the same sign: it counts 0, as in the
+        statement formulas, M7b S4); with `average`, the mean of it at `point` and a year earlier
+        (None unless both exist)."""
         current = self._formula(text, point)
         if not average:
             return current
@@ -205,13 +289,31 @@ class Operands:
         return (current + prior) / 2
 
     def _formula(self, text: str, point: Point) -> Decimal | None:
+        terms = parse_formula(text)
         total = Decimal(0)
-        for sign, code in parse_formula(text):
+        for sign, code in terms:
             value = self.value(code, point)
             if value is None:
-                return None
+                # the carrier's value already holds a covered line's amount
+                if (sign, self._carrier(code, point)) not in terms:
+                    return None
+                continue
             total += sign * value
         return total
+
+    def _carrier(self, code: str, point: Point) -> str | None:
+        """The line that holds `code`'s amount at `point` (a combined line), if any."""
+        return self._carriers.get(code, {}).get(point)
+
+    def _metric_inputs(self, metric: Metric, point: Point) -> dict[str, Decimal | None]:
+        """A metric's input values; an empty input whose amount is inside another input (a
+        combined line) is 0, so the metric does not count it twice or go empty. A metric never
+        takes a carrier and its covered line with opposite signs."""
+        values = {name: self.value(name, point) for name in metric.inputs}
+        for name, value in values.items():
+            if value is None and self._carrier(name, point) in metric.inputs:
+                values[name] = Decimal(0)
+        return values
 
     def value(self, code: str, point: Point) -> Decimal | None:
         """One canonical, metric or ratio code at `point` (unquantized for lines and metrics)."""
@@ -221,7 +323,7 @@ class Operands:
         if metric is not None and metric.at_point:
             return self._at_point(code, point)
         if metric is not None:
-            return metric.fn({name: self.value(name, point) for name in metric.inputs})
+            return metric.fn(self._metric_inputs(metric, point))
         return self.ratio(code, point)
 
     def period_end(self, point: Point) -> date | None:

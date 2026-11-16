@@ -114,7 +114,7 @@ def test_update_replaces_the_fields_and_moves_updated_at_only(
 def test_delete_removes_the_adjustment(db_session: Session, aapl: Company) -> None:
     created = create_adjustment(db_session, aapl, SGA, NOW)
 
-    delete_adjustment(db_session, aapl, created.id)
+    delete_adjustment(db_session, aapl, created.id, NOW)
 
     assert list_adjustments(db_session, aapl) == []
 
@@ -123,7 +123,7 @@ def test_an_unknown_id_is_not_found(db_session: Session, aapl: Company) -> None:
     with pytest.raises(AdjustmentNotFound):
         update_adjustment(db_session, aapl, 999, SGA, NOW)
     with pytest.raises(AdjustmentNotFound):
-        delete_adjustment(db_session, aapl, 999)
+        delete_adjustment(db_session, aapl, 999, NOW)
 
 
 def test_another_companys_adjustment_is_not_found(db_session: Session, aapl: Company) -> None:
@@ -133,7 +133,7 @@ def test_another_companys_adjustment_is_not_found(db_session: Session, aapl: Com
     with pytest.raises(AdjustmentNotFound):
         update_adjustment(db_session, other, theirs.id, SGA, NOW)
     with pytest.raises(AdjustmentNotFound):
-        delete_adjustment(db_session, other, theirs.id)
+        delete_adjustment(db_session, other, theirs.id, NOW)
     assert len(list_adjustments(db_session, aapl)) == 1
 
 
