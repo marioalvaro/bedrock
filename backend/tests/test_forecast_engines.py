@@ -142,6 +142,18 @@ def test_samples_are_none_and_meta_names_the_engine(code: str) -> None:
     assert out.meta["engine"] == code
 
 
+def test_arima_reads_a_steady_trend_as_a_random_walk_with_drift() -> None:
+    """A series that rises by the same step each period has constant differences. Without a drift
+    candidate ARIMA could only follow it through an AR(1) on those differences, a degenerate fit
+    whose optimum differs by platform: on Linux it lost to a mean-reverting AR(1) and the forecast
+    fell (CI, 2026-11-15)."""
+    out = run("arima", trend())
+
+    assert (out.meta["order"], out.meta["trend"]) == ([0, 1, 0], "t")
+    steps = np.diff(out.point.to_numpy())
+    assert np.allclose(steps, 0.01, atol=1e-4)  # the estimated drift, the same every period
+
+
 def test_arima_meta_names_the_order_and_trend_with_the_lowest_aic() -> None:
     meta = run("arima", ar1()).meta
 

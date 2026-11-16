@@ -213,7 +213,14 @@ def test_a_company_without_a_cik_has_no_filings(tmp_path: Path) -> None:
 
 
 def test_the_app_sources_include_the_filings_source(tmp_path: Path) -> None:
-    sources = build_sources(Settings(data_dir=tmp_path, sec_user_agent="me@example.com"))
+    # Every required field given and no .env read, so the developer's file changes nothing (G11).
+    settings = Settings(
+        _env_file=None,
+        data_dir=tmp_path,
+        sec_user_agent="me@example.com",
+        session_secret="test-secret",
+    )
+    sources = build_sources(settings)
 
     assert isinstance(sources.filings, EdgarFilingsSource)
 

@@ -4,7 +4,7 @@
 import hashlib
 import importlib.util
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
@@ -19,6 +19,22 @@ from bedrock.statements.coverage import table_coverage
 from tests.statements_pipeline import run_pipeline
 
 SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "coverage_report.py"
+
+
+@pytest.fixture(autouse=True)
+def script_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Generator[None, None, None]:
+    """The script reads its settings from the environment (`load_settings`): give it the secret
+    the settings require and an empty data directory, so the tests pass without the developer's
+    `.env` (CI has none, G11) and never read the developer's data."""
+    from bedrock.core.config import load_settings
+
+    monkeypatch.setenv("SESSION_SECRET", "test-secret")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path / "no-data"))
+    load_settings.cache_clear()
+    yield
+    load_settings.cache_clear()
 
 
 @pytest.fixture(scope="module")
