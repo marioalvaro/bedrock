@@ -361,3 +361,37 @@ def test_unfollowing_removes_the_snapshots(aapl: TestClient, session: Session) -
     session.rollback()
     for table in ("forecast_snapshot", "forecast_run", "forecast_value", "valuation_run"):
         assert session.execute(text(f"SELECT count(*) FROM {table}")).scalar_one() == 0
+
+
+# --- M7d S4: the classification mode a snapshot was taken under ---------------------------------
+
+
+def test_a_snapshot_records_the_companys_classification_mode(
+    aapl: TestClient, session: Session
+) -> None:
+    main = main_id(aapl)
+    off = take(aapl, main)
+    company = session.scalars(select(Company).where(Company.ticker == "AAPL")).one()
+    company.classification_mode = "accepted"
+    session.commit()
+
+    accepted = take(aapl, main)
+
+    assert off["classification_mode"] == "off"
+    assert accepted["classification_mode"] == "accepted"
+    listed = aapl.get(f"{API}/AAPL/snapshots").json()["snapshots"]
+    assert [s["classification_mode"] for s in listed] == ["accepted", "off"]
+    assert detail_of(aapl, accepted["id"])["classification_mode"] == "accepted"
+
+
+def test_a_snapshot_older_than_the_mode_has_none(aapl: TestClient, session: Session) -> None:
+    created = take(aapl, main_id(aapl))
+    session.execute(
+        text("UPDATE forecast_snapshot SET classification_mode = NULL WHERE id = :id"),
+        {"id": created["id"]},
+    )
+    session.commit()
+
+    assert detail_of(aapl, created["id"])["classification_mode"] is None
+    listed = aapl.get(f"{API}/AAPL/snapshots").json()["snapshots"]
+    assert listed[0]["classification_mode"] is None

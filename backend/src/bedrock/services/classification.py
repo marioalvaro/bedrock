@@ -82,7 +82,8 @@ class Overview:
 
 def open_lines(session: Session, company: Company) -> list[AskedLine]:
     """The company's lines to classify, with no classification applied (whatever its mode)."""
-    face = face_lines(session, company, mappings_repo.mappings_for(session, company.id), None)
+    mappings = mappings_repo.mappings_for(session, company.id)
+    face = face_lines(session, company, mappings, None, classified={})
     return [] if face is None else questions.open_lines(face, canonical_items())
 
 

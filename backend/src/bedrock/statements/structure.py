@@ -73,13 +73,15 @@ class FaceLines:
     amount in a period is its fact from the same filing. `mappings`: the company's mapping frame
     (`canonical_code`, `taxonomy`, `concept`, `is_override`, `covers`). `verdicts`: the triage
     verdicts, (taxonomy, concept) -> the canonical codes each names. `other_lines`: the extension
-    lines the override file assigns to a residual."""
+    lines the override file assigns to a residual. `classified` (M7d S4): the company's effective
+    classifications, concept -> the codes it names (docs/erd/face-tree.md "Use in statements")."""
 
     lines: pd.DataFrame
     facts: pd.DataFrame
     mappings: pd.DataFrame
     verdicts: Mapping[Concept, tuple[str, ...]] = field(default_factory=dict)
     other_lines: frozenset[Concept] = frozenset()
+    classified: Mapping[Concept, tuple[str, ...]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -162,7 +164,6 @@ class FaceIndex:
                 self.covers[concept] |= set(covered_codes(covers) or ())
                 if not covers:
                     self.open_carriers[concept].add(r["canonical_code"])
-        self.verdicts = face.verdicts
         defaults = {c for group in self.defaults_of.values() for c in group}
         self.known: set[Concept] = (
             set(self.mapped)
@@ -171,8 +172,28 @@ class FaceIndex:
             | set(face.verdicts)
             | set(face.other_lines)
         )
+        self.verdicts: dict[Concept, tuple[str, ...]] = dict(face.verdicts)
+        # code -> the concepts that are its face members only through a classification
+        self.classified_members: dict[str, set[Concept]] = defaultdict(set)
+        self._classify(face.classified)
         self._blocks: dict[tuple[str, str, str | None], list[_Line]] = {}
         self._own: dict[str, set[Concept]] = {}
+
+    def _classify(self, classified: Mapping[Concept, tuple[str, ...]]) -> None:
+        """M7d S4: a classification applies only to a line nothing else classifies (a stored
+        answer goes stale once the line is mapped or given a verdict; the mapping wins). Such a
+        concept becomes known; with one code it is a face member of that item, with several a
+        verdict naming them. A code that is not an item is ignored."""
+        for concept, named in classified.items():
+            if concept in self.known:
+                continue
+            codes = tuple(c for c in dict.fromkeys(named) if c in self.parents)
+            self.known.add(concept)
+            if len(codes) == 1:
+                self.face_members[codes[0]].add(concept)
+                self.classified_members[codes[0]].add(concept)
+            elif codes:
+                self.verdicts[concept] = codes
 
     def statement_lines(self, accession: str, statement: str) -> list[_Line]:
         return self.lines.get((accession, statement), [])
@@ -355,7 +376,11 @@ def face_sum(
         concept_text(c) for c, _ in parts
     )
     inputs = tuple(DerivationInput(concept_text(c), period.fiscal_period, v) for c, v in parts)
-    return Cell(total, "derived", derivation=Derivation(formula, inputs))
+    through = face.classified_members.get(item.code, set())
+    marks = tuple(concept_text(c) for c, _ in parts if c in through)
+    return Cell(
+        total, "derived", derivation=Derivation(formula, inputs), classified_by=marks or None
+    )
 
 
 def _has_ancestor_in(

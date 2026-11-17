@@ -47,6 +47,7 @@ export function incomeStatement(overrides: Partial<StatementOut> = {}): Statemen
         combined_with: [null, null],
         included_in: [null, null],
         empty_cause: [null, null],
+        classified_by: [null, null],
       },
       {
         code: "gross_profit",
@@ -65,6 +66,7 @@ export function incomeStatement(overrides: Partial<StatementOut> = {}): Statemen
         combined_with: [null, null],
         included_in: [null, null],
         empty_cause: [null, null],
+        classified_by: [null, null],
       },
       {
         code: "cost_of_revenue",
@@ -83,6 +85,7 @@ export function incomeStatement(overrides: Partial<StatementOut> = {}): Statemen
         combined_with: [null, null],
         included_in: [null, null],
         empty_cause: [null, null],
+        classified_by: [null, null],
       },
       {
         code: "rnd",
@@ -101,6 +104,7 @@ export function incomeStatement(overrides: Partial<StatementOut> = {}): Statemen
         combined_with: [null, null],
         included_in: [null, null],
         empty_cause: [null, null],
+        classified_by: [null, null],
       },
       {
         code: "eps_diluted",
@@ -119,6 +123,7 @@ export function incomeStatement(overrides: Partial<StatementOut> = {}): Statemen
         combined_with: [null, null],
         included_in: [null, null],
         empty_cause: [null, null],
+        classified_by: [null, null],
       },
     ],
     ...overrides,
@@ -148,6 +153,7 @@ export function balanceStatement(): StatementOut {
         combined_with: [null, null],
         included_in: [null, null],
         empty_cause: [null, null],
+        classified_by: [null, null],
       },
       {
         code: "total_current_assets",
@@ -166,6 +172,7 @@ export function balanceStatement(): StatementOut {
         combined_with: [null, null],
         included_in: [null, null],
         empty_cause: [null, null],
+        classified_by: [null, null],
       },
       {
         code: "cash",
@@ -184,6 +191,7 @@ export function balanceStatement(): StatementOut {
         combined_with: [null, null],
         included_in: [null, null],
         empty_cause: [null, null],
+        classified_by: [null, null],
       },
       {
         code: "total_noncurrent_assets",
@@ -202,6 +210,7 @@ export function balanceStatement(): StatementOut {
         combined_with: [null, null],
         included_in: [null, null],
         empty_cause: [null, null],
+        classified_by: [null, null],
       },
       {
         code: "ppe_net",
@@ -220,6 +229,7 @@ export function balanceStatement(): StatementOut {
         combined_with: [null, null],
         included_in: [null, null],
         empty_cause: [null, null],
+        classified_by: [null, null],
       },
     ],
     balance_check: [
@@ -256,6 +266,7 @@ export function customIncomeStatement(): StatementOut {
     combined_with: [null, null],
     included_in: [null, null],
     empty_cause: [null, null],
+    classified_by: [null, null],
     ...overrides,
   });
   const rows = [...base.rows];
@@ -303,6 +314,7 @@ export function combinedBalanceStatement(): StatementOut {
     combined_with: [null, null],
     included_in: [null, null],
     empty_cause: values.map((value) => (value === null ? "not_reported" : null)),
+    classified_by: values.map(() => null),
     ...overrides,
   });
   return {

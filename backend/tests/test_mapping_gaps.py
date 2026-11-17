@@ -363,3 +363,16 @@ def test_no_face_lines_means_no_unclassified_lines() -> None:
     from bedrock.mapping.gaps import unclassified_lines
 
     assert unclassified_lines(None, []) == []
+
+
+def test_an_effectively_classified_line_is_not_listed() -> None:
+    """M7d S4: a classification in force classifies the line, whatever codes it names."""
+    from dataclasses import replace
+
+    from bedrock.mapping.gaps import unclassified_lines
+
+    face, items = _face()
+
+    for codes in [("accrued_liabilities",), ("accrued_liabilities", "short_term_debt"), ()]:
+        classified = replace(face, classified={("x", "Weird"): codes})
+        assert unclassified_lines(classified, items) == []

@@ -93,6 +93,7 @@ export function snapshotOut(overrides: Partial<SnapshotOut> = {}): SnapshotOut {
     data_as_of: "2025-10-31",
     failed_cases: [],
     scored_periods: 1,
+    classification_mode: "off",
     revenue_mape: "0.0312",
     ...overrides,
   };

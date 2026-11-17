@@ -214,6 +214,22 @@ def test_a_line_nothing_classifies_is_open() -> None:
     assert placed("Memo", lines).kind == "open"
 
 
+def test_a_classified_line_is_placed_by_its_classification() -> None:
+    """M7d S4: one code makes it a face member (mapped); several, or none, make it other with
+    the codes it names."""
+    for codes, expected in [
+        (("cash",), ("mapped", ("cash",))),
+        (("cash", "other_current_assets"), ("other", ("cash", "other_current_assets"))),
+        ((), ("other", ())),
+    ]:
+        classified = replace(face(), classified={("ext", "Widgets"): codes})
+        projected = project(classified, ITEMS, K1, "BS")
+        assert projected is not None
+
+        widgets = placed("Widgets", projected.lines)
+        assert (widgets.kind, widgets.codes) == expected
+
+
 def test_depth_parent_weight_and_totals_come_from_the_calculation_tree() -> None:
     lines = balance_sheet()
 

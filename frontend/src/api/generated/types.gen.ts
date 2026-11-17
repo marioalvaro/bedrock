@@ -697,6 +697,10 @@ export type CellDetailOut = {
      */
     adjustments: Array<CellAdjustmentOut>;
     /**
+     * Classified By
+     */
+    classified_by: Array<string> | null;
+    /**
      * Code
      */
     code: string;
@@ -3699,6 +3703,10 @@ export type RowOut = {
      */
     adjustable: boolean;
     /**
+     * Classified By
+     */
+    classified_by: Array<Array<string> | null>;
+    /**
      * Code
      */
     code: string;
@@ -4419,6 +4427,10 @@ export type SnapshotDetailOut = {
      */
     cases: Array<SnapshotCaseOut>;
     /**
+     * Classification Mode
+     */
+    classification_mode: 'off' | 'accepted' | 'all' | null;
+    /**
      * Created At
      */
     created_at: string;
@@ -4616,6 +4628,10 @@ export type SnapshotListOut = {
  * SnapshotOut
  */
 export type SnapshotOut = {
+    /**
+     * Classification Mode
+     */
+    classification_mode: 'off' | 'accepted' | 'all' | null;
     /**
      * Created At
      */

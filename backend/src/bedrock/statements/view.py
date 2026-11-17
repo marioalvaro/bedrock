@@ -61,4 +61,5 @@ def _pick(row: Row, keep: list[int]) -> Row:
         combined_with=[row.combined_with[i] for i in keep],
         included_in=[row.included_in[i] for i in keep],
         unclassified=[row.unclassified[i] for i in keep],
+        classified_by=[row.classified_by[i] for i in keep],
     )

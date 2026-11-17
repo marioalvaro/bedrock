@@ -16,6 +16,7 @@ from bedrock.core.spa import mount_spa
 from bedrock.ingest.sources import Sources, build_sources
 from bedrock.services.classification import ClassificationRunner
 from bedrock.services.filings import BackfillRunner
+from bedrock.services.statements import use_classification_threshold
 
 
 @asynccontextmanager
@@ -64,6 +65,7 @@ def create_app(settings: Settings | None = None, *, sources: Sources | None = No
     # Building a classifier makes no request; only a confirmed run does (tests replace it).
     app.state.classifier_factory = registry.get
     app.state.classifications = ClassificationRunner()
+    use_classification_threshold(settings.classify_min_confidence)
 
     app.add_middleware(
         SessionMiddleware,

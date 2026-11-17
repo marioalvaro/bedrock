@@ -110,7 +110,6 @@ class _Projector:
     ) -> None:
         self.items = items
         self.index = FaceIndex(face, items)
-        self.verdicts = face.verdicts
         self.rows: dict[tuple[str, str], list[_Row]] = defaultdict(list)
         self.filings: dict[str, tuple[str, date]] = {}
         for r in records(face.lines):
@@ -158,7 +157,7 @@ class _Projector:
         if codes:
             return "mapped", codes
         if concept in index.known:
-            return "other", tuple(self.verdicts.get(concept, ()))
+            return "other", tuple(index.verdicts.get(concept, ()))
         return "open", ()
 
     def project(self, accession: str, statement: str) -> ProjectedStatement | None:

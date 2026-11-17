@@ -1187,6 +1187,20 @@
             "title": "Adjustments",
             "type": "array"
           },
+          "classified_by": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classified By"
+          },
           "code": {
             "title": "Code",
             "type": "string"
@@ -1324,7 +1338,8 @@
           "adjustments",
           "normalized_value",
           "combined_with",
-          "included_in"
+          "included_in",
+          "classified_by"
         ],
         "title": "CellDetailOut",
         "type": "object"
@@ -6873,6 +6888,23 @@
             "title": "Adjustable",
             "type": "boolean"
           },
+          "classified_by": {
+            "items": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Classified By",
+            "type": "array"
+          },
           "code": {
             "title": "Code",
             "type": "string"
@@ -7059,7 +7091,8 @@
           "parent",
           "combined_with",
           "included_in",
-          "empty_cause"
+          "empty_cause",
+          "classified_by"
         ],
         "title": "RowOut",
         "type": "object"
@@ -8261,6 +8294,22 @@
             "title": "Cases",
             "type": "array"
           },
+          "classification_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "off",
+                  "accepted",
+                  "all"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classification Mode"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -8342,6 +8391,7 @@
           "failed_cases",
           "scored_periods",
           "revenue_mape",
+          "classification_mode",
           "cases"
         ],
         "title": "SnapshotDetailOut",
@@ -8635,6 +8685,22 @@
       },
       "SnapshotOut": {
         "properties": {
+          "classification_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "off",
+                  "accepted",
+                  "all"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classification Mode"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -8715,7 +8781,8 @@
           "data_as_of",
           "failed_cases",
           "scored_periods",
-          "revenue_mape"
+          "revenue_mape",
+          "classification_mode"
         ],
         "title": "SnapshotOut",
         "type": "object"

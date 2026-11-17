@@ -66,6 +66,9 @@ class RowOut(BaseModel):
     # M7b S8: per period, why the cell is empty (`statements/coverage.py::CAUSES`); null for a
     # filled cell, a row coverage does not count (residuals, support and custom lines) and TTM
     empty_cause: list[Cause | None]
+    # M7d S4: per period, the face lines summed into the cell only through a classification
+    # (`taxonomy:Concept`); null where none (docs/erd/face-tree.md "Marking a cell")
+    classified_by: list[list[str] | None]
 
 
 class BalanceCheckOut(BaseModel):
@@ -125,6 +128,7 @@ class StatementOut(BaseModel):
                     combined_with=[None if c is None else list(c) for c in r.combined_with],
                     included_in=r.included_in,
                     empty_cause=[why.get((r.code, p.key)) for p in table.periods],
+                    classified_by=[None if c is None else list(c) for c in r.classified_by],
                 )
                 for r in table.rows
             ],
@@ -187,6 +191,8 @@ class CellDetailOut(BaseModel):
     # M7b S4: as on the statement row (docs/erd/data-coverage.md "Combined lines")
     combined_with: list[str] | None
     included_in: str | None
+    # M7d S4: as on the statement row
+    classified_by: list[str] | None
 
     @classmethod
     def from_explanation(
@@ -230,6 +236,7 @@ class CellDetailOut(BaseModel):
             normalized_value=cell.normalized_value,
             combined_with=None if cell.combined_with is None else list(cell.combined_with),
             included_in=cell.included_in,
+            classified_by=None if cell.classified_by is None else list(cell.classified_by),
         )
 
 

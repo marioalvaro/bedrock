@@ -55,6 +55,9 @@ class Row:
     # M7b S7, aligned likewise: the unclassified face lines that block an empty cell's structure
     # rules (None where there are none); coverage gives such a cell `extension_unclassified`
     unclassified: list[tuple[str, ...] | None] = field(default_factory=list)
+    # M7d S4, aligned likewise: on a cell R8 summed, the lines that are members only through a
+    # classification (docs/erd/face-tree.md "Marking a cell"); None elsewhere
+    classified_by: list[tuple[str, ...] | None] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if not self.combined_with:
@@ -63,6 +66,8 @@ class Row:
             object.__setattr__(self, "included_in", [None] * len(self.values))
         if not self.unclassified:
             object.__setattr__(self, "unclassified", [None] * len(self.values))
+        if not self.classified_by:
+            object.__setattr__(self, "classified_by", [None] * len(self.values))
 
 
 @dataclass(frozen=True)
@@ -284,6 +289,7 @@ def extend_table(
                 combined_with=row.combined_with + [None] * len(added),
                 included_in=row.included_in + [None] * len(added),
                 unclassified=row.unclassified + [None] * len(added),
+                classified_by=row.classified_by + [None] * len(added),
             )
         )
     balance = None
@@ -352,6 +358,7 @@ def _row(
         combined_with=[c.combined_with for c in series],
         included_in=[c.included_in for c in series],
         unclassified=[c.unclassified for c in series],
+        classified_by=[c.classified_by for c in series],
     )
 
 
