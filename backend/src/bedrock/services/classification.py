@@ -271,6 +271,7 @@ class ClassificationRunner:
         """Ask batch by batch, committing each batch's proposals and usage; returns the run's
         final status and reason. A failed line gets no row, so a later run asks it again."""
         by_key = {q.key: q for q in asked}
+        reasons: dict[str, None] = {}  # why answers were unusable, in order, once each
         for start in range(0, len(asked), classifier.batch_size):
             batch = asked[start : start + classifier.batch_size]
             now = _naive_utc(self._clock())
@@ -281,6 +282,8 @@ class ClassificationRunner:
             if reason is not None:
                 return "stopped", f"Stopped: {reason}"
             result = classifier.classify(batch)
+            if result.reason is not None:
+                reasons[result.reason] = None
             answers = {a.key: a for a in reversed(result.answers) if a.key in by_key}
             proposals = [  # one per line: of a key answered twice, the first answer
                 Proposal(
@@ -299,7 +302,18 @@ class ClassificationRunner:
             run.output_tokens += result.usage.output_tokens
             run.cost_usd += pricing.cost(run.classifier, result.usage).quantize(COST_PLACES)
             session.commit()
+        return _outcome(run.lines_answered, len(asked), list(reasons))
+
+
+def _outcome(answered: int, asked: int, reasons: Sequence[str]) -> tuple[str, str | None]:
+    """A run that reached its end: `done`, with a note when some lines got no usable answer, or
+    `failed` when none did (S5 follow-up of 2026-11-17: such a run read `done` with no word)."""
+    if answered == asked:
         return "done", None
+    why = f": {'; '.join(reasons)}" if reasons else ""
+    rest = "They" if answered == 0 else "The others"
+    note = f"{answered} of {asked} lines got a usable answer{why}. {rest} can be asked again."
+    return ("failed" if answered == 0 else "done"), note
 
 
 def decide(

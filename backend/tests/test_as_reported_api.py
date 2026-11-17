@@ -70,7 +70,12 @@ def test_the_default_filing_is_the_newest_10k(parsed: TestClient) -> None:
     body = _get(parsed, statement="BS")
 
     assert set(body) == {"filing", "filings", "periods", "foots", "lines"}
-    assert body["filing"] == {"accession_no": NEWEST_10K, "form": "10-K", "filed_at": "2025-10-31"}
+    assert body["filing"] == {
+        "accession_no": NEWEST_10K,
+        "form": "10-K",
+        "filed_at": "2025-10-31",
+        "period_end": "2025-09-27",
+    }
     assert [f["accession_no"] for f in body["filings"]] == [
         NEWEST_10Q,
         NEWEST_10K,
@@ -78,6 +83,18 @@ def test_the_default_filing_is_the_newest_10k(parsed: TestClient) -> None:
         FY2010_10K,
     ]
     assert body["filings"][0]["form"] == "10-Q"
+
+
+def test_each_filing_carries_its_period_end(parsed: TestClient) -> None:
+    """The selector names a filing by its period end (S5): the filing's own `period_end`."""
+    body = _get(parsed, statement="BS")
+
+    ends = {f["accession_no"]: f["period_end"] for f in body["filings"]}
+    assert ends[NEWEST_10K] == "2025-09-27"
+    assert ends[FY2010_10K] == "2010-09-25"
+    assert all(
+        set(f) == {"accession_no", "form", "filed_at", "period_end"} for f in body["filings"]
+    )
 
 
 def test_the_lines_are_placed_against_the_canonical_rows(parsed: TestClient) -> None:

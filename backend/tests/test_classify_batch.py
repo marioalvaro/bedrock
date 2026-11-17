@@ -73,6 +73,21 @@ def test_a_text_that_is_not_the_schema_fails_every_line(given: str) -> None:
     assert result.answers == ()
     assert result.failed == ("BS|ext|A", "BS|ext|B", "BS|ext|C")
     assert result.usage == USAGE
+    assert result.reason == "the answer did not follow the schema"
+
+
+def test_an_adapters_reason_for_no_text_is_kept() -> None:
+    result = batch.result(BATCH, None, USAGE, reason="the answer was cut off at 4,000 tokens")
+
+    assert result.failed == ("BS|ext|A", "BS|ext|B", "BS|ext|C")
+    assert result.reason == "the answer was cut off at 4,000 tokens"
+
+
+def test_a_usable_text_gives_no_reason_even_when_a_line_fails() -> None:
+    result = batch.result(BATCH, text((0, ["goodwill"], 0.9), (1, ["cash"], 0.9)), USAGE)
+
+    assert result.failed == ("BS|ext|A", "BS|ext|C")
+    assert result.reason is None
 
 
 def test_a_code_outside_the_candidates_or_a_duplicate_index_fails_that_line_only() -> None:

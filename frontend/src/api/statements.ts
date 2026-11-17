@@ -3,6 +3,7 @@ import { queryOptions } from "@tanstack/react-query";
 import { companyKey } from "@/api/companies";
 import { ApiError, unwrap } from "@/api/errors";
 import {
+  getAsReportedApiV1CompaniesTickerAsReportedGet,
   getCellApiV1CompaniesTickerStatementsCellGet,
   getMappingGapsApiV1CompaniesTickerMappingGapsGet,
   getStatementApiV1CompaniesTickerStatementsGet,
@@ -85,5 +86,32 @@ export const mappingGapsQueryOptions = (ticker: string) =>
         throw new ApiError(200, "Unexpected response");
       }
       return gaps;
+    },
+  });
+
+/** GET …/as-reported (M7d S5): one filing's statement as filed; `accession` null asks for the
+ * default filing (the newest 10-K with lines for the statement). Read only. */
+export const asReportedQueryOptions = (
+  ticker: string,
+  statement: StatementType,
+  accession: string | null,
+) =>
+  queryOptions({
+    queryKey: [...companyKey(ticker), "as-reported", statement, accession],
+    // While another filing of the same statement loads, keep the shown one, so the selector and
+    // the grid stay mounted (as `statementQueryOptions` does).
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[3] === statement ? previous : undefined,
+    queryFn: async () => {
+      const view = await unwrap(
+        getAsReportedApiV1CompaniesTickerAsReportedGet({
+          path: { ticker },
+          query: accession === null ? { statement } : { statement, accession },
+        }),
+      );
+      if (!Array.isArray(view?.lines) || !Array.isArray(view?.filings)) {
+        throw new ApiError(200, "Unexpected response");
+      }
+      return view;
     },
   });

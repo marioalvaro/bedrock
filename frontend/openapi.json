@@ -175,12 +175,18 @@
           "form": {
             "title": "Form",
             "type": "string"
+          },
+          "period_end": {
+            "format": "date",
+            "title": "Period End",
+            "type": "string"
           }
         },
         "required": [
           "accession_no",
           "form",
-          "filed_at"
+          "filed_at",
+          "period_end"
         ],
         "title": "AsReportedFilingOut",
         "type": "object"

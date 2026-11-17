@@ -76,25 +76,36 @@ def estimate(questions: Sequence[LineQuestion], batch_size: int) -> Usage:
     return total
 
 
-def result(questions: Sequence[LineQuestion], text: str | None, usage: Usage) -> ClassifyResult:
+NOT_THE_SCHEMA = "the answer did not follow the schema"
+
+
+def result(
+    questions: Sequence[LineQuestion], text: str | None, usage: Usage, reason: str | None = None
+) -> ClassifyResult:
     """The result of one request. `text` is the model's answer, or None when it is unusable as a
-    whole (a refusal, a cut-off answer): then every line fails. A text that is not the schema
-    fails every line too; `usage` is kept either way."""
-    usable = _usable(questions, _parse(text))
+    whole (a refusal, a cut-off answer): then every line fails, with the adapter's `reason`. A
+    text that is not the schema fails every line too, with NOT_THE_SCHEMA; `usage` is kept
+    either way."""
+    parsed = _parse(text)
+    if text is not None:
+        reason = None if parsed is not None else NOT_THE_SCHEMA
+    usable = _usable(questions, parsed or [])
     return ClassifyResult(
         tuple(usable[q.key] for q in questions if q.key in usable),
         tuple(q.key for q in questions if q.key not in usable),
         usage,
+        reason,
     )
 
 
-def _parse(text: str | None) -> list[Answer]:
+def _parse(text: str | None) -> list[Answer] | None:
+    """The answers of a text of the schema; None for no text or one that is not the schema."""
     if text is None:
-        return []
+        return None
     try:
         return BatchAnswer.model_validate_json(text).answers
     except ValidationError:
-        return []
+        return None
 
 
 def _usable(questions: Sequence[LineQuestion], answers: Sequence[Answer]) -> dict[str, LineAnswer]:

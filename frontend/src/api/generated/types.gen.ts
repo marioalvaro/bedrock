@@ -123,6 +123,10 @@ export type AsReportedFilingOut = {
      * Form
      */
     form: string;
+    /**
+     * Period End
+     */
+    period_end: string;
 };
 
 /**

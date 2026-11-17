@@ -23,15 +23,22 @@ DEFAULT_BATCH_SIZE = 10
 DATA_COLLECTION = {"nvidia/nemotron-3.5-super-vl:free": "allow"}
 DEFAULT_DATA_COLLECTION = "deny"
 # The output cap: four times the estimated answer of the batch (room for reasoning), at least
-# MIN_MAX_TOKENS. Twice was too tight: Nemotron used 6,616 of 6,680 on 49 AAPL lines
-# (2026-11-17). The budgets count the tokens used, not the cap.
+# MIN_MAX_TOKENS, unless the model has a fixed cap. The free Nemotron spent all of the 4x cap
+# (4,480 tokens on 12 RDDT lines, 19,120 on 73 LMT lines) and answered nothing, so it has 32,000
+# (the user's choice of 2026-11-17; it is free). The budgets count the tokens used, not the cap.
 MIN_MAX_TOKENS = 4000
 REASONING_FACTOR = 4
+MAX_TOKENS = {"nvidia/nemotron-3.5-super-vl:free": 32000}
 TIMEOUT_SECONDS = 60
 RETRY_DELAYS = (1, 3)  # seconds before the second and the third attempt
 RETRY_STATUSES = frozenset({408, 429})  # and every 5xx
-# A normalized finish reason that leaves the text unusable: cut off, filtered, failed
-FAILED_FINISHES = frozenset({"length", "content_filter", "error"})
+# A normalized finish reason that leaves the text unusable (cut off, filtered, failed), and what a
+# run says about it; "length" names the cap.
+FAILED_FINISHES = {
+    "length": "the answer was cut off at {cap:,} output tokens",
+    "content_filter": "the provider filtered the answer",
+    "error": "the provider reported an error in the answer",
+}
 
 
 class OpenRouterClassifier:
@@ -62,7 +69,8 @@ class OpenRouterClassifier:
             return ClassifyResult((), (), Usage(0, 0))
         if not self._api_key:
             raise ClassifierUnavailable(f"{self.name} has no API key")
-        payload = self._post(self._request(questions))
+        request = self._request(questions)
+        payload = self._post(request)
         if isinstance(payload, dict) and isinstance(payload.get("error"), dict):
             # a failure reported after the request was accepted (HTTP 200)
             raise ClassifierError(f"OpenRouter failed: {payload['error'].get('message')}")
@@ -76,13 +84,16 @@ class OpenRouterClassifier:
             )
         except (KeyError, IndexError, TypeError, ValueError) as error:
             raise ClassifierError(f"OpenRouter answered in an unknown shape: {error!r}") from error
-        text = None if finish in FAILED_FINISHES else str(content or "")
-        return batch.result(questions, text, usage)
+        if finish in FAILED_FINISHES:
+            reason = FAILED_FINISHES[finish].format(cap=request["max_tokens"])
+            return batch.result(questions, None, usage, reason)
+        return batch.result(questions, str(content or ""), usage)
 
     def _request(self, questions: Sequence[LineQuestion]) -> dict[str, Any]:
         return {
             "model": self.model,
-            "max_tokens": max(
+            "max_tokens": MAX_TOKENS.get(self.model)
+            or max(
                 MIN_MAX_TOKENS,
                 REASONING_FACTOR * batch.estimate(questions, self.batch_size).output_tokens,
             ),

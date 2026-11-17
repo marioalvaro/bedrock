@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   createNoteApiV1CompaniesTickerNotesPost,
+  getAsReportedApiV1CompaniesTickerAsReportedGet,
   getCellApiV1CompaniesTickerStatementsCellGet,
   getStatementApiV1CompaniesTickerStatementsGet,
   listImportsApiV1CompaniesTickerImportsGet,
@@ -13,6 +14,7 @@ import {
 } from "@/api/generated/sdk.gen";
 import { createQueryClient } from "@/lib/query-client";
 import { setScale } from "@/lib/scale";
+import { asReportedBalanceSheet } from "@/test/classification";
 import { note, noteLink, noteLinks } from "@/test/context";
 import { errorResult, okResult } from "@/test/responses";
 import {
@@ -26,6 +28,7 @@ import { StatementView } from "./StatementView";
 
 vi.mock("@/api/generated/sdk.gen", () => ({
   getStatementApiV1CompaniesTickerStatementsGet: vi.fn(),
+  getAsReportedApiV1CompaniesTickerAsReportedGet: vi.fn(),
   getCellApiV1CompaniesTickerStatementsCellGet: vi.fn(),
   createAdjustmentApiV1CompaniesTickerAdjustmentsPost: vi.fn(),
   updateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPut: vi.fn(),
@@ -83,6 +86,7 @@ const cellDetail = {
   normalized_value: null,
   combined_with: null,
   included_in: null,
+  classified_by: null,
 };
 
 const emptyCellDetail = (code: string, label: string, fiscalYear: number) => ({
@@ -1179,5 +1183,88 @@ describe("combined lines and inapplicable cells (M7b S8)", () => {
         query: { code: "accrued_liabilities", fiscal_year: 2024, fiscal_period: "FY" },
       }),
     );
+  });
+});
+
+describe("the As reported view (M7d S5)", () => {
+  const READ_ONLY =
+    "Read only. The filing as filed; Bedrock's own statements are under Bedrock rows.";
+  // The controls of the Bedrock rows view that do not apply to a filing as filed.
+  const hidden = () => [
+    screen.queryByLabelText("Frequency"),
+    screen.queryByLabelText("Basis"),
+    screen.queryByRole("button", { name: "YoY" }),
+    screen.queryByRole("button", { name: "Common size" }),
+    screen.queryByRole("button", { name: "Show empty lines" }),
+    screen.queryByRole("button", { name: "Download CSV" }),
+    screen.queryByText("Reported: as filed"),
+  ];
+
+  beforeEach(() => {
+    vi.mocked(getAsReportedApiV1CompaniesTickerAsReportedGet).mockResolvedValue(
+      okResult(asReportedBalanceSheet()) as never,
+    );
+  });
+
+  it("opens on Bedrock rows, with As reported one click away", async () => {
+    renderView("BS");
+    const view = await screen.findByLabelText("View");
+    expect(within(view).getByRole("radio", { name: "Bedrock rows" })).toBeChecked();
+    expect(within(view).getByRole("radio", { name: "As reported" })).not.toBeChecked();
+    expect(getAsReportedApiV1CompaniesTickerAsReportedGet).not.toHaveBeenCalled();
+  });
+
+  it("shows the filing as filed and hides the other controls", async () => {
+    renderView("BS");
+    await userEvent.click(await screen.findByRole("radio", { name: "As reported" }));
+
+    expect(await screen.findByText(READ_ONLY)).toBeInTheDocument();
+    expect(await screen.findByText("Vendor non-trade receivables")).toBeInTheDocument();
+    expect(getAsReportedApiV1CompaniesTickerAsReportedGet).toHaveBeenCalledWith({
+      path: { ticker: "AAPL" },
+      query: { statement: "BS" },
+    });
+    for (const control of hidden()) expect(control).toBeNull();
+  });
+
+  it("brings the controls back on Bedrock rows", async () => {
+    renderView("BS");
+    await userEvent.click(await screen.findByRole("radio", { name: "As reported" }));
+    await screen.findByText(READ_ONLY);
+    await userEvent.click(screen.getByRole("radio", { name: "Bedrock rows" }));
+
+    expect(screen.queryByText(READ_ONLY)).not.toBeInTheDocument();
+    for (const control of hidden()) expect(control).not.toBeNull();
+  });
+});
+
+describe("classified cells (M7d S5)", () => {
+  it("marks a cell filled from a classified line, and names the lines in its tooltip", async () => {
+    const base = incomeStatement();
+    const [revenue, ...rest] = base.rows;
+    vi.mocked(getStatementApiV1CompaniesTickerStatementsGet).mockResolvedValue(
+      okResult(
+        incomeStatement({
+          rows: [{ ...revenue!, classified_by: [null, ["aapl:MarketingExpense"]] }, ...rest],
+        }),
+      ) as never,
+    );
+    renderView();
+    await waitFor(() => expect(cell("revenue", "FY2024")).not.toBeNull());
+
+    const marked = cell("revenue", "FY2024");
+    expect(marked.querySelector(".classified-mark")).not.toBeNull();
+    expect(marked.querySelector("[title]")).toHaveAttribute(
+      "title",
+      "AI classified: aapl:MarketingExpense",
+    );
+    expect(cell("revenue", "FY2023").querySelector(".classified-mark")).toBeNull();
+  });
+
+  it("names the mark in the legend", async () => {
+    renderView();
+    expect(
+      await screen.findByText("AI classified: filled from a line a classifier placed"),
+    ).toBeInTheDocument();
   });
 });

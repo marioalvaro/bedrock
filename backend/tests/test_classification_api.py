@@ -241,7 +241,11 @@ def test_a_confirmed_run_is_202_and_fills_the_proposals(
     assert factory.calls == [HAIKU]
     body = authed_client.get(f"{BASE}/classifications", params={"classifier": HAIKU}).json()
     assert body["run"]["id"] == started["id"]
-    assert (body["run"]["status"], body["run"]["error"]) == ("done", None)
+    assert (body["run"]["status"], body["run"]["error"]) == (
+        "done",
+        f"{len(lines) - 1} of {len(lines)} lines got a usable answer. "
+        "The others can be asked again.",
+    )
     assert (body["run"]["lines_answered"], body["run"]["input_tokens"]) == (
         len(lines) - 1,
         100 * len(lines),

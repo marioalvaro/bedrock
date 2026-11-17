@@ -51,3 +51,6 @@ class ClassifyResult:
     answers: tuple[LineAnswer, ...]
     failed: tuple[str, ...]  # keys with no usable answer
     usage: Usage
+    # Why the answer as a whole was unusable (cut off, filtered, not the schema); None when it was
+    # usable, though single lines may still have failed. A run reports it (S5 follow-up).
+    reason: str | None = None

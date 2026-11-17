@@ -17,7 +17,11 @@ EFFORT = "low"
 # re-runs it on the model the API picks for the refusal's category. Haiku 5.5 has none.
 FALLBACK_MODELS = frozenset({"claude-sonnet-5-5"})
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
-FAILED_STOPS = frozenset({"refusal", "max_tokens"})
+# A stop reason that leaves the text unusable, and what a run says about it
+FAILED_STOPS = {
+    "refusal": "the model declined to answer",
+    "max_tokens": f"the answer was cut off at {MAX_TOKENS:,} output tokens",
+}
 
 
 class ClaudeClassifier:
@@ -49,8 +53,9 @@ class ClaudeClassifier:
             raise ClassifierUnavailable(f"{self.name} has no API key")
         response = self._ask(self._client, questions)
         usage = Usage(response.usage.input_tokens, response.usage.output_tokens)
-        text = None if response.stop_reason in FAILED_STOPS else _text(response.content)
-        return batch.result(questions, text, usage)
+        if response.stop_reason in FAILED_STOPS:
+            return batch.result(questions, None, usage, FAILED_STOPS[response.stop_reason])
+        return batch.result(questions, _text(response.content), usage)
 
     def _ask(self, client: anthropic.Anthropic, questions: Sequence[LineQuestion]) -> Any:
         # `messages.create` with a raw schema, not `messages.parse`: `parse` raises on an answer

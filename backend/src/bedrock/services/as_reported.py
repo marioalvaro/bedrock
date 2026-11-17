@@ -4,9 +4,11 @@ route"). Read only: no feature takes a value from it."""
 from dataclasses import dataclass, field
 from datetime import date
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from bedrock.models.company import Company
+from bedrock.models.filing import Filing
 from bedrock.repositories import mappings as mappings_repo
 from bedrock.services.errors import FilingNotFound
 from bedrock.services.statements import canonical_items, face_lines
@@ -19,6 +21,7 @@ class FilingRef:
     accession_no: str
     form: str
     filed_at: date
+    period_end: date
 
 
 @dataclass(frozen=True)
@@ -48,7 +51,8 @@ def as_reported(
             (r["filed_at"], r["accession_no"], r["form"])
             for r in records(rows[["filed_at", "accession_no", "form"]])
         }
-        filings = [FilingRef(a, f, d) for d, a, f in sorted(seen, reverse=True)]
+        ends = _period_ends(session, company, {a for _, a, _ in seen})
+        filings = [FilingRef(a, f, d, ends[a]) for d, a, f in sorted(seen, reverse=True)]
     if accession is not None:
         if accession not in {f.accession_no for f in filings}:
             raise FilingNotFound(accession)
@@ -59,3 +63,13 @@ def as_reported(
     if face is None or chosen is None:
         return AsReported(None, filings, labels)
     return AsReported(project(face, items, chosen, statement), filings, labels)
+
+
+def _period_ends(session: Session, company: Company, accessions: set[str]) -> dict[str, date]:
+    """Each listed filing's own `period_end`, in one query (the selector names a filing by it)."""
+    if not accessions:
+        return {}
+    stmt = select(Filing.accession_no, Filing.period_end).where(
+        Filing.company_id == company.id, Filing.accession_no.in_(accessions)
+    )
+    return {accession: end for accession, end in session.execute(stmt)}

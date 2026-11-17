@@ -6,18 +6,21 @@ import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  getCompanyApiV1CompaniesTickerGet,
   getSnapshotApiV1CompaniesTickerSnapshotsSnapshotIdGet,
   listSnapshotsApiV1CompaniesTickerSnapshotsGet,
 } from "@/api/generated/sdk.gen";
 import { createQueryClient } from "@/lib/query-client";
 import { setScale } from "@/lib/scale";
-import { snapshotDetail, snapshotList } from "@/test/accountability";
+import { snapshotDetail, snapshotList, snapshotOut } from "@/test/accountability";
+import { companyItem } from "@/test/companies";
 import { errorResult, okResult } from "@/test/responses";
 
 import { formatLocalTime } from "./backtestFormat";
 import { SnapshotsPanel } from "./SnapshotsPanel";
 
 vi.mock("@/api/generated/sdk.gen", () => ({
+  getCompanyApiV1CompaniesTickerGet: vi.fn(),
   getSnapshotApiV1CompaniesTickerSnapshotsSnapshotIdGet: vi.fn(),
   listSnapshotsApiV1CompaniesTickerSnapshotsGet: vi.fn(),
 }));
@@ -25,7 +28,13 @@ vi.mock("@/api/generated/sdk.gen", () => ({
 const list = vi.mocked(listSnapshotsApiV1CompaniesTickerSnapshotsGet);
 const detail = vi.mocked(getSnapshotApiV1CompaniesTickerSnapshotsSnapshotIdGet);
 
-beforeEach(() => setScale("M"));
+beforeEach(() => {
+  setScale("M");
+  // The sheet compares the snapshot's classification mode with the company's (M7d S5).
+  vi.mocked(getCompanyApiV1CompaniesTickerGet).mockResolvedValue(
+    okResult(companyItem({ classification_mode: "off" })) as never,
+  );
+});
 afterEach(() => vi.clearAllMocks());
 
 function renderPanel(path = "/c/AAPL/backtest?view=snapshots") {
@@ -272,5 +281,39 @@ describe("the sheet", () => {
     expect(
       screen.queryByRole("table", { name: "Forecast against actual" }),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("the snapshot's classification mode (M7d S5)", () => {
+  async function openWith(mode: "off" | "accepted" | "all" | null) {
+    detail.mockResolvedValue(okResult(snapshotDetail()) as never);
+    list.mockResolvedValue(
+      okResult(snapshotList({ snapshots: [snapshotOut({ classification_mode: mode })] })) as never,
+    );
+    renderPanel();
+    await screen.findByRole("table", { name: "Snapshots" });
+    await userEvent.click(rowsOf("Snapshots")[1]!);
+    await screen.findByRole("table", { name: "Forecast against actual" });
+  }
+
+  it("shows the mode the snapshot was taken under", async () => {
+    await openWith("off");
+    expect(await screen.findByText("Line classification: Off")).toBeInTheDocument();
+    expect(screen.queryByText(/differs from the current setting/)).not.toBeInTheDocument();
+  });
+
+  it("says so when the company's mode has changed since", async () => {
+    await openWith("accepted");
+    expect(
+      await screen.findByText(
+        "Line classification: Accepted only · differs from the current setting",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("says the mode was not recorded on a snapshot older than M7d", async () => {
+    await openWith(null);
+    expect(await screen.findByText("Line classification: not recorded")).toBeInTheDocument();
+    expect(screen.queryByText(/differs from the current setting/)).not.toBeInTheDocument();
   });
 });

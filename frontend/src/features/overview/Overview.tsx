@@ -12,7 +12,6 @@ import type {
   CompanyListItem,
   CoverageOut,
   RuleWarningOut,
-  UnclassifiedLineOut,
   UnmappedConceptOut,
 } from "@/api/generated/types.gen";
 import { mappingGapsQueryOptions } from "@/api/statements";
@@ -38,6 +37,7 @@ import {
   scaleLabel,
 } from "@/lib/format";
 import { useScale } from "@/lib/scale";
+import { ClassifyPanel } from "@/features/classification/ClassifyPanel";
 import { ImportButton } from "@/features/imports/ImportButton";
 
 function Stat({ name, value }: { name: string; value: string }) {
@@ -289,63 +289,6 @@ function CauseList() {
   );
 }
 
-function LinesToClassify({ lines }: { lines: UnclassifiedLineOut[] }) {
-  const scale = useScale();
-  return (
-    <div>
-      <h3 className="text-muted-foreground mb-1 text-xs">Lines to classify ({lines.length})</h3>
-      {lines.length === 0 ? (
-        <p className="text-sm">No lines to classify.</p>
-      ) : (
-        <>
-          <p className="text-muted-foreground mb-1 text-xs">
-            Map it in the company's override file, or list it under other_lines.
-          </p>
-          <div className="max-h-96 overflow-auto">
-            <table aria-label="Lines to classify" className="w-full text-sm">
-              <thead>
-                <tr className="text-muted-foreground text-left text-xs">
-                  <th className="py-1 pr-4 font-normal">Statement</th>
-                  <th className="py-1 pr-4 font-normal">Label</th>
-                  <th className="py-1 pr-4 font-normal">Concept</th>
-                  <th className="py-1 pr-4 text-right font-normal">
-                    Latest value ({scaleLabel("USD", scale)})
-                  </th>
-                  <th className="py-1 pr-4 font-normal">Period end</th>
-                  <th className="py-1 font-normal">Filings</th>
-                </tr>
-              </thead>
-              <tbody>
-                {lines.map((line) => (
-                  <tr
-                    key={`${line.statement}:${line.taxonomy}:${line.concept}`}
-                    className="border-border border-b align-top"
-                  >
-                    <td className="py-1 pr-4 whitespace-nowrap">
-                      {STATEMENT_NAMES[line.statement]}
-                    </td>
-                    <td className="py-1 pr-4">{line.label}</td>
-                    <td className="py-1 pr-4 break-all">
-                      {line.taxonomy}:{line.concept}
-                    </td>
-                    <td className="num py-1 pr-4">
-                      {formatValue(line.latest_value, "USD", scale)}
-                    </td>
-                    <td className="text-muted-foreground py-1 pr-4 whitespace-nowrap">
-                      {line.latest_period_end}
-                    </td>
-                    <td className="text-muted-foreground py-1">{line.filings.join(", ")}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
 // "FY2024" or "FY2024Q3", as the API's period keys, read "FY2024" and "Q3 FY2024".
 function warningPeriod(key: string): string {
   const match = /^FY(\d{4})(Q[1-4])?$/.exec(key);
@@ -419,7 +362,7 @@ function DataGaps({ ticker }: { ticker: string }) {
             )}
           </div>
           <RuleWarnings warnings={data.rule_warnings} />
-          <LinesToClassify lines={data.unclassified_lines} />
+          <ClassifyPanel ticker={ticker} unclassified={data.unclassified_lines} />
           <div>
             <h3 className="text-muted-foreground mb-1 text-xs">
               Missing items ({data.missing_items.length})

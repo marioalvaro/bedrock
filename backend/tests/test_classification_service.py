@@ -142,7 +142,7 @@ def test_start_returns_the_running_run_before_the_worker_ends(
             assert release.wait(timeout=10)
             return super().classify(questions)
 
-    fake = Waiting({}, name=HAIKU)
+    fake = Waiting(answering(lines).answers, name=HAIKU)
     try:
         run = start(runner, db_session, giving(fake), settings, len(lines), wait=False)
         assert (run.id is not None, run.status, run.lines_asked) == (True, "running", len(lines))
@@ -193,11 +193,77 @@ def test_a_failed_line_gets_no_row_and_is_asked_again_by_the_next_run(
     run = start(runner, db_session, giving(first), settings, len(lines))
 
     assert (run.status, run.lines_asked, run.lines_answered) == ("done", len(lines), len(lines) - 2)
+    assert run.error == (
+        f"{len(lines) - 2} of {len(lines)} lines got a usable answer. "
+        "The others can be asked again."
+    )
     assert len(repo.rows_for(db_session, aapl.id)) == len(lines) - 2
     second = answering(lines)
     again = start(runner, db_session, giving(second), settings, 2)
     assert [q.key for batch in second.calls for q in batch] == [ln.question.key for ln in lines[:2]]
     assert (again.lines_asked, again.lines_answered) == (2, 2)
+
+
+class CutOff(FakeClassifier):
+    """Answers no line, as a model whose answer is cut off at its output cap (2026-11-17: the free
+    Nemotron spent its whole cap on 12 RDDT lines and the run read `done`, 0 answered)."""
+
+    def __init__(self, reasons: Sequence[str | None], batch_size: int = 5) -> None:
+        super().__init__({}, name=HAIKU, batch_size=batch_size)
+        self.reasons = list(reasons)
+
+    def classify(self, questions: Sequence[LineQuestion]) -> ClassifyResult:
+        self.calls.append(list(questions))
+        reason = self.reasons[min(len(self.calls), len(self.reasons)) - 1]
+        keys = tuple(q.key for q in questions)
+        return ClassifyResult((), keys, self.estimate(questions), reason)
+
+
+def test_a_run_that_answers_no_line_ends_failed_with_the_reason_and_keeps_its_tokens(
+    db_session: Session, aapl: Company, runner: ClassificationRunner, settings: Settings
+) -> None:
+    lines = open_lines(db_session, aapl)
+    fake = CutOff(["the answer was cut off at 4,480 output tokens"])
+
+    run = start(runner, db_session, giving(fake), settings, len(lines))
+
+    assert (run.status, run.lines_asked, run.lines_answered) == ("failed", len(lines), 0)
+    assert run.error == (
+        f"0 of {len(lines)} lines got a usable answer: the answer was cut off at 4,480 output "
+        "tokens. They can be asked again."
+    )
+    assert run.finished_at == STAMP
+    assert run.input_tokens == 100 * len(lines)  # spent, so counted
+    assert repo.rows_for(db_session, aapl.id) == []
+    again = answering(lines)
+    assert start(runner, db_session, giving(again), settings, len(lines)).lines_answered == len(
+        lines
+    )
+
+
+def test_the_reasons_of_several_batches_are_named_once_each(
+    db_session: Session, aapl: Company, runner: ClassificationRunner, settings: Settings
+) -> None:
+    lines = open_lines(db_session, aapl)
+    assert len(lines) > 2
+    fake = CutOff(
+        [
+            "the provider filtered the answer",
+            None,
+            "the provider filtered the answer",
+            "the answer did not follow the schema",
+        ],
+        batch_size=1,
+    )
+
+    run = start(runner, db_session, giving(fake), settings, len(lines))
+
+    assert run.status == "failed"
+    assert run.error is not None
+    assert run.error.startswith(
+        f"0 of {len(lines)} lines got a usable answer: the provider filtered the answer; "
+        "the answer did not follow the schema."
+    )
 
 
 def test_a_run_asks_at_most_the_cap_and_the_next_run_goes_on(

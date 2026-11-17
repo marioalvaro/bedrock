@@ -46,6 +46,7 @@ const cell = {
   normalized_value: null,
   combined_with: null,
   included_in: null,
+  classified_by: null,
 };
 
 const target: CellTarget = {
@@ -629,5 +630,24 @@ describe("combined lines (M7b S8)", () => {
     renderSheet({ lineLabels });
     await screen.findByText("Value");
     expect(screen.queryByText(/^Includ/)).toBeNull();
+  });
+});
+
+describe("classified cells (M7d S5)", () => {
+  it("lists the lines a classification placed in the cell", async () => {
+    mockCell({
+      provenance: "derived",
+      classified_by: ["aapl:MarketingExpense", "aapl:BrandSpend"],
+    });
+    renderSheet();
+    const field = (await screen.findByText("AI classified")).parentElement as HTMLElement;
+    expect(within(field).getByText("aapl:MarketingExpense")).toBeInTheDocument();
+    expect(within(field).getByText("aapl:BrandSpend")).toBeInTheDocument();
+  });
+
+  it("shows no such field for a cell no classification touched", async () => {
+    renderSheet();
+    await screen.findByText("Value");
+    expect(screen.queryByText("AI classified")).not.toBeInTheDocument();
   });
 });

@@ -185,6 +185,7 @@ def test_a_refusal_fails_every_line_and_keeps_the_usage() -> None:
     assert result.answers == ()
     assert result.failed == ("BS|ext|A", "BS|ext|B", "BS|ext|C")
     assert result.usage == Usage(500, 0)
+    assert result.reason == "the model declined to answer"
 
 
 def test_a_cut_off_answer_fails_every_line_and_keeps_the_usage() -> None:
@@ -196,6 +197,7 @@ def test_a_cut_off_answer_fails_every_line_and_keeps_the_usage() -> None:
     assert result.answers == ()
     assert result.failed == ("BS|ext|A", "BS|ext|B", "BS|ext|C")
     assert result.usage == Usage(900, 4000)
+    assert result.reason == "the answer was cut off at 4,000 output tokens"
 
 
 def test_a_complete_looking_answer_is_not_used_when_the_stop_reason_is_max_tokens() -> None:

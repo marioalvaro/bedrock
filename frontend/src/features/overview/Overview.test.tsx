@@ -5,7 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   deleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDelete,
+  getClassificationsOfApiV1CompaniesTickerClassificationsGet,
   getMappingGapsApiV1CompaniesTickerMappingGapsGet,
+  getStatusApiV1ClassificationStatusGet,
   listAdjustmentsApiV1CompaniesTickerAdjustmentsGet,
   listCorporateActionsApiV1CompaniesTickerCorporateActionsGet,
   listImportsApiV1CompaniesTickerImportsGet,
@@ -13,6 +15,7 @@ import {
 import { createQueryClient } from "@/lib/query-client";
 import { setScale } from "@/lib/scale";
 import { adjustment, corporateActions } from "@/test/adjustments";
+import { classifications, classifierStatus, noClassifierStatus } from "@/test/classification";
 import type { MappingGapsOut } from "@/api/generated/types.gen";
 import { companyItem, mappingGaps } from "@/test/companies";
 import { errorResult, okResult } from "@/test/responses";
@@ -27,6 +30,12 @@ vi.mock("@/api/generated/sdk.gen", () => ({
   listImportsApiV1CompaniesTickerImportsGet: vi.fn(),
   importStatementsApiV1CompaniesTickerImportsPost: vi.fn(),
   deleteImportApiV1CompaniesTickerImportsImportIdDelete: vi.fn(),
+  getStatusApiV1ClassificationStatusGet: vi.fn(),
+  getClassificationsOfApiV1CompaniesTickerClassificationsGet: vi.fn(),
+  startRunApiV1CompaniesTickerClassificationsRunPost: vi.fn(),
+  decideApiV1CompaniesTickerClassificationsClassificationIdPut: vi.fn(),
+  answerApiV1CompaniesTickerClassificationsPut: vi.fn(),
+  setModeApiV1CompaniesTickerClassificationModePut: vi.fn(),
 }));
 
 const listAdjustments = vi.mocked(listAdjustmentsApiV1CompaniesTickerAdjustmentsGet);
@@ -41,6 +50,13 @@ beforeEach(() => {
   listActions.mockResolvedValue(okResult([]) as never);
   vi.mocked(listImportsApiV1CompaniesTickerImportsGet).mockResolvedValue(okResult([]) as never);
   remove.mockResolvedValue(okResult(null, 204) as never);
+  // The classify panel (features/classification, tested on its own): no key by default.
+  vi.mocked(getStatusApiV1ClassificationStatusGet).mockResolvedValue(
+    okResult(noClassifierStatus()) as never,
+  );
+  vi.mocked(getClassificationsOfApiV1CompaniesTickerClassificationsGet).mockResolvedValue(
+    okResult(classifications()) as never,
+  );
 });
 
 function renderOverview() {
@@ -608,6 +624,30 @@ describe("lines to classify (M7b S8)", () => {
     expect(
       screen.getByText("Map it in the company's override file, or list it under other_lines."),
     ).toBeInTheDocument();
+  });
+
+  it("says no classifier is configured, and offers no classify button (M7d S5)", async () => {
+    withLines([]);
+    renderOverview();
+
+    const gaps = await screen.findByRole("region", { name: "Data gaps" });
+    expect(
+      await within(gaps).findByText("No classifier is configured. See Settings."),
+    ).toBeInTheDocument();
+    expect(within(gaps).queryByRole("button", { name: /^Classify/ })).not.toBeInTheDocument();
+  });
+
+  it("offers the classify panel when a classifier has a key (M7d S5)", async () => {
+    vi.mocked(getStatusApiV1ClassificationStatusGet).mockResolvedValue(
+      okResult(classifierStatus()) as never,
+    );
+    renderOverview();
+
+    const gaps = await screen.findByRole("region", { name: "Data gaps" });
+    expect(
+      await within(gaps).findByRole("button", { name: "Classify 2 lines" }),
+    ).toBeInTheDocument();
+    expect(within(gaps).getByText("Marketing expense")).toBeInTheDocument();
   });
 
   it("says so when every face line is classified", async () => {

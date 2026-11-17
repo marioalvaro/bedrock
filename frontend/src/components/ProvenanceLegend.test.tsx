@@ -19,4 +19,11 @@ describe("ProvenanceLegend", () => {
     expect(screen.getByText("Reported: as filed")).toBeInTheDocument();
     expect(screen.queryByText(/^Forecast:/)).toBeNull();
   });
+
+  it("names the AI classified mark (M7d S5)", () => {
+    render(<ProvenanceLegend />);
+
+    const entry = screen.getByText("AI classified: filled from a line a classifier placed");
+    expect(entry.querySelector(".classified-mark")).not.toBeNull();
+  });
 });

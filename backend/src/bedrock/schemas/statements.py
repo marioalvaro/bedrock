@@ -408,6 +408,7 @@ class AsReportedFilingOut(BaseModel):
     accession_no: str
     form: str
     filed_at: date
+    period_end: date  # the filing's own period end (the selector names a filing by it)
 
 
 class AsReportedPeriodOut(BaseModel):
@@ -459,18 +460,20 @@ class AsReportedOut(BaseModel):
             return RowRefOut(code=code, label=view.labels.get(code, code))
 
         filings = [
-            AsReportedFilingOut(accession_no=f.accession_no, form=f.form, filed_at=f.filed_at)
+            AsReportedFilingOut(
+                accession_no=f.accession_no,
+                form=f.form,
+                filed_at=f.filed_at,
+                period_end=f.period_end,
+            )
             for f in view.filings
         ]
         projected = view.statement
         if projected is None:
             return cls(filing=None, filings=filings, periods=[], foots=None, lines=[])
         return cls(
-            filing=AsReportedFilingOut(
-                accession_no=projected.accession_no,
-                form=projected.form,
-                filed_at=projected.filed_at,
-            ),
+            # The projected filing is always one of `filings` (those with lines for the statement).
+            filing=next(f for f in filings if f.accession_no == projected.accession_no),
             filings=filings,
             periods=[AsReportedPeriodOut(start=p.start, end=p.end) for p in projected.periods],
             foots=projected.foots,

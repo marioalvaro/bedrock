@@ -5,6 +5,7 @@ import { qoeRulesQueryOptions, useResetQoeThresholds, useSetQoeThresholds } from
 import { companyErrorMessage } from "@/api/companies";
 import type { QoeRuleOut } from "@/api/generated/types.gen";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { ClassifierStatus } from "@/features/settings/ClassifierStatus";
 import { CustomRules } from "@/features/settings/CustomRules";
 import { FormulaReference } from "@/features/settings/FormulaReference";
 import { Button } from "@/components/ui/button";
@@ -146,6 +147,7 @@ export function Settings() {
       <h2 className="mt-8 mb-3 text-lg font-semibold">Quality-of-earnings thresholds</h2>
       <QoeThresholds />
       <CustomRules />
+      <ClassifierStatus />
       <FormulaReference />
     </div>
   );

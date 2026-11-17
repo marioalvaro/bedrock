@@ -163,6 +163,34 @@ def test_a_cut_off_filtered_or_failed_answer_fails_every_line_and_keeps_the_usag
     assert result.usage == Usage(900, 120)
 
 
+@pytest.mark.parametrize(
+    ("finish_reason", "reason"),
+    [
+        ("length", "the answer was cut off at 4,000 output tokens"),
+        ("content_filter", "the provider filtered the answer"),
+        ("error", "the provider reported an error in the answer"),
+    ],
+)
+def test_an_unusable_answer_says_why(finish_reason: str, reason: str) -> None:
+    provider = Provider(completion([(0, ["cash"], 0.9)], finish_reason=finish_reason))
+
+    assert classifier(provider).classify(BATCH).reason == reason
+
+
+def test_a_cut_off_answer_of_the_free_model_names_its_cap() -> None:
+    provider = Provider(completion(None, finish_reason="length", usage=(3600, 32000)))
+
+    result = nemotron(provider).classify(BATCH)
+
+    assert result.reason == "the answer was cut off at 32,000 output tokens"
+
+
+def test_a_usable_answer_gives_no_reason() -> None:
+    provider = Provider(completion([(0, ["goodwill"], 0.9), (1, ["cash"], 0.9)]))
+
+    assert classifier(provider).classify(BATCH[:2]).reason is None
+
+
 @pytest.mark.parametrize("content", [None, "", "not json", '{"answers": "x"}'])
 def test_a_content_that_is_not_the_schema_fails_every_line(content: str | None) -> None:
     provider = Provider(completion(content))
@@ -341,13 +369,22 @@ def test_a_batch_of_100_is_one_request_and_101_is_refused() -> None:
     assert len(provider.requests) == 1
 
 
-def test_the_output_cap_grows_with_the_batch_and_never_drops_below_4000() -> None:
-    # four times the estimated answer (400 + 60 per line), for the model's reasoning, at least
-    # 4000. Twice was too tight: Nemotron used 6,616 of 6,680 on 49 AAPL lines (2026-11-17).
-    for lines, cap in ((1, 4000), (10, 4000), (30, 8800), (49, 13360), (100, 25600)):
+def test_the_free_model_has_a_fixed_output_cap_of_32000() -> None:
+    # The 4x rule left Nemotron 4,480 tokens for 12 RDDT lines and 19,120 for 73 LMT lines: it
+    # spent every one (finish `length`) and answered no line (2026-11-17). It is free, so it gets
+    # a fixed cap; the budgets still count the tokens it uses.
+    for lines in (1, 12, 73, 100):
         provider = Provider(completion([]))
         nemotron(provider).classify([question(f"Q{n}") for n in range(lines)])
-        assert provider.body["max_tokens"] == cap, lines
+        assert provider.body["max_tokens"] == 32000, lines
+
+
+def test_a_paid_model_keeps_four_times_the_estimated_answer_at_least_4000() -> None:
+    # 400 + 60 per line, times four; a batch of 10 is 4000.
+    for lines in (1, 10):
+        provider = Provider(completion([]))
+        classifier(provider).classify([question(f"Q{n}") for n in range(lines)])
+        assert provider.body["max_tokens"] == 4000, lines
 
 
 def test_the_free_model_allows_data_collection_and_the_others_deny_it() -> None:

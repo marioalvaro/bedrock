@@ -23,6 +23,7 @@ import { downloadText } from "@/lib/download";
 import { useScale, type Scale } from "@/lib/scale";
 import { ImportButton } from "@/features/imports/ImportButton";
 
+import { AsReportedView } from "./AsReportedView";
 import { CellDetailSheet, type CellTarget } from "./CellDetailSheet";
 import {
   canExplain,
@@ -32,6 +33,7 @@ import {
   cellTitle,
   csvLabel,
   expandableCodes,
+  isClassified,
   isCombined,
   lineNoteCount,
   noteIndex,
@@ -52,6 +54,13 @@ const FREQS: { value: Freq; label: string }[] = [
 const BASES: { value: Basis; label: string }[] = [
   { value: "reported", label: "Reported" },
   { value: "normalized", label: "Normalized" },
+];
+
+// M7d S5: Bedrock's own rows (the default), or one filing's statement as filed.
+type View = "bedrock" | "as_reported";
+const VIEWS: { value: View; label: string }[] = [
+  { value: "bedrock", label: "Bedrock rows" },
+  { value: "as_reported", label: "As reported" },
 ];
 
 const FILE_TYPES: Record<StatementType, string> = { IS: "IS", BS: "BS", CF: "CF" };
@@ -150,7 +159,8 @@ function columnDefs(
     headerClass: ["num", "ag-right-aligned-header"],
     valueGetter: ({ data }) => data?.values[period.key] ?? null,
     valueFormatter: ({ data }) => (data ? cellText(data, period.key, scale) : ""),
-    // A carrier (M7b S4) gets a marker and a cell inside a carrier a tooltip naming the other.
+    // A carrier (M7b S4) gets a marker and a cell inside a carrier a tooltip naming the other; a
+    // cell filled from a classified line (M7d S5) gets its own marker and names those lines.
     cellRenderer: ({
       data,
       valueFormatted,
@@ -163,6 +173,7 @@ function columnDefs(
       return (
         <span title={title}>
           {isCombined(data, period.key) && <span className="combined-mark" aria-hidden />}
+          {isClassified(data, period.key) && <span className="classified-mark" aria-hidden />}
           {valueFormatted}
         </span>
       );
@@ -191,6 +202,7 @@ interface StatementViewProps {
 }
 
 export function StatementView({ ticker, cik, type }: StatementViewProps) {
+  const [view, setView] = useState<View>("bedrock");
   const [freq, setFreq] = useState<Freq>("annual");
   const [basis, setBasis] = useState<Basis>("reported");
   const [yoy, setYoy] = useState(false);
@@ -203,9 +215,10 @@ export function StatementView({ ticker, cik, type }: StatementViewProps) {
   const scale = useScale();
   const grid = useRef<DataGridHandle>(null);
 
-  const { data, isPending, isError, isPlaceholderData } = useQuery(
-    statementQueryOptions(ticker, type, freq, base, basis),
-  );
+  const { data, isPending, isError, isPlaceholderData } = useQuery({
+    ...statementQueryOptions(ticker, type, freq, base, basis),
+    enabled: view === "bedrock",
+  });
 
   // The markers are optional: a failed links request leaves the statement without them.
   const { data: links } = useQuery(noteLinksQueryOptions(ticker));
@@ -254,9 +267,43 @@ export function StatementView({ ticker, cik, type }: StatementViewProps) {
     if (csv) downloadText(`${ticker}_${FILE_TYPES[type]}_${freq}.csv`, csv, "text/csv");
   }
 
+  const viewToggle = (
+    <ToggleGroup
+      type="single"
+      variant="outline"
+      size="sm"
+      spacing={0}
+      aria-label="View"
+      value={view}
+      onValueChange={(value) => value && setView(value as View)}
+    >
+      {VIEWS.map(({ value, label }) => (
+        <ToggleGroupItem key={value} value={value}>
+          {label}
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
+  );
+
+  if (view === "as_reported") {
+    // The frequency, basis, growth, common-size, export and legend controls do not apply to a
+    // filing as filed; the scale still does. Keyed by statement: a filing picked for one
+    // statement need not have lines for another.
+    return (
+      <div>
+        <div className="border-border flex flex-wrap items-center gap-2 border-b px-4 py-2">
+          {viewToggle}
+          <UnitToggle />
+        </div>
+        <AsReportedView key={type} ticker={ticker} type={type} />
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="border-border flex flex-wrap items-center gap-2 border-b px-4 py-2">
+        {viewToggle}
         <ToggleGroup
           type="single"
           variant="outline"

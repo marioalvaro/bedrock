@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { snapshotQueryOptions } from "@/api/accountability";
+import { companyQueryOptions } from "@/api/companies";
 import type { SnapshotCaseOut, SnapshotOut } from "@/api/generated/types.gen";
 import {
   Sheet,
@@ -27,6 +28,23 @@ const CASE_TOGGLES: { value: CaseCode; label: string }[] = [
   { value: "bull", label: "Bull" },
   { value: "bear", label: "Bear" },
 ];
+
+type ClassificationMode = NonNullable<SnapshotOut["classification_mode"]>;
+const MODE_NAMES: Record<ClassificationMode, string> = {
+  off: "Off",
+  accepted: "Accepted only",
+  all: "All",
+};
+
+// The company's line-classification mode when the snapshot was taken (M7d S5), and whether it has
+// changed since: the actuals it is scored against are read under the current mode.
+function classificationText(mode: SnapshotOut["classification_mode"], current?: string): string {
+  if (mode === null) return "Line classification: not recorded";
+  const text = `Line classification: ${MODE_NAMES[mode]}`;
+  return current !== undefined && current !== mode
+    ? `${text} · differs from the current setting`
+    : text;
+}
 
 const inRangeText = (inRange: boolean | null) => (inRange === null ? "—" : inRange ? "Yes" : "No");
 
@@ -141,6 +159,8 @@ interface SnapshotSheetProps {
 export function SnapshotSheet({ ticker, snapshot, onClose }: SnapshotSheetProps) {
   const scale = useScale();
   const { data, isPending } = useQuery(snapshotQueryOptions(ticker, snapshot.id));
+  // Optional: without the company, the mode is shown with no comparison.
+  const { data: company } = useQuery(companyQueryOptions(ticker));
   const [caseCode, setCaseCode] = useState<CaseCode>("base");
   const [picked, setPicked] = useState(DEFAULT_LINE);
   const frozen = data?.cases.find((c) => c.case === caseCode);
@@ -157,6 +177,9 @@ export function SnapshotSheet({ ticker, snapshot, onClose }: SnapshotSheetProps)
           </SheetDescription>
         </SheetHeader>
         <div className="space-y-4 px-4 pb-4">
+          <p className="text-muted-foreground text-xs">
+            {classificationText(snapshot.classification_mode, company?.classification_mode)}
+          </p>
           {isPending && <p className="text-muted-foreground text-sm">Loading…</p>}
           {!data && !isPending && (
             <p className="text-destructive text-sm">Could not load the snapshot.</p>
