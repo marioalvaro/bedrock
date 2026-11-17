@@ -729,6 +729,8 @@ def test_status_reports_the_classifiers_the_budgets_and_what_was_used(
         ("claude:claude-haiku-5-5", False),
         ("claude:claude-sonnet-5-5", False),
         ("jev:jev-latest", True),
+        ("openrouter:openai/gpt-6-luna", False),
+        ("openrouter:nvidia/nemotron-3.5-super-vl:free", False),
     ]
     assert (status.daily_tokens, status.monthly_tokens) == (300_000, 3_000_000)
     assert (status.used_today, status.used_month) == (500, 1500)

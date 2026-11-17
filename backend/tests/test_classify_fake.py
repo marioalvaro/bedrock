@@ -19,6 +19,8 @@ MILLION = Usage(1_000_000, 1_000_000)
         ("claude:claude-haiku-5-5", Decimal("0.60")),
         ("claude:claude-sonnet-5-5", Decimal("12.00")),
         ("jev:jev-latest", Decimal("0.042")),
+        ("openrouter:openai/gpt-6-luna", Decimal("0.60")),
+        ("openrouter:nvidia/nemotron-3.5-super-vl:free", Decimal("0")),
     ],
 )
 def test_cost_is_the_erd_price_per_million_tokens(name: str, expected: Decimal) -> None:

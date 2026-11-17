@@ -79,6 +79,8 @@ def test_status_without_a_key_lists_every_classifier_as_not_configured(
             {"name": HAIKU, "configured": False},
             {"name": SONNET, "configured": False},
             {"name": JEV, "configured": False},
+            {"name": "openrouter:openai/gpt-6-luna", "configured": False},
+            {"name": "openrouter:nvidia/nemotron-3.5-super-vl:free", "configured": False},
         ],
         "daily_tokens": 300_000,
         "monthly_tokens": 3_000_000,
@@ -112,7 +114,7 @@ def test_status_with_keys_and_usage(
 
     body = authed_client.get("/api/v1/classification/status").json()
 
-    assert [c["configured"] for c in body["classifiers"]] == [True, True, False]
+    assert [c["configured"] for c in body["classifiers"]] == [True, True, False, False, False]
     assert (body["used_today"], body["used_month"], body["cost_month_usd"]) == (
         1000,
         1000,

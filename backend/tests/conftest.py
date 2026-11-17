@@ -41,6 +41,7 @@ def settings(tmp_path: Path) -> Settings:
         scheduled_refresh=False,
         anthropic_api_key=None,
         typesafe_api_key=None,
+        openrouter_api_key=None,
         classify_daily_tokens=300_000,
         classify_monthly_tokens=3_000_000,
         classify_max_lines_per_run=300,
@@ -92,6 +93,7 @@ def _followed_db(
             scheduled_refresh=False,
             anthropic_api_key=None,
             typesafe_api_key=None,
+            openrouter_api_key=None,
         )
         app = create_app(settings=built, sources=Sources(edgar=FakeEdgar(), prices=FakePrices()))
         with TestClient(app) as seeding:

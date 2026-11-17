@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     # classifiers; the budgets count input + output tokens of every run, per UTC day and month.
     anthropic_api_key: str | None = None
     typesafe_api_key: str | None = None
+    openrouter_api_key: str | None = None
     classify_daily_tokens: int = 300_000
     classify_monthly_tokens: int = 3_000_000
     classify_max_lines_per_run: int = 300
@@ -36,6 +37,7 @@ class Settings(BaseSettings):
         "static_dir",
         "anthropic_api_key",
         "typesafe_api_key",
+        "openrouter_api_key",
         mode="before",
     )
     @classmethod

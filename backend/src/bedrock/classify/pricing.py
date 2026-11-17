@@ -13,6 +13,10 @@ PRICES: dict[str, tuple[Decimal, Decimal]] = {
     "claude:claude-sonnet-5-5": (Decimal("2.00"), Decimal("10.00")),
     # TypeSafe launch post, 2026-09-15
     "jev:jev-latest": (Decimal("0.042"), Decimal("0")),
+    # OpenRouter model list (openrouter.ai/api/v1/models), recorded 2026-11-17
+    "openrouter:openai/gpt-6-luna": (Decimal("0.10"), Decimal("0.50")),
+    # a free variant: no price, limited to 50 requests a day (OpenRouter limits page)
+    "openrouter:nvidia/nemotron-3.5-super-vl:free": (Decimal("0"), Decimal("0")),
 }
 _MILLION = Decimal(1_000_000)
 

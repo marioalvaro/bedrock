@@ -41,7 +41,14 @@ def test_env_example_has_no_keys_the_backend_ignores() -> None:
 
 
 @pytest.mark.parametrize(
-    "var", ["SEC_USER_AGENT", "FRED_API_KEY", "ANTHROPIC_API_KEY", "TYPESAFE_API_KEY"]
+    "var",
+    [
+        "SEC_USER_AGENT",
+        "FRED_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "TYPESAFE_API_KEY",
+        "OPENROUTER_API_KEY",
+    ],
 )
 def test_blank_optional_setting_means_unset(monkeypatch: pytest.MonkeyPatch, var: str) -> None:
     # .env.example ships these as `KEY=`; a blank must read as "not configured" (G9).
@@ -65,6 +72,7 @@ def test_classifier_settings_default_to_no_key_and_the_documented_budgets(
     for var in (
         "ANTHROPIC_API_KEY",
         "TYPESAFE_API_KEY",
+        "OPENROUTER_API_KEY",
         "CLASSIFY_DAILY_TOKENS",
         "CLASSIFY_MONTHLY_TOKENS",
         "CLASSIFY_MAX_LINES_PER_RUN",
@@ -76,6 +84,7 @@ def test_classifier_settings_default_to_no_key_and_the_documented_budgets(
 
     assert settings.anthropic_api_key is None
     assert settings.typesafe_api_key is None
+    assert settings.openrouter_api_key is None
     assert settings.classify_daily_tokens == 300_000
     assert settings.classify_monthly_tokens == 3_000_000
     assert settings.classify_max_lines_per_run == 300
@@ -86,12 +95,14 @@ def test_classifier_settings_are_read_from_the_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ANTHROPIC_API_KEY", "key-a")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "key-o")
     monkeypatch.setenv("CLASSIFY_MAX_LINES_PER_RUN", "25")
     monkeypatch.setenv("CLASSIFY_MIN_CONFIDENCE", "0.75")
 
     settings = Settings(_env_file=None, session_secret="test-secret")
 
     assert settings.anthropic_api_key == "key-a"
+    assert settings.openrouter_api_key == "key-o"
     assert settings.classify_max_lines_per_run == 25
     assert settings.classify_min_confidence == 0.75
 
@@ -100,6 +111,7 @@ def test_env_example_ships_the_classifier_keys_empty() -> None:
     text = (REPO_ROOT / ".env.example").read_text()
     assert re.search(r"^ANTHROPIC_API_KEY=$", text, flags=re.MULTILINE)
     assert re.search(r"^TYPESAFE_API_KEY=$", text, flags=re.MULTILINE)
+    assert re.search(r"^OPENROUTER_API_KEY=$", text, flags=re.MULTILINE)
 
 
 @pytest.mark.parametrize("value", ["", "   "])
@@ -140,6 +152,7 @@ HOSTILE_ENV = {
     "STATIC_DIR": "/nonexistent-bedrock-static",
     "ANTHROPIC_API_KEY": "hostile-anthropic-key",
     "TYPESAFE_API_KEY": "hostile-typesafe-key",
+    "OPENROUTER_API_KEY": "hostile-openrouter-key",
     "CLASSIFY_DAILY_TOKENS": "1",
     "CLASSIFY_MONTHLY_TOKENS": "2",
     "CLASSIFY_MAX_LINES_PER_RUN": "3",
