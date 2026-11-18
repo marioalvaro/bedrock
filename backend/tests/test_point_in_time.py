@@ -319,3 +319,64 @@ def test_the_structure_rules_read_only_the_filings_known_on_the_date(
     assert face is not None
     assert set(face.lines["accession_no"]) == {"0001193125-10-238044", "0000320193-24-000123"}
     assert all(filed <= date(2024, 11, 1) for filed in face.facts["filed_at"])
+
+
+# --- latest_report (M7c S3, docs/erd/accountability.md "Earnings review": the report) --------
+
+
+def _filing(who: Company, accession: str, form: str, filed_at: date) -> Filing:
+    return Filing(
+        company_id=who.id,
+        accession_no=accession,
+        form=form,
+        filed_at=filed_at,
+        fiscal_year=2030,
+        fiscal_period="Q1",
+        period_end=date(2029, 12, 31),
+    )
+
+
+def test_latest_report_is_the_newest_10k_or_10q(
+    db_session: Session, seed_db: Callable[..., None]
+) -> None:
+    seed_db("AAPL")
+    who = company(db_session, "AAPL")
+    report = facts_repo.latest_report(db_session, who.id)
+    assert report is not None
+    assert (report.form, report.filed_at) == ("10-Q", date(2026, 7, 31))
+
+
+def test_latest_report_leaves_out_amendments_and_other_forms(
+    db_session: Session, seed_db: Callable[..., None]
+) -> None:
+    seed_db("AAPL")
+    who = company(db_session, "AAPL")
+    db_session.add_all(
+        [
+            _filing(who, "AMEND", "10-Q/A", date(2030, 1, 2)),
+            _filing(who, "EIGHTK", "8-K", date(2030, 1, 3)),
+        ]
+    )
+    db_session.commit()
+    report = facts_repo.latest_report(db_session, who.id)
+    assert report is not None and report.filed_at == date(2026, 7, 31)
+
+
+def test_latest_report_breaks_a_same_day_tie_by_id(
+    db_session: Session, seed_db: Callable[..., None]
+) -> None:
+    seed_db("AAPL")
+    who = company(db_session, "AAPL")
+    db_session.add(_filing(who, "FIRST", "10-K", date(2030, 1, 2)))
+    db_session.flush()
+    db_session.add(_filing(who, "SECOND", "10-Q", date(2030, 1, 2)))
+    db_session.commit()
+    report = facts_repo.latest_report(db_session, who.id)
+    assert report is not None and report.accession_no == "SECOND"
+
+
+def test_latest_report_of_a_company_without_filings_is_none(db_session: Session) -> None:
+    from .seed import fake_sources, follow
+
+    who = follow(db_session, fake_sources().edgar, "AAPL")
+    assert facts_repo.latest_report(db_session, who.id) is None

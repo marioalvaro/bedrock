@@ -5,6 +5,7 @@ from bedrock.api.v1 import (
     accountability,
     adjustments,
     auth,
+    checkpoints,
     classification,
     companies,
     comps,
@@ -47,6 +48,7 @@ protected.include_router(segments.router)
 protected.include_router(comps.router)
 protected.include_router(guidance.router)
 protected.include_router(notes.router)
+protected.include_router(checkpoints.router)
 protected.include_router(imports.router)
 protected.include_router(forecasts.router)
 protected.include_router(scenarios.router)

@@ -51,12 +51,21 @@ _TABLES: dict[RatioFreq, list[tuple[str, Freq]]] = {
 }
 
 
-def ratio_inputs(session: Session, company: Company, freq: RatioFreq, basis: Basis) -> RatioInputs:
+def ratio_inputs(
+    session: Session,
+    company: Company,
+    freq: RatioFreq,
+    basis: Basis,
+    as_of: date | None = None,
+) -> RatioInputs:
     """The `RatioInputs` of `freq` on `basis` from one load of the company's facts (annual: annual
     IS, CF, BS; ttm: TTM IS and CF, quarterly BS and IS), untrimmed. Also read by the analysis
-    engines (QoE flags, capital allocation). `prices` holds the company's stored closes."""
+    engines (QoE flags, capital allocation, thesis checkpoints). `prices` holds the company's
+    stored closes. With `as_of`, the tables are those known on that date
+    (`statement_tables(..., as_of=)`); the closes are not cut (each period reads the close at its
+    own end)."""
     wanted = _TABLES["annual" if freq == "annual" else "ttm"]  # any other freq reads as TTM
-    tables = statement_tables(session, company, wanted, basis)
+    tables = statement_tables(session, company, wanted, basis, as_of=as_of)
     return replace(_inputs(tables, freq), prices=price_repo.closes(session, company.id))
 
 

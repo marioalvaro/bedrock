@@ -774,6 +774,144 @@ export type CheckOut = {
 };
 
 /**
+ * CheckpointIn
+ */
+export type CheckpointIn = {
+    /**
+     * Freq
+     */
+    freq?: 'annual' | 'ttm';
+    /**
+     * Label
+     */
+    label?: string | null;
+    /**
+     * Margin
+     */
+    margin?: string | number | string | null;
+    /**
+     * Statement
+     */
+    statement: string;
+};
+
+/**
+ * CheckpointListOut
+ *
+ * The newest 10-K or 10-Q (null for a manual company or none stored) and the checkpoints.
+ */
+export type CheckpointListOut = {
+    /**
+     * Checkpoints
+     */
+    checkpoints: Array<CheckpointOut>;
+    report: CheckpointReportOut | null;
+};
+
+/**
+ * CheckpointOut
+ *
+ * A checkpoint with its state on the latest data. `left`, `right` and `gap` (the room left)
+ * are at `period`, the last period where both sides have a value; `previous_state` is the
+ * state as of the day before the newest report (null with no report or with `error`).
+ */
+export type CheckpointOut = {
+    /**
+     * At Risk By
+     */
+    at_risk_by: 'margin' | 'pace' | null;
+    /**
+     * Changed
+     */
+    changed: boolean;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Error
+     */
+    error: string | null;
+    /**
+     * Freq
+     */
+    freq: 'annual' | 'ttm';
+    /**
+     * Gap
+     */
+    gap: string | null;
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Left
+     */
+    left: string | null;
+    /**
+     * Margin
+     */
+    margin: string | null;
+    period: CheckpointPeriodOut | null;
+    /**
+     * Previous State
+     */
+    previous_state: 'holding' | 'at_risk' | 'broken' | 'unknown' | null;
+    /**
+     * Right
+     */
+    right: string | null;
+    /**
+     * State
+     */
+    state: 'holding' | 'at_risk' | 'broken' | 'unknown';
+    /**
+     * Statement
+     */
+    statement: string;
+    /**
+     * Updated At
+     */
+    updated_at: string;
+};
+
+/**
+ * CheckpointPeriodOut
+ */
+export type CheckpointPeriodOut = {
+    /**
+     * Fiscal Period
+     */
+    fiscal_period: string;
+    /**
+     * Fiscal Year
+     */
+    fiscal_year: number;
+    /**
+     * Label
+     */
+    label: string;
+};
+
+/**
+ * CheckpointReportOut
+ */
+export type CheckpointReportOut = {
+    /**
+     * Filed At
+     */
+    filed_at: string;
+    /**
+     * Form
+     */
+    form: string;
+};
+
+/**
  * ClassificationOut
  *
  * One answer of one classifier (or of `user`) for a line. `codes`: empty for none of the
@@ -6091,6 +6229,134 @@ export type GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetResponse
 };
 
 export type GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetResponse = GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetResponses[keyof GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetResponses];
+
+export type ListCheckpointsApiV1CompaniesTickerCheckpointsGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/checkpoints';
+};
+
+export type ListCheckpointsApiV1CompaniesTickerCheckpointsGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListCheckpointsApiV1CompaniesTickerCheckpointsGetError = ListCheckpointsApiV1CompaniesTickerCheckpointsGetErrors[keyof ListCheckpointsApiV1CompaniesTickerCheckpointsGetErrors];
+
+export type ListCheckpointsApiV1CompaniesTickerCheckpointsGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: CheckpointListOut;
+};
+
+export type ListCheckpointsApiV1CompaniesTickerCheckpointsGetResponse = ListCheckpointsApiV1CompaniesTickerCheckpointsGetResponses[keyof ListCheckpointsApiV1CompaniesTickerCheckpointsGetResponses];
+
+export type CreateCheckpointApiV1CompaniesTickerCheckpointsPostData = {
+    body: CheckpointIn;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/checkpoints';
+};
+
+export type CreateCheckpointApiV1CompaniesTickerCheckpointsPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateCheckpointApiV1CompaniesTickerCheckpointsPostError = CreateCheckpointApiV1CompaniesTickerCheckpointsPostErrors[keyof CreateCheckpointApiV1CompaniesTickerCheckpointsPostErrors];
+
+export type CreateCheckpointApiV1CompaniesTickerCheckpointsPostResponses = {
+    /**
+     * Successful Response
+     */
+    201: CheckpointOut;
+};
+
+export type CreateCheckpointApiV1CompaniesTickerCheckpointsPostResponse = CreateCheckpointApiV1CompaniesTickerCheckpointsPostResponses[keyof CreateCheckpointApiV1CompaniesTickerCheckpointsPostResponses];
+
+export type DeleteCheckpointApiV1CompaniesTickerCheckpointsCheckpointIdDeleteData = {
+    body?: never;
+    path: {
+        /**
+         * Checkpoint Id
+         */
+        checkpoint_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/checkpoints/{checkpoint_id}';
+};
+
+export type DeleteCheckpointApiV1CompaniesTickerCheckpointsCheckpointIdDeleteErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeleteCheckpointApiV1CompaniesTickerCheckpointsCheckpointIdDeleteError = DeleteCheckpointApiV1CompaniesTickerCheckpointsCheckpointIdDeleteErrors[keyof DeleteCheckpointApiV1CompaniesTickerCheckpointsCheckpointIdDeleteErrors];
+
+export type DeleteCheckpointApiV1CompaniesTickerCheckpointsCheckpointIdDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeleteCheckpointApiV1CompaniesTickerCheckpointsCheckpointIdDeleteResponse = DeleteCheckpointApiV1CompaniesTickerCheckpointsCheckpointIdDeleteResponses[keyof DeleteCheckpointApiV1CompaniesTickerCheckpointsCheckpointIdDeleteResponses];
+
+export type UpdateCheckpointApiV1CompaniesTickerCheckpointsCheckpointIdPutData = {
+    body: CheckpointIn;
+    path: {
+        /**
+         * Checkpoint Id
+         */
+        checkpoint_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/checkpoints/{checkpoint_id}';
+};
+
+export type UpdateCheckpointApiV1CompaniesTickerCheckpointsCheckpointIdPutErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateCheckpointApiV1CompaniesTickerCheckpointsCheckpointIdPutError = UpdateCheckpointApiV1CompaniesTickerCheckpointsCheckpointIdPutErrors[keyof UpdateCheckpointApiV1CompaniesTickerCheckpointsCheckpointIdPutErrors];
+
+export type UpdateCheckpointApiV1CompaniesTickerCheckpointsCheckpointIdPutResponses = {
+    /**
+     * Successful Response
+     */
+    200: CheckpointOut;
+};
+
+export type UpdateCheckpointApiV1CompaniesTickerCheckpointsCheckpointIdPutResponse = UpdateCheckpointApiV1CompaniesTickerCheckpointsCheckpointIdPutResponses[keyof UpdateCheckpointApiV1CompaniesTickerCheckpointsCheckpointIdPutResponses];
 
 export type SetModeApiV1CompaniesTickerClassificationModePutData = {
     body: ModeIn;

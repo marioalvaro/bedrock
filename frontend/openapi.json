@@ -1387,6 +1387,297 @@
         "title": "CheckOut",
         "type": "object"
       },
+      "CheckpointIn": {
+        "properties": {
+          "freq": {
+            "default": "ttm",
+            "enum": [
+              "annual",
+              "ttm"
+            ],
+            "title": "Freq",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "margin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Margin"
+          },
+          "statement": {
+            "title": "Statement",
+            "type": "string"
+          }
+        },
+        "required": [
+          "statement"
+        ],
+        "title": "CheckpointIn",
+        "type": "object"
+      },
+      "CheckpointListOut": {
+        "description": "The newest 10-K or 10-Q (null for a manual company or none stored) and the checkpoints.",
+        "properties": {
+          "checkpoints": {
+            "items": {
+              "$ref": "#/components/schemas/CheckpointOut"
+            },
+            "title": "Checkpoints",
+            "type": "array"
+          },
+          "report": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CheckpointReportOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "report",
+          "checkpoints"
+        ],
+        "title": "CheckpointListOut",
+        "type": "object"
+      },
+      "CheckpointOut": {
+        "description": "A checkpoint with its state on the latest data. `left`, `right` and `gap` (the room left)\nare at `period`, the last period where both sides have a value; `previous_state` is the\nstate as of the day before the newest report (null with no report or with `error`).",
+        "properties": {
+          "at_risk_by": {
+            "anyOf": [
+              {
+                "enum": [
+                  "margin",
+                  "pace"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At Risk By"
+          },
+          "changed": {
+            "title": "Changed",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "freq": {
+            "enum": [
+              "annual",
+              "ttm"
+            ],
+            "title": "Freq",
+            "type": "string"
+          },
+          "gap": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gap"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "left": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Left"
+          },
+          "margin": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Margin"
+          },
+          "period": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CheckpointPeriodOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "previous_state": {
+            "anyOf": [
+              {
+                "enum": [
+                  "holding",
+                  "at_risk",
+                  "broken",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous State"
+          },
+          "right": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Right"
+          },
+          "state": {
+            "enum": [
+              "holding",
+              "at_risk",
+              "broken",
+              "unknown"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "statement": {
+            "title": "Statement",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "statement",
+          "freq",
+          "margin",
+          "state",
+          "previous_state",
+          "changed",
+          "at_risk_by",
+          "period",
+          "left",
+          "right",
+          "gap",
+          "error",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CheckpointOut",
+        "type": "object"
+      },
+      "CheckpointPeriodOut": {
+        "properties": {
+          "fiscal_period": {
+            "title": "Fiscal Period",
+            "type": "string"
+          },
+          "fiscal_year": {
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fiscal_year",
+          "fiscal_period",
+          "label"
+        ],
+        "title": "CheckpointPeriodOut",
+        "type": "object"
+      },
+      "CheckpointReportOut": {
+        "properties": {
+          "filed_at": {
+            "format": "date",
+            "title": "Filed At",
+            "type": "string"
+          },
+          "form": {
+            "title": "Form",
+            "type": "string"
+          }
+        },
+        "required": [
+          "form",
+          "filed_at"
+        ],
+        "title": "CheckpointReportOut",
+        "type": "object"
+      },
       "ClassificationOut": {
         "description": "One answer of one classifier (or of `user`) for a line. `codes`: empty for none of the\nrows, one code for that row, several for one combined line.",
         "properties": {
@@ -11329,6 +11620,201 @@
         "summary": "Get Capital Allocation",
         "tags": [
           "analysis"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/checkpoints": {
+      "get": {
+        "operationId": "list_checkpoints_api_v1_companies__ticker__checkpoints_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckpointListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Checkpoints",
+        "tags": [
+          "checkpoints"
+        ]
+      },
+      "post": {
+        "operationId": "create_checkpoint_api_v1_companies__ticker__checkpoints_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckpointIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckpointOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Checkpoint",
+        "tags": [
+          "checkpoints"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/checkpoints/{checkpoint_id}": {
+      "delete": {
+        "operationId": "delete_checkpoint_api_v1_companies__ticker__checkpoints__checkpoint_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "checkpoint_id",
+            "required": true,
+            "schema": {
+              "title": "Checkpoint Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Checkpoint",
+        "tags": [
+          "checkpoints"
+        ]
+      },
+      "put": {
+        "operationId": "update_checkpoint_api_v1_companies__ticker__checkpoints__checkpoint_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "checkpoint_id",
+            "required": true,
+            "schema": {
+              "title": "Checkpoint Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckpointIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckpointOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Checkpoint",
+        "tags": [
+          "checkpoints"
         ]
       }
     },

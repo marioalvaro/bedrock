@@ -61,6 +61,16 @@ class InvalidCustomRule(Exception):
     which."""
 
 
+class CheckpointNotFound(Exception):
+    """No thesis checkpoint with this id on the company (another company's id counts as
+    unknown)."""
+
+
+class InvalidCheckpoint(Exception):
+    """A thesis checkpoint breaks a rule; the message says which (a statement error names its
+    position as `InvalidFormula` does, e.g. "Unknown name 'revenu' at 4")."""
+
+
 class OffBalanceItemNotFound(Exception):
     """No off-balance-sheet item with this id on the company (another company's id counts as
     unknown)."""

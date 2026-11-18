@@ -36,6 +36,7 @@ from bedrock.models import (  # noqa: F401  ensure models are registered
     segment_series,
     segment_value,
     statement_import,
+    thesis_checkpoint,
     valuation_input,
 )
 from bedrock.models.base import Base

@@ -40,6 +40,7 @@ from bedrock.models import (
     segment_series,
     segment_value,
     statement_import,
+    thesis_checkpoint,
     valuation_input,
 )
 from bedrock.models.base import Base
@@ -76,6 +77,7 @@ _MODELS = (
     segment_series,
     segment_value,
     statement_import,
+    thesis_checkpoint,
     valuation_input,
 )
 
@@ -2534,3 +2536,93 @@ def test_0024_downgrade_drops_only_what_it_added_and_keeps_the_rows(
 
     _run_alembic(tmp_path, monkeypatch, ("upgrade", "0024"))
     assert "origin" in {c["name"] for c in inspect(engine).get_columns("forecast_snapshot")}
+
+
+# --- 0025: thesis checkpoints (M7c S3, docs/erd/workspace.md "Thesis checkpoints") -------------
+
+
+def _checkpoint(connection: Connection, company_id: int, **cols: object) -> int:
+    row = {
+        "company_id": company_id,
+        "label": "Margins hold",
+        "statement": "gross_margin > 44%",
+        "freq": "ttm",
+        "margin": None,
+        "created_at": _NOW,
+        "updated_at": _NOW,
+    } | cols
+    return _insert(connection, "thesis_checkpoint", **row)
+
+
+def test_0025_creates_the_checkpoint_table_with_its_index(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0025"))
+    inspector = inspect(create_engine(database_url))
+    assert "thesis_checkpoint" in inspector.get_table_names()
+    assert "ix_thesis_checkpoint_company_id" in {
+        i["name"] for i in inspector.get_indexes("thesis_checkpoint")
+    }
+    nullable = {c["name"]: c["nullable"] for c in inspector.get_columns("thesis_checkpoint")}
+    assert nullable == {
+        "id": False,
+        "company_id": False,
+        "label": False,
+        "statement": False,
+        "freq": False,
+        "margin": True,
+        "created_at": False,
+        "updated_at": False,
+    }
+
+
+@pytest.mark.parametrize(
+    "bad", [{"freq": "quarterly"}, {"margin": -0.01}, {"label": None}, {"statement": None}]
+)
+def test_0025_checks_hold_at_the_database_level(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bad: dict[str, object]
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0025"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        company_id = _company(connection, "AAA")
+        _checkpoint(connection, company_id, freq="annual", margin=0)  # the boundaries pass
+    with engine.begin() as connection, pytest.raises(IntegrityError):
+        _checkpoint(connection, company_id, **bad)
+
+
+def test_0025_checkpoints_go_with_their_company(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0025"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+        gone = _company(connection, "AAA")
+        kept = _company(connection, "BBB")
+        _checkpoint(connection, gone)
+        _checkpoint(connection, kept, label="kept")
+        connection.execute(text("DELETE FROM company WHERE id = :id"), {"id": gone})
+        assert connection.execute(text("SELECT label FROM thesis_checkpoint")).all() == [("kept",)]
+
+
+def test_0025_downgrade_drops_only_the_table_and_up_again_recreates_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0025"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        company_id = _company(connection, "AAA")
+        _audit(connection, company_id)
+        _checkpoint(connection, company_id)
+
+    _run_alembic(tmp_path, monkeypatch, ("downgrade", "0024"))
+
+    engine.dispose()
+    assert "thesis_checkpoint" not in inspect(engine).get_table_names()
+    with engine.begin() as connection:
+        assert _count(connection, "company") == 1
+        assert _count(connection, "audit_log") == 1
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "0025"))
+    assert "thesis_checkpoint" in inspect(engine).get_table_names()
