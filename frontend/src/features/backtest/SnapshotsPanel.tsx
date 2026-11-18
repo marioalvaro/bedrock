@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router";
 
 import { snapshotsQueryOptions } from "@/api/accountability";
 
+import { HorizonChart } from "./HorizonChart";
 import { ScoreControls, ScoreTable } from "./ScoreTable";
 import { SnapshotSheet } from "./SnapshotSheet";
 import { askedSelection, formatLocalTime, formatStat, resolveSelection } from "./backtestFormat";
@@ -56,7 +57,10 @@ export function SnapshotsPanel({ ticker }: SnapshotsPanelProps) {
       )}
       <div className="space-y-4 p-4">
         {selection ? (
-          <ScoreTable summary={view.summary} selection={selection} />
+          <>
+            <HorizonChart summary={view.summary} code={selection.code} />
+            <ScoreTable summary={view.summary} selection={selection} />
+          </>
         ) : (
           <p className="text-muted-foreground text-sm">
             Nothing scored yet: no actuals have landed.

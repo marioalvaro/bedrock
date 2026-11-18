@@ -10,6 +10,7 @@ import {
   listScenariosApiV1CompaniesTickerScenariosGet,
 } from "@/api/generated/sdk.gen";
 import type { ForecastOut } from "@/api/generated/types.gen";
+import { Chart } from "@/components/Chart";
 import { createQueryClient } from "@/lib/query-client";
 import { setScale } from "@/lib/scale";
 import { errorResult, okResult } from "@/test/responses";
@@ -21,6 +22,8 @@ vi.mock("@/api/generated/sdk.gen", () => ({
   listScenariosApiV1CompaniesTickerScenariosGet: vi.fn(),
   getForecastApiV1CompaniesTickerScenariosScenarioIdCasesCaseForecastGet: vi.fn(),
 }));
+
+vi.mock("@/components/Chart", () => ({ Chart: vi.fn(() => null) }));
 
 const list = vi.mocked(listScenariosApiV1CompaniesTickerScenariosGet);
 const getForecast = vi.mocked(
@@ -372,5 +375,26 @@ describe("ForecastView years built from quarters", () => {
     await waitFor(() => expect(document.querySelector(".ag-header-cell")).not.toBeNull());
     expect(header("Q1FY2026")).toHaveClass("cell-forecast");
     expect(screen.queryByLabelText("Built from quarters")).not.toBeInTheDocument();
+  });
+});
+
+describe("ForecastView chart", () => {
+  it("draws the forecast against history above the grid", async () => {
+    renderView();
+
+    const region = await screen.findByRole("region", { name: "Forecast against history" });
+    expect(vi.mocked(Chart).mock.lastCall![0].ariaLabel).toBe("Revenue: actuals and forecast");
+    const grid = document.querySelector(".ag-root-wrapper")!;
+    expect(region.compareDocumentPosition(grid) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("draws no chart when the forecast has no lines", async () => {
+    getForecast.mockResolvedValue(okResult(forecastIncome({ rows: [] })) as never);
+    renderView();
+
+    await screen.findByText("No forecast lines to show.");
+    expect(
+      screen.queryByRole("region", { name: "Forecast against history" }),
+    ).not.toBeInTheDocument();
   });
 });

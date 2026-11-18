@@ -39,6 +39,7 @@ import {
 import { scaleLabel } from "@/lib/format";
 import { useScale, type Scale } from "@/lib/scale";
 
+import { ForecastHistoryChart } from "./ForecastHistoryChart";
 import { IntegrityPanel } from "./IntegrityPanel";
 
 const STATEMENTS: { value: StatementType; label: string }[] = [
@@ -175,7 +176,10 @@ function ForecastBody({ ticker, scenarioId, scenarioCase, type, freq }: Forecast
       {rows.length === 0 ? (
         <p className="text-muted-foreground p-4 text-sm">No forecast lines to show.</p>
       ) : (
-        <DataGrid<GridRow> rowData={rows} columnDefs={columns} getRowId={(row) => row.id} />
+        <>
+          <ForecastHistoryChart data={data} />
+          <DataGrid<GridRow> rowData={rows} columnDefs={columns} getRowId={(row) => row.id} />
+        </>
       )}
       <IntegrityPanel
         integrity={data.integrity}

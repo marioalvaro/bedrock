@@ -73,6 +73,14 @@ describe("protected routes", () => {
     expect(screen.getByRole("button", { name: "Log out" })).toBeInTheDocument();
   });
 
+  it("opens the comparison view from the header's Compare link", async () => {
+    renderAt("/");
+
+    await userEvent.click(await screen.findByRole("link", { name: "Compare" }));
+
+    expect(await screen.findByRole("heading", { name: "Compare" })).toBeInTheDocument();
+  });
+
   it("renders the company page for a ticker", async () => {
     renderAt("/c/AAPL");
 

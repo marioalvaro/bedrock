@@ -5,8 +5,9 @@ import type {
   ColDef,
   ProcessCellForExportParams,
 } from "ag-grid-community";
-import { Download } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { ChartLine, Download } from "lucide-react";
+import { createContext, useContext, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router";
 
 import { ratiosQueryOptions, type AnalysisFreq } from "@/api/analysis";
 import type { PeriodOut, RatiosOut } from "@/api/generated/types.gen";
@@ -26,6 +27,7 @@ import {
 import { useNoteIndex } from "@/features/notes/useNoteIndex";
 import { MultiplesTable } from "@/features/ratios/MultiplesTable";
 import { RatioCellSheet, type RatioCellTarget } from "@/features/ratios/RatioCellSheet";
+import { RatioTrendChart } from "@/features/ratios/RatioTrendChart";
 import { formatCsvRatio, formatRatio, type RatioUnit } from "@/lib/format";
 
 const FREQS: { value: AnalysisFreq; label: string }[] = [
@@ -39,6 +41,41 @@ const BASES: { value: Basis; label: string }[] = [
 ];
 
 const LABEL_COLUMN = "label";
+const CHART_PARAM = "chart";
+const MAX_CHARTED = 5;
+
+/** The `?chart=` codes the table has: distinct, the first five. An unknown code (a stale link)
+ * takes none of the five picks. */
+function chartedCodes(params: URLSearchParams, known: ReadonlySet<string>): string[] {
+  const asked = (params.get(CHART_PARAM) ?? "").split(",").filter((code) => known.has(code));
+  return [...new Set(asked)].slice(0, MAX_CHARTED);
+}
+
+interface ChartPicks {
+  codes: string[];
+  toggle: (code: string) => void;
+}
+
+// Read by the label cells, so a toggle does not rebuild the grid's columns (G32).
+const ChartPicksContext = createContext<ChartPicks>({ codes: [], toggle: () => {} });
+
+function ChartToggle({ code, label }: { code: string; label: string }) {
+  const { codes, toggle } = useContext(ChartPicksContext);
+  const pressed = codes.includes(code);
+  return (
+    <button
+      type="button"
+      aria-label={`Chart ${label}`}
+      aria-pressed={pressed}
+      disabled={!pressed && codes.length >= MAX_CHARTED}
+      title={pressed ? "Remove from the chart" : "Add to the chart (five at most)"}
+      className={`shrink-0 rounded p-0.5 disabled:opacity-30 ${pressed ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+      onClick={() => toggle(code)}
+    >
+      <ChartLine className="size-3.5" />
+    </button>
+  );
+}
 
 interface GridRow {
   id: string;
@@ -117,6 +154,7 @@ function columnDefs(
           {!data.heading && subjectNotes(markers, "ratio", data.id) > 0 && (
             <NoteMarker label={data.label} onClick={() => onRatioNotes(data)} />
           )}
+          {!data.heading && <ChartToggle code={data.id} label={data.label} />}
         </span>
       );
     },
@@ -166,6 +204,30 @@ export function RatiosView({ ticker }: RatiosViewProps) {
   const [cellTarget, setCellTarget] = useState<RatioCellTarget | null>(null);
 
   const { data, isPending, isError } = useQuery(ratiosQueryOptions(ticker, freq, basis));
+  const [params, setParams] = useSearchParams();
+  const chartParam = params.get(CHART_PARAM);
+  // The row codes as one string, so a refetch of the same table keeps the picks (G32).
+  const rowCodes = data ? data.rows.map((row) => row.code).join(",") : "";
+  const picks = useMemo<ChartPicks>(() => {
+    const known = new Set(rowCodes.split(","));
+    const codes = chartedCodes(
+      new URLSearchParams(chartParam ? { [CHART_PARAM]: chartParam } : {}),
+      known,
+    );
+    const toggle = (code: string) =>
+      setParams(
+        (current) => {
+          const now = chartedCodes(current, known);
+          const next = now.includes(code) ? now.filter((c) => c !== code) : [...now, code];
+          const updated = new URLSearchParams(current);
+          if (next.length === 0) updated.delete(CHART_PARAM);
+          else updated.set(CHART_PARAM, next.slice(0, MAX_CHARTED).join(","));
+          return updated;
+        },
+        { replace: true },
+      );
+    return { codes, toggle };
+  }, [chartParam, rowCodes, setParams]);
 
   const rows = useMemo(() => (data ? toGridRows(data) : []), [data]);
   const columns = useMemo(
@@ -257,7 +319,8 @@ export function RatiosView({ ticker }: RatiosViewProps) {
       {isError && <p className="text-destructive p-4 text-sm">Could not load the ratios.</p>}
       {empty && <p className="text-muted-foreground p-4 text-sm">No ratios for this company.</p>}
       {data && !empty && (
-        <>
+        <ChartPicksContext value={picks}>
+          <RatioTrendChart payload={data} codes={picks.codes} />
           <DataGrid<GridRow>
             ref={grid}
             rowData={rows}
@@ -275,7 +338,7 @@ export function RatiosView({ ticker }: RatiosViewProps) {
               ))}
             </div>
           )}
-        </>
+        </ChartPicksContext>
       )}
       <SubjectNotesSheet ticker={ticker} target={target} onClose={() => setTarget(null)} />
       <RatioCellSheet

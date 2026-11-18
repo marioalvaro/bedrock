@@ -17,6 +17,9 @@ export function Header() {
         <NavLink to="/" end className={navLinkClassName}>
           Companies
         </NavLink>
+        <NavLink to="/compare" className={navLinkClassName}>
+          Compare
+        </NavLink>
         <NavLink to="/settings" className={navLinkClassName}>
           Settings
         </NavLink>

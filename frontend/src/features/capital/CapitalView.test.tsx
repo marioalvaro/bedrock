@@ -9,6 +9,7 @@ import {
   listLinksApiV1CompaniesTickerNotesLinksGet,
   listNotesApiV1CompaniesTickerNotesGet,
 } from "@/api/generated/sdk.gen";
+import { Chart } from "@/components/Chart";
 import { createQueryClient } from "@/lib/query-client";
 import { setScale } from "@/lib/scale";
 import { capitalAllocation } from "@/test/analysis";
@@ -23,6 +24,8 @@ vi.mock("@/api/generated/sdk.gen", () => ({
   listNotesApiV1CompaniesTickerNotesGet: vi.fn(),
   createNoteApiV1CompaniesTickerNotesPost: vi.fn(),
 }));
+
+vi.mock("@/components/Chart", () => ({ Chart: vi.fn(() => null) }));
 
 const mockedGet = vi.mocked(getCapitalAllocationApiV1CompaniesTickerCapitalAllocationGet);
 const links = vi.mocked(listLinksApiV1CompaniesTickerNotesLinksGet);
@@ -522,5 +525,17 @@ describe("CapitalView notes", () => {
     renderView();
     expect(await screen.findByText("Cash from operations")).toBeVisible();
     expect(document.querySelector(".has-note")).toBeNull();
+  });
+});
+
+describe("CapitalView chart", () => {
+  it("draws the capital-allocation bars above the grid", async () => {
+    renderView();
+
+    await screen.findByText("Cash from operations");
+    expect(vi.mocked(Chart).mock.lastCall![0].ariaLabel).toBe("Capital allocation by period");
+    const bars = screen.getByRole("region", { name: "Capital allocation chart" });
+    const grid = document.querySelector(".ag-root-wrapper")!;
+    expect(bars.compareDocumentPosition(grid) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
