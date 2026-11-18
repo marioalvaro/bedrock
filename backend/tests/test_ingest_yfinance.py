@@ -98,6 +98,34 @@ def test_an_empty_frame_is_no_rows(monkeypatch: pytest.MonkeyPatch) -> None:
     assert YFinanceSource().fetch(AAPL, date(2026, 10, 7)).rows == []
 
 
+def test_a_day_without_a_close_is_dropped(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Yahoo can list the current day with its volume before its close is known (NaN)."""
+    nan = float("nan")
+
+    class Partial:
+        splits = pd.Series([], dtype=float)
+
+        def __init__(self, symbol: str) -> None: ...
+
+        def history(self, **kwargs: Any) -> pd.DataFrame:
+            index = pd.to_datetime(["2026-11-16", "2026-11-17", "2026-11-18"])
+            return pd.DataFrame(
+                {
+                    "Close": [270.5, nan, 271.0],
+                    "Adj Close": [270.5, nan, nan],
+                    "Volume": [40_000_000, 36_248_936, 1_000],
+                },
+                index=index,
+            )
+
+    monkeypatch.setattr("yfinance.Ticker", Partial)
+
+    rows = YFinanceSource().fetch(AAPL, date(2026, 11, 15)).rows
+
+    assert [r.date for r in rows] == [date(2026, 11, 16)]
+    assert rows[0].close == Decimal("270.5")
+
+
 def test_splits_are_parsed_oldest_first() -> None:
     payload = YFinanceSource().fetch(AAPL, date(2026, 10, 7))
 
