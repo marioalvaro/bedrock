@@ -185,6 +185,7 @@ def test_another_companys_set_is_a_404(followed: TestClient) -> None:
 
 def test_unfollowing_a_peer_removes_it_from_every_set(followed: TestClient) -> None:
     create(followed, "Peers", ["MSFT", "DE"])
+    assert followed.post(f"{API}/companies/DE/archive").status_code == 204
     assert followed.delete(f"{API}/companies/DE").status_code == 204
     assert [m["ticker"] for m in followed.get(SETS).json()[0]["members"]] == ["MSFT"]
 
@@ -194,6 +195,7 @@ def test_unfollowing_the_company_removes_its_sets(
 ) -> None:
     create(followed)
     assert _count(db_session, CompsSet) == 1 and _count(db_session, CompsMember) == 3
+    assert followed.post(f"{AAPL}/archive").status_code == 204
     assert followed.delete(AAPL).status_code == 204
     assert _count(db_session, CompsSet) == 0 and _count(db_session, CompsMember) == 0
 

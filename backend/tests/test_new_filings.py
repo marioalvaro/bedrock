@@ -385,3 +385,17 @@ def test_a_failed_refresh_clears_nothing(seed_db: Any, db_session: Session) -> N
         refresh_company(db_session, sources, "AAPL", NOW)
 
     assert len(_rows(db_session, company)) == 2
+
+
+def test_check_all_skips_an_archived_company(db_session: Session) -> None:
+    archived = _company(db_session, "AAA")
+    archived.archived_at = NAIVE_NOW - timedelta(days=3)
+    _company(db_session, "BBB", cik="0000000002")
+    db_session.commit()
+    source = FakeSubmissions({"AAA": [FY], "BBB": [FilingRef("bfy", "10-K", FY.filed_at, None)]})
+
+    assert check_all(db_session, source, NOW) == []
+
+    assert source.calls == ["BBB"]
+    assert pending(db_session, [archived.id])[archived.id] == []
+    assert archived.filings_checked_at is None

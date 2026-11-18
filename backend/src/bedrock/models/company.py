@@ -30,3 +30,6 @@ class Company(Base):
     # M7c (docs/erd/data.md "New-filing detection"): when EDGAR's filing index was last read
     # with success, naive UTC; NULL = never
     filings_checked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # M7c S6 (docs/erd/workspace.md "Archive and permanent deletion"): when the company was
+    # archived, naive UTC; NULL = followed
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

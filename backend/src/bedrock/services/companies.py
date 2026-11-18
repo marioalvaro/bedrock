@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
@@ -9,20 +9,32 @@ from bedrock.models.company import Company
 from bedrock.models.pending_filing import PendingFiling
 from bedrock.repositories import companies as companies_repo
 from bedrock.repositories import filing_lines as lines_repo
+from bedrock.repositories.companies import DeletionCounts
 from bedrock.services import new_filings as new_filings_service
-from bedrock.services.errors import CompanyExists, CompanyNotFound
+from bedrock.services.errors import (
+    CompanyArchived,
+    CompanyExists,
+    CompanyNotArchived,
+    CompanyNotFound,
+)
 from bedrock.services.refresh import refresh_company
 from bedrock.services.statements import company_key_stats
 
 __all__ = [
+    "CompanyArchived",
     "CompanyExists",
+    "CompanyNotArchived",
     "CompanyNotFound",
     "CompanyView",
+    "DeletionCounts",
     "add_company",
     "add_manual_company",
+    "archive_company",
+    "deletion_impact",
     "get_company",
     "list_companies",
     "remove_company",
+    "restore_company",
 ]
 
 
@@ -36,8 +48,9 @@ class CompanyView:
     new_filings: list[PendingFiling] = field(default_factory=list)
 
 
-def list_companies(session: Session) -> list[CompanyView]:
-    companies = companies_repo.list_all(session)
+def list_companies(session: Session, archived: bool = False) -> list[CompanyView]:
+    """The followed companies, or with `archived` the archived ones only, by ticker."""
+    companies = companies_repo.list_followed(session, archived)
     ids = [c.id for c in companies]
     progress = lines_repo.xbrl_progress(session, ids)
     pending = new_filings_service.pending(session, ids)
@@ -54,12 +67,17 @@ def add_company(session: Session, sources: Sources, ticker: str, now: datetime) 
     """Follow a company: resolve it, insert it and load its data. All or nothing: if the first
     load fails nothing is kept, so there is never a followed company with no data."""
     symbol = ticker.strip().upper()
-    if companies_repo.get_by_ticker(session, symbol) is not None:
-        raise CompanyExists(symbol)
+    _check_new(session, symbol)
     profile = sources.edgar.resolve(symbol)
-    # Two tickers can share a CIK (share classes): one followed company per filer.
-    if companies_repo.get_by_cik(session, profile.cik) is not None:
-        raise CompanyExists(symbol)
+    # Two tickers can share a CIK (share classes): one followed company per filer. An archived
+    # filer is named by its stored ticker, the one to restore.
+    filer = companies_repo.get_by_cik(session, profile.cik)
+    if filer is not None:
+        raise (
+            CompanyArchived(filer.ticker)
+            if filer.archived_at is not None
+            else CompanyExists(symbol)
+        )
     company = Company(
         ticker=profile.ticker,
         cik=profile.cik,
@@ -81,8 +99,7 @@ def add_manual_company(
     """Follow a company SEC does not cover: no CIK, no EDGAR data, filled by statement import. The
     tickers of both sources share one namespace."""
     symbol = ticker.strip().upper()
-    if companies_repo.get_by_ticker(session, symbol) is not None:
-        raise CompanyExists(symbol)
+    _check_new(session, symbol)
     company = Company(
         ticker=symbol,
         cik=None,
@@ -98,10 +115,44 @@ def add_manual_company(
     return _view(session, company)
 
 
+def archive_company(session: Session, ticker: str, now: datetime) -> None:
+    """Archive a company: it leaves the followed list and the scheduler, its data is kept. An
+    archived company keeps the time it was first archived."""
+    company = _followed(session, ticker)
+    if company.archived_at is None:
+        company.archived_at = now.astimezone(UTC).replace(tzinfo=None)  # naive UTC, as stored
+        session.commit()
+
+
+def restore_company(session: Session, ticker: str) -> None:
+    """Follow an archived company again; nothing is re-ingested. A no-op on a followed one."""
+    company = _followed(session, ticker)
+    if company.archived_at is not None:
+        company.archived_at = None
+        session.commit()
+
+
+def deletion_impact(session: Session, ticker: str) -> tuple[Company, DeletionCounts]:
+    """What deleting the company permanently removes, as row counts per kind."""
+    company = _followed(session, ticker)
+    return company, companies_repo.deletion_counts(session, company.id)
+
+
 def remove_company(session: Session, ticker: str) -> None:
-    """Unfollow a company; the database cascades to its filings, facts, prices and overrides."""
-    session.delete(_followed(session, ticker))
+    """Delete an archived company permanently; the database cascades to its filings, facts,
+    prices, overrides and everything else it owns. Raises CompanyNotArchived for a followed one:
+    deletion is the second of two deliberate steps."""
+    company = _followed(session, ticker)
+    if company.archived_at is None:
+        raise CompanyNotArchived(company.ticker)
+    session.delete(company)
     session.commit()
+
+
+def _check_new(session: Session, symbol: str) -> None:
+    stored = companies_repo.get_by_ticker(session, symbol)
+    if stored is not None:
+        raise CompanyArchived(symbol) if stored.archived_at is not None else CompanyExists(symbol)
 
 
 def _followed(session: Session, ticker: str) -> Company:

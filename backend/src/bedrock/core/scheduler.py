@@ -14,12 +14,11 @@ from pathlib import Path
 from typing import IO
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from bedrock.ingest.protocol import SourceUnavailable
 from bedrock.ingest.sources import Sources
-from bedrock.models.company import Company
+from bedrock.repositories import companies as companies_repo
 from bedrock.services import consensus as consensus_service
 from bedrock.services import market as market_service
 from bedrock.services import new_filings as new_filings_service
@@ -95,9 +94,9 @@ class ScheduledRun:
 def run_scheduled_refresh(
     session_factory: Callable[[], Session], sources: Sources, now: datetime
 ) -> ScheduledRun:
-    """One run: every company's prices, then the filing index of each company not checked for a
-    day, then, when a day has passed, the market series and every company's analyst consensus (a
-    failing company is a warning; its stored rows are kept)."""
+    """One run, archived companies left out: every company's prices, then the filing index of
+    each company not checked for a day, then, when a day has passed, the market series and every
+    company's analyst consensus (a failing company is a warning; its stored rows are kept)."""
     with session_factory() as session:
         prices = refresh_all_prices(session, sources, now)
         run = ScheduledRun(new_prices=prices.new_prices, warnings=list(prices.warnings))
@@ -116,7 +115,7 @@ def run_scheduled_refresh(
 def _refresh_all_consensus(session: Session, sources: Sources, now: datetime) -> list[str]:
     assert sources.consensus is not None
     warnings: list[str] = []
-    for company in session.execute(select(Company).order_by(Company.ticker)).scalars().all():
+    for company in companies_repo.list_followed(session):
         try:
             consensus_service.refresh_consensus(session, sources.consensus, company, now)
         except SourceUnavailable as error:

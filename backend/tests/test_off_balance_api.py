@@ -271,6 +271,7 @@ def test_unfollowing_a_company_deletes_its_items(
 ) -> None:
     assert aapl_client.post(ITEMS, json=LEASE).status_code == 201
 
+    assert aapl_client.post(f"{COMPANY}/archive").status_code == 204
     assert aapl_client.delete(COMPANY).status_code == 204
 
     assert db_session.scalars(select(OffBalanceItem)).all() == []

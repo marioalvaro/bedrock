@@ -114,7 +114,7 @@ def _tickers_or_all(tickers: list[str] | None, all_companies: bool) -> list[str]
     if all_companies:
         engine = make_engine(load_settings().resolved_database_url)
         with make_sessionmaker(engine)() as session:
-            tickers = [c.ticker for c in companies_repo.list_all(session)]
+            tickers = [c.ticker for c in companies_repo.list_followed(session)]
         engine.dispose()
     return tickers or []
 

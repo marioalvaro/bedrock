@@ -266,6 +266,7 @@ def test_deleting_the_company_removes_its_series(
 ) -> None:
     assert import_geo(aapl_client).status_code == 200
     assert _count(db_session, SegmentSeries) == 5 and _count(db_session, SegmentValue) == 5
+    assert aapl_client.post(f"{COMPANY}/archive").status_code == 204
     assert aapl_client.delete(COMPANY).status_code == 204
 
     assert _count(db_session, SegmentSeries) == 0 and _count(db_session, SegmentValue) == 0

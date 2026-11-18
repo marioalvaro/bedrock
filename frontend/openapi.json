@@ -2069,6 +2069,19 @@
       "CompanyListItem": {
         "description": "A company with its key stats (erd/workspace.md), each null when it cannot be computed.",
         "properties": {
+          "archived_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the company was archived; null for a followed company",
+            "title": "Archived At"
+          },
           "cik": {
             "anyOf": [
               {
@@ -2257,6 +2270,7 @@
           "source",
           "sic",
           "last_refreshed_at",
+          "archived_at",
           "filings_parsed",
           "filings_total",
           "classification_mode",
@@ -2270,6 +2284,76 @@
           "revenue_growth"
         ],
         "title": "CompanyListItem",
+        "type": "object"
+      },
+      "CompanySummaryOut": {
+        "properties": {
+          "flags": {
+            "description": "Warn and alert rules of the newest annual period, alerts first, then by label",
+            "items": {
+              "$ref": "#/components/schemas/SummaryFlagOut"
+            },
+            "title": "Flags",
+            "type": "array"
+          },
+          "forecast": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SummaryForecastOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/SummaryMetricOut"
+            },
+            "title": "Metrics",
+            "type": "array"
+          },
+          "notes": {
+            "description": "The three newest notes",
+            "items": {
+              "$ref": "#/components/schemas/SummaryNoteOut"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          },
+          "valuation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SummaryValuationOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "warnings": {
+            "description": "Why a block is empty or partial",
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ticker",
+          "metrics",
+          "flags",
+          "valuation",
+          "notes",
+          "forecast",
+          "warnings"
+        ],
+        "title": "CompanySummaryOut",
         "type": "object"
       },
       "CompareCodeOut": {
@@ -3060,6 +3144,70 @@
           "status"
         ],
         "title": "DecisionIn",
+        "type": "object"
+      },
+      "DeletionImpactOut": {
+        "description": "What deleting the company permanently removes: the rows of each kind the cascade takes.",
+        "properties": {
+          "adjustments": {
+            "title": "Adjustments",
+            "type": "integer"
+          },
+          "checkpoints": {
+            "title": "Checkpoints",
+            "type": "integer"
+          },
+          "comps_sets": {
+            "title": "Comps Sets",
+            "type": "integer"
+          },
+          "facts": {
+            "title": "Facts",
+            "type": "integer"
+          },
+          "filings": {
+            "title": "Filings",
+            "type": "integer"
+          },
+          "guidance": {
+            "title": "Guidance",
+            "type": "integer"
+          },
+          "imports": {
+            "title": "Imports",
+            "type": "integer"
+          },
+          "notes": {
+            "title": "Notes",
+            "type": "integer"
+          },
+          "scenarios": {
+            "title": "Scenarios",
+            "type": "integer"
+          },
+          "snapshots": {
+            "title": "Snapshots",
+            "type": "integer"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticker",
+          "filings",
+          "facts",
+          "notes",
+          "scenarios",
+          "snapshots",
+          "guidance",
+          "adjustments",
+          "checkpoints",
+          "comps_sets",
+          "imports"
+        ],
+        "title": "DeletionImpactOut",
         "type": "object"
       },
       "DerivationInputOut": {
@@ -10138,6 +10286,107 @@
         "title": "SummaryCaseOut",
         "type": "object"
       },
+      "SummaryFlagOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "period_label": {
+            "title": "Period Label",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "warn",
+              "alert"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "code",
+          "label",
+          "severity",
+          "value",
+          "period_label"
+        ],
+        "title": "SummaryFlagOut",
+        "type": "object"
+      },
+      "SummaryForecastOut": {
+        "properties": {
+          "last_snapshot_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Snapshot At"
+          },
+          "newest_filing_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Newest Filing Date"
+          },
+          "scenario_id": {
+            "title": "Scenario Id",
+            "type": "integer"
+          },
+          "scenario_name": {
+            "title": "Scenario Name",
+            "type": "string"
+          },
+          "stale": {
+            "description": "The scenario was last edited before the newest 10-K/10-Q",
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scenario_id",
+          "scenario_name",
+          "updated_at",
+          "last_snapshot_at",
+          "newest_filing_date",
+          "stale"
+        ],
+        "title": "SummaryForecastOut",
+        "type": "object"
+      },
       "SummaryMethodOut": {
         "properties": {
           "key": {
@@ -10154,6 +10403,197 @@
           "label"
         ],
         "title": "SummaryMethodOut",
+        "type": "object"
+      },
+      "SummaryMetricOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "latest": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          },
+          "years": {
+            "description": "The last five fiscal years, oldest first",
+            "items": {
+              "$ref": "#/components/schemas/SummaryYearOut"
+            },
+            "title": "Years",
+            "type": "array"
+          },
+          "yoy": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The latest year against the one before: relative for USD and per-share units, the difference for pct and x",
+            "title": "Yoy"
+          }
+        },
+        "required": [
+          "code",
+          "label",
+          "unit",
+          "years",
+          "latest",
+          "yoy"
+        ],
+        "title": "SummaryMetricOut",
+        "type": "object"
+      },
+      "SummaryNoteOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "excerpt": {
+            "title": "Excerpt",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "excerpt",
+          "created_at"
+        ],
+        "title": "SummaryNoteOut",
+        "type": "object"
+      },
+      "SummaryValuationOut": {
+        "properties": {
+          "base": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base"
+          },
+          "high": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "High",
+            "type": "string"
+          },
+          "low": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Low",
+            "type": "string"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price"
+          },
+          "price_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Date"
+          },
+          "scenario_id": {
+            "title": "Scenario Id",
+            "type": "integer"
+          },
+          "scenario_name": {
+            "title": "Scenario Name",
+            "type": "string"
+          },
+          "upside": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upside"
+          }
+        },
+        "required": [
+          "scenario_id",
+          "scenario_name",
+          "price",
+          "price_date",
+          "low",
+          "high",
+          "base",
+          "upside"
+        ],
+        "title": "SummaryValuationOut",
+        "type": "object"
+      },
+      "SummaryYearOut": {
+        "properties": {
+          "fiscal_year": {
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "fiscal_year",
+          "value"
+        ],
+        "title": "SummaryYearOut",
         "type": "object"
       },
       "TermOut": {
@@ -11507,7 +11947,20 @@
     },
     "/api/v1/companies": {
       "get": {
+        "description": "The followed companies, or with `archived=true` the archived ones only.",
         "operationId": "get_companies_api_v1_companies_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Archived",
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -11522,6 +11975,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Get Companies",
@@ -11612,6 +12075,7 @@
     },
     "/api/v1/companies/{ticker}": {
       "delete": {
+        "description": "Delete an archived company and everything it owns; 409 for a company not archived.",
         "operationId": "remove_company_api_v1_companies__ticker__delete",
         "parameters": [
           {
@@ -11881,6 +12345,41 @@
         "summary": "Update Adjustment",
         "tags": [
           "adjustments"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/archive": {
+      "post": {
+        "operationId": "archive_company_api_v1_companies__ticker__archive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Archive Company",
+        "tags": [
+          "companies"
         ]
       }
     },
@@ -13074,6 +13573,48 @@
         "summary": "List Corporate Actions",
         "tags": [
           "corporate-actions"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/deletion-impact": {
+      "get": {
+        "operationId": "deletion_impact_api_v1_companies__ticker__deletion_impact_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletionImpactOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Deletion Impact",
+        "tags": [
+          "companies"
         ]
       }
     },
@@ -14658,6 +15199,41 @@
           }
         },
         "summary": "Refresh",
+        "tags": [
+          "companies"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/restore": {
+      "post": {
+        "operationId": "restore_company_api_v1_companies__ticker__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Restore Company",
         "tags": [
           "companies"
         ]
@@ -16927,6 +17503,49 @@
         "summary": "Get Cell",
         "tags": [
           "statements"
+        ]
+      }
+    },
+    "/api/v1/companies/{ticker}/summary": {
+      "get": {
+        "description": "The Overview summary, computed on read: a block without data is null or empty and says\nwhy in `warnings`.",
+        "operationId": "get_summary_api_v1_companies__ticker__summary_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompanySummaryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Summary",
+        "tags": [
+          "summary"
         ]
       }
     },

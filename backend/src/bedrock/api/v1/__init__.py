@@ -23,6 +23,7 @@ from bedrock.api.v1 import (
     seasonality,
     segments,
     statements,
+    summary,
     valuation,
 )
 
@@ -49,6 +50,7 @@ protected.include_router(comps.router)
 protected.include_router(guidance.router)
 protected.include_router(notes.router)
 protected.include_router(checkpoints.router)
+protected.include_router(summary.router)
 protected.include_router(imports.router)
 protected.include_router(forecasts.router)
 protected.include_router(scenarios.router)

@@ -2626,3 +2626,52 @@ def test_0025_downgrade_drops_only_the_table_and_up_again_recreates_it(
 
     _run_alembic(tmp_path, monkeypatch, ("upgrade", "0025"))
     assert "thesis_checkpoint" in inspect(engine).get_table_names()
+
+
+# --- 0026: company archive (M7c S6, docs/erd/workspace.md "Archive and permanent deletion") ----
+
+
+def test_0026_adds_a_nullable_archived_at_and_keeps_the_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0025"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        _company(connection, "AAA")
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "0026"))
+
+    engine.dispose()
+    columns = {c["name"]: c for c in inspect(engine).get_columns("company")}
+    assert columns["archived_at"]["nullable"] is True
+    with engine.begin() as connection:
+        assert connection.execute(text("SELECT ticker, archived_at FROM company")).all() == [
+            ("AAA", None)
+        ]
+
+
+def test_0026_downgrade_drops_only_the_column_and_keeps_the_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0025"))
+    engine = create_engine(database_url)
+    before = {c["name"] for c in inspect(engine).get_columns("company")}
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "0026"))
+    with engine.begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+        company_id = _company(connection, "AAA")
+        _audit(connection, company_id)  # a row that cascades from `company` (G34)
+        _checkpoint(connection, company_id)
+        connection.execute(text("UPDATE company SET archived_at = :at"), {"at": _NOW})
+
+    _run_alembic(tmp_path, monkeypatch, ("downgrade", "0025"))
+
+    engine.dispose()
+    assert {c["name"] for c in inspect(engine).get_columns("company")} == before
+    with engine.begin() as connection:
+        assert _count(connection, "company") == 1
+        assert _count(connection, "audit_log") == 1
+        assert _count(connection, "thesis_checkpoint") == 1
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "0026"))
+    assert "archived_at" in {c["name"] for c in inspect(engine).get_columns("company")}

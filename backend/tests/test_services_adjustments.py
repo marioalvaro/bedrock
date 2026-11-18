@@ -255,10 +255,11 @@ def test_a_company_without_data_has_no_fiscal_periods(db_session: Session) -> No
 
 
 def test_removing_the_company_removes_its_adjustments(db_session: Session, aapl: Company) -> None:
-    from bedrock.services.companies import remove_company
+    from bedrock.services.companies import archive_company, remove_company
 
     create_adjustment(db_session, aapl, SGA, NOW)
 
+    archive_company(db_session, "AAPL", datetime(2026, 11, 18, tzinfo=UTC))
     remove_company(db_session, "AAPL")
 
     assert db_session.execute(select(Adjustment)).scalars().all() == []

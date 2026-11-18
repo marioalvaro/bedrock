@@ -54,11 +54,11 @@ def check_company(
 
 
 def check_all(session: Session, source: SubmissionsLike, now: datetime) -> list[str]:
-    """Check every due SEC company, in ticker order, one commit each. A failing company is a
-    warning "<TICKER>: filings not checked: …"; its rows and check time are kept, so it is tried
-    again at the next run."""
+    """Check every due SEC company not archived, in ticker order, one commit each. A failing
+    company is a warning "<TICKER>: filings not checked: …"; its rows and check time are kept, so
+    it is tried again at the next run."""
     warnings: list[str] = []
-    for company in companies_repo.list_all(session):
+    for company in companies_repo.list_followed(session):
         if company.source != "sec" or not filings_due(company.filings_checked_at, now):
             continue
         try:

@@ -14,6 +14,14 @@ class CompanyExists(Exception):
     """The company is already followed."""
 
 
+class CompanyArchived(Exception):
+    """The ticker is an archived company: restore it instead of adding it again."""
+
+
+class CompanyNotArchived(Exception):
+    """A followed company is deleted permanently only once archived."""
+
+
 class BackfillRunning(Exception):
     """A filing backfill of this company is already running."""
 
@@ -240,6 +248,8 @@ class InvalidClassification(Exception):
 DOMAIN_ERRORS = (
     CompanyNotFound,
     CompanyExists,
+    CompanyArchived,
+    CompanyNotArchived,
     BackfillRunning,
     FilingNotFound,
     CellNotFound,
@@ -335,6 +345,10 @@ def user_message(error: Exception) -> str:
             return error.detail
         case CompanyExists():
             return f"{error} is already followed"
+        case CompanyArchived():
+            return f"{error} is archived. Restore it from the archived list."
+        case CompanyNotArchived():
+            return f"Archive {error} before deleting it permanently."
         case BackfillRunning():
             return f"A filing backfill of {error} is already running"
         case SourceNotConfigured():

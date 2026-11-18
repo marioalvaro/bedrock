@@ -1144,6 +1144,12 @@ export type CompanyCreate = {
  */
 export type CompanyListItem = {
     /**
+     * Archived At
+     *
+     * When the company was archived; null for a followed company
+     */
+    archived_at: string | null;
+    /**
      * Cik
      *
      * Null for a manual company
@@ -1239,6 +1245,40 @@ export type CompanyListItem = {
      * Ticker
      */
     ticker: string;
+};
+
+/**
+ * CompanySummaryOut
+ */
+export type CompanySummaryOut = {
+    /**
+     * Flags
+     *
+     * Warn and alert rules of the newest annual period, alerts first, then by label
+     */
+    flags: Array<SummaryFlagOut>;
+    forecast: SummaryForecastOut | null;
+    /**
+     * Metrics
+     */
+    metrics: Array<SummaryMetricOut>;
+    /**
+     * Notes
+     *
+     * The three newest notes
+     */
+    notes: Array<SummaryNoteOut>;
+    /**
+     * Ticker
+     */
+    ticker: string;
+    valuation: SummaryValuationOut | null;
+    /**
+     * Warnings
+     *
+     * Why a block is empty or partial
+     */
+    warnings: Array<string>;
 };
 
 /**
@@ -1687,6 +1727,58 @@ export type DecisionIn = {
      * Status
      */
     status: 'proposed' | 'accepted' | 'rejected';
+};
+
+/**
+ * DeletionImpactOut
+ *
+ * What deleting the company permanently removes: the rows of each kind the cascade takes.
+ */
+export type DeletionImpactOut = {
+    /**
+     * Adjustments
+     */
+    adjustments: number;
+    /**
+     * Checkpoints
+     */
+    checkpoints: number;
+    /**
+     * Comps Sets
+     */
+    comps_sets: number;
+    /**
+     * Facts
+     */
+    facts: number;
+    /**
+     * Filings
+     */
+    filings: number;
+    /**
+     * Guidance
+     */
+    guidance: number;
+    /**
+     * Imports
+     */
+    imports: number;
+    /**
+     * Notes
+     */
+    notes: number;
+    /**
+     * Scenarios
+     */
+    scenarios: number;
+    /**
+     * Snapshots
+     */
+    snapshots: number;
+    /**
+     * Ticker
+     */
+    ticker: string;
 };
 
 /**
@@ -5331,6 +5423,64 @@ export type SummaryCaseOut = {
 };
 
 /**
+ * SummaryFlagOut
+ */
+export type SummaryFlagOut = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Period Label
+     */
+    period_label: string;
+    /**
+     * Severity
+     */
+    severity: 'warn' | 'alert';
+    /**
+     * Value
+     */
+    value: string | null;
+};
+
+/**
+ * SummaryForecastOut
+ */
+export type SummaryForecastOut = {
+    /**
+     * Last Snapshot At
+     */
+    last_snapshot_at: string | null;
+    /**
+     * Newest Filing Date
+     */
+    newest_filing_date: string | null;
+    /**
+     * Scenario Id
+     */
+    scenario_id: number;
+    /**
+     * Scenario Name
+     */
+    scenario_name: string;
+    /**
+     * Stale
+     *
+     * The scenario was last edited before the newest 10-K/10-Q
+     */
+    stale: boolean;
+    /**
+     * Updated At
+     */
+    updated_at: string;
+};
+
+/**
  * SummaryMethodOut
  */
 export type SummaryMethodOut = {
@@ -5342,6 +5492,110 @@ export type SummaryMethodOut = {
      * Label
      */
     label: string;
+};
+
+/**
+ * SummaryMetricOut
+ */
+export type SummaryMetricOut = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Latest
+     */
+    latest: string | null;
+    /**
+     * Unit
+     */
+    unit: string;
+    /**
+     * Years
+     *
+     * The last five fiscal years, oldest first
+     */
+    years: Array<SummaryYearOut>;
+    /**
+     * Yoy
+     *
+     * The latest year against the one before: relative for USD and per-share units, the difference for pct and x
+     */
+    yoy: string | null;
+};
+
+/**
+ * SummaryNoteOut
+ */
+export type SummaryNoteOut = {
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Excerpt
+     */
+    excerpt: string;
+    /**
+     * Id
+     */
+    id: number;
+};
+
+/**
+ * SummaryValuationOut
+ */
+export type SummaryValuationOut = {
+    /**
+     * Base
+     */
+    base: string | null;
+    /**
+     * High
+     */
+    high: string;
+    /**
+     * Low
+     */
+    low: string;
+    /**
+     * Price
+     */
+    price: string | null;
+    /**
+     * Price Date
+     */
+    price_date: string | null;
+    /**
+     * Scenario Id
+     */
+    scenario_id: number;
+    /**
+     * Scenario Name
+     */
+    scenario_name: string;
+    /**
+     * Upside
+     */
+    upside: string | null;
+};
+
+/**
+ * SummaryYearOut
+ */
+export type SummaryYearOut = {
+    /**
+     * Fiscal Year
+     */
+    fiscal_year: number;
+    /**
+     * Value
+     */
+    value: string | null;
 };
 
 /**
@@ -6058,9 +6312,23 @@ export type GetStatusApiV1ClassificationStatusGetResponse = GetStatusApiV1Classi
 export type GetCompaniesApiV1CompaniesGetData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        /**
+         * Archived
+         */
+        archived?: boolean;
+    };
     url: '/api/v1/companies';
 };
+
+export type GetCompaniesApiV1CompaniesGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetCompaniesApiV1CompaniesGetError = GetCompaniesApiV1CompaniesGetErrors[keyof GetCompaniesApiV1CompaniesGetErrors];
 
 export type GetCompaniesApiV1CompaniesGetResponses = {
     /**
@@ -6312,6 +6580,36 @@ export type UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutRespon
 };
 
 export type UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutResponse = UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutResponses[keyof UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutResponses];
+
+export type ArchiveCompanyApiV1CompaniesTickerArchivePostData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/archive';
+};
+
+export type ArchiveCompanyApiV1CompaniesTickerArchivePostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ArchiveCompanyApiV1CompaniesTickerArchivePostError = ArchiveCompanyApiV1CompaniesTickerArchivePostErrors[keyof ArchiveCompanyApiV1CompaniesTickerArchivePostErrors];
+
+export type ArchiveCompanyApiV1CompaniesTickerArchivePostResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type ArchiveCompanyApiV1CompaniesTickerArchivePostResponse = ArchiveCompanyApiV1CompaniesTickerArchivePostResponses[keyof ArchiveCompanyApiV1CompaniesTickerArchivePostResponses];
 
 export type GetAsReportedApiV1CompaniesTickerAsReportedGetData = {
     body?: never;
@@ -7041,6 +7339,36 @@ export type ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetResponses
 };
 
 export type ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetResponse = ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetResponses[keyof ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetResponses];
+
+export type DeletionImpactApiV1CompaniesTickerDeletionImpactGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/deletion-impact';
+};
+
+export type DeletionImpactApiV1CompaniesTickerDeletionImpactGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeletionImpactApiV1CompaniesTickerDeletionImpactGetError = DeletionImpactApiV1CompaniesTickerDeletionImpactGetErrors[keyof DeletionImpactApiV1CompaniesTickerDeletionImpactGetErrors];
+
+export type DeletionImpactApiV1CompaniesTickerDeletionImpactGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: DeletionImpactOut;
+};
+
+export type DeletionImpactApiV1CompaniesTickerDeletionImpactGetResponse = DeletionImpactApiV1CompaniesTickerDeletionImpactGetResponses[keyof DeletionImpactApiV1CompaniesTickerDeletionImpactGetResponses];
 
 export type GetEarningsReviewApiV1CompaniesTickerEarningsReviewGetData = {
     body?: never;
@@ -8013,6 +8341,36 @@ export type RefreshApiV1CompaniesTickerRefreshPostResponses = {
 };
 
 export type RefreshApiV1CompaniesTickerRefreshPostResponse = RefreshApiV1CompaniesTickerRefreshPostResponses[keyof RefreshApiV1CompaniesTickerRefreshPostResponses];
+
+export type RestoreCompanyApiV1CompaniesTickerRestorePostData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/restore';
+};
+
+export type RestoreCompanyApiV1CompaniesTickerRestorePostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type RestoreCompanyApiV1CompaniesTickerRestorePostError = RestoreCompanyApiV1CompaniesTickerRestorePostErrors[keyof RestoreCompanyApiV1CompaniesTickerRestorePostErrors];
+
+export type RestoreCompanyApiV1CompaniesTickerRestorePostResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type RestoreCompanyApiV1CompaniesTickerRestorePostResponse = RestoreCompanyApiV1CompaniesTickerRestorePostResponses[keyof RestoreCompanyApiV1CompaniesTickerRestorePostResponses];
 
 export type ListScenariosApiV1CompaniesTickerScenariosGetData = {
     body?: never;
@@ -9341,6 +9699,36 @@ export type GetCellApiV1CompaniesTickerStatementsCellGetResponses = {
 };
 
 export type GetCellApiV1CompaniesTickerStatementsCellGetResponse = GetCellApiV1CompaniesTickerStatementsCellGetResponses[keyof GetCellApiV1CompaniesTickerStatementsCellGetResponses];
+
+export type GetSummaryApiV1CompaniesTickerSummaryGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/summary';
+};
+
+export type GetSummaryApiV1CompaniesTickerSummaryGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetSummaryApiV1CompaniesTickerSummaryGetError = GetSummaryApiV1CompaniesTickerSummaryGetErrors[keyof GetSummaryApiV1CompaniesTickerSummaryGetErrors];
+
+export type GetSummaryApiV1CompaniesTickerSummaryGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: CompanySummaryOut;
+};
+
+export type GetSummaryApiV1CompaniesTickerSummaryGetResponse = GetSummaryApiV1CompaniesTickerSummaryGetResponses[keyof GetSummaryApiV1CompaniesTickerSummaryGetResponses];
 
 export type HealthApiV1HealthGetData = {
     body?: never;

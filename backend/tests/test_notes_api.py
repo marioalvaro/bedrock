@@ -479,6 +479,7 @@ def test_deleting_the_company_removes_its_notes(
     make(aapl_client, "one", **CELL)
     make(aapl_client, "two")
     assert _count(db_session) == 2
+    assert aapl_client.post(f"{COMPANY}/archive").status_code == 204
     assert aapl_client.delete(COMPANY).status_code == 204
     assert _count(db_session) == 0
 

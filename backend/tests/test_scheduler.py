@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi import FastAPI
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from bedrock.core import scheduler
@@ -293,3 +293,33 @@ def test_the_loop_runs_at_startup_when_a_slot_has_passed_and_records_it(
 
     assert _run_loop_once(monkeypatch, tmp_path, now) == [now]
     assert read_last_run(tmp_path) == now
+
+
+# --- archived companies (M7c S6, FR-WS-07) ------------------------------------------------------
+
+
+def test_a_run_leaves_an_archived_company_alone(
+    seed_db: Any, app: FastAPI, db_session: Session
+) -> None:
+    seed_db("AAPL", "MSFT")
+    db_session.execute(
+        text("UPDATE company SET archived_at = '2026-10-01 00:00:00' WHERE ticker = 'AAPL'")
+    )
+    db_session.commit()
+    consensus, index = FakeConsensus(), FakeSubmissions()
+    sources = Sources(
+        edgar=FakeEdgar(),
+        prices=FakePrices(),
+        market=FakeMarket(),
+        consensus=consensus,
+        submissions=index,
+    )
+
+    run = run_scheduled_refresh(
+        app.state.session_factory, sources, datetime(2026, 10, 8, 14, 30, tzinfo=UTC)
+    )
+
+    assert set(run.new_prices) == {"MSFT"}  # no prices for the archived one
+    assert consensus.calls == ["MSFT"]
+    assert index.calls == ["MSFT"]
+    assert run.market_refreshed and run.filings_checked

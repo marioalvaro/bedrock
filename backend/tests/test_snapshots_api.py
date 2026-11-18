@@ -356,6 +356,7 @@ def test_a_split_after_the_snapshot_restates_its_share_lines_only(
 def test_unfollowing_removes_the_snapshots(aapl: TestClient, session: Session) -> None:
     take(aapl, main_id(aapl))
 
+    assert aapl.post(f"{API}/AAPL/archive").status_code == 204
     assert aapl.delete(f"{API}/AAPL").status_code == 204
 
     session.rollback()

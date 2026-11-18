@@ -4,12 +4,12 @@ the price step of a full refresh."""
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from bedrock.ingest.protocol import CompanyRef, PricesLike, SourceUnavailable
 from bedrock.ingest.sources import Sources
 from bedrock.models.company import Company
+from bedrock.repositories import companies as companies_repo
 from bedrock.repositories import corporate_actions as actions_repo
 from bedrock.repositories import prices as prices_repo
 
@@ -41,11 +41,10 @@ def update_prices(
 
 
 def refresh_all_prices(session: Session, sources: Sources, now: datetime) -> PricesRefreshResult:
-    """Every followed company's prices, committed one company at a time; a company whose fetch
-    fails is a warning and the others are kept."""
+    """Every followed company's prices (archived ones left out), committed one company at a
+    time; a company whose fetch fails is a warning and the others are kept."""
     result = PricesRefreshResult()
-    companies = session.execute(select(Company).order_by(Company.ticker)).scalars().all()
-    for company in companies:
+    for company in companies_repo.list_followed(session):
         try:
             update = update_prices(session, sources.prices, company, now)
             session.commit()

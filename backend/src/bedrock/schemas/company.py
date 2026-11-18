@@ -1,10 +1,11 @@
+from dataclasses import asdict
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
-from bedrock.services.companies import CompanyView
+from bedrock.services.companies import CompanyView, DeletionCounts
 
 
 class CompanyCreate(BaseModel):
@@ -38,6 +39,9 @@ class CompanyOut(BaseModel):
     source: Literal["sec", "manual"]
     sic: str | None
     last_refreshed_at: datetime | None
+    archived_at: datetime | None = Field(
+        description="When the company was archived; null for a followed company"
+    )
     filings_parsed: int = Field(
         description="10-K and 10-Q filings (amendments included) whose XBRL is read"
     )
@@ -53,7 +57,7 @@ class CompanyOut(BaseModel):
         "empty for a manual company"
     )
 
-    @field_validator("last_refreshed_at")
+    @field_validator("last_refreshed_at", "archived_at")
     @classmethod
     def _is_utc(cls, value: datetime | None) -> datetime | None:
         # SQLite keeps no time zone, so the stored UTC time comes back naive; without a zone in
@@ -94,3 +98,23 @@ class CompanyListItem(CompanyOut):
             ev_ebitda=stats.ev_ebitda,
             revenue_growth=stats.revenue_growth,
         )
+
+
+class DeletionImpactOut(BaseModel):
+    """What deleting the company permanently removes: the rows of each kind the cascade takes."""
+
+    ticker: str
+    filings: int
+    facts: int
+    notes: int
+    scenarios: int
+    snapshots: int
+    guidance: int
+    adjustments: int
+    checkpoints: int
+    comps_sets: int
+    imports: int
+
+    @classmethod
+    def from_counts(cls, ticker: str, counts: DeletionCounts) -> "DeletionImpactOut":
+        return cls(ticker=ticker, **asdict(counts))

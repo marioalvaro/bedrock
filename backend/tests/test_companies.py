@@ -151,6 +151,7 @@ def test_get_and_delete_a_followed_company(authed_client: TestClient) -> None:
     assert got.status_code == 200 and got.json()["ticker"] == "AAPL"
     assert authed_client.get("/api/v1/companies/aapl").status_code == 200
 
+    assert authed_client.post("/api/v1/companies/AAPL/archive").status_code == 204
     assert authed_client.delete("/api/v1/companies/AAPL").status_code == 204
     assert authed_client.get("/api/v1/companies/AAPL").status_code == 404
     assert authed_client.delete("/api/v1/companies/AAPL").status_code == 404
@@ -162,7 +163,8 @@ def test_deleting_a_company_removes_its_filings_facts_prices_and_overrides(
     _add(authed_client)
     assert _count(db_session, RawFact) > 0
 
-    authed_client.delete("/api/v1/companies/AAPL")
+    authed_client.post("/api/v1/companies/AAPL/archive")
+    assert authed_client.delete("/api/v1/companies/AAPL").status_code == 204
     db_session.expire_all()
 
     for model in (Company, Filing, RawFact, PriceDaily):

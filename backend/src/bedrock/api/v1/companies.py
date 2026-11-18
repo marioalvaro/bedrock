@@ -11,7 +11,12 @@ from bedrock.api.deps import (
     get_sources,
 )
 from bedrock.ingest.sources import Sources
-from bedrock.schemas.company import CompanyCreate, CompanyListItem, ManualCompanyCreate
+from bedrock.schemas.company import (
+    CompanyCreate,
+    CompanyListItem,
+    DeletionImpactOut,
+    ManualCompanyCreate,
+)
 from bedrock.schemas.refresh import BackfillStartedOut, RefreshResultOut
 from bedrock.services import companies as service
 from bedrock.services.filings import BackfillRunner
@@ -21,8 +26,11 @@ router = APIRouter(tags=["companies"])
 
 
 @router.get("/companies")
-def get_companies(session: Session = Depends(get_session)) -> list[CompanyListItem]:
-    return [CompanyListItem.from_view(v) for v in service.list_companies(session)]
+def get_companies(
+    archived: bool = False, session: Session = Depends(get_session)
+) -> list[CompanyListItem]:
+    """The followed companies, or with `archived=true` the archived ones only."""
+    return [CompanyListItem.from_view(v) for v in service.list_companies(session, archived)]
 
 
 @router.post("/companies", status_code=201)
@@ -53,7 +61,26 @@ def get_company(ticker: str, session: Session = Depends(get_session)) -> Company
 
 @router.delete("/companies/{ticker}", status_code=204)
 def remove_company(ticker: str, session: Session = Depends(get_session)) -> None:
+    """Delete an archived company and everything it owns; 409 for a company not archived."""
     service.remove_company(session, ticker)
+
+
+@router.post("/companies/{ticker}/archive", status_code=204)
+def archive_company(
+    ticker: str, session: Session = Depends(get_session), now: datetime = Depends(get_clock)
+) -> None:
+    service.archive_company(session, ticker, now)
+
+
+@router.post("/companies/{ticker}/restore", status_code=204)
+def restore_company(ticker: str, session: Session = Depends(get_session)) -> None:
+    service.restore_company(session, ticker)
+
+
+@router.get("/companies/{ticker}/deletion-impact")
+def deletion_impact(ticker: str, session: Session = Depends(get_session)) -> DeletionImpactOut:
+    company, counts = service.deletion_impact(session, ticker)
+    return DeletionImpactOut.from_counts(company.ticker, counts)
 
 
 @router.post("/companies/{ticker}/refresh")

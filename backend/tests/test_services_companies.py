@@ -27,9 +27,11 @@ from bedrock.models.price_daily import PriceDaily
 from bedrock.models.raw_fact import RawFact
 from bedrock.repositories import facts as facts_repo
 from bedrock.services.companies import (
+    CompanyArchived,
     CompanyExists,
     CompanyNotFound,
     add_company,
+    archive_company,
     get_company,
     list_companies,
     remove_company,
@@ -196,6 +198,7 @@ def test_removing_a_company_removes_all_its_data_and_overrides(db_session: Sessi
         select(func.count()).select_from(RawFact).join(Company).where(Company.ticker == "MSFT")
     ).scalar_one()
 
+    archive_company(db_session, "AAPL", NOW)
     remove_company(db_session, "aapl")
 
     assert [c for c in db_session.execute(select(Company.ticker)).scalars()] == ["MSFT"]
@@ -286,3 +289,26 @@ def test_one_company_s_view_carries_its_new_filings(db_session: Session) -> None
     db_session.commit()
 
     assert [f.accession_no for f in get_company(db_session, "aaa").new_filings] == ["a-1"]
+
+
+def test_a_share_class_of_an_archived_filer_points_to_the_archived_company(
+    db_session: Session,
+) -> None:
+    # Another ticker of the same filer is archived: restoring it is the way back (FR-WS-07).
+    db_session.add(
+        Company(
+            ticker="AAPL.B",
+            cik="0000320193",
+            name="Apple Inc.",
+            fiscal_year_end_month=9,
+            currency="USD",
+            archived_at=datetime(2026, 10, 1),
+        )
+    )
+    db_session.commit()
+
+    with pytest.raises(CompanyArchived) as raised:
+        add_company(db_session, fake_sources(), "AAPL", NOW)
+
+    assert str(raised.value) == "AAPL.B"
+    assert [c.ticker for c in db_session.execute(select(Company)).scalars()] == ["AAPL.B"]

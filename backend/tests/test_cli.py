@@ -156,6 +156,21 @@ def test_refresh_all_covers_every_followed_company(cli_db: Path) -> None:
     assert "AAPL" in result.output and "MSFT" in result.output
 
 
+def test_refresh_all_skips_an_archived_company(cli_db: Path) -> None:
+    runner.invoke(app, ["add", "AAPL", "MSFT"])
+    engine = make_engine(f"sqlite:///{cli_db}")
+    with Session(engine) as session:
+        aapl = session.execute(select(Company).where(Company.ticker == "AAPL")).scalar_one()
+        aapl.archived_at = aapl.last_refreshed_at
+        session.commit()
+    engine.dispose()
+
+    result = runner.invoke(app, ["refresh", "--all"])
+
+    assert result.exit_code == 0, result.output
+    assert "MSFT" in result.output and "AAPL" not in result.output
+
+
 def test_refresh_needs_tickers_or_all(cli_db: Path) -> None:
     result = runner.invoke(app, ["refresh"])
 

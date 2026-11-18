@@ -387,6 +387,7 @@ def test_deleting_the_company_removes_its_guidance(
     post(aapl_client)
     post(aapl_client, fiscal_year=2025)
     assert _count(db_session) == 2
+    assert aapl_client.post(f"{COMPANY}/archive").status_code == 204
     assert aapl_client.delete(COMPANY).status_code == 204
     assert _count(db_session) == 0
 
