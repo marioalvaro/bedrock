@@ -2113,6 +2113,50 @@ export type DriversIn = {
 };
 
 /**
+ * EarningsReviewOut
+ *
+ * The review of the newest 10-K or 10-Q; `filing` null (none stored) leaves every list
+ * empty. `restated` holds the first 50 of `restated_total`.
+ */
+export type EarningsReviewOut = {
+    /**
+     * Checkpoints
+     */
+    checkpoints: Array<CheckpointOut>;
+    /**
+     * Drivers
+     */
+    drivers: Array<ReviewDriverOut>;
+    /**
+     * Drivers Note
+     */
+    drivers_note: string | null;
+    filing: ReviewFilingOut | null;
+    /**
+     * Flags
+     */
+    flags: Array<FlagChangeOut>;
+    /**
+     * Lines
+     */
+    lines: Array<ReviewLineOut>;
+    period: ReviewPeriodOut | null;
+    /**
+     * Restated
+     */
+    restated: Array<RestatedOut>;
+    /**
+     * Restated Total
+     */
+    restated_total: number;
+    snapshot: ReviewSnapshotOut | null;
+    /**
+     * Ticker
+     */
+    ticker: string;
+};
+
+/**
  * EngineChoicesIn
  *
  * Each row sets one driver's engine (`auto` deletes the choice); drivers not listed are
@@ -2309,6 +2353,42 @@ export type FillAnnualOut = {
      * Values Unchanged
      */
     values_unchanged: number;
+};
+
+/**
+ * FlagChangeOut
+ *
+ * A QoE flag whose severity at the last period changed with the filing (null: no value).
+ */
+export type FlagChangeOut = {
+    /**
+     * After
+     */
+    after: 'none' | 'warn' | 'alert' | null;
+    /**
+     * Before
+     */
+    before: 'none' | 'warn' | 'alert' | null;
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Unit
+     */
+    unit: 'pct' | 'x';
+    /**
+     * Value After
+     */
+    value_after: string | null;
+    /**
+     * Value Before
+     */
+    value_before: string | null;
 };
 
 /**
@@ -3705,6 +3785,43 @@ export type QoeThresholdsIn = {
 };
 
 /**
+ * RangeOut
+ *
+ * A latest guidance or consensus entry on the line at the period. `actual` is the entry's own
+ * (judged on its basis), so it can differ from the line's.
+ */
+export type RangeOut = {
+    /**
+     * Actual
+     */
+    actual: string | null;
+    /**
+     * Basis
+     */
+    basis: 'reported' | 'normalized';
+    /**
+     * Given On
+     */
+    given_on: string;
+    /**
+     * High
+     */
+    high: string;
+    /**
+     * Low
+     */
+    low: string;
+    /**
+     * Surprise
+     */
+    surprise: string | null;
+    /**
+     * Verdict
+     */
+    verdict: 'beat' | 'in_range' | 'miss' | 'pending';
+};
+
+/**
  * RatioCellOut
  *
  * How one ratio value was computed: `value` = numerator ÷ denominator × `scale`.
@@ -3860,6 +3977,213 @@ export type RefreshResultOut = {
      * Warnings
      */
     warnings: Array<string>;
+};
+
+/**
+ * RestatedOut
+ *
+ * A prior value the filing changed: the read the day before it against the read now.
+ */
+export type RestatedOut = {
+    /**
+     * After
+     */
+    after: string;
+    /**
+     * Before
+     */
+    before: string;
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Fiscal Period
+     */
+    fiscal_period: string;
+    /**
+     * Fiscal Year
+     */
+    fiscal_year: number;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Pct Change
+     */
+    pct_change: string | null;
+    /**
+     * Statement
+     */
+    statement: 'IS' | 'BS' | 'CF';
+    /**
+     * Unit
+     */
+    unit: string;
+};
+
+/**
+ * ReviewDriverOut
+ */
+export type ReviewDriverOut = {
+    /**
+     * Actual
+     */
+    actual: string | null;
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Forecast
+     */
+    forecast: string;
+    /**
+     * In Range
+     */
+    in_range: boolean | null;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Pct Error
+     */
+    pct_error: string;
+    /**
+     * Source
+     */
+    source: string | null;
+    /**
+     * Unit
+     */
+    unit: string;
+};
+
+/**
+ * ReviewFilingOut
+ */
+export type ReviewFilingOut = {
+    /**
+     * Accession No
+     */
+    accession_no: string;
+    /**
+     * Filed At
+     */
+    filed_at: string;
+    /**
+     * Form
+     */
+    form: string;
+    /**
+     * Period End
+     */
+    period_end: string;
+};
+
+/**
+ * ReviewLineOut
+ */
+export type ReviewLineOut = {
+    /**
+     * Actual
+     */
+    actual: string | null;
+    /**
+     * Code
+     */
+    code: string;
+    consensus: RangeOut | null;
+    /**
+     * Forecast
+     */
+    forecast: string | null;
+    guidance: RangeOut | null;
+    /**
+     * High
+     */
+    high: string | null;
+    /**
+     * In Range
+     */
+    in_range: boolean | null;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Low
+     */
+    low: string | null;
+    /**
+     * Pct Error
+     */
+    pct_error: string | null;
+    /**
+     * Prior Year
+     */
+    prior_year: string | null;
+    /**
+     * Unit
+     */
+    unit: string;
+    /**
+     * Yoy
+     */
+    yoy: string | null;
+};
+
+/**
+ * ReviewPeriodOut
+ */
+export type ReviewPeriodOut = {
+    /**
+     * Fiscal Period
+     */
+    fiscal_period: string;
+    /**
+     * Fiscal Year
+     */
+    fiscal_year: number;
+    /**
+     * Label
+     */
+    label: string;
+};
+
+/**
+ * ReviewSnapshotOut
+ *
+ * The snapshot taken on data older than the filing; `classification_mode` is the snapshot's
+ * own (the actuals are read under the company's current mode).
+ */
+export type ReviewSnapshotOut = {
+    /**
+     * Classification Mode
+     */
+    classification_mode: 'off' | 'accepted' | 'all' | null;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Data As Of
+     */
+    data_as_of: string | null;
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Origin
+     */
+    origin: 'manual' | 'auto';
+    /**
+     * Scenario Name
+     */
+    scenario_name: string;
 };
 
 /**
@@ -6717,6 +7041,36 @@ export type ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetResponses
 };
 
 export type ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetResponse = ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetResponses[keyof ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetResponses];
+
+export type GetEarningsReviewApiV1CompaniesTickerEarningsReviewGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/earnings-review';
+};
+
+export type GetEarningsReviewApiV1CompaniesTickerEarningsReviewGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetEarningsReviewApiV1CompaniesTickerEarningsReviewGetError = GetEarningsReviewApiV1CompaniesTickerEarningsReviewGetErrors[keyof GetEarningsReviewApiV1CompaniesTickerEarningsReviewGetErrors];
+
+export type GetEarningsReviewApiV1CompaniesTickerEarningsReviewGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: EarningsReviewOut;
+};
+
+export type GetEarningsReviewApiV1CompaniesTickerEarningsReviewGetResponse = GetEarningsReviewApiV1CompaniesTickerEarningsReviewGetResponses[keyof GetEarningsReviewApiV1CompaniesTickerEarningsReviewGetResponses];
 
 export type GetFlagsApiV1CompaniesTickerFlagsGetData = {
     body?: never;

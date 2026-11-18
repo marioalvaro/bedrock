@@ -228,3 +228,21 @@ def test_ttm_ratio_inputs_as_of_see_only_the_filings_filed_by_then(
 def test_annual_ratio_inputs_as_of_cut_at_the_10k(db_session: Session, aapl: Company) -> None:
     inputs = ratio_inputs(db_session, aapl, "annual", "reported", as_of=date(2025, 10, 30))
     assert inputs.income.periods[-1].key == "FY2024"
+
+
+def test_no_classification_reads_as_mode_off_whatever_the_companys_mode(
+    db_session: Session, aapl: Company
+) -> None:
+    """M7c S4: the earnings review compares the as-reported reads (docs/Gotcha.md G55)."""
+    from .classification_support import parse_filings
+    from .test_statements_api import classify, set_mode
+
+    parse_filings(db_session)
+    off = ratio_inputs(db_session, aapl, "annual", "reported")
+    off_tables = statement_tables(db_session, aapl, [("BS", "quarterly")])
+    classify(db_session, aapl, status="accepted")
+    set_mode(db_session, aapl, "accepted")
+
+    assert ratio_inputs(db_session, aapl, "annual", "reported") != off  # the answer applies
+    assert ratio_inputs(db_session, aapl, "annual", "reported", classified={}) == off
+    assert statement_tables(db_session, aapl, [("BS", "quarterly")], classified={}) == off_tables

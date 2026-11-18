@@ -17,6 +17,7 @@ from bedrock.repositories import prices as price_repo
 from bedrock.services.errors import RatioCellNotFound
 from bedrock.services.statements import Basis, statement_tables
 from bedrock.statements.build import Freq, StatementTable
+from bedrock.statements.structure import Concept
 
 
 def ratios(session: Session, company: Company, freq: RatioFreq, basis: Basis) -> RatioTable:
@@ -57,15 +58,16 @@ def ratio_inputs(
     freq: RatioFreq,
     basis: Basis,
     as_of: date | None = None,
+    classified: Mapping[Concept, tuple[str, ...]] | None = None,
 ) -> RatioInputs:
     """The `RatioInputs` of `freq` on `basis` from one load of the company's facts (annual: annual
     IS, CF, BS; ttm: TTM IS and CF, quarterly BS and IS), untrimmed. Also read by the analysis
     engines (QoE flags, capital allocation, thesis checkpoints). `prices` holds the company's
     stored closes. With `as_of`, the tables are those known on that date
     (`statement_tables(..., as_of=)`); the closes are not cut (each period reads the close at its
-    own end)."""
+    own end). `classified` is `statement_tables`' (`{}`: no classification applied)."""
     wanted = _TABLES["annual" if freq == "annual" else "ttm"]  # any other freq reads as TTM
-    tables = statement_tables(session, company, wanted, basis, as_of=as_of)
+    tables = statement_tables(session, company, wanted, basis, as_of=as_of, classified=classified)
     return replace(_inputs(tables, freq), prices=price_repo.closes(session, company.id))
 
 
