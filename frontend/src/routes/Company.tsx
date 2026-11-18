@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Fragment, type ReactNode } from "react";
 import { RefreshCw } from "lucide-react";
-import { NavLink, useParams, useSearchParams } from "react-router";
+import { Link, NavLink, useParams, useSearchParams } from "react-router";
 
 import { companyErrorMessage, companyQueryOptions, useRefreshCompany } from "@/api/companies";
 import { ApiError } from "@/api/errors";
@@ -12,12 +12,14 @@ import { BacktestView } from "@/features/backtest/BacktestView";
 import { CapitalView } from "@/features/capital/CapitalView";
 import { CompsView } from "@/features/comps/CompsView";
 import { FilingsStatus } from "@/features/filings/FilingsStatus";
+import { NewFilingMark } from "@/features/filings/NewFilingMark";
 import { ForecastView } from "@/features/forecast/ForecastView";
 import { GuidanceView } from "@/features/guidance/GuidanceView";
 import { NotesView } from "@/features/notes/NotesView";
 import { Overview } from "@/features/overview/Overview";
 import { QualityView } from "@/features/quality/QualityView";
 import { RatiosView } from "@/features/ratios/RatiosView";
+import { ReviewView } from "@/features/review/ReviewView";
 import { ScenariosView } from "@/features/scenarios/ScenariosView";
 import { CASE_PARAM, SCENARIO_PARAM } from "@/features/scenarios/useScenarioParam";
 import { SeasonalityView } from "@/features/seasonality/SeasonalityView";
@@ -60,6 +62,7 @@ const TAB_GROUPS: Tab[][] = [
     { slug: "scenarios", label: "Scenarios", render: (c) => <ScenariosView ticker={c.ticker} /> },
     { slug: "valuation", label: "Valuation", render: (c) => <ValuationView ticker={c.ticker} /> },
     { slug: "backtest", label: "Backtest", render: (c) => <BacktestView ticker={c.ticker} /> },
+    { slug: "review", label: "Review", render: (c) => <ReviewView ticker={c.ticker} /> },
   ],
   [{ slug: "notes", label: "Notes", render: (c) => <NotesView ticker={c.ticker} /> }],
 ];
@@ -88,7 +91,14 @@ const tabClassName = ({ isActive }: { isActive: boolean }) =>
     ? "border-foreground text-foreground -mb-px border-b py-2 whitespace-nowrap"
     : "text-muted-foreground hover:text-foreground py-2 whitespace-nowrap";
 
+/** The company page, remounted per ticker so one company's refresh reply (its snapshot line and
+ * warnings) never shows on another's page: React Router keeps the element across `:ticker`. */
 export function Company() {
+  const { ticker = "" } = useParams<{ ticker: string }>();
+  return <CompanyPage key={ticker} />;
+}
+
+function CompanyPage() {
   const { ticker = "", tab = "overview" } = useParams<{ ticker: string; tab?: string }>();
   const { data: company, isPending, error } = useQuery(companyQueryOptions(ticker));
   const refresh = useRefreshCompany(ticker);
@@ -119,6 +129,7 @@ export function Company() {
           {formatCompact(company.market_cap)}
         </span>
         <span className="ml-auto flex flex-wrap items-center gap-2">
+          <NewFilingMark filings={company.new_filings} />
           <FilingsStatus company={company} />
           <span className="text-muted-foreground text-xs">
             Refreshed {formatRelative(company.last_refreshed_at, now)}
@@ -136,6 +147,14 @@ export function Company() {
         {refresh.isError && (
           <p role="alert" className="text-destructive basis-full text-sm">
             {companyErrorMessage(refresh.error, "Could not refresh the company.")}
+          </p>
+        )}
+        {typeof refresh.data?.snapshot_id === "number" && (
+          <p className="text-muted-foreground basis-full text-sm">
+            Forecast snapshotted before loading the filing.{" "}
+            <Link to={`/c/${company.ticker}/review`} className="underline underline-offset-2">
+              Review the result
+            </Link>
           </p>
         )}
         {refresh.data?.warnings.map((warning) => (

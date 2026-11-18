@@ -4,7 +4,7 @@ A personal web app for deep fundamental analysis of a handful of US companies, s
 
 It is a single-user app: a FastAPI + SQLite backend and a React (Vite, TypeScript, Tailwind) SPA, in one repo.
 
-> **Status:** milestone M5 (Valuation) is built: every planned step (S1–S4) is done, and its acceptance checks (browser load times, a CI run) are still open. M0 (scaffold) through M4 (Forecast core) are complete. Statistical forecasts (M6), snapshots and backtesting (M7) and later milestones are not built yet.
+> **Status (2026-11-18):** M0 (scaffold) through M7d are built: statements, analysis, scenarios and forecasts, valuation (M5), statistical forecast engines (M6), snapshots, backtesting and the audit log (M7), data coverage (M7b) and the as-reported view with optional AI line classification (M7d). M7c (Closing the loop) is in progress: new-filing detection, automatic snapshots, the earnings review and thesis checkpoints are done (S1–S5); the workspace polish (archive, two-level tabs, a Data tab, company switcher, analytic charts and a comparison view; S6–S9) is next. Browser acceptance and CI runs are still open for M5 onward. Macro and later milestones (M8+) are not built yet.
 
 New to the app? Read the [tutorial](TUTORIAL.md), a walkthrough of every screen.
 
@@ -31,13 +31,33 @@ New to the app? Read the [tutorial](TUTORIAL.md), a walkthrough of every screen.
 - **Forecast.** The drivers build all three statements, accounting-consistent: the balance sheet balances, and cash and retained earnings roll forward. Q1..Q4 add up to each fiscal year. An integrity panel shows every check per period, and a comparison charts Bull, Base and Bear side by side.
 - **Valuation.** For each case: a DCF on free cash flow to the firm (a WACC from manual inputs or a direct rate; a Gordon-growth or exit-multiple terminal value, each with the other's implied figure; the bridge from EV to value per share). Next to it, multiple targets: P/E, EV/EBITDA, P/FCF or EV/Sales on a forecast year, with a manual multiple, a percentile of the company's own history or a peer median. Each method's target price and upside are shown against the latest close, and Bull, Base and Bear side by side. Inputs are set per case; Bull and Bear inherit Base's until they set their own.
 - **Sensitivity.** A tornado ranks every driver and the discount rate, terminal growth or exit multiple by how much one unit step moves the DCF value per share (±1 pt, ±5 days, ±10 %, ±0.5 pt, ±1×). A 5 × 5 grid shows the value over any two of those inputs.
+- **Statistical forecast engines.** A driver you have not set takes a default from a statistical engine: **Auto** (the engine with the lowest holdout error), 3-year **Mean**, **ARIMA**, **ETS**, a **Blend**, or **STL** for seasonal quarterly lines. Pick the engine per driver and scenario; the Engines sheet charts each engine's forecast beside the history with a 90 % range, and a forecast value outside that range is underlined in the driver grid.
+- **Seasonality.** An STL decomposition of a quarterly line (observed and trend, seasonal, residual), its seasonal strength and the Q1..Q4 seasonal factors. Quarterly forecasts can follow the seasonal index.
+- **Snapshots and backtesting.** Save a scenario's Bull, Base and Bear as a snapshot that can never change; each is scored against the actuals as they land (error, MAPE, bias, hit rate). The backtest reruns every engine from the last 10 10-K dates on the data known at each date (point in time, so restatements are respected) and scores them by horizon.
+- **Audit log.** Every change to a driver, engine, year mode, valuation input, scenario or adjustment, and every line-classification decision, is logged with its old and new value and time; you can add a rationale to any row afterwards.
+- **Data coverage.** Coverage is measured strictly and on applicable cells, every empty cell names its cause, and **Read all filings** reads each 10-K and 10-Q's own XBRL (extension tags and the lines on the face of the statements) in the background. A line a company reports merged with another is shown on the main row with a marker, and the other row reads "incl. in …"; a line that cannot exist in a period reads "n/a".
+- **As reported.** Any filing's statement in the company's own lines, labels and order, with each line's Bedrock row and a mark on a total that does not equal the sum of its lines. Read only.
+- **AI line classification (optional).** With your own Anthropic, TypeSafe (Jev) or OpenRouter API key, lines nothing else classifies can be sent to a classifier, only from a button and after a confirmation of the lines, tokens and cost. Each answer is a proposal you accept, reject or replace; a per-company switch (Off, Accepted only, All above 90 %) sets what the statements use. Classified answers only fill empty cells, never move a subtotal, and are marked. Daily and monthly token budgets cap spending. Without a key the feature is absent.
+- **New filings are announced.** Once a day the app reads each company's EDGAR filing index and marks a company with a 10-K or 10-Q that is not loaded yet, on the company list and in its header. Nothing is loaded until you click Refresh.
+- **Automatic snapshot.** When a refresh is about to store a new 10-K or 10-Q, the default scenario is snapshotted first, on the data before the filing, so every report is scored against what you expected.
+- **Earnings review.** One page for the newest report: actual against the snapshot taken before it (with the Bear–Bull range), the analyst consensus and management guidance for seven key lines, the drivers that missed most, the prior values the filing restated, and the quality flags and thesis checkpoints that changed state.
+- **Thesis checkpoints.** Testable statements of your thesis in the formula language, such as `gross_margin > 44%` or `net_debt_to_ebitda <= 2`, each shown as Holding, At risk, Broken or Unknown on the latest data, with what the last filing changed.
+- **Scheduled refresh.** Prices refresh hourly in US market hours, and the market series (risk-free rate, equity risk premium) and analyst consensus once a day. Filings stay behind Refresh.
 - **Company list** with price, market cap, P/E, EV/EBITDA and TTM revenue growth. Each stat is blank when an input is missing.
 
 The test companies are AAPL, MSFT, COST and DE.
 
 ### Company tabs
 
-Each company has these tabs: **Overview** (key stats, data gaps, adjustments, corporate actions), **Income**, **Balance**, **Cash Flow**, **Ratios**, **Quality**, **Capital**, **Segments**, **Comps**, **Guidance**, **Valuation**, **Forecast**, **Scenarios** and **Notes**. Valuation, Forecast and Scenarios share the picked scenario and case (`?scenario=<id>&case=base|bull|bear`). Settings holds the quality-of-earnings thresholds and custom rules.
+Each company has these tabs, grouped by function:
+
+**Overview** | **Income · Balance · Cash Flow · Segments** | **Ratios · Capital · Quality · Seasonality · Comps** | **Guidance · Forecast · Scenarios · Valuation · Backtest · Review** | **Notes**
+
+- **Overview**: key stats, data gaps (with the lines to classify), adjustments and corporate actions.
+- **Backtest** has three views: Backtest, Snapshots and Audit log. **Review** is the earnings review of the newest report. **Notes** holds the thesis checkpoints above the journal.
+- Valuation, Forecast and Scenarios share the picked scenario and case (`?scenario=<id>&case=base|bull|bear`).
+
+Settings holds the quality-of-earnings thresholds, custom rules, the formula reference and the classifier status.
 
 ## API
 
@@ -54,10 +74,17 @@ Every route is under `/api/v1`. Interactive docs are at `/docs` on a running bac
 | `POST` | `/companies` | session | Body `{"ticker": "AAPL"}`. Follows the company and loads its data: `201`, or `404` for an unknown ticker, `409` if already followed, `503` without `SEC_USER_AGENT`, `502` if a source fails. Nothing is kept if the first load fails. |
 | `GET` | `/companies/{ticker}` | session | One followed company with its key stats, or `404` |
 | `DELETE` | `/companies/{ticker}` | session | `204`. Removes the company and its stored data. |
-| `POST` | `/companies/{ticker}/refresh` | session | Loads new filings and prices. Returns counts and warnings: a price failure is a warning, an EDGAR failure is an error. |
+| `POST` | `/companies/{ticker}/refresh` | session | Loads new filings and prices. Returns counts and warnings: a price failure is a warning, an EDGAR failure is an error. When a new 10-K or 10-Q is about to be stored, the default scenario is snapshotted first and `snapshot_id` names it (null otherwise). |
+| `POST` | `/companies/{ticker}/backfill-filings` | session | `202`. Reads the XBRL of every 10-K and 10-Q not read yet, in the background; progress is `filings_parsed` of `filings_total` on the company. `409` while one runs. |
 | `GET` | `/companies/{ticker}/statements` | session | Query `type=IS\|BS\|CF`, `freq=annual\|quarterly\|ttm`, optional `common_size_base=total\|parent`. Periods and rows with values, provenance, YoY and common size; a balance check for `BS`. `422` for a TTM balance sheet. |
 | `GET` | `/companies/{ticker}/statements/cell` | session | Query `code`, `fiscal_year`, `fiscal_period` (`FY`, `Q1`..`Q4`). Where one value came from: source tag, filing, derivation and vintages. `404` for an unknown cell. |
-| `GET` | `/companies/{ticker}/mapping-gaps` | session | Missing items and unmapped concepts |
+| `GET` | `/companies/{ticker}/mapping-gaps` | session | Coverage (strict and applicable), empty-cell causes, rule warnings, missing items, unmapped concepts and lines to classify |
+| `GET` | `/companies/{ticker}/as-reported` | session | Query `statement`, optional `accession` (default the newest 10-K). One filing's statement as filed, with each line's Bedrock row and the totals that do not foot. |
+| `GET` | `/classification/status` | session | The classifiers, whether each has its key, the token budgets and what was used |
+| `GET` `PUT` | `/companies/{ticker}/classifications` | session | The lines to classify with their answers (query `classifier` adds what a run would ask and its estimate), or store your own answer for one line |
+| `POST` | `/companies/{ticker}/classifications/run` | session | `202`. Asks a classifier about the open lines, after the confirmation; sends their labels, tags and amounts to the provider. `409` without a key, while a run runs, or over budget. |
+| `PUT` | `/companies/{ticker}/classifications/{id}` | session | Accept, reject or reopen one answer |
+| `PUT` | `/companies/{ticker}/classification-mode` | session | What the statements use: `off`, `accepted` or `all` (above the confidence threshold) |
 | `GET` `POST` | `/companies/{ticker}/adjustments` | session | List or add adjustments |
 | `PUT` `DELETE` | `/companies/{ticker}/adjustments/{id}` | session | Edit or remove an adjustment |
 | `GET` | `/companies/{ticker}/corporate-actions` | session | Stored splits |
@@ -82,12 +109,15 @@ Every route is under `/api/v1`. Interactive docs are at `/docs` on a running bac
 | `GET` | `/companies/{ticker}/peer-suggestions` | session | Followed companies ranked by SIC match, then size |
 | `GET` | `/companies/{ticker}/comps-sets/{id}/comparison` | session | Multiples and ratios against the peer median and range |
 | `GET` | `/companies/{ticker}/guidance/metrics` | session | The metrics guidance can be entered for |
+| `GET` | `/companies/{ticker}/guidance/consensus` | session | The analyst consensus estimates as placed on fiscal periods (logged as read-only guidance entries) |
 | `GET` | `/companies/{ticker}/guidance/history` | session | Every actual of one metric (`metric`, `basis`, `freq`), oldest first, for the Guidance chart |
 | `GET` `POST` | `/companies/{ticker}/guidance` | session | List (with verdicts and hit rate) or add guidance |
 | `PUT` `DELETE` | `/companies/{ticker}/guidance/{id}` | session | Edit or remove an entry |
 | `GET` `POST` | `/companies/{ticker}/notes` | session | List (filterable) or add notes |
 | `PUT` `DELETE` | `/companies/{ticker}/notes/{id}` | session | Edit or remove a note |
 | `GET` | `/companies/{ticker}/notes/links` | session | Which cells and subjects have notes, for the markers |
+| `GET` `POST` | `/companies/{ticker}/checkpoints` | session | The thesis checkpoints with their state now and before the newest report, or add one (`{statement, label?, freq?: ttm\|annual, margin?}`); `422` names the position of a statement error |
+| `PUT` `DELETE` | `/companies/{ticker}/checkpoints/{id}` | session | Edit or remove a checkpoint |
 | `GET` `POST` | `/companies/{ticker}/scenarios` | session | List the scenarios, or create one (name and revenue build); it starts from the default drivers |
 | `PUT` `DELETE` | `/companies/{ticker}/scenarios/{id}` | session | Rename or change the revenue build, or delete (not the default scenario) |
 | `GET` | `/companies/{ticker}/scenarios/{id}/years` | session | Whether each year of the quarterly span is set annually or by quarter |
@@ -98,12 +128,22 @@ Every route is under `/api/v1`. Interactive docs are at `/docs` on a running bac
 | `POST` | `/companies/{ticker}/scenarios/{id}/cases/{case}/drivers/import` | session | Multipart `file`, `dry_run`. Previews or applies a driver file; `422` lists each error by row and column. |
 | `GET` | `/companies/{ticker}/scenarios/{id}/cases/{case}/forecast` | session | Query `type=IS\|BS\|CF`, `freq`. Actual and forecast periods with the integrity checks; `422` "Set these drivers: …" when a required driver is missing. |
 | `GET` | `/companies/{ticker}/scenarios/{id}/compare` | session | Query `freq`. The three cases' key lines side by side |
+| `GET` `PUT` | `/companies/{ticker}/scenarios/{id}/engines` | session | The engine chosen per driver for the scenario (`auto`, `mean`, `arima`, `ets`, `blend`, `stl`), or set some |
+| `GET` | `/companies/{ticker}/scenarios/{id}/cases/{case}/driver-engines` | session | Query `code`. One driver's history and every engine's forecast, holdout error and 90 % range |
+| `GET` | `/companies/{ticker}/seasonality` | session | Query `code` (default revenue). The STL decomposition of a quarterly line, its strength and seasonal factors |
 | `GET` `PUT` | `/companies/{ticker}/scenarios/{id}/cases/{case}/valuation-inputs` | session | The case's valuation inputs with their sources (own, inherited from Base, default, derived), or set rows `{"code", "value"}`; `null` clears one. Every row is checked before anything is stored. |
 | `POST` | `/companies/{ticker}/scenarios/{id}/cases/{case}/valuation-inputs/reset` | session | Removes the case's own inputs |
 | `GET` | `/companies/{ticker}/scenarios/{id}/cases/{case}/valuation` | session | The DCF and multiple-target results, the bridge and the price. A method that cannot value carries its `error`; `422` when the forecast cannot run. |
 | `GET` | `/companies/{ticker}/scenarios/{id}/valuation` | session | Value per share and upside by method for Bull, Base and Bear |
 | `GET` | `/companies/{ticker}/scenarios/{id}/cases/{case}/sensitivity/tornado` | session | Each input's DCF value per share one step lower and higher, sorted by range |
 | `GET` | `/companies/{ticker}/scenarios/{id}/cases/{case}/sensitivity/grid` | session | Query `x`, `y` (input codes). The 5 × 5 DCF value per share; `422` for the same input twice or an unknown one. |
+| `POST` | `/companies/{ticker}/scenarios/{id}/snapshots` | session | Body `{"note"?}`. Freezes the scenario's three cases and their valuations: `201` |
+| `GET` | `/companies/{ticker}/snapshots` | session | The snapshots, newest first, with their scores and the aggregate scores |
+| `GET` | `/companies/{ticker}/snapshots/{id}` | session | One snapshot's frozen cases scored against the latest actuals |
+| `GET` `POST` | `/companies/{ticker}/backtest` | session | The last backtest's origins and scores, or run it again (about 15 s) |
+| `GET` | `/companies/{ticker}/audit` | session | Query `entity?`, `limit?`, `before_id?`. The audit log, newest first, one page at a time |
+| `PATCH` | `/companies/{ticker}/audit/{id}` | session | Body `{"rationale"}`. Sets or clears a row's rationale (500 characters at most) |
+| `GET` | `/companies/{ticker}/earnings-review` | session | The newest 10-K or 10-Q against the snapshot taken before it: key lines with consensus and guidance, driver misses, restated values, changed flags and checkpoints |
 | `GET` | `/qoe-rules` | session | QoE thresholds |
 | `PUT` `DELETE` | `/qoe-rules/{code}` | session | Override or reset a threshold |
 | `GET` `POST` | `/qoe-custom-rules` | session | List or add custom formula rules |
@@ -177,6 +217,11 @@ In `.env`:
   ```
 - Set `SEC_USER_AGENT` to a contact email, e.g. `you@example.com`. The SEC requires one, and requests go out as `Bedrock <value>`. The app starts without it, but adding or refreshing a company fails with `503` until it is set.
 
+Optional:
+- `FRED_API_KEY`: the valuation's risk-free rate defaults to FRED's 10-year Treasury yield (else the yfinance `^TNX` yield).
+- `ANTHROPIC_API_KEY`, `TYPESAFE_API_KEY`, `OPENROUTER_API_KEY`: each enables its line classifiers (Claude Haiku and Sonnet; Jev; the OpenRouter models). `CLASSIFY_DAILY_TOKENS`, `CLASSIFY_MONTHLY_TOKENS`, `CLASSIFY_MAX_LINES_PER_RUN` and `CLASSIFY_MIN_CONFIDENCE` cap and tune them. Set a spending limit in the provider's console as well: these budgets only limit this app.
+- `SCHEDULED_REFRESH=false` turns off the hourly prices, the daily market series and consensus, and the daily new-filing check.
+
 Every variable is documented in `.env.example`.
 
 ### 2a. With Docker (recommended)
@@ -215,6 +260,7 @@ Add SEC-covered companies from the web UI (the ticker box on the company list), 
 cd backend
 uv run bedrock add AAPL MSFT COST     # follow and load
 uv run bedrock refresh --all          # or: refresh AAPL MSFT
+uv run bedrock backfill-filings AAPL  # read every 10-K and 10-Q's own XBRL (or --all; --reparse re-reads)
 uv run bedrock sync-mappings          # reload canonical_items.yaml and overrides/ into the DB
 ```
 

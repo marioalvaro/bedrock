@@ -1,7 +1,7 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { Link, MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -9,6 +9,7 @@ import {
   getForecastApiV1CompaniesTickerScenariosScenarioIdCasesCaseForecastGet,
   getCapitalAllocationApiV1CompaniesTickerCapitalAllocationGet,
   getCompanyApiV1CompaniesTickerGet,
+  getEarningsReviewApiV1CompaniesTickerEarningsReviewGet,
   getFlagsApiV1CompaniesTickerFlagsGet,
   getGuidanceApiV1CompaniesTickerGuidanceGet,
   getMappingGapsApiV1CompaniesTickerMappingGapsGet,
@@ -17,6 +18,7 @@ import {
   getSegmentsApiV1CompaniesTickerSegmentsGet,
   getStatementApiV1CompaniesTickerStatementsGet,
   getValuationSummaryApiV1CompaniesTickerScenariosScenarioIdValuationGet,
+  listCheckpointsApiV1CompaniesTickerCheckpointsGet,
   listLinksApiV1CompaniesTickerNotesLinksGet,
   listNotesApiV1CompaniesTickerNotesGet,
   listScenariosApiV1CompaniesTickerScenariosGet,
@@ -25,9 +27,11 @@ import {
 } from "@/api/generated/sdk.gen";
 import { createQueryClient } from "@/lib/query-client";
 import { capitalAllocation, flags, ratios } from "@/test/analysis";
+import { checkpointList } from "@/test/checkpoints";
 import { companyItem, mappingGaps } from "@/test/companies";
 import { guidance, note, segments } from "@/test/context";
 import { errorResult, okResult } from "@/test/responses";
+import { earningsReview } from "@/test/review";
 import { scenarios } from "@/test/scenarios";
 import { incomeStatement } from "@/test/statements";
 
@@ -35,6 +39,8 @@ import { Company } from "./Company";
 
 vi.mock("@/api/generated/sdk.gen", () => ({
   getCompanyApiV1CompaniesTickerGet: vi.fn(),
+  getEarningsReviewApiV1CompaniesTickerEarningsReviewGet: vi.fn(),
+  listCheckpointsApiV1CompaniesTickerCheckpointsGet: vi.fn(),
   getMappingGapsApiV1CompaniesTickerMappingGapsGet: vi.fn(),
   getStatementApiV1CompaniesTickerStatementsGet: vi.fn(),
   getRatiosApiV1CompaniesTickerRatiosGet: vi.fn(),
@@ -103,6 +109,12 @@ beforeEach(() => {
   );
   vi.mocked(listLinksApiV1CompaniesTickerNotesLinksGet).mockResolvedValue(okResult([]) as never);
   vi.mocked(getFlagsApiV1CompaniesTickerFlagsGet).mockResolvedValue(okResult(flags()) as never);
+  vi.mocked(getEarningsReviewApiV1CompaniesTickerEarningsReviewGet).mockResolvedValue(
+    okResult(earningsReview()) as never,
+  );
+  vi.mocked(listCheckpointsApiV1CompaniesTickerCheckpointsGet).mockResolvedValue(
+    okResult(checkpointList()) as never,
+  );
   vi.mocked(listSetsApiV1CompaniesTickerCompsSetsGet).mockResolvedValue(okResult([]) as never);
   vi.mocked(getGuidanceApiV1CompaniesTickerGuidanceGet).mockResolvedValue(
     okResult(guidance()) as never,
@@ -125,6 +137,26 @@ describe("company header", () => {
     expect(screen.getByTestId("header-price")).toHaveTextContent("231.40");
     expect(screen.getByTestId("header-market-cap")).toHaveTextContent("3.5T");
     expect(screen.getByText("Refreshed 2h ago")).toBeInTheDocument();
+  });
+
+  it("marks a filing that is filed but not loaded yet (FR-DATA-23)", async () => {
+    vi.mocked(getCompanyApiV1CompaniesTickerGet).mockResolvedValue(
+      okResult(
+        companyItem({
+          new_filings: [{ form: "10-Q", filed_at: "2026-08-01", period_end: "2026-06-27" }],
+        }),
+      ) as never,
+    );
+    renderAt("/c/AAPL");
+
+    expect(await screen.findByText("10-Q filed Aug 1")).toBeInTheDocument();
+  });
+
+  it("shows no mark when nothing is pending", async () => {
+    renderAt("/c/AAPL");
+    await screen.findByRole("heading", { name: "AAPL" });
+
+    expect(screen.queryByText(/filed /)).not.toBeInTheDocument();
   });
 
   it("shows how many filings are read, with a button to read them all", async () => {
@@ -203,6 +235,106 @@ describe("refresh", () => {
   });
 });
 
+describe("the snapshot taken by a refresh (FR-ACC-05)", () => {
+  const reply = (snapshotId: number | null) => ({
+    ticker: "AAPL",
+    new_filings: snapshotId === null ? 0 : 1,
+    new_facts: 0,
+    new_prices: 0,
+    new_splits: 0,
+    new_filing_lines: 0,
+    snapshot_id: snapshotId,
+    last_refreshed_at: new Date().toISOString(),
+    warnings: [],
+  });
+
+  it("says the forecast was snapshotted and links to the review", async () => {
+    vi.mocked(refreshApiV1CompaniesTickerRefreshPost).mockResolvedValue(
+      okResult(reply(12)) as never,
+    );
+    renderAt("/c/AAPL");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Refresh" }));
+
+    expect(
+      await screen.findByText("Forecast snapshotted before loading the filing."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Review the result" })).toHaveAttribute(
+      "href",
+      "/c/AAPL/review",
+    );
+  });
+
+  it("refetches the review after a refresh, with no invalidation of its own", async () => {
+    vi.mocked(refreshApiV1CompaniesTickerRefreshPost).mockResolvedValue(
+      okResult(reply(12)) as never,
+    );
+    renderAt("/c/AAPL/review");
+    await screen.findByText("FY26 · 10-K filed Oct 31, 2026");
+    const review = vi.mocked(getEarningsReviewApiV1CompaniesTickerEarningsReviewGet);
+    expect(review).toHaveBeenCalledTimes(1);
+
+    await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
+
+    await waitFor(() => expect(review).toHaveBeenCalledTimes(2));
+  });
+
+  it("refetches the checkpoints after a refresh", async () => {
+    vi.mocked(refreshApiV1CompaniesTickerRefreshPost).mockResolvedValue(
+      okResult(reply(12)) as never,
+    );
+    renderAt("/c/AAPL/notes");
+    await screen.findByText("Gross margin holds");
+    const checkpoints = vi.mocked(listCheckpointsApiV1CompaniesTickerCheckpointsGet);
+    expect(checkpoints).toHaveBeenCalledTimes(1);
+
+    await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
+
+    await waitFor(() => expect(checkpoints).toHaveBeenCalledTimes(2));
+  });
+
+  it("drops the line when another company is opened", async () => {
+    vi.mocked(refreshApiV1CompaniesTickerRefreshPost).mockResolvedValue(
+      okResult(reply(12)) as never,
+    );
+    const queryClient = createQueryClient();
+    queryClient.setDefaultOptions({ queries: { retry: false } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/c/AAPL"]}>
+          <Link to="/c/MSFT">Open MSFT</Link>
+          <Routes>
+            <Route path="c/:ticker/:tab?" element={<Company />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Refresh" }));
+    await screen.findByText("Forecast snapshotted before loading the filing.");
+    vi.mocked(getCompanyApiV1CompaniesTickerGet).mockResolvedValue(
+      okResult(companyItem({ id: 2, ticker: "MSFT", name: "Microsoft" })) as never,
+    );
+
+    await userEvent.click(screen.getByRole("link", { name: "Open MSFT" }));
+
+    expect(await screen.findByRole("heading", { name: "MSFT" })).toBeInTheDocument();
+    expect(screen.queryByText(/Forecast snapshotted/)).not.toBeInTheDocument();
+  });
+
+  it("says nothing when the refresh took no snapshot", async () => {
+    vi.mocked(refreshApiV1CompaniesTickerRefreshPost).mockResolvedValue(
+      okResult(reply(null)) as never,
+    );
+    renderAt("/c/AAPL");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Refresh" }));
+
+    await waitFor(() => expect(refreshApiV1CompaniesTickerRefreshPost).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Refresh" })).not.toBeDisabled());
+    expect(screen.queryByText(/Forecast snapshotted/)).not.toBeInTheDocument();
+  });
+});
+
 describe("tabs", () => {
   it("links the statement tabs by slug", async () => {
     renderAt("/c/AAPL");
@@ -267,7 +399,7 @@ describe("tabs", () => {
     expect(screen.getByRole("link", { name: "Notes" })).toHaveAttribute("aria-current", "page");
   });
 
-  it("lists the sixteen tabs in order, in four groups after the overview", async () => {
+  it("lists the seventeen tabs in order, in four groups after the overview", async () => {
     renderAt("/c/AAPL");
     await screen.findByRole("heading", { name: "AAPL" });
 
@@ -289,6 +421,7 @@ describe("tabs", () => {
       "Scenarios",
       "Valuation",
       "Backtest",
+      "Review",
       "Notes",
     ]);
     // Statements | analysis | forward-looking | notes, each group after a divider.
@@ -303,7 +436,7 @@ describe("tabs", () => {
       ["Overview"],
       ["Income", "Balance", "Cash Flow", "Segments"],
       ["Ratios", "Capital", "Quality", "Seasonality", "Comps"],
-      ["Guidance", "Forecast", "Scenarios", "Valuation", "Backtest"],
+      ["Guidance", "Forecast", "Scenarios", "Valuation", "Backtest", "Review"],
       ["Notes"],
     ]);
     expect(screen.getByRole("link", { name: "Ratios" })).toHaveAttribute("href", "/c/AAPL/ratios");
@@ -390,6 +523,16 @@ describe("tabs", () => {
       "href",
       "/c/AAPL/seasonality",
     );
+  });
+
+  it("routes /review to the earnings review and marks the tab", async () => {
+    renderAt("/c/AAPL/review?scenario=2");
+
+    expect(await screen.findByText("FY26 · 10-K filed Oct 31, 2026")).toBeInTheDocument();
+    const tab = screen.getByRole("link", { name: "Review" });
+    expect(tab).toHaveAttribute("aria-current", "page");
+    // Not a scenario tab: the picked scenario does not travel to it.
+    expect(tab).toHaveAttribute("href", "/c/AAPL/review");
   });
 
   it("does not carry the picked scenario to the Backtest tab", async () => {

@@ -87,7 +87,17 @@ export function SnapshotsPanel({ ticker }: SnapshotsPanelProps) {
                       {formatLocalTime(snapshot.created_at)}
                     </button>
                   </td>
-                  <td className={CELL}>{snapshot.scenario_name}</td>
+                  <td className={`${CELL} whitespace-nowrap`}>
+                    {snapshot.scenario_name}
+                    {snapshot.origin === "auto" && (
+                      <span
+                        className="text-prov-derived border-border ml-2 rounded border px-1 text-xs"
+                        title="Taken before a new filing was loaded"
+                      >
+                        Auto
+                      </span>
+                    )}
+                  </td>
                   <td className={CELL}>{snapshot.note ?? "—"}</td>
                   <td className={CELL}>{snapshot.data_as_of ?? "—"}</td>
                   <td className={NUM_CELL}>{snapshot.scored_periods}</td>

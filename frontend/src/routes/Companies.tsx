@@ -23,6 +23,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { NewFilingMark } from "@/features/filings/NewFilingMark";
 import {
   formatCompact,
   formatMultiple,
@@ -222,7 +223,10 @@ export function Companies() {
                       <span className="text-muted-foreground ml-2 text-xs font-normal">manual</span>
                     )}
                   </td>
-                  <td className="px-2 py-1.5 whitespace-nowrap">{company.name}</td>
+                  <td className="px-2 py-1.5 whitespace-nowrap">
+                    <div>{company.name}</div>
+                    <NewFilingMark filings={company.new_filings} />
+                  </td>
                   <td className="num px-2 py-1.5">{formatPrice(company.price)}</td>
                   <td className="num px-2 py-1.5">{formatCompact(company.market_cap)}</td>
                   <td className="num px-2 py-1.5">{formatMultiple(company.pe)}</td>

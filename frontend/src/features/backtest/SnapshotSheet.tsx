@@ -15,7 +15,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { formatPrice, formatSignedPercent, formatValue, scaleLabel } from "@/lib/format";
 import { useScale, type Scale } from "@/lib/scale";
 
-import { formatLocalTime } from "./backtestFormat";
+import { classificationText, formatLocalTime } from "./backtestFormat";
 
 const SELECT = "border-input h-8 rounded-lg border bg-transparent px-2 text-sm";
 const HEAD = "px-2 py-1 text-right font-medium";
@@ -28,23 +28,6 @@ const CASE_TOGGLES: { value: CaseCode; label: string }[] = [
   { value: "bull", label: "Bull" },
   { value: "bear", label: "Bear" },
 ];
-
-type ClassificationMode = NonNullable<SnapshotOut["classification_mode"]>;
-const MODE_NAMES: Record<ClassificationMode, string> = {
-  off: "Off",
-  accepted: "Accepted only",
-  all: "All",
-};
-
-// The company's line-classification mode when the snapshot was taken (M7d S5), and whether it has
-// changed since: the actuals it is scored against are read under the current mode.
-function classificationText(mode: SnapshotOut["classification_mode"], current?: string): string {
-  if (mode === null) return "Line classification: not recorded";
-  const text = `Line classification: ${MODE_NAMES[mode]}`;
-  return current !== undefined && current !== mode
-    ? `${text} · differs from the current setting`
-    : text;
-}
 
 const inRangeText = (inRange: boolean | null) => (inRange === null ? "—" : inRange ? "Yes" : "No");
 

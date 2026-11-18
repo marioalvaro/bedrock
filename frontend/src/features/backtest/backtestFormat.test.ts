@@ -5,6 +5,7 @@ import { backtest, backtestSummary, noBacktest, scoreRow } from "@/test/accounta
 
 import {
   backtestStatus,
+  classificationText,
   failedRuns,
   formatAuditValue,
   formatLocalTime,
@@ -315,5 +316,22 @@ describe("failedRuns", () => {
 
   it("is empty before a run", () => {
     expect(failedRuns(noBacktest())).toEqual([]);
+  });
+});
+
+describe("classificationText", () => {
+  it("names the mode the snapshot was taken under", () => {
+    expect(classificationText("off", "off")).toBe("Line classification: Off");
+    expect(classificationText("all")).toBe("Line classification: All");
+  });
+
+  it("says so when the company's current mode differs", () => {
+    expect(classificationText("accepted", "off")).toBe(
+      "Line classification: Accepted only · differs from the current setting",
+    );
+  });
+
+  it("says the mode was not recorded on a snapshot older than M7d", () => {
+    expect(classificationText(null, "all")).toBe("Line classification: not recorded");
   });
 });

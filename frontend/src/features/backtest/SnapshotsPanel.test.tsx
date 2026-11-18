@@ -284,6 +284,25 @@ describe("the sheet", () => {
   });
 });
 
+describe("the Auto badge (M7c, FR-ACC-05)", () => {
+  it("marks a snapshot taken before a new filing was loaded", async () => {
+    list.mockResolvedValue(
+      okResult(
+        snapshotList({ snapshots: [snapshotOut({ id: 8, origin: "auto" }), snapshotOut()] }),
+      ) as never,
+    );
+    renderPanel();
+    await screen.findByRole("table", { name: "Snapshots" });
+
+    const [, auto, manual] = rowsOf("Snapshots");
+    expect(within(auto!).getByText("Auto")).toHaveAttribute(
+      "title",
+      "Taken before a new filing was loaded",
+    );
+    expect(within(manual!).queryByText("Auto")).not.toBeInTheDocument();
+  });
+});
+
 describe("the snapshot's classification mode (M7d S5)", () => {
   async function openWith(mode: "off" | "accepted" | "all" | null) {
     detail.mockResolvedValue(okResult(snapshotDetail()) as never);

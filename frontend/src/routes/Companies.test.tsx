@@ -62,6 +62,21 @@ describe("Companies list", () => {
     expect(within(row).getAllByText("—")).toHaveLength(1);
   });
 
+  it("marks a company with a filing not loaded yet under its name (FR-DATA-23)", async () => {
+    vi.mocked(getCompaniesApiV1CompaniesGet).mockResolvedValue(
+      okResult([
+        companyItem({
+          new_filings: [{ form: "10-K", filed_at: "2026-10-31", period_end: "2026-09-26" }],
+        }),
+      ]) as never,
+    );
+    renderCompanies();
+
+    const row = (await screen.findByRole("link", { name: "AAPL" })).closest("tr") as HTMLElement;
+    const nameCell = within(row).getByText("Apple Inc.").closest("td") as HTMLElement;
+    expect(within(nameCell).getByText("10-K filed Oct 31")).toBeInTheDocument();
+  });
+
   it("links a company to its page", async () => {
     renderCompanies();
 

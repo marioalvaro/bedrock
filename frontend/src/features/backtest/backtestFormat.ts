@@ -1,6 +1,6 @@
 import type { EChartsOption, LineSeriesOption } from "echarts";
 
-import type { BacktestOut, ScoreRowOut } from "@/api/generated/types.gen";
+import type { BacktestOut, ScoreRowOut, SnapshotOut } from "@/api/generated/types.gen";
 import {
   formatCompact,
   formatHitRate,
@@ -279,4 +279,27 @@ export function askedSelection(params: URLSearchParams): AskedSelection {
     freq: params.get(FREQ_PARAM),
     stat: params.get(STAT_PARAM),
   };
+}
+
+type ClassificationMode = NonNullable<SnapshotOut["classification_mode"]>;
+const MODE_NAMES: Record<ClassificationMode, string> = {
+  off: "Off",
+  accepted: "Accepted only",
+  all: "All",
+};
+
+/**
+ * The company's line-classification mode when the snapshot was taken (M7d S5), and whether it has
+ * changed since: the actuals it is scored against are read under the current mode. Shared by the
+ * Snapshot sheet and the Review tab.
+ */
+export function classificationText(
+  mode: SnapshotOut["classification_mode"],
+  current?: string,
+): string {
+  if (mode === null) return "Line classification: not recorded";
+  const text = `Line classification: ${MODE_NAMES[mode]}`;
+  return current !== undefined && current !== mode
+    ? `${text} · differs from the current setting`
+    : text;
 }
