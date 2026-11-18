@@ -162,10 +162,11 @@ def test_the_flags_are_the_warn_and_alert_rules_of_the_newest_year_alerts_first(
     assert keys == sorted(keys)
     for flag in flags:
         row = next(r for r in raised if r.code == flag.code)
-        assert (flag.label, flag.severity, flag.value) == (
+        assert (flag.label, flag.severity, flag.value, flag.unit) == (
             row.label,
             row.severity[newest],
             row.values[newest],
+            row.unit,
         )
 
 

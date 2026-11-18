@@ -36,6 +36,7 @@ def test_the_summary_answers_every_block(
         "label",
         "severity",
         "value",
+        "unit",
         "period_label",
     }
     assert set(body["valuation"]) == {

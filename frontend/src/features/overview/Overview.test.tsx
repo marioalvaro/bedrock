@@ -1,62 +1,41 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  deleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDelete,
-  getClassificationsOfApiV1CompaniesTickerClassificationsGet,
   getMappingGapsApiV1CompaniesTickerMappingGapsGet,
-  getStatusApiV1ClassificationStatusGet,
+  getSummaryApiV1CompaniesTickerSummaryGet,
   listAdjustmentsApiV1CompaniesTickerAdjustmentsGet,
   listCorporateActionsApiV1CompaniesTickerCorporateActionsGet,
   listImportsApiV1CompaniesTickerImportsGet,
 } from "@/api/generated/sdk.gen";
 import { createQueryClient } from "@/lib/query-client";
-import { setScale } from "@/lib/scale";
-import { adjustment, corporateActions } from "@/test/adjustments";
-import { classifications, classifierStatus, noClassifierStatus } from "@/test/classification";
-import type { MappingGapsOut } from "@/api/generated/types.gen";
-import { companyItem, mappingGaps } from "@/test/companies";
+import { companyItem } from "@/test/companies";
 import { errorResult, okResult } from "@/test/responses";
+import { companySummary } from "@/test/summary";
 
 import { Overview } from "./Overview";
 
 vi.mock("@/api/generated/sdk.gen", () => ({
+  getSummaryApiV1CompaniesTickerSummaryGet: vi.fn(),
   getMappingGapsApiV1CompaniesTickerMappingGapsGet: vi.fn(),
   listAdjustmentsApiV1CompaniesTickerAdjustmentsGet: vi.fn(),
   listCorporateActionsApiV1CompaniesTickerCorporateActionsGet: vi.fn(),
-  deleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDelete: vi.fn(),
   listImportsApiV1CompaniesTickerImportsGet: vi.fn(),
   importStatementsApiV1CompaniesTickerImportsPost: vi.fn(),
   deleteImportApiV1CompaniesTickerImportsImportIdDelete: vi.fn(),
-  getStatusApiV1ClassificationStatusGet: vi.fn(),
-  getClassificationsOfApiV1CompaniesTickerClassificationsGet: vi.fn(),
-  startRunApiV1CompaniesTickerClassificationsRunPost: vi.fn(),
-  decideApiV1CompaniesTickerClassificationsClassificationIdPut: vi.fn(),
-  answerApiV1CompaniesTickerClassificationsPut: vi.fn(),
-  setModeApiV1CompaniesTickerClassificationModePut: vi.fn(),
 }));
 
-const listAdjustments = vi.mocked(listAdjustmentsApiV1CompaniesTickerAdjustmentsGet);
-const listActions = vi.mocked(listCorporateActionsApiV1CompaniesTickerCorporateActionsGet);
-const remove = vi.mocked(deleteAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdDelete);
+// jsdom cannot draw a canvas: the sparklines render their wrapper only.
+vi.mock("echarts-for-react/esm/core", () => ({ default: vi.fn(() => null) }));
+
+const getSummary = vi.mocked(getSummaryApiV1CompaniesTickerSummaryGet);
 
 beforeEach(() => {
-  vi.mocked(getMappingGapsApiV1CompaniesTickerMappingGapsGet).mockResolvedValue(
-    okResult(mappingGaps()) as never,
-  );
-  listAdjustments.mockResolvedValue(okResult([]) as never);
-  listActions.mockResolvedValue(okResult([]) as never);
+  getSummary.mockResolvedValue(okResult(companySummary()) as never);
   vi.mocked(listImportsApiV1CompaniesTickerImportsGet).mockResolvedValue(okResult([]) as never);
-  remove.mockResolvedValue(okResult(null, 204) as never);
-  // The classify panel (features/classification, tested on its own): no key by default.
-  vi.mocked(getStatusApiV1ClassificationStatusGet).mockResolvedValue(
-    okResult(noClassifierStatus()) as never,
-  );
-  vi.mocked(getClassificationsOfApiV1CompaniesTickerClassificationsGet).mockResolvedValue(
-    okResult(classifications()) as never,
-  );
 });
 
 function renderOverview() {
@@ -64,24 +43,28 @@ function renderOverview() {
   queryClient.setDefaultOptions({ queries: { retry: false } });
   render(
     <QueryClientProvider client={queryClient}>
-      <Overview company={companyItem()} />
+      <MemoryRouter>
+        <Overview company={companyItem()} />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
 
 afterEach(() => {
   vi.clearAllMocks();
-  setScale("M");
 });
+
+const region = (name: string) => screen.findByRole("region", { name });
+const cells = (row: HTMLElement) =>
+  within(row)
+    .getAllByRole("cell")
+    .map((cell) => cell.textContent);
 
 describe("Overview", () => {
   it("shows the key stats, with a dash for one that is missing", async () => {
-    vi.mocked(getMappingGapsApiV1CompaniesTickerMappingGapsGet).mockResolvedValue(
-      okResult(mappingGaps()) as never,
-    );
     renderOverview();
 
-    const stats = await screen.findByRole("region", { name: "Key stats" });
+    const stats = await region("Key stats");
     expect(within(stats).getByText("Price")).toBeInTheDocument();
     expect(within(stats).getByText("231.40")).toBeInTheDocument();
     expect(within(stats).getByText("3.5T")).toBeInTheDocument();
@@ -90,571 +73,285 @@ describe("Overview", () => {
     expect(within(stats).getByText("—")).toBeInTheDocument();
   });
 
-  it("lists the missing items with their statement and fiscal years", async () => {
-    vi.mocked(getMappingGapsApiV1CompaniesTickerMappingGapsGet).mockResolvedValue(
-      okResult(mappingGaps()) as never,
-    );
+  it("opens the import sheet from its import button", async () => {
     renderOverview();
 
-    const gaps = await screen.findByRole("region", { name: "Data gaps" });
-    const row = (await within(gaps).findByText("Short-term debt")).closest("tr") as HTMLElement;
-    expect(within(row).getByText("BS")).toBeInTheDocument();
-    expect(within(row).getByText("FY2008, FY2009, FY2010")).toBeInTheDocument();
-  });
+    await userEvent.click(await screen.findByRole("button", { name: "Import" }));
 
-  it("lists the unmapped concepts with their latest value", async () => {
-    vi.mocked(getMappingGapsApiV1CompaniesTickerMappingGapsGet).mockResolvedValue(
-      okResult(mappingGaps()) as never,
-    );
-    renderOverview();
-
-    const gaps = await screen.findByRole("region", { name: "Data gaps" });
-    const row = (
-      await within(gaps).findByText("us-gaap:IncreaseDecreaseInOtherOperatingCapitalNet")
-    ).closest("tr") as HTMLElement;
-    expect(within(row).getByText("(1,200)")).toBeInTheDocument();
-    expect(within(row).getByText("2025-09-27")).toBeInTheDocument();
-  });
-
-  it("shows the suggested codes of an unmapped concept, and nothing where there is none", async () => {
-    vi.mocked(getMappingGapsApiV1CompaniesTickerMappingGapsGet).mockResolvedValue(
-      okResult(mappingGaps()) as never,
-    );
-    renderOverview();
-
-    const gaps = await screen.findByRole("region", { name: "Data gaps" });
-    expect(
-      await within(gaps).findByRole("columnheader", { name: "Suggested" }),
-    ).toBeInTheDocument();
-    const suggested = (await within(gaps).findByText("us-gaap:LongTermDebtCurrent")).closest(
-      "tr",
-    ) as HTMLElement;
-    expect(within(suggested).getByText("short_term_debt, long_term_debt")).toBeInTheDocument();
-    // the concept with a suggestion is listed first
-    const rows = within(gaps).getAllByRole("row");
-    expect(rows.findIndex((r) => r === suggested)).toBeLessThan(
-      rows.findIndex((r) => within(r).queryByText(/IncreaseDecrease/) !== null),
-    );
-  });
-
-  describe("classified concepts", () => {
-    async function openGaps() {
-      vi.mocked(getMappingGapsApiV1CompaniesTickerMappingGapsGet).mockResolvedValue(
-        okResult(mappingGaps()) as never,
-      );
-      renderOverview();
-      return screen.findByRole("region", { name: "Data gaps" });
-    }
-
-    it("counts only the unclassified concepts and hides the classified by default", async () => {
-      const gaps = await openGaps();
-
-      expect(
-        await within(gaps).findByText(/Unmapped concepts in the latest 10-K \(2\)/),
-      ).toBeVisible();
-      expect(within(gaps).getByText("us-gaap:LongTermDebtCurrent")).toBeInTheDocument();
-      expect(
-        within(gaps).queryByText("us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInYearTwo"),
-      ).not.toBeInTheDocument();
-      expect(within(gaps).queryByText("us-gaap:Land")).not.toBeInTheDocument();
-      expect(within(gaps).getByRole("button", { name: "Show classified (2)" })).toBeInTheDocument();
-    });
-
-    it("shows each classified concept with its type and reason when asked", async () => {
-      const gaps = await openGaps();
-
-      await userEvent.click(
-        await within(gaps).findByRole("button", { name: "Show classified (2)" }),
-      );
-
-      const ladder = (
-        await within(gaps).findByText(
-          "us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInYearTwo",
-        )
-      ).closest("tr") as HTMLElement;
-      expect(within(ladder).getByText("disclosure")).toBeInTheDocument();
-      expect(within(ladder).getByText("debt maturity schedule")).toBeInTheDocument();
-      const land = within(gaps).getByText("us-gaap:Land").closest("tr") as HTMLElement;
-      expect(within(land).getByText("component")).toBeInTheDocument();
-      expect(within(land).getByText("ppe_net")).toBeInTheDocument();
-      expect(
-        within(land).getByText("gross property component of the PP&E note"),
-      ).toBeInTheDocument();
-      // the open concepts stay listed, and the button now hides the classified again
-      expect(within(gaps).getByText("us-gaap:LongTermDebtCurrent")).toBeInTheDocument();
-      await userEvent.click(within(gaps).getByRole("button", { name: "Hide classified (2)" }));
-      expect(within(gaps).queryByText("us-gaap:Land")).not.toBeInTheDocument();
-    });
-
-    it("has no toggle when nothing is classified", async () => {
-      const open = mappingGaps().unmapped_concepts.filter((c) => c.classification === null);
-      vi.mocked(getMappingGapsApiV1CompaniesTickerMappingGapsGet).mockResolvedValue(
-        okResult({ ...mappingGaps(), missing_items: [], unmapped_concepts: open }) as never,
-      );
-      renderOverview();
-
-      const gaps = await screen.findByRole("region", { name: "Data gaps" });
-      expect(await within(gaps).findByText("us-gaap:LongTermDebtCurrent")).toBeInTheDocument();
-      expect(within(gaps).queryByRole("button", { name: /classified/ })).not.toBeInTheDocument();
-    });
-
-    it("says nothing is left to classify when every concept has a verdict", async () => {
-      const done = mappingGaps().unmapped_concepts.filter((c) => c.classification !== null);
-      vi.mocked(getMappingGapsApiV1CompaniesTickerMappingGapsGet).mockResolvedValue(
-        okResult({ ...mappingGaps(), missing_items: [], unmapped_concepts: done }) as never,
-      );
-      renderOverview();
-
-      expect(await screen.findByText("No unclassified concepts.")).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Show classified (2)" })).toBeInTheDocument();
-    });
-  });
-
-  it("says so when there are no gaps", async () => {
-    vi.mocked(getMappingGapsApiV1CompaniesTickerMappingGapsGet).mockResolvedValue(
-      okResult({
-        ...mappingGaps(),
-        missing_items: [],
-        unmapped_concepts: [],
-        rule_warnings: [],
-      }) as never,
-    );
-    renderOverview();
-
-    expect(await screen.findByText("No missing items.")).toBeInTheDocument();
-    expect(screen.getByText("No unmapped concepts.")).toBeInTheDocument();
-  });
-
-  describe("coverage and rule warnings", () => {
-    async function gapsRegion() {
-      renderOverview();
-      return screen.findByRole("region", { name: "Data gaps" });
-    }
-
-    it("shows the coverage of every statement and frequency", async () => {
-      const gaps = await gapsRegion();
-
-      const table = await within(gaps).findByRole("table", { name: "Coverage" });
-      const income = within(table)
-        .getAllByText("Income statement")[0]!
-        .closest("tr") as HTMLElement;
-      expect(within(income).getByText("Annual")).toBeInTheDocument();
-      expect(within(income).getByText("95.0% (applicable 95.0%)")).toBeInTheDocument();
-      expect(within(income).getByText("95 / 100")).toBeInTheDocument();
-      const quarterly = within(table)
-        .getByText("88.8% (applicable 88.8%)")
-        .closest("tr") as HTMLElement;
-      expect(within(quarterly).getByText("Quarterly")).toBeInTheDocument();
-      expect(within(table).getByText("Balance sheet")).toBeInTheDocument();
-      expect(within(table).getByText("75.0% (applicable 75.0%)")).toBeInTheDocument();
-    });
-
-    it("breaks the empty cells down by cause and the filled ones by provenance", async () => {
-      const gaps = await gapsRegion();
-
-      const table = await within(gaps).findByRole("table", { name: "Coverage" });
-      const headers = within(table)
-        .getAllByRole("columnheader")
-        .map((h) => h.textContent);
-      expect(headers).toEqual([
-        "Statement",
-        "Frequency",
-        "Coverage",
-        "Filled",
-        "Inferred 0",
-        "Approximated",
-        "No filing data",
-        "Not applicable",
-        "Included in",
-        "Structural",
-        "Rule rejected",
-        "Annual only",
-        "Unclassified line",
-        "Not reported",
-      ]);
-      const quarterly = within(table)
-        .getByText("88.8% (applicable 88.8%)")
-        .closest("tr") as HTMLElement;
-      const cells = within(quarterly)
-        .getAllByRole("cell")
-        .map((c) => c.textContent);
-      expect(cells.slice(4)).toEqual(["12", "8", "17", "0", "0", "4", "0", "0", "0", "39"]);
-    });
-
-    it("shows a dash where a statement has nothing to cover", async () => {
-      const empty = mappingGaps();
-      empty.coverage = [
-        { ...empty.coverage[0]!, cells: 0, filled: 0, fraction: null, fraction_applicable: null },
-      ];
-      vi.mocked(getMappingGapsApiV1CompaniesTickerMappingGapsGet).mockResolvedValue(
-        okResult(empty) as never,
-      );
-      const gaps = await gapsRegion();
-
-      const table = await within(gaps).findByRole("table", { name: "Coverage" });
-      const row = within(table).getByText("Income statement").closest("tr") as HTMLElement;
-      expect(within(row).getByText("— (applicable —)")).toBeInTheDocument();
-      expect(within(row).getByText("0 / 0")).toBeInTheDocument();
-    });
-
-    it("shows strict and applicable coverage and names what applicable leaves out", async () => {
-      const gaps0 = mappingGaps();
-      gaps0.coverage = [
-        {
-          ...gaps0.coverage[0]!,
-          fraction: "0.800000",
-          fraction_applicable: "0.920000",
-          empty_by_cause: {
-            ...gaps0.coverage[0]!.empty_by_cause,
-            no_filing_data: 4,
-            not_applicable: 9,
-            included_in: 2,
-          },
-        },
-      ];
-      vi.mocked(getMappingGapsApiV1CompaniesTickerMappingGapsGet).mockResolvedValue(
-        okResult(gaps0) as never,
-      );
-      const gaps = await gapsRegion();
-
-      const table = await within(gaps).findByRole("table", { name: "Coverage" });
-      const coverage = within(table).getByText("80.0% (applicable 92.0%)");
-      expect(coverage).toHaveAttribute(
-        "title",
-        "Both leave out No filing data (4). Applicable also leaves out Not applicable (9) and " +
-          "Included in (2): cells that cannot hold a value.",
-      );
-    });
-
-    it("explains every cause of an empty cell in one line", async () => {
-      const gaps = await gapsRegion();
-
-      const causes = await within(gaps).findByRole("list", { name: "Empty-cell causes" });
-      const terms = within(causes)
-        .getAllByRole("term")
-        .map((t) => t.textContent);
-      expect(terms).toEqual([
-        "No filing data",
-        "Not applicable",
-        "Included in",
-        "Structural",
-        "Rule rejected",
-        "Annual only",
-        "Unclassified line",
-        "Not reported",
-      ]);
-      expect(within(causes).getAllByRole("definition")).toHaveLength(8);
-      expect(
-        within(causes).getByText(/inside a combined line/, { selector: "dd" }),
-      ).toBeInTheDocument();
-    });
-
-    it("lists the rule warnings with line, period, value and reason", async () => {
-      const gaps = await gapsRegion();
-
-      const warnings = await within(gaps).findByRole("table", { name: "Rule warnings" });
-      const fx = within(warnings).getByText("FX effect on cash").closest("tr") as HTMLElement;
-      expect(within(fx).getByText("cash_rollforward")).toBeInTheDocument();
-      expect(within(fx).getByText("FY2020")).toBeInTheDocument();
-      expect(within(fx).getByText("(1,250)")).toBeInTheDocument();
-      expect(within(fx).getByText("exceeds 5% of the largest other term")).toBeInTheDocument();
-      const eps = within(warnings).getByText("Diluted EPS").closest("tr") as HTMLElement;
-      expect(within(eps).getByText("Q4 FY2023")).toBeInTheDocument();
-      expect(within(eps).getByText("2.51")).toBeInTheDocument();
-      expect(screen.getByText("Rule warnings (3)")).toBeInTheDocument();
-    });
-
-    it("shows a dash for a warning with no value (a guard refused to solve)", async () => {
-      const gaps = await gapsRegion();
-
-      const warnings = await within(gaps).findByRole("table", { name: "Rule warnings" });
-      const row = within(warnings)
-        .getByText("Non-controlling interest")
-        .closest("tr") as HTMLElement;
-      expect(within(row).getByText("—")).toBeInTheDocument();
-      expect(within(row).getByText("operands come from different filings")).toBeInTheDocument();
-    });
-
-    it("says so when there are no warnings or no statement data", async () => {
-      vi.mocked(getMappingGapsApiV1CompaniesTickerMappingGapsGet).mockResolvedValue(
-        okResult({ ...mappingGaps(), coverage: [], rule_warnings: [] }) as never,
-      );
-      const gaps = await gapsRegion();
-
-      expect(await within(gaps).findByText("No rule warnings.")).toBeInTheDocument();
-      expect(within(gaps).getByText("No statement data yet.")).toBeInTheDocument();
-      expect(within(gaps).queryByRole("table", { name: "Coverage" })).not.toBeInTheDocument();
-    });
-  });
-
-  it("shows an error when the gaps fail to load, and keeps the key stats", async () => {
-    vi.mocked(getMappingGapsApiV1CompaniesTickerMappingGapsGet).mockResolvedValue(
-      errorResult(500) as never,
-    );
-    renderOverview();
-
-    expect(await screen.findByText("Could not load the data gaps.")).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Key stats" })).toBeInTheDocument();
-  });
-
-  it("shows an error for a gaps report without coverage or warnings (an old API)", async () => {
-    vi.mocked(getMappingGapsApiV1CompaniesTickerMappingGapsGet).mockResolvedValue(
-      okResult({ missing_items: [], unmapped_concepts: [] }) as never,
-    );
-    renderOverview();
-
-    expect(await screen.findByText("Could not load the data gaps.")).toBeInTheDocument();
-  });
-
-  it("shows an error for a 200 that is not a gaps report (G2/G4)", async () => {
-    vi.mocked(getMappingGapsApiV1CompaniesTickerMappingGapsGet).mockResolvedValue(
-      okResult("<!doctype html>") as never,
-    );
-    renderOverview();
-
-    expect(await screen.findByText("Could not load the data gaps.")).toBeInTheDocument();
-  });
-
-  describe("Adjustments", () => {
-    it("lists an adjustment's period, line, amount in scale, category and reason", async () => {
-      listAdjustments.mockResolvedValue(okResult([adjustment()]) as never);
-      renderOverview();
-
-      const section = await screen.findByRole("region", { name: "Adjustments" });
-      expect(
-        await within(section).findByRole("columnheader", { name: "Amount (USD millions)" }),
-      ).toBeInTheDocument();
-      const row = (await within(section).findByText("Legal settlement")).closest(
-        "tr",
-      ) as HTMLElement;
-      expect(within(row).getByText("FY2024")).toBeInTheDocument();
-      expect(within(row).getByText("SG&A")).toBeInTheDocument();
-      expect(within(row).getByText("(25)")).toBeInTheDocument();
-      expect(within(row).getByText("one-off")).toBeInTheDocument();
-    });
-
-    it("labels a quarter adjustment with its quarter", async () => {
-      listAdjustments.mockResolvedValue(okResult([adjustment({ fiscal_period: "Q2" })]) as never);
-      renderOverview();
-
-      const section = await screen.findByRole("region", { name: "Adjustments" });
-      expect(await within(section).findByText("Q2 FY2024")).toBeInTheDocument();
-    });
-
-    it("shows the amount in the page scale", async () => {
-      setScale("B");
-      listAdjustments.mockResolvedValue(okResult([adjustment({ amount: "-2500000000" })]) as never);
-      renderOverview();
-
-      const section = await screen.findByRole("region", { name: "Adjustments" });
-      expect(
-        await within(section).findByRole("columnheader", { name: "Amount (USD billions)" }),
-      ).toBeInTheDocument();
-      expect(await within(section).findByText("(2.5)")).toBeInTheDocument();
-    });
-
-    it("says so when there are none", async () => {
-      renderOverview();
-      expect(await screen.findByText("No adjustments.")).toBeInTheDocument();
-    });
-
-    it("shows an error when the list fails", async () => {
-      listAdjustments.mockResolvedValue(errorResult(500) as never);
-      renderOverview();
-      expect(await screen.findByText("Could not load the adjustments.")).toBeInTheDocument();
-    });
-
-    it("shows an error for a 200 with a non-array body (G4)", async () => {
-      listAdjustments.mockResolvedValue(okResult("<!doctype html>") as never);
-      renderOverview();
-      expect(await screen.findByText("Could not load the adjustments.")).toBeInTheDocument();
-    });
-
-    it("deletes only after the confirmation", async () => {
-      listAdjustments.mockResolvedValue(okResult([adjustment({ id: 7 })]) as never);
-      renderOverview();
-      const button = { name: "Delete adjustment Legal settlement" };
-      await userEvent.click(await screen.findByRole("button", button));
-      const dialog = await screen.findByRole("alertdialog");
-      expect(within(dialog).getByText("Delete this adjustment?")).toBeInTheDocument();
-      await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
-      expect(remove).not.toHaveBeenCalled();
-
-      await userEvent.click(screen.getByRole("button", button));
-      await userEvent.click(
-        within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Delete" }),
-      );
-      await waitFor(() =>
-        expect(remove).toHaveBeenCalledWith({ path: { ticker: "AAPL", adjustment_id: 7 } }),
-      );
-    });
-
-    it("removes the row after a confirmed delete", async () => {
-      listAdjustments
-        .mockResolvedValueOnce(okResult([adjustment({ id: 7 })]) as never)
-        .mockResolvedValue(okResult([]) as never);
-      renderOverview();
-      const section = await screen.findByRole("region", { name: "Adjustments" });
-      await userEvent.click(
-        await within(section).findByRole("button", { name: "Delete adjustment Legal settlement" }),
-      );
-      await userEvent.click(
-        within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Delete" }),
-      );
-      expect(await within(section).findByText("No adjustments.")).toBeInTheDocument();
-      expect(within(section).queryByText("Legal settlement")).not.toBeInTheDocument();
-    });
-
-    it("shows Loading… while the adjustments are pending", () => {
-      listAdjustments.mockReturnValue(new Promise(() => {}) as never);
-      renderOverview();
-      const section = screen.getByRole("region", { name: "Adjustments" });
-      expect(within(section).getByText("Loading…")).toBeInTheDocument();
-    });
-
-    it("shows the API detail when the delete fails", async () => {
-      remove.mockResolvedValue(errorResult(404, { detail: "Adjustment not found" }) as never);
-      listAdjustments.mockResolvedValue(okResult([adjustment({ id: 7 })]) as never);
-      renderOverview();
-      await userEvent.click(
-        await screen.findByRole("button", { name: "Delete adjustment Legal settlement" }),
-      );
-      await userEvent.click(
-        within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Delete" }),
-      );
-      expect(await screen.findByRole("alert")).toHaveTextContent("Adjustment not found");
-    });
-  });
-
-  describe("Corporate actions", () => {
-    it("lists the splits oldest first, with the reverse split as 1-for-10", async () => {
-      listActions.mockResolvedValue(okResult(corporateActions()) as never);
-      renderOverview();
-
-      const section = await screen.findByRole("region", { name: "Corporate actions" });
-      expect(await within(section).findByText("7-for-1")).toBeInTheDocument();
-      const rows = within(section)
-        .getAllByRole("row")
-        .map((r) => r.textContent);
-      expect(rows.some((t) => t === "2014-06-097-for-1")).toBe(true);
-      expect(rows.some((t) => t === "2020-08-314-for-1")).toBe(true);
-      expect(rows.some((t) => t === "2023-05-011-for-10")).toBe(true);
-      expect(rows.findIndex((t) => t?.startsWith("2014"))).toBeLessThan(
-        rows.findIndex((t) => t?.startsWith("2020")),
-      );
-    });
-
-    it("says so when there are none", async () => {
-      renderOverview();
-      expect(await screen.findByText("No corporate actions.")).toBeInTheDocument();
-    });
-
-    it("shows Loading… while the corporate actions are pending", () => {
-      listActions.mockReturnValue(new Promise(() => {}) as never);
-      renderOverview();
-      const section = screen.getByRole("region", { name: "Corporate actions" });
-      expect(within(section).getByText("Loading…")).toBeInTheDocument();
-    });
-
-    it("shows an error when the list fails", async () => {
-      listActions.mockResolvedValue(errorResult(500) as never);
-      renderOverview();
-      expect(await screen.findByText("Could not load the corporate actions.")).toBeInTheDocument();
-    });
-
-    it("shows an error for a 200 with a non-array body (G4)", async () => {
-      listActions.mockResolvedValue(okResult({ splits: [] }) as never);
-      renderOverview();
-      expect(await screen.findByText("Could not load the corporate actions.")).toBeInTheDocument();
-    });
-  });
-});
-
-describe("Overview import", () => {
-  it("opens the import sheet from the Data gaps section", async () => {
-    renderOverview();
-    const gaps = await screen.findByRole("region", { name: "Data gaps" });
-    await userEvent.click(within(gaps).getByRole("button", { name: "Import" }));
     expect(await screen.findByText("Import statements")).toBeVisible();
   });
+
+  it("leaves the data gaps, adjustments and corporate actions to the Data tab", async () => {
+    renderOverview();
+    await region("Key metrics");
+
+    for (const name of ["Data gaps", "Adjustments", "Corporate actions"]) {
+      expect(screen.queryByRole("region", { name })).not.toBeInTheDocument();
+    }
+    expect(getMappingGapsApiV1CompaniesTickerMappingGapsGet).not.toHaveBeenCalled();
+    expect(listAdjustmentsApiV1CompaniesTickerAdjustmentsGet).not.toHaveBeenCalled();
+    expect(listCorporateActionsApiV1CompaniesTickerCorporateActionsGet).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("link", {
+        name: "Data gaps, adjustments and corporate actions are on the Data tab.",
+      }),
+    ).toHaveAttribute("href", "/c/AAPL/data");
+  });
+
+  it("asks for the company's summary", async () => {
+    renderOverview();
+    await region("Key metrics");
+
+    expect(getSummary).toHaveBeenCalledWith({ path: { ticker: "AAPL" } });
+  });
 });
 
-describe("lines to classify (M7b S8)", () => {
-  function withLines(lines: MappingGapsOut["unclassified_lines"]) {
-    vi.mocked(getMappingGapsApiV1CompaniesTickerMappingGapsGet).mockResolvedValue(
-      okResult({ ...mappingGaps(), unclassified_lines: lines }) as never,
-    );
-  }
+describe("key metrics", () => {
+  it("lists the seven metrics in the API's order, under the five fiscal years", async () => {
+    renderOverview();
 
-  it("lists the face lines nobody classified, with what to do about them", async () => {
-    withLines([
-      {
-        statement: "CF",
-        taxonomy: "msft",
-        concept: "DepreciationAmortizationAndOther",
-        label: "Depreciation, amortization, and other",
-        latest_value: "22287000000",
-        latest_period_end: "2024-06-30",
-        filings: ["0000950170-24-087843", "0000950170-24-118967"],
-      },
+    const table = within(await region("Key metrics")).getByRole("table");
+    const [header, ...rows] = within(table).getAllByRole("row");
+    expect(
+      within(header!)
+        .getAllByRole("columnheader")
+        .map((th) => th.textContent),
+    ).toEqual([
+      "Metric",
+      "FY2021",
+      "FY2022",
+      "FY2023",
+      "FY2024",
+      "FY2025",
+      "Trend",
+      "Latest",
+      "YoY",
     ]);
-    renderOverview();
-
-    const table = await screen.findByRole("table", { name: "Lines to classify" });
-    const headers = within(table)
-      .getAllByRole("columnheader")
-      .map((h) => h.textContent);
-    expect(headers).toEqual([
-      "Statement",
-      "Label",
-      "Concept",
-      "Latest value (USD millions)",
-      "Period end",
-      "Filings",
+    expect(rows.map((row) => within(row).getByRole("rowheader").textContent)).toEqual([
+      "Revenue",
+      "Gross margin",
+      "Operating margin",
+      "FCF margin",
+      "Return on invested capital",
+      "EPS (diluted)",
+      "Net debt / EBITDA",
     ]);
-    const row = within(table)
-      .getByText("Depreciation, amortization, and other")
-      .closest("tr") as HTMLElement;
-    expect(within(row).getByText("Cash flow")).toBeInTheDocument();
-    expect(within(row).getByText("msft:DepreciationAmortizationAndOther")).toBeInTheDocument();
-    expect(within(row).getByText("22,287")).toBeInTheDocument();
-    expect(within(row).getByText("2024-06-30")).toBeInTheDocument();
-    expect(within(row).getByText("0000950170-24-087843, 0000950170-24-118967")).toBeInTheDocument();
-    expect(screen.getByText("Lines to classify (1)")).toBeInTheDocument();
-    expect(
-      screen.getByText("Map it in the company's override file, or list it under other_lines."),
-    ).toBeInTheDocument();
   });
 
-  it("says no classifier is configured, and offers no classify button (M7d S5)", async () => {
-    withLines([]);
+  it.each([
+    ["Revenue", ["365.8B", "394.3B", "383.3B", "391.0B", "416.2B", "", "416.2B", "+6.4%"]],
+    ["Gross margin", ["41.8%", "43.3%", "44.1%", "46.2%", "46.9%", "", "46.9%", "+0.7 pts"]],
+    ["EPS (diluted)", ["5.61", "6.11", "6.13", "6.08", "7.46", "", "7.46", "+22.7%"]],
+    ["Net debt / EBITDA", ["0.4x", "0.4x", "0.4x", "0.3x", "0.2x", "", "0.2x", "-0.1x"]],
+    // A year the ratio could not be computed for is a dash.
+    [
+      "Return on invested capital",
+      ["—", "55.3%", "54.8%", "56.4%", "59.8%", "", "59.8%", "+3.4 pts"],
+    ],
+  ])("formats %s by its unit, the change against the year before included", async (label, want) => {
     renderOverview();
 
-    const gaps = await screen.findByRole("region", { name: "Data gaps" });
-    expect(
-      await within(gaps).findByText("No classifier is configured. See Settings."),
-    ).toBeInTheDocument();
-    expect(within(gaps).queryByRole("button", { name: /^Classify/ })).not.toBeInTheDocument();
+    const table = within(await region("Key metrics")).getByRole("table");
+    const row = within(table).getByRole("rowheader", { name: label }).closest("tr")!;
+    expect(cells(row)).toEqual(want);
   });
 
-  it("offers the classify panel when a classifier has a key (M7d S5)", async () => {
-    vi.mocked(getStatusApiV1ClassificationStatusGet).mockResolvedValue(
-      okResult(classifierStatus()) as never,
+  it("draws a sparkline per metric", async () => {
+    renderOverview();
+
+    const metrics = await region("Key metrics");
+    expect(within(metrics).getByRole("img", { name: "Revenue trend" })).toBeInTheDocument();
+    expect(within(metrics).getAllByRole("img")).toHaveLength(7);
+  });
+
+  it("colors the change by its sign only", async () => {
+    renderOverview();
+
+    const metrics = await region("Key metrics");
+    expect(within(metrics).getByText("+6.4%")).toHaveClass("text-positive");
+    expect(within(metrics).getByText("-3.9 pts")).toHaveClass("text-negative");
+    // Net debt falling is good news, but the color says only that the number went down.
+    expect(within(metrics).getByText("-0.1x")).toHaveClass("text-negative");
+  });
+
+  it("says so when no metric has a year", async () => {
+    const metrics = companySummary().metrics.map((m) => ({
+      ...m,
+      years: [],
+      latest: null,
+      yoy: null,
+    }));
+    getSummary.mockResolvedValue(okResult(companySummary({ metrics })) as never);
+    renderOverview();
+
+    const block = await region("Key metrics");
+    expect(within(block).getByText("No annual figures yet.")).toBeInTheDocument();
+    expect(within(block).queryByRole("table")).not.toBeInTheDocument();
+  });
+});
+
+describe("open flags", () => {
+  it("lists each flag's rule, severity, value by its unit and period, linking to Quality", async () => {
+    renderOverview();
+
+    const block = await region("Open flags");
+    const rows = within(block).getAllByRole("row");
+    expect(rows.map(cells)).toEqual([
+      ["Accruals ratio", "Alert", "12.3%", "FY26"],
+      ["Receivables growing faster than revenue", "Warn", "1.8x", "FY26"],
+    ]);
+    expect(within(block).getByText("Alert")).toHaveClass("flag-alert");
+    expect(within(block).getByText("Warn")).toHaveClass("flag-warn");
+    expect(
+      within(block).getByRole("link", { name: "All flags on the Quality tab" }),
+    ).toHaveAttribute("href", "/c/AAPL/quality");
+  });
+
+  it("says so when no flag is open", async () => {
+    getSummary.mockResolvedValue(okResult(companySummary({ flags: [] })) as never);
+    renderOverview();
+
+    expect(within(await region("Open flags")).getByText("No open flags.")).toBeInTheDocument();
+  });
+});
+
+describe("valuation", () => {
+  it("reads the range, the base value against the price and the upside, linking to Valuation", async () => {
+    renderOverview();
+
+    const link = within(await region("Valuation")).getByRole("link");
+    expect(link).toHaveTextContent(
+      "Value 180.25–265.10 per share · base 242.00 vs price 231.40 (+4.6%)",
+    );
+    expect(link).toHaveAttribute("href", "/c/AAPL/valuation");
+  });
+
+  it("shows dashes for a missing base value and price, and no upside", async () => {
+    const valuation = { ...companySummary().valuation!, base: null, price: null, upside: null };
+    getSummary.mockResolvedValue(okResult(companySummary({ valuation })) as never);
+    renderOverview();
+
+    expect(within(await region("Valuation")).getByRole("link").textContent).toBe(
+      "Value 180.25–265.10 per share · base — vs price —",
+    );
+  });
+
+  it("says so when the default scenario is not valued", async () => {
+    getSummary.mockResolvedValue(okResult(companySummary({ valuation: null })) as never);
+    renderOverview();
+
+    const block = await region("Valuation");
+    expect(within(block).getByText("No default scenario valued yet.")).toBeInTheDocument();
+    expect(within(block).queryByRole("link")).not.toBeInTheDocument();
+  });
+});
+
+describe("forecast", () => {
+  it("reads when the default scenario was updated and last snapshotted", async () => {
+    renderOverview();
+
+    const block = await region("Forecast");
+    expect(block).toHaveTextContent("Base thesis updated 3d ago, last snapshot 5h ago");
+    expect(within(block).queryByText(/Not updated since/)).not.toBeInTheDocument();
+  });
+
+  it("says never for a scenario with no snapshot", async () => {
+    const forecast = { ...companySummary().forecast!, last_snapshot_at: null };
+    getSummary.mockResolvedValue(okResult(companySummary({ forecast })) as never);
+    renderOverview();
+
+    expect(await region("Forecast")).toHaveTextContent("last snapshot never");
+  });
+
+  it("warns, linking to Scenarios, when a newer filing landed after the last update", async () => {
+    const forecast = { ...companySummary().forecast!, stale: true };
+    getSummary.mockResolvedValue(okResult(companySummary({ forecast })) as never);
+    renderOverview();
+
+    const stale = within(await region("Forecast")).getByRole("link", {
+      name: "Not updated since the Oct 31, 2026 filing.",
+    });
+    expect(stale).toHaveAttribute("href", "/c/AAPL/scenarios");
+    expect(stale).toHaveClass("text-flag-warn");
+  });
+
+  it("says so when there is no default scenario", async () => {
+    getSummary.mockResolvedValue(okResult(companySummary({ forecast: null })) as never);
+    renderOverview();
+
+    expect(
+      within(await region("Forecast")).getByText("No default scenario yet."),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("latest notes", () => {
+  it("lists the three excerpts with their dates, linking to Notes", async () => {
+    renderOverview();
+
+    const block = await region("Latest notes");
+    const items = within(block).getAllByRole("listitem");
+    expect(items.map((item) => item.textContent)).toEqual([
+      "Nov 2, 2026Services margin keeps widening.",
+      "Oct 20, 2026Buyback pace slowed in Q3.",
+      "Sep 1, 2026Thesis: installed base monetisation.",
+    ]);
+    expect(within(block).getByRole("link", { name: "All notes" })).toHaveAttribute(
+      "href",
+      "/c/AAPL/notes",
+    );
+  });
+
+  it("says so when there is no note", async () => {
+    getSummary.mockResolvedValue(okResult(companySummary({ notes: [] })) as never);
+    renderOverview();
+
+    expect(within(await region("Latest notes")).getByText("No notes yet.")).toBeInTheDocument();
+  });
+});
+
+describe("summary states", () => {
+  it("shows the warnings of the blocks that could not be computed", async () => {
+    getSummary.mockResolvedValue(
+      okResult(
+        companySummary({
+          valuation: null,
+          warnings: ["Valuation, bear case: WACC must exceed the terminal growth rate"],
+        }),
+      ) as never,
     );
     renderOverview();
 
-    const gaps = await screen.findByRole("region", { name: "Data gaps" });
+    const warnings = await screen.findByRole("list", { name: "Summary warnings" });
     expect(
-      await within(gaps).findByRole("button", { name: "Classify 2 lines" }),
-    ).toBeInTheDocument();
-    expect(within(gaps).getByText("Marketing expense")).toBeInTheDocument();
+      within(warnings).getByText("Valuation, bear case: WACC must exceed the terminal growth rate"),
+    ).toHaveClass("text-muted-foreground");
   });
 
-  it("says so when every face line is classified", async () => {
-    withLines([]);
+  it("shows no warning list when there is none", async () => {
+    renderOverview();
+    await region("Key metrics");
+
+    expect(screen.queryByRole("list", { name: "Summary warnings" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the key stats while the summary loads", async () => {
+    getSummary.mockReturnValue(new Promise(() => {}) as never);
     renderOverview();
 
-    expect(await screen.findByText("No lines to classify.")).toBeInTheDocument();
-    expect(screen.queryByRole("table", { name: "Lines to classify" })).not.toBeInTheDocument();
+    expect(await region("Key stats")).toBeInTheDocument();
+    expect(screen.getByText("Loading…")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Key metrics" })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["an error", errorResult(500)],
+    ["a 200 that is not a summary (G2/G4)", okResult("<!doctype html>")],
+  ])("says the summary could not load on %s, keeping the key stats", async (_name, result) => {
+    getSummary.mockResolvedValue(result as never);
+    renderOverview();
+
+    expect(await screen.findByText("Could not load the summary.")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Key stats" })).toBeInTheDocument();
   });
 });

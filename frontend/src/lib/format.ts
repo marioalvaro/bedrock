@@ -292,6 +292,20 @@ export function formatVsMedian(value: string | null, unit: RatioUnit): string {
   return unit === "pct" ? signed(Number(value) * 100, " pts") : formatSignedPercent(value);
 }
 
+/**
+ * A year-on-year change as the summary computes it: relative (a fraction) for USD and per-share
+ * units ("+6.4%"), a difference for `pct` in points ("+0.7 pts"), for `x` in turns ("-0.1x") and
+ * for `days` ("+3.0 days"). Null "—".
+ */
+export function formatChange(value: string | null, unit: string): string {
+  if (value === null) return DASH;
+  const number = Number(value);
+  if (unit === "pct") return signed(number * 100, " pts");
+  if (unit === "x") return signed(number, "x");
+  if (unit === "days") return signed(number, " days");
+  return formatSignedPercent(value);
+}
+
 /** The peer range by unit: "12.1x – 30.4x"; "—" when either end is missing. */
 export function formatRange(min: string | null, max: string | null, unit: RatioUnit): string {
   if (min === null || max === null) return DASH;

@@ -5443,6 +5443,10 @@ export type SummaryFlagOut = {
      */
     severity: 'warn' | 'alert';
     /**
+     * Unit
+     */
+    unit: 'pct' | 'x';
+    /**
      * Value
      */
     value: string | null;

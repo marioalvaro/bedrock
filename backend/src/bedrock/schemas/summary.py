@@ -37,6 +37,7 @@ class SummaryFlagOut(BaseModel):
     label: str
     severity: Literal["warn", "alert"]
     value: Decimal | None
+    unit: Literal["pct", "x"]
     period_label: str
 
 

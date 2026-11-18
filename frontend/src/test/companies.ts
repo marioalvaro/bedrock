@@ -1,4 +1,9 @@
-import type { CompanyListItem, CoverageOut, MappingGapsOut } from "@/api/generated/types.gen";
+import type {
+  CompanyListItem,
+  CoverageOut,
+  DeletionImpactOut,
+  MappingGapsOut,
+} from "@/api/generated/types.gen";
 
 export function companyItem(overrides: Partial<CompanyListItem> = {}): CompanyListItem {
   return {
@@ -187,5 +192,23 @@ export function mappingGaps(): MappingGapsOut {
         },
       },
     ],
+  };
+}
+
+/** GET /companies/COST/deletion-impact: what a permanent delete removes (zeros are left out). */
+export function deletionImpact(overrides: Partial<DeletionImpactOut> = {}): DeletionImpactOut {
+  return {
+    ticker: "COST",
+    filings: 12,
+    facts: 48210,
+    notes: 7,
+    scenarios: 3,
+    snapshots: 5,
+    guidance: 2,
+    adjustments: 0,
+    checkpoints: 1,
+    comps_sets: 0,
+    imports: 0,
+    ...overrides,
   };
 }

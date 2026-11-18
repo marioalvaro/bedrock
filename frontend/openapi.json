@@ -10308,6 +10308,14 @@
             "title": "Severity",
             "type": "string"
           },
+          "unit": {
+            "enum": [
+              "pct",
+              "x"
+            ],
+            "title": "Unit",
+            "type": "string"
+          },
           "value": {
             "anyOf": [
               {
@@ -10326,6 +10334,7 @@
           "label",
           "severity",
           "value",
+          "unit",
           "period_label"
         ],
         "title": "SummaryFlagOut",

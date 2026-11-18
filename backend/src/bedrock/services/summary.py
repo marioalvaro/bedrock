@@ -71,6 +71,7 @@ class SummaryFlag:
     label: str
     severity: str  # warn | alert
     value: Decimal | None
+    unit: str  # the rule's unit: pct | x
     period_label: str
 
 
@@ -211,7 +212,7 @@ def _flags(session: Session, company: Company) -> list[SummaryFlag]:
     newest = len(table.periods) - 1
     label = table.periods[newest].label
     raised = [
-        SummaryFlag(r.code, r.label, severity, r.values[newest], label)
+        SummaryFlag(r.code, r.label, severity, r.values[newest], r.unit, label)
         for r in table.rows
         if (severity := r.severity[newest]) in _SEVERITY_RANK
     ]

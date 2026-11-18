@@ -4,13 +4,20 @@ import { ApiError, unwrap } from "@/api/errors";
 import {
   addCompanyApiV1CompaniesPost,
   addManualCompanyApiV1CompaniesManualPost,
+  archiveCompanyApiV1CompaniesTickerArchivePost,
   backfillFilingsApiV1CompaniesTickerBackfillFilingsPost,
+  deletionImpactApiV1CompaniesTickerDeletionImpactGet,
   getCompaniesApiV1CompaniesGet,
   getCompanyApiV1CompaniesTickerGet,
   refreshApiV1CompaniesTickerRefreshPost,
   removeCompanyApiV1CompaniesTickerDelete,
+  restoreCompanyApiV1CompaniesTickerRestorePost,
 } from "@/api/generated/sdk.gen";
-import type { ManualCompanyCreate } from "@/api/generated/types.gen";
+import type {
+  CompanyListItem,
+  DeletionImpactOut,
+  ManualCompanyCreate,
+} from "@/api/generated/types.gen";
 
 // Every company-scoped query key starts with ["companies", ticker], so one prefix
 // invalidation after a refresh reaches the list, the header, the statements and the gaps.
@@ -26,6 +33,32 @@ export const companiesQueryOptions = queryOptions({
   queryFn: () => unwrap(getCompaniesApiV1CompaniesGet()),
   refetchInterval: PRICE_POLL_MS,
 });
+
+/** GET /companies?archived=true (FR-WS-07): the archived companies, under the companies prefix
+ * so every list invalidation reaches it. Rejects a 200 that is not a list (G2/G4). */
+export const archivedCompaniesQueryOptions = queryOptions<CompanyListItem[]>({
+  queryKey: [...companiesQueryKey, "archived"],
+  queryFn: async () => {
+    const list = await unwrap(getCompaniesApiV1CompaniesGet({ query: { archived: true } }));
+    if (!Array.isArray(list)) throw new ApiError(200, "Unexpected response");
+    return list;
+  },
+});
+
+/** GET …/deletion-impact (FR-WS-07): the row counts a permanent delete removes, read fresh each
+ * time the dialog opens. Rejects a 200 without the counts (G2/G4). */
+export const deletionImpactQueryOptions = (ticker: string) =>
+  queryOptions<DeletionImpactOut>({
+    queryKey: [...companyKey(ticker), "deletion-impact"],
+    staleTime: 0,
+    queryFn: async () => {
+      const counts = await unwrap(
+        deletionImpactApiV1CompaniesTickerDeletionImpactGet({ path: { ticker } }),
+      );
+      if (typeof counts?.facts !== "number") throw new ApiError(200, "Unexpected response");
+      return counts;
+    },
+  });
 
 export const companyQueryOptions = (ticker: string) =>
   queryOptions({
@@ -65,8 +98,30 @@ export function useRemoveCompany() {
       unwrap(removeCompanyApiV1CompaniesTickerDelete({ path: { ticker } })),
     onSuccess: (_data, ticker) => {
       queryClient.removeQueries({ queryKey: companyKey(ticker) });
+      // The followed and the archived list both sit under the prefix.
       return queryClient.invalidateQueries({ queryKey: companiesQueryKey });
     },
+  });
+}
+
+/** POST …/archive (FR-WS-07): the company leaves the list and its refreshes stop; nothing is
+ * deleted. The companies prefix covers both lists. */
+export function useArchiveCompany() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (ticker: string) =>
+      unwrap(archiveCompanyApiV1CompaniesTickerArchivePost({ path: { ticker } })),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: companiesQueryKey }),
+  });
+}
+
+/** POST …/restore (FR-WS-07): back on the followed list, with no re-ingestion. */
+export function useRestoreCompany() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (ticker: string) =>
+      unwrap(restoreCompanyApiV1CompaniesTickerRestorePost({ path: { ticker } })),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: companiesQueryKey }),
   });
 }
 
