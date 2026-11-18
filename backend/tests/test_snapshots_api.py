@@ -395,3 +395,24 @@ def test_a_snapshot_older_than_the_mode_has_none(aapl: TestClient, session: Sess
     assert detail_of(aapl, created["id"])["classification_mode"] is None
     listed = aapl.get(f"{API}/AAPL/snapshots").json()["snapshots"]
     assert listed[0]["classification_mode"] is None
+
+
+def test_a_manual_snapshot_reads_origin_manual(aapl: TestClient) -> None:
+    created = take(aapl, main_id(aapl))
+
+    assert created["origin"] == "manual"
+    assert aapl.get(f"{API}/AAPL/snapshots").json()["snapshots"][0]["origin"] == "manual"
+    assert detail_of(aapl, created["id"])["origin"] == "manual"
+
+
+def test_the_snapshot_a_refresh_takes_reads_origin_auto(aapl: TestClient, session: Session) -> None:
+    withhold_filings(session, date(2026, 5, 1))  # the Q3 FY26 10-Q has not landed
+
+    refreshed = aapl.post(f"{API}/AAPL/refresh").json()
+
+    assert refreshed["snapshot_id"] is not None
+    (listed,) = aapl.get(f"{API}/AAPL/snapshots").json()["snapshots"]
+    assert listed["id"] == refreshed["snapshot_id"]
+    assert listed["origin"] == "auto"
+    assert listed["note"] == "Before the 10-Q filed 2026-07-31"
+    assert detail_of(aapl, listed["id"])["origin"] == "auto"

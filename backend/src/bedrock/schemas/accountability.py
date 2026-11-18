@@ -50,6 +50,8 @@ class SnapshotOut(BaseModel):
     revenue_mape: Decimal | None
     # M7d S4: the company's classification mode when it was taken; null for an older snapshot
     classification_mode: Literal["off", "accepted", "all"] | None
+    # M7c: `auto` when a refresh took it just before storing a new 10-K or 10-Q
+    origin: Literal["manual", "auto"]
 
     @classmethod
     def from_view(cls, view: SnapshotView) -> "SnapshotOut":

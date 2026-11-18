@@ -43,7 +43,8 @@ from bedrock.models.base import Base
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # Keep the loggers already imported: in-process runs (the tests) would lose them otherwise.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata
 

@@ -3711,6 +3711,10 @@ export type RefreshResultOut = {
      */
     new_splits: number;
     /**
+     * Snapshot Id
+     */
+    snapshot_id: number | null;
+    /**
      * Ticker
      */
     ticker: string;
@@ -4481,6 +4485,10 @@ export type SnapshotDetailOut = {
      */
     note: string | null;
     /**
+     * Origin
+     */
+    origin: 'manual' | 'auto';
+    /**
      * Revenue Mape
      */
     revenue_mape: string | null;
@@ -4682,6 +4690,10 @@ export type SnapshotOut = {
      * Note
      */
     note: string | null;
+    /**
+     * Origin
+     */
+    origin: 'manual' | 'auto';
     /**
      * Revenue Mape
      */

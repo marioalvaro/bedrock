@@ -6908,6 +6908,17 @@
             "title": "New Splits",
             "type": "integer"
           },
+          "snapshot_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Id"
+          },
           "ticker": {
             "title": "Ticker",
             "type": "string"
@@ -6928,7 +6939,8 @@
           "new_splits",
           "new_filing_lines",
           "last_refreshed_at",
-          "warnings"
+          "warnings",
+          "snapshot_id"
         ],
         "title": "RefreshResultOut",
         "type": "object"
@@ -8401,6 +8413,14 @@
             ],
             "title": "Note"
           },
+          "origin": {
+            "enum": [
+              "manual",
+              "auto"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
           "revenue_mape": {
             "anyOf": [
               {
@@ -8444,6 +8464,7 @@
           "scored_periods",
           "revenue_mape",
           "classification_mode",
+          "origin",
           "cases"
         ],
         "title": "SnapshotDetailOut",
@@ -8792,6 +8813,14 @@
             ],
             "title": "Note"
           },
+          "origin": {
+            "enum": [
+              "manual",
+              "auto"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
           "revenue_mape": {
             "anyOf": [
               {
@@ -8834,7 +8863,8 @@
           "failed_cases",
           "scored_periods",
           "revenue_mape",
-          "classification_mode"
+          "classification_mode",
+          "origin"
         ],
         "title": "SnapshotOut",
         "type": "object"

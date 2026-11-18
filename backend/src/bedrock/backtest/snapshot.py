@@ -1,7 +1,7 @@
 """A forecast as the rows stored for it (docs/erd/accountability.md "Stored rows"). Pure."""
 
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Literal
@@ -10,9 +10,13 @@ from bedrock.forecast.engine_defaults import EngineRow
 from bedrock.forecast.engines.driver import ForecastStatements
 from bedrock.forecast.history import ScenarioSettings
 from bedrock.forecast.resolve import ResolvedDrivers
+from bedrock.ingest.parse import FilingRecord
 from bedrock.statements.periods import Period
 
 RowKind = Literal["line", "driver"]
+
+# The forms that bring a report a forecast is scored against; an amendment or an 8-K does not.
+REPORT_FORMS = frozenset({"10-K", "10-Q"})
 
 
 @dataclass(frozen=True)
@@ -144,3 +148,21 @@ def _driver_rows(drivers: ResolvedDrivers, engines: Mapping[str, EngineRow]) -> 
                 )
             )
     return rows
+
+
+def incoming_reports(
+    parsed_filings: Iterable[FilingRecord], stored_accessions: Collection[str]
+) -> list[FilingRecord]:
+    """The parsed 10-Ks and 10-Qs whose accession is not stored, oldest `filed_at` first (then by
+    accession). Empty when nothing is stored yet: a first load has no forecast to freeze
+    (docs/erd/accountability.md "Automatic snapshots", the trigger)."""
+    if not stored_accessions:
+        return []
+    return sorted(
+        (
+            f
+            for f in parsed_filings
+            if f.form in REPORT_FORMS and f.accession_no not in stored_accessions
+        ),
+        key=lambda f: (f.filed_at, f.accession_no),
+    )

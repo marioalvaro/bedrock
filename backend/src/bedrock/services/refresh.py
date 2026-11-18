@@ -4,13 +4,17 @@ from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
-from bedrock.ingest.parse import parse_companyfacts
+from bedrock.backtest.snapshot import incoming_reports
+from bedrock.forecast.errors import ForecastUnavailable
+from bedrock.ingest.parse import ParsedFacts, parse_companyfacts
 from bedrock.ingest.protocol import CompanyRef, SourceUnavailable
 from bedrock.ingest.sources import Sources
+from bedrock.models.company import Company
 from bedrock.repositories import companies as companies_repo
 from bedrock.repositories import facts as facts_repo
 from bedrock.services import consensus as consensus_service
 from bedrock.services import new_filings as new_filings_service
+from bedrock.services import snapshots as snapshots_service
 from bedrock.services.errors import CompanyNotFound
 from bedrock.services.filings import ingest_filings
 from bedrock.services.mappings import sync_mappings
@@ -29,6 +33,7 @@ class RefreshResult:
     last_refreshed_at: datetime
     warnings: list[str]
     new_filing_lines: int = 0  # face-statement lines read from the filings' own XBRL (M7b S6)
+    snapshot_id: int | None = None  # the snapshot taken before a new 10-K or 10-Q (M7c)
 
 
 # A refresh reads at most this many filings' XBRL: a new filing, or the newest year on a first
@@ -47,22 +52,30 @@ def refresh_company(
     the newest filings not read yet are read for their XBRL (`ingest_filings`, which commits
     filing by filing); a failure there is a warning, never a rollback. The analyst consensus is
     fetched last (`refresh_consensus`, which commits), so a company followed or refreshed between
-    two scheduled runs has it; a failure there is a warning too, and the stored rows are kept."""
+    two scheduled runs has it; a failure there is a warning too, and the stored rows are kept.
+
+    Before a new 10-K or 10-Q is stored, the default scenario is snapshotted (`_snapshot_step`,
+    which commits on its own and never fails the refresh; docs/erd/accountability.md "Automatic
+    snapshots")."""
     company = companies_repo.get_by_ticker(session, ticker.strip().upper())
     if company is None:
         raise CompanyNotFound(ticker)
+    warnings: list[str] = []
+    snapshot_id: int | None = None
     try:
+        parsed: ParsedFacts | None = None
+        if company.source == "sec":
+            # The fetch and the parse write nothing, so they go first.
+            payload = sources.edgar.fetch(CompanyRef(company.ticker, company.cik), None)
+            parsed = parse_companyfacts(payload.companyfacts)
+            snapshot_id = _snapshot_step(session, company, parsed, now, warnings)
         sync_mappings(session)
         new_filings = new_facts = 0
-        if company.source == "sec":
-            payload = sources.edgar.fetch(CompanyRef(company.ticker, company.cik), None)
-            new_filings, new_facts = facts_repo.insert_parsed(
-                session, company, parse_companyfacts(payload.companyfacts)
-            )
+        if parsed is not None:
+            new_filings, new_facts = facts_repo.insert_parsed(session, company, parsed)
             # A marked filing goes when it is stored, in this transaction (M7c, FR-DATA-23).
             new_filings_service.clear_ingested(session, company)
 
-        warnings: list[str] = []
         new_prices = 0
         new_splits = 0
         try:
@@ -106,4 +119,26 @@ def refresh_company(
         now,
         warnings,
         new_filing_lines,
+        snapshot_id,
     )
+
+
+def _snapshot_step(
+    session: Session, company: Company, parsed: ParsedFacts, now: datetime, warnings: list[str]
+) -> int | None:
+    """Freezes the default scenario when `parsed` brings a 10-K or 10-Q not stored yet, on the
+    data stored before it. A failure is a warning, with the session rolled back."""
+    try:
+        stored = facts_repo.filing_accessions(session, company.id)
+        incoming = incoming_reports(parsed.filings, stored)
+        view = snapshots_service.snapshot_before(session, company, incoming, now)
+    except ForecastUnavailable as unavailable:
+        session.rollback()
+        warnings.append(f"forecast not snapshotted: {unavailable.detail}")
+        return None
+    except Exception as error:  # a snapshot never blocks the refresh
+        session.rollback()
+        logger.exception("forecast of %s not snapshotted", company.ticker)
+        warnings.append(f"forecast not snapshotted: {error}")
+        return None
+    return None if view is None else view.id

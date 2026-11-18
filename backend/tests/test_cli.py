@@ -1,5 +1,6 @@
 import json
 from collections.abc import Iterator
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,7 @@ from bedrock.models.canonical_item import CanonicalItem
 from bedrock.models.company import Company
 from bedrock.services.companies import add_manual_company
 
+from .accountability_data import withhold_filings
 from .fakes import FakeEdgar, FakeFilings, FakePrices
 from .seed import fake_sources
 
@@ -129,6 +131,20 @@ def test_refresh_prints_the_result_of_each_ticker(cli_db: Path) -> None:
         "last_refreshed_at:",
     ):
         assert line in result.output
+    assert "snapshot" not in result.output
+
+
+def test_refresh_prints_the_snapshot_taken_before_a_new_filing(cli_db: Path) -> None:
+    runner.invoke(app, ["add", "AAPL"])
+    engine = make_engine(f"sqlite:///{cli_db}")
+    with Session(engine) as session:
+        withhold_filings(session, date(2026, 5, 1))  # the Q3 FY26 10-Q has not landed
+    engine.dispose()
+
+    result = runner.invoke(app, ["refresh", "AAPL"])
+
+    assert result.exit_code == 0, result.output
+    assert "  snapshot 1 taken before the new filing" in result.output.splitlines()
 
 
 def test_refresh_all_covers_every_followed_company(cli_db: Path) -> None:

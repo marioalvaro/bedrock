@@ -74,6 +74,11 @@ def _result_lines(result: RefreshResult) -> list[str]:
         f"  new_splits: {result.new_splits}",
         f"  new_filing_lines: {result.new_filing_lines}",
         f"  last_refreshed_at: {result.last_refreshed_at.isoformat()}",
+        *(
+            [f"  snapshot {result.snapshot_id} taken before the new filing"]
+            if result.snapshot_id is not None
+            else []
+        ),
         *(f"  warning: {warning}" for warning in result.warnings),
     ]
 

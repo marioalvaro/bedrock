@@ -94,6 +94,7 @@ export function snapshotOut(overrides: Partial<SnapshotOut> = {}): SnapshotOut {
     failed_cases: [],
     scored_periods: 1,
     classification_mode: "off",
+    origin: "manual",
     revenue_mape: "0.0312",
     ...overrides,
   };

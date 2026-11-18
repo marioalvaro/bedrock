@@ -2460,3 +2460,77 @@ def test_0023_downgrade_drops_only_what_it_added_and_keeps_the_rows(
 
     _run_alembic(tmp_path, monkeypatch, ("upgrade", "0023"))
     assert "pending_filing" in inspect(engine).get_table_names()
+
+
+# --- 0024: snapshot origin (M7c S2, docs/erd/accountability.md "Automatic snapshots") ----------
+
+
+def test_0024_adds_origin_and_trigger_and_existing_snapshots_are_manual(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0023"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        _snapshot(connection, _company(connection, "AAA"), None)
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "0024"))
+
+    engine.dispose()
+    columns = {c["name"]: c for c in inspect(engine).get_columns("forecast_snapshot")}
+    assert columns["origin"]["nullable"] is False
+    assert columns["trigger_accession"]["nullable"] is True
+    with engine.begin() as connection:
+        assert connection.execute(
+            text("SELECT origin, trigger_accession FROM forecast_snapshot")
+        ).all() == [("manual", None)]
+
+
+def test_0024_origin_is_manual_or_auto(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0024"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        company_id = _company(connection, "AAA")
+        _insert(
+            connection,
+            "forecast_snapshot",
+            company_id=company_id,
+            scenario_name="Main",
+            created_at=_NOW,
+            origin="auto",
+            trigger_accession="0000320193-26-000020",
+        )
+    for bad in ("scheduled", None):
+        with engine.begin() as connection, pytest.raises(IntegrityError):
+            _insert(
+                connection,
+                "forecast_snapshot",
+                company_id=company_id,
+                scenario_name="Main",
+                created_at=_NOW,
+                origin=bad,
+            )
+
+
+def test_0024_downgrade_drops_only_what_it_added_and_keeps_the_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0023"))
+    engine = create_engine(database_url)
+    before = {c["name"] for c in inspect(engine).get_columns("forecast_snapshot")}
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "0024"))
+    with engine.begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+        company_id = _company(connection, "AAA")
+        _audit(connection, company_id)  # a row that cascades from `company` (G34)
+        _snapshot(connection, company_id, None)
+
+    _run_alembic(tmp_path, monkeypatch, ("downgrade", "0023"))
+
+    engine.dispose()
+    assert {c["name"] for c in inspect(engine).get_columns("forecast_snapshot")} == before
+    with engine.begin() as connection:
+        assert _count(connection, "forecast_snapshot") == 1
+        assert _count(connection, "audit_log") == 1
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "0024"))
+    assert "origin" in {c["name"] for c in inspect(engine).get_columns("forecast_snapshot")}
