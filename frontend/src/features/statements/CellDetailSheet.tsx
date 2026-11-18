@@ -364,6 +364,17 @@ function Body({
             : includedInText(labelOf(data.included_in as string))}
         </Field>
       )}
+      {data.classified_by !== null && data.classified_by.length > 0 && (
+        <Field name="AI classified">
+          <ul>
+            {data.classified_by.map((line) => (
+              <li key={line}>
+                <code className="break-all">{line}</code>
+              </li>
+            ))}
+          </ul>
+        </Field>
+      )}
       {data.source && data.source.taxonomy !== IMPORT_FORM && (
         <Field name="Source tag">
           <code className="break-all">

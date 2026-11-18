@@ -1,11 +1,18 @@
 import { QueryClient } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { companyKey } from "@/api/companies";
 import {
+  getAsReportedApiV1CompaniesTickerAsReportedGet,
   getMappingGapsApiV1CompaniesTickerMappingGapsGet,
   getStatementApiV1CompaniesTickerStatementsGet,
 } from "@/api/generated/sdk.gen";
-import { mappingGapsQueryOptions, statementQueryOptions } from "@/api/statements";
+import {
+  asReportedQueryOptions,
+  mappingGapsQueryOptions,
+  statementQueryOptions,
+} from "@/api/statements";
+import { asReportedBalanceSheet } from "@/test/classification";
 import { mappingGaps } from "@/test/companies";
 import { errorResult, networkErrorResult, okResult } from "@/test/responses";
 
@@ -13,6 +20,7 @@ vi.mock("@/api/generated/sdk.gen", () => ({
   getStatementApiV1CompaniesTickerStatementsGet: vi.fn(),
   getCellApiV1CompaniesTickerStatementsCellGet: vi.fn(),
   getMappingGapsApiV1CompaniesTickerMappingGapsGet: vi.fn(),
+  getAsReportedApiV1CompaniesTickerAsReportedGet: vi.fn(),
 }));
 
 const getStatement = vi.mocked(getStatementApiV1CompaniesTickerStatementsGet);
@@ -94,5 +102,44 @@ describe("mappingGapsQueryOptions", () => {
     await expect(client().fetchQuery(mappingGapsQueryOptions("AAPL"))).resolves.toMatchObject({
       unclassified_lines: [],
     });
+  });
+});
+
+describe("asReportedQueryOptions (M7d S5)", () => {
+  const getAsReported = vi.mocked(getAsReportedApiV1CompaniesTickerAsReportedGet);
+
+  it("asks for the default filing without an accession", async () => {
+    getAsReported.mockResolvedValue(okResult(asReportedBalanceSheet()) as never);
+    await client().fetchQuery(asReportedQueryOptions("AAPL", "BS", null));
+    expect(getAsReported).toHaveBeenCalledWith({
+      path: { ticker: "AAPL" },
+      query: { statement: "BS" },
+    });
+  });
+
+  it("sends a named accession and keys by statement and accession", async () => {
+    getAsReported.mockResolvedValue(okResult(asReportedBalanceSheet()) as never);
+    await client().fetchQuery(asReportedQueryOptions("AAPL", "IS", "0000320193-25-000079"));
+    expect(getAsReported).toHaveBeenCalledWith({
+      path: { ticker: "AAPL" },
+      query: { statement: "IS", accession: "0000320193-25-000079" },
+    });
+    expect(asReportedQueryOptions("AAPL", "IS", "x").queryKey).toEqual([
+      ...companyKey("AAPL"),
+      "as-reported",
+      "IS",
+      "x",
+    ]);
+  });
+
+  it("rejects a 200 with a wrong body and passes a 404 on", async () => {
+    getAsReported.mockResolvedValue(okResult({ filing: null }) as never);
+    await expect(
+      client().fetchQuery(asReportedQueryOptions("AAPL", "BS", null)),
+    ).rejects.toMatchObject({ status: 200, detail: "Unexpected response" });
+    getAsReported.mockResolvedValue(errorResult(404) as never);
+    await expect(
+      client().fetchQuery(asReportedQueryOptions("AAPL", "BS", "nope")),
+    ).rejects.toMatchObject({ status: 404 });
   });
 });

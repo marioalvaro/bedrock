@@ -21,3 +21,9 @@ class Company(Base):
     source: Mapped[str] = mapped_column(String, nullable=False, default="sec", server_default="sec")
     sic: Mapped[str | None] = mapped_column(String, nullable=True)
     last_refreshed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # M7d (docs/erd/face-tree.md "Storage"): off | accepted | all, what of the line
+    # classifications the statements use; and the classifier whose proposals `all` uses
+    classification_mode: Mapped[str] = mapped_column(
+        String, nullable=False, default="off", server_default="off"
+    )
+    classification_source: Mapped[str | None] = mapped_column(String, nullable=True)

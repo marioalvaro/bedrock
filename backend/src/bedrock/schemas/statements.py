@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from bedrock.schemas.adjustments import CellAdjustmentOut
 from bedrock.services.adjustments import CellAdjustment
+from bedrock.services.as_reported import AsReported
 from bedrock.services.statements import MappingGaps
 from bedrock.statements.build import StatementTable
 from bedrock.statements.coverage import Cause
@@ -65,6 +66,9 @@ class RowOut(BaseModel):
     # M7b S8: per period, why the cell is empty (`statements/coverage.py::CAUSES`); null for a
     # filled cell, a row coverage does not count (residuals, support and custom lines) and TTM
     empty_cause: list[Cause | None]
+    # M7d S4: per period, the face lines summed into the cell only through a classification
+    # (`taxonomy:Concept`); null where none (docs/erd/face-tree.md "Marking a cell")
+    classified_by: list[list[str] | None]
 
 
 class BalanceCheckOut(BaseModel):
@@ -124,6 +128,7 @@ class StatementOut(BaseModel):
                     combined_with=[None if c is None else list(c) for c in r.combined_with],
                     included_in=r.included_in,
                     empty_cause=[why.get((r.code, p.key)) for p in table.periods],
+                    classified_by=[None if c is None else list(c) for c in r.classified_by],
                 )
                 for r in table.rows
             ],
@@ -186,6 +191,8 @@ class CellDetailOut(BaseModel):
     # M7b S4: as on the statement row (docs/erd/data-coverage.md "Combined lines")
     combined_with: list[str] | None
     included_in: str | None
+    # M7d S4: as on the statement row
+    classified_by: list[str] | None
 
     @classmethod
     def from_explanation(
@@ -229,6 +236,7 @@ class CellDetailOut(BaseModel):
             normalized_value=cell.normalized_value,
             combined_with=None if cell.combined_with is None else list(cell.combined_with),
             included_in=cell.included_in,
+            classified_by=None if cell.classified_by is None else list(cell.classified_by),
         )
 
 
@@ -389,5 +397,103 @@ class MappingGapsOut(BaseModel):
                     filings=u.filings,
                 )
                 for u in gaps.unclassified_lines
+            ],
+        )
+
+
+# --- M7d S1: the As reported view (docs/erd/face-tree.md "As reported route") -----------------
+
+
+class AsReportedFilingOut(BaseModel):
+    accession_no: str
+    form: str
+    filed_at: date
+    period_end: date  # the filing's own period end (the selector names a filing by it)
+
+
+class AsReportedPeriodOut(BaseModel):
+    start: date | None  # None for an instant
+    end: date
+
+
+class RowRefOut(BaseModel):
+    """A canonical row a face line names."""
+
+    code: str
+    label: str
+
+
+class AsReportedLineOut(BaseModel):
+    """One face line. `values` and `foots` are aligned with the view's `periods`; `foots` is
+    null where the line is not a total or has no value. `kind`: mapped to `codes`, other (in a
+    residual; `codes` are the rows a verdict names), or open (nothing classifies it)."""
+
+    position: int
+    taxonomy: str
+    concept: str
+    label: str
+    unit: str | None
+    depth: int
+    is_total: bool
+    in_tree: bool
+    kind: Literal["mapped", "other", "open"]
+    codes: list[RowRefOut]
+    block: RowRefOut | None
+    values: list[Decimal | None]
+    foots: list[bool | None]
+    missing_children: list[str]  # `taxonomy:Concept` of children with no value in any period
+
+
+class AsReportedOut(BaseModel):
+    """One filing's statement as filed. Read only: no feature takes a value from it. `filing` is
+    null when the company has no parsed filing with lines for the statement."""
+
+    filing: AsReportedFilingOut | None
+    filings: list[AsReportedFilingOut]  # newest first; those with lines for the statement
+    periods: list[AsReportedPeriodOut]
+    foots: bool | None
+    lines: list[AsReportedLineOut]
+
+    @classmethod
+    def from_view(cls, view: AsReported) -> "AsReportedOut":
+        def ref(code: str) -> RowRefOut:
+            return RowRefOut(code=code, label=view.labels.get(code, code))
+
+        filings = [
+            AsReportedFilingOut(
+                accession_no=f.accession_no,
+                form=f.form,
+                filed_at=f.filed_at,
+                period_end=f.period_end,
+            )
+            for f in view.filings
+        ]
+        projected = view.statement
+        if projected is None:
+            return cls(filing=None, filings=filings, periods=[], foots=None, lines=[])
+        return cls(
+            # The projected filing is always one of `filings` (those with lines for the statement).
+            filing=next(f for f in filings if f.accession_no == projected.accession_no),
+            filings=filings,
+            periods=[AsReportedPeriodOut(start=p.start, end=p.end) for p in projected.periods],
+            foots=projected.foots,
+            lines=[
+                AsReportedLineOut(
+                    position=ln.position,
+                    taxonomy=ln.taxonomy,
+                    concept=ln.concept,
+                    label=ln.label,
+                    unit=ln.unit,
+                    depth=ln.depth,
+                    is_total=ln.is_total,
+                    in_tree=ln.in_tree,
+                    kind=ln.kind,
+                    codes=[ref(c) for c in ln.codes],
+                    block=None if ln.block_code is None else ref(ln.block_code),
+                    values=list(ln.values),
+                    foots=list(ln.foots),
+                    missing_children=list(ln.missing_children),
+                )
+                for ln in projected.lines
             ],
         )

@@ -14,6 +14,10 @@ export function ProvenanceLegend({ forecast = false }: ProvenanceLegendProps) {
       <span className="prov-imported">Imported: from your file, where SEC has no value</span>
       <span>Inferred 0: a rule concluded the line is exactly 0</span>
       <span className="prov-normalized">Normalized: with your adjustments</span>
+      <span>
+        <span className="classified-mark" aria-hidden />
+        AI classified: filled from a line a classifier placed
+      </span>
       {forecast && (
         <span className="prov-forecast cell-forecast px-1">
           Forecast: built from the scenario&apos;s drivers

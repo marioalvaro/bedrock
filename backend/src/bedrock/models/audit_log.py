@@ -7,7 +7,14 @@ from sqlalchemy.orm import Mapped, mapped_column
 from bedrock.models.base import Base
 
 AuditEntity = Literal[
-    "driver", "year_mode", "engine_choice", "valuation_input", "scenario", "adjustment"
+    "driver",
+    "year_mode",
+    "engine_choice",
+    "valuation_input",
+    "scenario",
+    "adjustment",
+    "line_classification",  # M7d: a decision on a classifier's answer, or the user's own
+    "company",  # M7d: the company's classification mode
 ]
 AuditAction = Literal["create", "edit", "delete", "import", "reset", "mode"]
 

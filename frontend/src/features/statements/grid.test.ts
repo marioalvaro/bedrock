@@ -20,6 +20,7 @@ import {
   expandableCodes,
   forecastColumnClass,
   isBuiltFromQuarters,
+  isClassified,
   isCombined,
   lineNoteCount,
   noteIndex,
@@ -781,5 +782,66 @@ describe("combined lines and inapplicable cells (M7b S8)", () => {
   it("keeps the value of a covered or inapplicable cell empty for the CSV export", () => {
     expect(byCode("accrued_liabilities").values.FY2024).toBeNull();
     expect(byCode("operating_lease_rou").values.FY2023).toBeNull();
+  });
+});
+
+describe("classified cells (M7d S5)", () => {
+  const base = incomeStatement();
+  const marked = (
+    classifiedBy: (string[] | null)[],
+    combined: (string[] | null)[] = [null, null],
+  ) =>
+    toGridRows(
+      incomeStatement({
+        rows: [
+          {
+            ...(base.rows[0] as StatementOut["rows"][number]),
+            classified_by: classifiedBy,
+            combined_with: combined,
+          },
+        ],
+      }),
+      OFF,
+    )[0] as GridRow;
+
+  it("marks a cell R8 filled from a classified line, in that period only", () => {
+    const row = marked([null, ["aapl:MarketingExpense", "aapl:BrandSpend"]]);
+    expect(isClassified(row, "FY2024")).toBe(true);
+    expect(isClassified(row, "FY2023")).toBe(false);
+    expect(row.classifiedBy).toEqual({
+      FY2023: null,
+      FY2024: ["aapl:MarketingExpense", "aapl:BrandSpend"],
+    });
+  });
+
+  it("names the classified lines in the cell's tooltip", () => {
+    const row = marked([null, ["aapl:MarketingExpense"]]);
+    expect(cellTitle(row, "FY2024")).toBe("AI classified: aapl:MarketingExpense");
+    expect(cellTitle(row, "FY2023")).toBeUndefined();
+  });
+
+  it("keeps both texts on a cell that is combined and classified", () => {
+    const row = marked([null, ["aapl:MarketingExpense"]], [null, []]);
+    expect(cellTitle(row, "FY2024")).toBe(
+      "Includes other lines with no row of their own. AI classified: aapl:MarketingExpense",
+    );
+  });
+
+  it("does not mark a cell with no value, or a sub-row", () => {
+    const row = { ...marked([null, ["aapl:MarketingExpense"]]) };
+    row.values = { ...row.values, FY2024: null };
+    expect(isClassified(row, "FY2024")).toBe(false);
+    const withYoy = toGridRows(
+      incomeStatement({
+        rows: [
+          {
+            ...(base.rows[0] as StatementOut["rows"][number]),
+            classified_by: [null, ["aapl:MarketingExpense"]],
+          },
+        ],
+      }),
+      { ...OFF, yoy: true },
+    );
+    expect(isClassified(withYoy[1] as GridRow, "FY2024")).toBe(false);
   });
 });

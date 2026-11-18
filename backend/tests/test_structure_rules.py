@@ -12,7 +12,9 @@ import pandas as pd
 from bedrock.mapping.config import CanonicalItemDef
 from bedrock.mapping.mapper import map_facts
 from bedrock.mapping.vintage import select_vintage
+from bedrock.statements.build import build_statement
 from bedrock.statements.cells import Cell, solve_cells
+from bedrock.statements.explain import explain_cell
 from bedrock.statements.periods import fiscal_calendar
 from bedrock.statements.rules import Rules
 from bedrock.statements.structure import LINE_COLUMNS, FaceLines
@@ -140,6 +142,7 @@ def solve(
     line_facts: Sequence[Row] | None = None,
     verdicts: dict[tuple[str, str], tuple[str, ...]] | None = None,
     other_lines: frozenset[tuple[str, str]] = frozenset(),
+    classified: dict[tuple[str, str], tuple[str, ...]] | None = None,
 ) -> dict[tuple[str, str], Cell]:
     frame = facts(raw)
     canonical = map_facts(select_vintage(frame), maps, list(items))
@@ -152,6 +155,7 @@ def solve(
             maps,
             verdicts or {},
             other_lines,
+            classified or {},
         )
     )
     rules = Rules(filing_lines=face)
@@ -587,3 +591,177 @@ def test_an_item_whose_default_the_company_excludes_is_never_inferred_zero() -> 
     cells = solve(base_facts(), balance_sheet_lines(), items=items, maps=maps)
 
     assert cells[("accrued_liabilities", f"FY{FY}")].value is None
+
+
+# --- classified lines (M7d S4, docs/erd/face-tree.md "What a classification does") ----------
+
+WEIRD = ("x", "Weird")
+
+
+def weird_case(*extra: Row, debt: bool = True) -> tuple[list[Row], list[Row], list[Row]]:
+    """The 10-K balance sheet with the unclassified `x:Weird` (1 B) under current liabilities;
+    with `debt`, its commercial paper (3 B) and current portion of long-term debt (2 B)."""
+    weird = line(f"K-{FY}", "BS", "x:Weird", "LiabilitiesCurrent")
+    raw = [*base_facts()]
+    if debt:
+        raw += debt_facts(CommercialPaper=3 * B, LongTermDebtCurrent=2 * B)
+    lines = balance_sheet_lines(f"K-{FY}", "10-K", weird, *extra)
+    if not debt:
+        lines = [
+            ln for ln in lines if ln["concept"] not in ("CommercialPaper", "LongTermDebtCurrent")
+        ]
+    line_facts = [*raw, *[{**r, "taxonomy": "x"} for r in debt_facts(Weird=B)]]
+    return raw, lines, line_facts
+
+
+def test_a_line_classified_with_one_code_fills_the_empty_cell_by_r8_and_marks_it() -> None:
+    raw, lines, line_facts = weird_case()
+
+    cells = solve(raw, lines, line_facts=line_facts, classified={WEIRD: ("accrued_liabilities",)})
+
+    accrued = cells[("accrued_liabilities", f"FY{FY}")]
+    assert (accrued.value, accrued.provenance) == (B, "derived")  # the sum, not R9's zero
+    assert accrued.classified_by == ("x:Weird",)
+    assert accrued.unclassified is None
+    debt = cells[("short_term_debt", f"FY{FY}")]
+    assert (debt.value, debt.classified_by) == (5 * B, None)  # members by definition: no mark
+
+
+def test_a_classified_member_beside_defined_members_marks_only_itself() -> None:
+    raw, lines, line_facts = weird_case()
+
+    cell = solve(raw, lines, line_facts=line_facts, classified={WEIRD: ("short_term_debt",)})[
+        ("short_term_debt", f"FY{FY}")
+    ]
+
+    assert cell.value == 6 * B
+    assert cell.classified_by == ("x:Weird",)
+
+
+def test_a_line_classified_with_one_code_but_no_fact_blocks_the_zero_and_fills_nothing() -> None:
+    raw, lines, _ = weird_case()
+    # the line is on the face with an amount only for another period: no fact for the year-end
+    other_year = [
+        {**r, "taxonomy": "x", "period_end": date(FY - 1, 6, 30)} for r in debt_facts(Weird=B)
+    ]
+
+    cells = solve(
+        raw,
+        lines,
+        line_facts=[*raw, *other_year],
+        classified={WEIRD: ("accrued_liabilities",)},
+    )
+
+    assert cells[("accrued_liabilities", f"FY{FY}")].value is None
+
+
+def test_a_line_classified_with_two_codes_blocks_the_zero_of_each_and_fills_nothing() -> None:
+    raw, lines, line_facts = weird_case(debt=False)
+    two = {WEIRD: ("accrued_liabilities", "short_term_debt")}
+
+    cells = solve(raw, lines, line_facts=line_facts, classified=two)
+    unclassified = solve(raw, lines, line_facts=line_facts)
+
+    for code in ("accrued_liabilities", "short_term_debt"):
+        cell = cells[(code, f"FY{FY}")]
+        assert (cell.value, cell.unclassified, cell.classified_by) == (None, None, None)
+        assert unclassified[(code, f"FY{FY}")].unclassified == ("x:Weird",)
+    # the amount stays in the residual
+    assert cells[("other_current_liabilities", f"FY{FY}")].value == 50 * B - 20 * B
+
+
+def test_a_line_classified_with_no_code_only_unblocks_its_block() -> None:
+    raw, lines, line_facts = weird_case()
+
+    cells = solve(raw, lines, line_facts=line_facts, classified={WEIRD: ()})
+
+    debt = cells[("short_term_debt", f"FY{FY}")]
+    accrued = cells[("accrued_liabilities", f"FY{FY}")]
+    assert (debt.value, debt.classified_by) == (5 * B, None)
+    assert (accrued.value, accrued.provenance) == (Decimal(0), "zero_inferred")
+    assert cells[("other_current_liabilities", f"FY{FY}")].value == 50 * B - 20 * B - 5 * B
+
+
+def test_a_code_that_is_not_an_item_is_ignored() -> None:
+    raw, lines, line_facts = weird_case()
+
+    only_unknown = solve(raw, lines, line_facts=line_facts, classified={WEIRD: ("no_such_row",)})
+    with_one = solve(
+        raw,
+        lines,
+        line_facts=line_facts,
+        classified={WEIRD: ("no_such_row", "accrued_liabilities")},
+    )
+
+    zero = only_unknown[("accrued_liabilities", f"FY{FY}")]
+    assert (zero.value, zero.provenance) == (Decimal(0), "zero_inferred")  # as with no code
+    assert with_one[("accrued_liabilities", f"FY{FY}")].value == B  # as with the one code
+
+
+def test_a_classified_line_still_blocked_by_another_open_line_fills_nothing() -> None:
+    other = line(f"K-{FY}", "BS", "x:Other", "LiabilitiesCurrent")
+    raw, lines, line_facts = weird_case(other)
+    line_facts += [{**r, "taxonomy": "x"} for r in debt_facts(Other=B)]
+
+    cells = solve(raw, lines, line_facts=line_facts, classified={WEIRD: ("accrued_liabilities",)})
+
+    accrued = cells[("accrued_liabilities", f"FY{FY}")]
+    assert (accrued.value, accrued.classified_by) == (None, None)
+    assert accrued.unclassified == ("x:Other",)
+
+
+def test_a_classified_cell_lowers_the_residual_by_its_own_amount() -> None:
+    raw, lines, line_facts = weird_case()
+
+    before = solve(raw, lines, line_facts=line_facts, classified={WEIRD: ()})
+    after = solve(raw, lines, line_facts=line_facts, classified={WEIRD: ("accrued_liabilities",)})
+
+    key = ("other_current_liabilities", f"FY{FY}")
+    total = ("total_current_liabilities", f"FY{FY}")
+    assert before[key].value is not None and after[key].value is not None
+    assert before[key].value - after[key].value == B
+    assert before[total].value == after[total].value
+
+
+def test_the_classified_mark_reaches_the_row_and_the_cell_explanation() -> None:
+    raw, lines, line_facts = weird_case()
+    canonical = map_facts(select_vintage(facts(raw)), MAPS, list(ITEMS))
+    face = FaceLines(
+        lines_frame(lines),
+        facts(line_facts),
+        MAPS,
+        classified={WEIRD: ("accrued_liabilities",)},
+    )
+    rules = Rules(filing_lines=face)
+
+    table = build_statement(canonical, ITEMS, "BS", "annual", rules=rules)
+    explained = explain_cell(
+        canonical, facts(raw), ITEMS, "accrued_liabilities", FY, "FY", rules=rules
+    )
+
+    row = next(r for r in table.rows if r.code == "accrued_liabilities")
+    at = [p.key for p in table.periods].index(f"FY{FY}")
+    assert row.classified_by[at] == ("x:Weird",)
+    debt = next(r for r in table.rows if r.code == "short_term_debt")
+    assert debt.classified_by[at] is None
+    assert explained.classified_by == ("x:Weird",)
+
+
+def test_a_classification_of_a_line_something_else_classifies_is_ignored() -> None:
+    """A stored answer can go stale (the line was mapped or given a verdict since): the mapping
+    wins, so the amount is never counted twice."""
+    raw, lines, line_facts = weird_case()
+    stale = {
+        ("us-gaap", "AccountsPayableCurrent"): ("accrued_liabilities",),  # mapped
+        ("us-gaap", "CommercialPaper"): ("accrued_liabilities",),  # a face member
+        WEIRD: ("accrued_liabilities", "short_term_debt"),  # under `other_lines`
+    }
+
+    cells = solve(
+        raw, lines, line_facts=line_facts, other_lines=frozenset({WEIRD}), classified=stale
+    )
+    plain = solve(raw, lines, line_facts=line_facts, other_lines=frozenset({WEIRD}))
+
+    assert cells == plain
+    accrued = cells[("accrued_liabilities", f"FY{FY}")]
+    assert (accrued.value, accrued.provenance) == (Decimal(0), "zero_inferred")

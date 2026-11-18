@@ -1,11 +1,19 @@
 """The statement routes over a followed AAPL (recorded fixtures, no network)."""
 
 from collections.abc import Callable
+from datetime import datetime
 from decimal import Decimal
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
+
+from bedrock.main import create_app
+from bedrock.models.company import Company
+from bedrock.models.line_classification import LineClassification
+
+from .classification_support import parse_filings
 
 STATEMENTS = "/api/v1/companies/AAPL/statements"
 
@@ -71,6 +79,7 @@ def test_annual_income_statement_has_the_documented_shape(aapl_client: TestClien
         "combined_with",
         "included_in",
         "empty_cause",
+        "classified_by",
     }
     for field in ("values", "provenance", "yoy", "common_size", "combined_with", "included_in"):
         assert len(revenue[field]) == len(periods)  # type: ignore[arg-type]
@@ -604,3 +613,164 @@ def test_a_covered_cell_has_the_cause_included_in() -> None:
 
     assert rows["accrued_liabilities"]["empty_cause"][at] == "included_in"
     assert rows["accounts_payable"]["empty_cause"][at] is None
+
+
+# --- M7d S4: classifications in the statements --------------------------------------------------
+
+INTANGIBLES = ("aapl", "IntangibleAssetsNetExcludingGoodwillNoncurrent")
+MARK = "aapl:IntangibleAssetsNetExcludingGoodwillNoncurrent"
+HAIKU = "claude:claude-haiku-5-5"
+SONNET = "claude:claude-sonnet-5-5"
+FY_KEY = "FY2025"
+
+
+@pytest.fixture
+def parsed(db_session: Session, aapl_client: TestClient) -> Company:
+    """AAPL with its recorded filings parsed: `aapl:IntangibleAssets…` is an open line of its
+    balance sheet, and classified as goodwill R8 sums it into goodwill's empty FY2025 cell."""
+    return parse_filings(db_session)
+
+
+def classify(
+    session: Session,
+    company: Company,
+    *,
+    classifier: str = HAIKU,
+    status: str = "proposed",
+    confidence: str = "0.95",
+    codes: str = '["goodwill"]',
+) -> None:
+    session.add(
+        LineClassification(
+            company_id=company.id,
+            statement="BS",
+            taxonomy=INTANGIBLES[0],
+            concept=INTANGIBLES[1],
+            classifier=classifier,
+            codes=codes,
+            confidence=Decimal(confidence),
+            status=status,
+            created_at=datetime(2026, 11, 17),
+        )
+    )
+    session.commit()
+
+
+def set_mode(session: Session, company: Company, mode: str, source: str | None = None) -> None:
+    company.classification_mode = mode
+    company.classification_source = source
+    session.commit()
+
+
+def goodwill(client: TestClient) -> tuple[object, object]:
+    """Goodwill's FY2025 value and mark on the annual balance sheet."""
+    body = _statement(client, "BS", "annual")
+    keys = [p["key"] for p in body["periods"]]  # type: ignore[attr-defined]
+    row = _row(body, "goodwill")
+    at = keys.index(FY_KEY)
+    return row["values"][at], row["classified_by"][at]  # type: ignore[index]
+
+
+def test_every_row_carries_classified_by_aligned_with_the_periods(
+    aapl_client: TestClient,
+) -> None:
+    body = _statement(aapl_client, "BS", "annual")
+
+    for row in body["rows"]:  # type: ignore[attr-defined]
+        assert row["classified_by"] == [None] * len(body["periods"])  # type: ignore[arg-type]
+
+
+def test_with_the_mode_off_an_accepted_answer_changes_nothing(
+    db_session: Session, parsed: Company, aapl_client: TestClient
+) -> None:
+    classify(db_session, parsed, status="accepted")
+
+    assert goodwill(aapl_client) == (None, None)
+
+
+def test_mode_accepted_fills_and_marks_the_cell(
+    db_session: Session, parsed: Company, aapl_client: TestClient
+) -> None:
+    classify(db_session, parsed, status="accepted")
+    set_mode(db_session, parsed, "accepted")
+
+    value, mark = goodwill(aapl_client)
+    detail = aapl_client.get(
+        f"{STATEMENTS}/cell",
+        params={"code": "goodwill", "fiscal_year": 2025, "fiscal_period": "FY"},
+    ).json()
+
+    assert (Decimal(str(value)), mark) == (Decimal("11093000000"), [MARK])
+    assert detail["provenance"] == "derived"
+    assert detail["classified_by"] == [MARK]
+
+
+def test_mode_accepted_ignores_a_proposal(
+    db_session: Session, parsed: Company, aapl_client: TestClient
+) -> None:
+    classify(db_session, parsed)
+    set_mode(db_session, parsed, "accepted")
+
+    assert goodwill(aapl_client) == (None, None)
+
+
+@pytest.mark.parametrize(
+    ("confidence", "source", "filled"),
+    [("0.95", HAIKU, True), ("0.9", HAIKU, True), ("0.89", HAIKU, False), ("0.95", SONNET, False)],
+)
+def test_mode_all_uses_the_sources_proposals_at_or_above_the_threshold(
+    db_session: Session,
+    parsed: Company,
+    aapl_client: TestClient,
+    confidence: str,
+    source: str,
+    filled: bool,
+) -> None:
+    classify(db_session, parsed, confidence=confidence)
+    set_mode(db_session, parsed, "all", source)
+
+    value, mark = goodwill(aapl_client)
+
+    assert (value is not None, mark == [MARK]) == (filled, filled)
+
+
+def test_the_threshold_is_the_apps_setting(
+    db_session: Session, parsed: Company, aapl_client: TestClient, app: FastAPI
+) -> None:
+    classify(db_session, parsed, confidence="0.95")
+    set_mode(db_session, parsed, "all", HAIKU)
+    strict = app.state.settings.model_copy(update={"classify_min_confidence": 0.99})
+
+    try:
+        create_app(settings=strict, sources=app.state.sources)
+        assert goodwill(aapl_client) == (None, None)
+    finally:
+        create_app(settings=app.state.settings, sources=app.state.sources)
+    assert goodwill(aapl_client)[1] == [MARK]
+
+
+def test_a_rejected_answer_is_never_in_force(
+    db_session: Session, parsed: Company, aapl_client: TestClient
+) -> None:
+    classify(db_session, parsed, status="rejected")
+    set_mode(db_session, parsed, "all", HAIKU)
+
+    assert goodwill(aapl_client) == (None, None)
+
+
+def test_a_line_in_force_leaves_the_gaps_and_stays_in_the_classifications(
+    db_session: Session, parsed: Company, aapl_client: TestClient
+) -> None:
+    def gaps() -> set[tuple[str, str]]:
+        body = aapl_client.get("/api/v1/companies/AAPL/mapping-gaps").json()
+        return {(u["taxonomy"], u["concept"]) for u in body["unclassified_lines"]}
+
+    classify(db_session, parsed, status="accepted")
+    assert INTANGIBLES in gaps()
+
+    set_mode(db_session, parsed, "accepted")
+
+    assert INTANGIBLES not in gaps()
+    lines = aapl_client.get("/api/v1/companies/AAPL/classifications").json()["lines"]
+    line = next(ln for ln in lines if (ln["taxonomy"], ln["concept"]) == INTANGIBLES)
+    assert line["effective"] == ["goodwill"]

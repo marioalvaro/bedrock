@@ -7,13 +7,16 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from bedrock.api.errors import register_error_handlers
 from bedrock.api.v1 import api_router
+from bedrock.classify import registry
 from bedrock.core.auth import LoginThrottle
 from bedrock.core.config import Settings, load_settings
 from bedrock.core.db import make_engine, make_sessionmaker
 from bedrock.core.scheduler import acquire_scheduler_lock, refresh_loop
 from bedrock.core.spa import mount_spa
 from bedrock.ingest.sources import Sources, build_sources
+from bedrock.services.classification import ClassificationRunner
 from bedrock.services.filings import BackfillRunner
+from bedrock.services.statements import use_classification_threshold
 
 
 @asynccontextmanager
@@ -59,6 +62,10 @@ def create_app(settings: Settings | None = None, *, sources: Sources | None = No
     app.state.sources = sources or build_sources(settings)
     app.state.login_throttle = LoginThrottle()
     app.state.backfills = BackfillRunner()
+    # Building a classifier makes no request; only a confirmed run does (tests replace it).
+    app.state.classifier_factory = registry.get
+    app.state.classifications = ClassificationRunner()
+    use_classification_threshold(settings.classify_min_confidence)
 
     app.add_middleware(
         SessionMiddleware,

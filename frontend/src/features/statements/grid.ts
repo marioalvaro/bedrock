@@ -38,6 +38,9 @@ export interface GridRow {
   combinedWith: Record<string, string[] | null>;
   includedIn: Record<string, string | null>;
   emptyCause: Record<string, EmptyCause | null>;
+  // M7d S5, per period: the face lines (`taxonomy:Concept`) R8 summed into the cell only because a
+  // classification placed them there; null when none.
+  classifiedBy: Record<string, string[] | null>;
 }
 
 export interface GridOptions {
@@ -63,7 +66,7 @@ function hasContent(line: RowOut): boolean {
   return hasValue(line.values) || line.included_in.some((code) => code !== null);
 }
 
-const NO_MARKS = { combinedWith: {}, includedIn: {}, emptyCause: {} };
+const NO_MARKS = { combinedWith: {}, includedIn: {}, emptyCause: {}, classifiedBy: {} };
 
 // The line items a statement shows. The payload is a flat list in display order with a depth,
 // each subtotal above its breakdown, so a line has a breakdown when the next shown line is deeper.
@@ -172,6 +175,7 @@ export function toGridRows(payload: StatementOut, options: GridOptions): GridRow
         line.included_in.map((code) => (code === null ? null : labelOf(code))),
       ),
       emptyCause: byPeriod(keys, line.empty_cause),
+      classifiedBy: byPeriod(keys, line.classified_by),
     });
     if (options.yoy) {
       const yoy = subRow(line, keys, "yoy", "YoY", line.yoy);
@@ -236,11 +240,24 @@ export function isCombined(row: GridRow, key: string): boolean {
   return row.values[key] !== null && (row.combinedWith[key] ?? null) !== null;
 }
 
-// The tooltip of a carrier or a covered cell; undefined for any other cell.
+// A value R8 summed from a line a classifier placed (M7d S5): the grid marks it.
+export function isClassified(row: GridRow, key: string): boolean {
+  return (
+    row.kind === "line" && row.values[key] !== null && (row.classifiedBy[key] ?? null) !== null
+  );
+}
+
+export function classifiedText(lines: readonly string[]): string {
+  return `AI classified: ${lines.join(", ")}`;
+}
+
+// The tooltip of a carrier, a covered or a classified cell; undefined for any other cell.
 export function cellTitle(row: GridRow, key: string): string | undefined {
-  if (isCombined(row, key)) return includesText(row.combinedWith[key] as string[]);
-  if (isIncluded(row, key)) return includedInText(row.includedIn[key] as string);
-  return undefined;
+  const texts: string[] = [];
+  if (isCombined(row, key)) texts.push(includesText(row.combinedWith[key] as string[]));
+  else if (isIncluded(row, key)) texts.push(includedInText(row.includedIn[key] as string));
+  if (isClassified(row, key)) texts.push(classifiedText(row.classifiedBy[key] as string[]));
+  return texts.length > 0 ? texts.join(". ") : undefined;
 }
 
 // What a combined value holds, by label; the grid's tooltip and the cell sheet say the same.

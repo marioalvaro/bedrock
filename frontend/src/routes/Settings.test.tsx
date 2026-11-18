@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  getStatusApiV1ClassificationStatusGet,
   listCustomRulesApiV1QoeCustomRulesGet,
   listQoeRulesApiV1QoeRulesGet,
   resetQoeThresholdsApiV1QoeRulesCodeDelete,
@@ -12,11 +13,13 @@ import {
 import { FORMULA_UNITS_NOTE } from "@/lib/levels";
 import { createQueryClient } from "@/lib/query-client";
 import { qoeRule, qoeRules } from "@/test/analysis";
+import { classifierStatus } from "@/test/classification";
 import { errorResult, okResult } from "@/test/responses";
 
 import { Settings } from "./Settings";
 
 vi.mock("@/api/generated/sdk.gen", () => ({
+  getStatusApiV1ClassificationStatusGet: vi.fn(),
   listCustomRulesApiV1QoeCustomRulesGet: vi.fn(),
   listQoeRulesApiV1QoeRulesGet: vi.fn(),
   setQoeThresholdsApiV1QoeRulesCodePut: vi.fn(),
@@ -47,6 +50,16 @@ describe("Settings", () => {
     vi.resetAllMocks();
     // The Custom rules section (features/settings/CustomRules.tsx, tested on its own) loads too.
     vi.mocked(listCustomRulesApiV1QoeCustomRulesGet).mockResolvedValue(okResult([]) as never);
+    // So does the classifier status (features/settings/ClassifierStatus.tsx, M7d S5).
+    vi.mocked(getStatusApiV1ClassificationStatusGet).mockResolvedValue(
+      okResult(classifierStatus()) as never,
+    );
+  });
+
+  it("shows the line classifiers' status (M7d S5)", async () => {
+    await setup();
+    expect(await screen.findByRole("heading", { name: "Line classifiers" })).toBeInTheDocument();
+    expect(await screen.findByText("12,500 of 200,000 tokens")).toBeInTheDocument();
   });
 
   it("shows the formula reference at the bottom", async () => {
@@ -338,9 +351,12 @@ describe("Settings", () => {
     vi.mocked(listCustomRulesApiV1QoeCustomRulesGet).mockReturnValue(
       new Promise(() => {}) as never,
     );
+    vi.mocked(getStatusApiV1ClassificationStatusGet).mockReturnValue(
+      new Promise(() => {}) as never,
+    );
     renderSettings();
-    // One loading line for the thresholds table and one for the Custom rules section.
-    expect(screen.getAllByText("Loading…")).toHaveLength(2);
+    // One loading line each for the thresholds, the Custom rules and the line classifiers.
+    expect(screen.getAllByText("Loading…")).toHaveLength(3);
   });
 
   it("shows an error state", async () => {

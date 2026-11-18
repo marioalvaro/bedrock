@@ -53,6 +53,9 @@ class Cell:
     # M7b S7: an empty cell whose block, on its filing's face, holds lines nobody classified
     # (docs/erd/data-coverage.md "Structure rules"): those lines as `taxonomy:Concept`
     unclassified: tuple[str, ...] | None = None
+    # M7d S4: on a cell R8 summed, the lines (`taxonomy:Concept`) that are members only through a
+    # classification (docs/erd/face-tree.md "Marking a cell"); None otherwise
+    classified_by: tuple[str, ...] | None = None
 
 
 def combined(*marks: tuple[str, ...] | None) -> tuple[str, ...] | None:

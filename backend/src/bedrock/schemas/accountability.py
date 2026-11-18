@@ -48,6 +48,8 @@ class SnapshotOut(BaseModel):
     failed_cases: list[str]
     scored_periods: int
     revenue_mape: Decimal | None
+    # M7d S4: the company's classification mode when it was taken; null for an older snapshot
+    classification_mode: Literal["off", "accepted", "all"] | None
 
     @classmethod
     def from_view(cls, view: SnapshotView) -> "SnapshotOut":

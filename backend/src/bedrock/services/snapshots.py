@@ -65,6 +65,8 @@ class SnapshotView:
     failed_cases: list[str]
     scored_periods: int  # Base's FY revenue rows with an actual
     revenue_mape: Decimal | None  # over them
+    # M7d S4: the company's classification mode when the snapshot was taken; None before 0022
+    classification_mode: str | None
 
 
 @dataclass(frozen=True)
@@ -128,6 +130,7 @@ class SnapshotDetail:
     failed_cases: list[str]
     scored_periods: int
     revenue_mape: Decimal | None
+    classification_mode: str | None
     cases: list[SnapshotCase]
 
 
@@ -179,6 +182,7 @@ def create_snapshot(
             note=cleaned,
             data_as_of=data_as_of,
             created_at=stamp,
+            classification_mode=company.classification_mode,
         ),
         runs,
     )
@@ -321,6 +325,7 @@ def _view(
         failed_cases=[r.case or "" for r in runs if r.error is not None],
         scored_periods=len(revenue),
         revenue_mape=sum(errors, Decimal(0)) / len(errors) if errors else None,
+        classification_mode=snapshot.classification_mode,
     )
 
 

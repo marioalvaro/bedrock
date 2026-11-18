@@ -1,6 +1,6 @@
 """Statements, cell details and mapping gaps of a followed company, built from stored facts."""
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -11,6 +11,7 @@ import pandas as pd
 from sqlalchemy.orm import Session
 
 from bedrock.analysis.multiples import KeyStats, balance_sheet_shares, key_stats
+from bedrock.core.config import Settings
 from bedrock.mapping.candidates import (
     DEFAULT_CROSSWALK_PATH,
     DEFAULT_VENDOR_PATH,
@@ -45,6 +46,7 @@ from bedrock.mapping.triage import (
 from bedrock.mapping.vintage import BALANCE_TOTALS, balance_snapshot, select_vintage
 from bedrock.models.company import Company
 from bedrock.repositories import adjustments as adjustments_repo
+from bedrock.repositories import classifications as classifications_repo
 from bedrock.repositories import corporate_actions as actions_repo
 from bedrock.repositories import facts as facts_repo
 from bedrock.repositories import filing_lines as lines_repo
@@ -67,7 +69,7 @@ from bedrock.statements.imports import StoredValue, company_calendar, imported_f
 from bedrock.statements.periods import annual_periods, quarterly_periods
 from bedrock.statements.rules import Rules, filings_tagging_nci
 from bedrock.statements.splits import split_adjust, split_factor
-from bedrock.statements.structure import FaceLines, face_concepts
+from bedrock.statements.structure import Concept, FaceLines, face_concepts
 from bedrock.statements.view import trim_periods
 
 __all__ = [
@@ -78,10 +80,12 @@ __all__ = [
     "build_statements",
     "cell_detail",
     "company_key_stats",
+    "face_lines",
     "fiscal_periods",
     "load_inputs",
     "mapping_gaps",
     "statement_tables",
+    "use_classification_threshold",
 ]
 
 Basis = Literal["reported", "normalized"]
@@ -100,6 +104,19 @@ KEY_STAT_CODES = frozenset(
         "short_term_investments",
     }
 )
+
+
+# M7d S4: `CLASSIFY_MIN_CONFIDENCE`, which mode `all` applies to a proposal. The statement services
+# take no settings, so `create_app` sets it once from the app's settings; until then it is the
+# setting's default.
+_classification_threshold = Settings.model_fields["classify_min_confidence"].default
+
+
+def use_classification_threshold(min_confidence: float) -> None:
+    """Sets the confidence a proposal needs to be in force under mode `all` (called by
+    `create_app` with the app's settings)."""
+    global _classification_threshold
+    _classification_threshold = min_confidence
 
 
 @cache
@@ -407,19 +424,27 @@ def _load(
         imported.vintages,
         complete_parents([(r.code, r.parent_code, r.children_complete) for r in rows]),
         # The structure rules, like the identities, would read an unloaded line as empty.
-        _face_lines(session, company, mappings, as_of) if codes is None and structure else None,
+        face_lines(session, company, mappings, as_of) if codes is None and structure else None,
     )
     return StatementInputs(items, mappings, facts, canonical, rules, tuple(stored), custom)
 
 
-def _face_lines(
-    session: Session, company: Company, mappings: pd.DataFrame, as_of: date | None
+def face_lines(
+    session: Session,
+    company: Company,
+    mappings: pd.DataFrame,
+    as_of: date | None,
+    classified: Mapping[Concept, tuple[str, ...]] | None = None,
 ) -> FaceLines | None:
     """The face lines of the company's parsed filings known on `as_of`, the facts of their
-    concepts, and what classifies them (M7b S7); None when no filing is parsed."""
+    concepts, and what classifies them (M7b S7); None when no filing is parsed. `classified`
+    None loads the company's effective classifications under its mode (M7d S4; not cut by
+    `as_of`, like the mappings); `{}` applies none."""
     lines = lines_repo.lines_for(session, company.id, as_of)
     if lines.empty:
         return None
+    if classified is None:
+        classified = classifications_repo.effective(session, company, _classification_threshold)
     items = canonical_items()
     concepts = face_concepts(lines, items)
     facts = _filed_by(facts_repo.load_facts(session, company.id, concepts), as_of)
@@ -429,6 +454,7 @@ def _face_lines(
         mappings,
         {key: verdict.codes for key, verdict in concept_triage().items()},
         frozenset(load_other_lines(DEFAULT_OVERRIDES_DIR, company.ticker)),
+        classified,
     )
 
 

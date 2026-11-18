@@ -60,6 +60,8 @@ class CellExplanation:
     # M7b S4: the codes inside a combined value; the line an empty cell's amount is inside
     combined_with: tuple[str, ...] | None = None
     included_in: str | None = None
+    # M7d S4: the lines summed into the cell only through a classification
+    classified_by: tuple[str, ...] | None = None
 
 
 def explain_cell(
@@ -126,6 +128,7 @@ def explain_cell(
         normalized_value=normalized[(code, period.key)].value if behind else None,
         combined_with=cell.combined_with,
         included_in=cell.included_in,
+        classified_by=cell.classified_by,
     )
 
 

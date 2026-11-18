@@ -245,6 +245,29 @@ details[open] > :not(summary) {
   background: var(--prov-derived);
 }
 
+/* M7d S5: a total in the As reported view that does not equal the sum of its lines in its own
+   filing; a small square before the number, the tooltip says so. */
+.not-foot-mark {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-right: 4px;
+  vertical-align: middle;
+  background: var(--destructive);
+}
+
+/* M7d S5: a cell R8 filled from a line a classifier placed; a small ring before the number, the
+   cell's tooltip names the lines. */
+.classified-mark {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 4px;
+  border-radius: 9999px;
+  vertical-align: middle;
+  border: 1.5px solid var(--prov-derived);
+}
+
 /* Imported: the figure comes from the user's own file, not SEC; teal, not italic. */
 .prov-imported {
   color: var(--prov-imported);

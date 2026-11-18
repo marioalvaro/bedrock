@@ -37,6 +37,10 @@ class YFinanceSource:
 
 
 def _rows(frame: pd.DataFrame) -> list[PriceRow]:
+    """One row per day that has a price; Yahoo can list the current day with its volume
+    before the close is known (NaN), and a later refresh picks that day up."""
+    if not frame.empty:
+        frame = frame.dropna(subset=["Close", "Adj Close"])
     return [
         PriceRow(
             date=cast(pd.Timestamp, day).date(),
