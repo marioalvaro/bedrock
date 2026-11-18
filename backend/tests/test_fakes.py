@@ -7,13 +7,14 @@ import pytest
 
 from bedrock.ingest.protocol import (
     CompanyRef,
+    FilingRef,
     SourceNotConfigured,
     SourceUnavailable,
     SplitRow,
     UnknownTicker,
 )
 
-from .fakes import FakeEdgar, FakePrices
+from .fakes import FakeEdgar, FakePrices, FakeSubmissions
 
 AAPL = CompanyRef("AAPL", "0000320193")
 
@@ -99,3 +100,20 @@ def test_fake_prices_have_no_splits_for_a_ticker_without_a_splits_file() -> None
     from .fakes import _splits
 
     assert _splits("NOSUCH") == ()
+
+
+def test_fake_submissions_serves_the_rows_given_per_ticker_and_logs_each_call() -> None:
+    ref = FilingRef("a1", "10-Q", date(2026, 7, 31), date(2026, 6, 27))
+    submissions = FakeSubmissions({"AAPL": [ref]})
+
+    assert submissions.recent_filings(AAPL) == [ref]
+    assert submissions.recent_filings(CompanyRef("MSFT", "0000789019")) == []
+    assert submissions.calls == ["AAPL", "MSFT"]
+
+
+def test_fake_submissions_raises_what_it_is_told_to_and_still_logs_the_call() -> None:
+    submissions = FakeSubmissions(raises=SourceUnavailable("down"))
+
+    with pytest.raises(SourceUnavailable):
+        submissions.recent_filings(AAPL)
+    assert submissions.calls == ["AAPL"]

@@ -1874,6 +1874,14 @@
             "title": "Name",
             "type": "string"
           },
+          "new_filings": {
+            "description": "10-Ks and 10-Qs EDGAR lists that are not loaded yet, newest first; empty for a manual company",
+            "items": {
+              "$ref": "#/components/schemas/NewFilingOut"
+            },
+            "title": "New Filings",
+            "type": "array"
+          },
           "pe": {
             "anyOf": [
               {
@@ -1962,6 +1970,7 @@
           "filings_total",
           "classification_mode",
           "classification_source",
+          "new_filings",
           "price",
           "price_date",
           "market_cap",
@@ -5606,6 +5615,43 @@
           "rows"
         ],
         "title": "MultiplesOut",
+        "type": "object"
+      },
+      "NewFilingOut": {
+        "description": "A 10-K or 10-Q EDGAR lists that is not loaded yet (M7c, FR-DATA-23).",
+        "properties": {
+          "filed_at": {
+            "format": "date",
+            "title": "Filed At",
+            "type": "string"
+          },
+          "form": {
+            "enum": [
+              "10-K",
+              "10-Q"
+            ],
+            "title": "Form",
+            "type": "string"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          }
+        },
+        "required": [
+          "form",
+          "filed_at",
+          "period_end"
+        ],
+        "title": "NewFilingOut",
         "type": "object"
       },
       "NoteIn": {

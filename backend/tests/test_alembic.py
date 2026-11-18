@@ -31,6 +31,7 @@ from bedrock.models import (
     macro,
     note,
     off_balance_item,
+    pending_filing,
     price_daily,
     qoe_custom_rule,
     qoe_threshold,
@@ -66,6 +67,7 @@ _MODELS = (
     macro,
     note,
     off_balance_item,
+    pending_filing,
     price_daily,
     qoe_custom_rule,
     qoe_threshold,
@@ -2374,3 +2376,87 @@ def test_0022_downgrade_drops_only_what_it_added_and_keeps_the_rows(
 
     _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
     assert "line_classification" in inspect(engine).get_table_names()
+
+
+# --- 0023: pending filings (M7c S1, docs/erd/data.md "New-filing detection") -------------------
+
+
+def _pending(connection: Connection, company_id: int, **cols: object) -> int:
+    row = {
+        "company_id": company_id,
+        "accession_no": f"acc-{company_id}",
+        "form": "10-Q",
+        "filed_at": "2026-10-30",
+        "period_end": "2026-09-26",
+        "detected_at": _NOW,
+    } | cols
+    return _insert(connection, "pending_filing", **row)
+
+
+def test_0023_adds_the_pending_filing_table_and_the_check_time_and_keeps_the_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0022"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        _company(connection, "AAA")
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "0023"))
+
+    engine.dispose()
+    inspector = inspect(engine)
+    assert "pending_filing" in inspector.get_table_names()
+    assert "ix_pending_filing_company_id" in {
+        i["name"] for i in inspector.get_indexes("pending_filing")
+    }
+    with engine.begin() as connection:
+        assert connection.execute(text("SELECT filings_checked_at FROM company")).all() == [(None,)]
+
+
+def test_0023_accession_is_unique_form_is_checked_and_rows_go_with_the_company(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0023"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        company_id = _company(connection, "AAA")
+        kept_id = _company(connection, "BBB")
+        _pending(connection, company_id, accession_no="a1", period_end=None)
+        _pending(connection, kept_id, accession_no="b1", form="10-K")
+    for bad in ({"accession_no": "a1"}, {"accession_no": "a2", "form": "10-K/A"}):
+        with engine.begin() as connection, pytest.raises(IntegrityError):
+            _pending(connection, company_id, **bad)
+    with engine.begin() as connection, pytest.raises(IntegrityError):
+        _pending(connection, company_id, accession_no="a3", filed_at=None)
+    with engine.begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+        connection.execute(text("DELETE FROM company WHERE id = :id"), {"id": company_id})
+        assert connection.execute(text("SELECT accession_no FROM pending_filing")).all() == [
+            ("b1",)
+        ]
+
+
+def test_0023_downgrade_drops_only_what_it_added_and_keeps_the_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0022"))
+    engine = create_engine(database_url)
+    before = {c["name"] for c in inspect(engine).get_columns("company")}
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "0023"))
+    with engine.begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+        company_id = _company(connection, "AAA")
+        _audit(connection, company_id)  # a row that cascades from `company` (G34)
+        _pending(connection, company_id)
+
+    _run_alembic(tmp_path, monkeypatch, ("downgrade", "0022"))
+
+    engine.dispose()
+    assert "pending_filing" not in inspect(engine).get_table_names()
+    assert {c["name"] for c in inspect(engine).get_columns("company")} == before
+    with engine.begin() as connection:
+        assert _count(connection, "company") == 1
+        assert _count(connection, "audit_log") == 1
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "0023"))
+    assert "pending_filing" in inspect(engine).get_table_names()

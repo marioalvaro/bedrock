@@ -5,7 +5,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import event, func, select
 from sqlalchemy.orm import Session
 
 from bedrock.analysis.multiples import key_stats
@@ -22,6 +22,7 @@ from bedrock.models.company import Company
 from bedrock.models.concept_mapping import ConceptMapping
 from bedrock.models.corporate_action import CorporateAction
 from bedrock.models.filing import Filing
+from bedrock.models.pending_filing import PendingFiling
 from bedrock.models.price_daily import PriceDaily
 from bedrock.models.raw_fact import RawFact
 from bedrock.repositories import facts as facts_repo
@@ -220,3 +221,68 @@ def test_removing_a_company_removes_all_its_data_and_overrides(db_session: Sessi
 def test_removing_a_company_that_is_not_followed_is_an_error(db_session: Session) -> None:
     with pytest.raises(CompanyNotFound):
         remove_company(db_session, "AAPL")
+
+
+# --- the new filings on the views (M7c, FR-DATA-23) ---------------------------------------------
+
+
+def _bare(session: Session, ticker: str, cik: str | None) -> Company:
+    company = Company(
+        ticker=ticker,
+        cik=cik,
+        name=ticker,
+        fiscal_year_end_month=12,
+        currency="USD",
+        source="sec" if cik else "manual",
+    )
+    session.add(company)
+    session.flush()
+    return company
+
+
+def _pending(session: Session, company: Company, accession: str, filed: date) -> None:
+    session.add(
+        PendingFiling(
+            company_id=company.id,
+            accession_no=accession,
+            form="10-Q",
+            filed_at=filed,
+            period_end=None,
+            detected_at=NOW.replace(tzinfo=None),
+        )
+    )
+
+
+def test_the_views_carry_each_company_s_new_filings_read_in_one_query(
+    db_session: Session,
+) -> None:
+    first = _bare(db_session, "AAA", "0000000001")
+    second = _bare(db_session, "BBB", "0000000002")
+    _bare(db_session, "MAN", None)
+    _pending(db_session, first, "a-old", date(2026, 7, 31))
+    _pending(db_session, first, "a-new", date(2026, 10, 30))
+    _pending(db_session, second, "b-1", date(2026, 8, 1))
+    db_session.commit()
+    statements: list[str] = []
+
+    def record(conn: object, cursor: object, statement: str, *args: object) -> None:
+        statements.append(statement)
+
+    engine = db_session.get_bind()
+    event.listen(engine, "before_cursor_execute", record)
+    try:
+        views = list_companies(db_session)
+    finally:
+        event.remove(engine, "before_cursor_execute", record)
+
+    found = {v.company.ticker: [f.accession_no for f in v.new_filings] for v in views}
+    assert found == {"AAA": ["a-new", "a-old"], "BBB": ["b-1"], "MAN": []}
+    assert sum("FROM pending_filing" in s for s in statements) == 1
+
+
+def test_one_company_s_view_carries_its_new_filings(db_session: Session) -> None:
+    company = _bare(db_session, "AAA", "0000000001")
+    _pending(db_session, company, "a-1", date(2026, 10, 30))
+    db_session.commit()
+
+    assert [f.accession_no for f in get_company(db_session, "aaa").new_filings] == ["a-1"]

@@ -15,6 +15,7 @@ export function companyItem(overrides: Partial<CompanyListItem> = {}): CompanyLi
     filings_total: 0,
     classification_mode: "off",
     classification_source: null,
+    new_filings: [],
     price: "231.40",
     price_date: "2026-10-07",
     market_cap: "3500000000000.00",

@@ -125,3 +125,78 @@ def test_the_client_is_built_once_and_only_on_first_use(tmp_path: Path) -> None:
     source.resolve("AAPL")
     source.resolve("MSFT")
     assert built == [1]
+
+
+# --- the filing index (M7c, FR-DATA-23) ---------------------------------------------------------
+
+
+def _serve_index(request: httpx.Request) -> httpx.Response:
+    if request.url.path == "/submissions/CIK0000320193.json":
+        return httpx.Response(200, content=(EDGAR / "recent_filings" / "AAPL.json").read_bytes())
+    return httpx.Response(404)
+
+
+def test_recent_filings_reads_the_10_k_and_10_q_rows_of_the_index(tmp_path: Path) -> None:
+    refs = _source(tmp_path, _serve_index).recent_filings(CompanyRef("AAPL", "0000320193"))
+
+    assert [(r.accession_no, r.form) for r in refs] == [
+        ("0000320193-26-000029", "10-K"),
+        ("0000320193-26-000020", "10-Q"),
+        ("0000320193-26-000013", "10-Q"),
+    ]
+    assert not (tmp_path / "raw").exists()  # the index is never cached on disk
+
+
+def test_recent_filings_refuses_a_company_without_a_cik(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="CIK"):
+        _source(tmp_path, _serve_index).recent_filings(CompanyRef("ACME", None))
+
+
+def test_an_index_failure_is_source_unavailable(tmp_path: Path) -> None:
+    source = _source(tmp_path, lambda request: httpx.Response(503))
+
+    with pytest.raises(SourceUnavailable):
+        source.recent_filings(CompanyRef("AAPL", "0000320193"))
+
+
+def test_build_sources_reads_the_index_with_the_edgar_source(settings: Settings) -> None:
+    sources = build_sources(settings)
+
+    assert sources.submissions is sources.edgar
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"filings": {"recent": {"accessionNumber": ["a1"], "form": ["10-Q"]}}},  # a column missing
+        {
+            "filings": {
+                "recent": {
+                    "accessionNumber": ["a1"],
+                    "form": ["10-Q"],
+                    "filingDate": ["31/07/2026"],
+                    "reportDate": [""],
+                }
+            }
+        },  # bad date
+        {
+            "filings": {
+                "recent": {
+                    "accessionNumber": ["a1", "a2"],
+                    "form": ["10-Q"],
+                    "filingDate": ["2026-07-31"],
+                    "reportDate": [""],
+                }
+            }
+        },  # uneven
+        {"filings": {"recent": ["not", "a", "table"]}},
+        ["not", "a", "document"],
+    ],
+)
+def test_an_index_of_an_unexpected_shape_is_source_unavailable(
+    tmp_path: Path, body: object
+) -> None:
+    source = _source(tmp_path, lambda request: httpx.Response(200, json=body))
+
+    with pytest.raises(SourceUnavailable, match="unexpected"):
+        source.recent_filings(CompanyRef("AAPL", "0000320193"))

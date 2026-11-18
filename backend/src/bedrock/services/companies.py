@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 from sqlalchemy.orm import Session
@@ -6,8 +6,10 @@ from sqlalchemy.orm import Session
 from bedrock.analysis.multiples import KeyStats
 from bedrock.ingest.sources import Sources
 from bedrock.models.company import Company
+from bedrock.models.pending_filing import PendingFiling
 from bedrock.repositories import companies as companies_repo
 from bedrock.repositories import filing_lines as lines_repo
+from bedrock.services import new_filings as new_filings_service
 from bedrock.services.errors import CompanyExists, CompanyNotFound
 from bedrock.services.refresh import refresh_company
 from bedrock.services.statements import company_key_stats
@@ -30,12 +32,18 @@ class CompanyView:
     stats: KeyStats
     filings_parsed: int = 0  # filings of the four forms whose XBRL is read (M7b S6)
     filings_total: int = 0
+    # 10-Ks and 10-Qs EDGAR lists that are not loaded yet, newest first (M7c, FR-DATA-23)
+    new_filings: list[PendingFiling] = field(default_factory=list)
 
 
 def list_companies(session: Session) -> list[CompanyView]:
     companies = companies_repo.list_all(session)
-    progress = lines_repo.xbrl_progress(session, [c.id for c in companies])
-    return [_view(session, company, progress[company.id]) for company in companies]
+    ids = [c.id for c in companies]
+    progress = lines_repo.xbrl_progress(session, ids)
+    pending = new_filings_service.pending(session, ids)
+    return [
+        _view(session, company, progress[company.id], pending[company.id]) for company in companies
+    ]
 
 
 def get_company(session: Session, ticker: str) -> CompanyView:
@@ -104,7 +112,12 @@ def _followed(session: Session, ticker: str) -> Company:
 
 
 def _view(
-    session: Session, company: Company, progress: tuple[int, int] | None = None
+    session: Session,
+    company: Company,
+    progress: tuple[int, int] | None = None,
+    pending: list[PendingFiling] | None = None,
 ) -> CompanyView:
     parsed, total = progress or lines_repo.xbrl_progress(session, [company.id])[company.id]
-    return CompanyView(company, company_key_stats(session, company), parsed, total)
+    if pending is None:
+        pending = new_filings_service.pending(session, [company.id])[company.id]
+    return CompanyView(company, company_key_stats(session, company), parsed, total, pending)

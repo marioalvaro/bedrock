@@ -10,6 +10,7 @@ from bedrock.ingest.sources import Sources
 from bedrock.repositories import companies as companies_repo
 from bedrock.repositories import facts as facts_repo
 from bedrock.services import consensus as consensus_service
+from bedrock.services import new_filings as new_filings_service
 from bedrock.services.errors import CompanyNotFound
 from bedrock.services.filings import ingest_filings
 from bedrock.services.mappings import sync_mappings
@@ -58,6 +59,8 @@ def refresh_company(
             new_filings, new_facts = facts_repo.insert_parsed(
                 session, company, parse_companyfacts(payload.companyfacts)
             )
+            # A marked filing goes when it is stored, in this transaction (M7c, FR-DATA-23).
+            new_filings_service.clear_ingested(session, company)
 
         warnings: list[str] = []
         new_prices = 0

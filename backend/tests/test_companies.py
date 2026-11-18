@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -10,6 +10,7 @@ from bedrock.ingest.protocol import CompanyRef, SourceNotConfigured, SourceUnava
 from bedrock.models.company import Company
 from bedrock.models.concept_mapping import ConceptMapping
 from bedrock.models.filing import Filing
+from bedrock.models.pending_filing import PendingFiling
 from bedrock.models.price_daily import PriceDaily
 from bedrock.models.raw_fact import RawFact
 
@@ -224,3 +225,47 @@ def test_an_edgar_failure_during_refresh_is_a_502(
     fake_edgar.fetch_raises = SourceUnavailable("down")
 
     assert authed_client.post("/api/v1/companies/AAPL/refresh").status_code == 502
+
+
+def test_both_company_routes_carry_the_new_filings_newest_first(
+    authed_client: TestClient, db_session: Session
+) -> None:
+    company = Company(
+        ticker="AAPL", cik="0000320193", name="Apple Inc.", fiscal_year_end_month=9, currency="USD"
+    )
+    manual = Company(
+        ticker="ACME",
+        cik=None,
+        name="Acme",
+        fiscal_year_end_month=12,
+        currency="USD",
+        source="manual",
+    )
+    db_session.add_all([company, manual])
+    db_session.flush()
+    for accession, form, filed, end in (
+        ("a-10q", "10-Q", date(2026, 7, 31), date(2026, 6, 27)),
+        ("a-10k", "10-K", date(2026, 10, 30), None),
+    ):
+        db_session.add(
+            PendingFiling(
+                company_id=company.id,
+                accession_no=accession,
+                form=form,
+                filed_at=filed,
+                period_end=end,
+                detected_at=datetime(2026, 11, 18, 14, 30),
+            )
+        )
+    db_session.commit()
+    expected = [
+        {"form": "10-K", "filed_at": "2026-10-30", "period_end": None},
+        {"form": "10-Q", "filed_at": "2026-07-31", "period_end": "2026-06-27"},
+    ]
+
+    listed = {c["ticker"]: c for c in authed_client.get("/api/v1/companies").json()}
+    one = authed_client.get("/api/v1/companies/AAPL").json()
+
+    assert listed["AAPL"]["new_filings"] == expected
+    assert one["new_filings"] == expected
+    assert listed["ACME"]["new_filings"] == []

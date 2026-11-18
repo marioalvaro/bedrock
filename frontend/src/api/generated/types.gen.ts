@@ -1064,6 +1064,12 @@ export type CompanyListItem = {
      */
     name: string;
     /**
+     * New Filings
+     *
+     * 10-Ks and 10-Qs EDGAR lists that are not loaded yet, newest first; empty for a manual company
+     */
+    new_filings: Array<NewFilingOut>;
+    /**
      * Pe
      */
     pe: string | null;
@@ -3054,6 +3060,26 @@ export type MultiplesOut = {
      * Ticker
      */
     ticker: string;
+};
+
+/**
+ * NewFilingOut
+ *
+ * A 10-K or 10-Q EDGAR lists that is not loaded yet (M7c, FR-DATA-23).
+ */
+export type NewFilingOut = {
+    /**
+     * Filed At
+     */
+    filed_at: string;
+    /**
+     * Form
+     */
+    form: '10-K' | '10-Q';
+    /**
+     * Period End
+     */
+    period_end: string | null;
 };
 
 /**

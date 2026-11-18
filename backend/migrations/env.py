@@ -27,6 +27,7 @@ from bedrock.models import (  # noqa: F401  ensure models are registered
     macro,
     note,
     off_balance_item,
+    pending_filing,
     price_daily,
     qoe_custom_rule,
     qoe_threshold,
