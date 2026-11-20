@@ -181,6 +181,18 @@ def test_scenarios_are_listed_default_first_then_by_id(db_session: Session, aapl
     assert [s.name for s in list_scenarios(db_session, aapl, NOW)] == ["Main", "Aardvark", "Zebra"]
 
 
+def test_get_default_is_none_before_the_defaults_and_main_after(
+    db_session: Session, aapl: Company
+) -> None:
+    assert scenarios_repo.get_default(db_session, aapl.id) is None
+    list_scenarios(db_session, aapl, NOW)
+    create_scenario(db_session, aapl, SettingsInput(name="Aardvark"), NOW)
+
+    default = scenarios_repo.get_default(db_session, aapl.id)
+    assert default is not None
+    assert (default.name, default.is_default) == ("Main", True)
+
+
 # --- create, update, delete -----------------------------------------------------------------
 
 

@@ -7,12 +7,13 @@ import {
   formatPercent,
   formatRelative,
   formatSignedPercent,
+  DASH,
+  utcDate,
 } from "@/lib/format";
 
 // The Backtest tab's texts, tables and chart options. Everything here only lays out and formats
 // the backend's scores: errors, MAPE, bias and hit rates are computed there.
 
-const DASH = "—";
 const MINUS = "−";
 const OFFSET = "offset:";
 
@@ -55,11 +56,6 @@ const methodRank = (code: string) => {
   const rank = METHOD_ORDER.indexOf(code);
   return rank === -1 ? METHOD_ORDER.length : rank;
 };
-
-/** The API's timestamps are UTC with no offset: read them as UTC, whatever the browser's zone. */
-export function utcDate(iso: string): Date {
-  return new Date(/(Z|[+-]\d{2}:?\d{2})$/.test(iso) ? iso : `${iso}Z`);
-}
 
 /** An API timestamp in the browser's time zone ("Nov 10, 2026, 1:30 PM"). */
 export function formatLocalTime(iso: string): string {

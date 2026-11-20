@@ -4,7 +4,7 @@ computed on its own: a block that raises a domain error is empty and its message
 `warnings`, so a company with missing data still gets a summary."""
 
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from bedrock.models.company import Company
 from bedrock.models.scenario import Scenario
 from bedrock.ratios.registry import RATIOS
+from bedrock.ratios.registry import Unit as RatioUnit
 from bedrock.repositories import facts as facts_repo
 from bedrock.repositories import runs as runs_repo
 from bedrock.repositories import scenarios as scenarios_repo
@@ -23,8 +24,7 @@ from bedrock.services import ratios as ratios_service
 from bedrock.services import valuation as valuation_service
 from bedrock.services.errors import DOMAIN_ERRORS, user_message
 from bedrock.services.statements import statement_tables
-from bedrock.statements.build import RATIO_PLACES, Freq, Row
-from bedrock.statements.periods import Period
+from bedrock.statements.build import RATIO_PLACES, Freq
 
 # The seven metrics, in this order: revenue from the income statement, the rest from the annual
 # reported ratio table.
@@ -44,9 +44,10 @@ EXCERPT_LENGTH = 140
 _DIFFERENCE_UNITS = frozenset({"pct", "x", "days"})
 _SEVERITY_RANK = {"alert": 0, "warn": 1}
 # code -> (label, unit) of each metric; a ratio's from the registry
-_METRIC_LABELS = {"revenue": ("Revenue", "USD")} | {
+_METRIC_LABELS: dict[str, tuple[str, RatioUnit]] = {
     r.code: (r.label, r.unit) for r in RATIOS if r.code in METRIC_CODES
 }
+_METRIC_LABELS["revenue"] = ("Revenue", "USD")
 
 
 @dataclass(frozen=True)
@@ -59,7 +60,7 @@ class YearValue:
 class SummaryMetric:
     code: str
     label: str
-    unit: str
+    unit: RatioUnit
     years: list[YearValue]  # the last five fiscal years, oldest first
     latest: Decimal | None  # the newest year's value
     yoy: Decimal | None  # see `yoy`
@@ -118,18 +119,22 @@ def company_summary(session: Session, company: Company) -> CompanySummary:
     """Every block of the summary; never raises a domain error (see the module docstring).
     Without a default scenario, `valuation` and `forecast` are None with no warning."""
     warnings: list[str] = []
-    default = next((s for s in scenarios_repo.list_for(session, company.id) if s.is_default), None)
+    default = scenarios_repo.get_default(session, company.id)
     metrics = _block("Metrics", lambda: _metrics(session, company), _no_metrics(), warnings)
     flags: list[SummaryFlag] = _block("Flags", lambda: _flags(session, company), [], warnings)
-    valuation = None
-    forecast = None
-    if default is not None:
-        valuation = _block(
+    valuation = (
+        None
+        if default is None
+        else _block(
             "Valuation", lambda: _valuation(session, company, default, warnings), None, warnings
         )
+    )
     notes: list[SummaryNote] = _block("Notes", lambda: _notes(session, company), [], warnings)
-    if default is not None:
-        forecast = _block("Forecast", lambda: _forecast(session, company, default), None, warnings)
+    forecast = (
+        None
+        if default is None
+        else _block("Forecast", lambda: _forecast(session, company, default), None, warnings)
+    )
     return CompanySummary(metrics, flags, valuation, notes, forecast, warnings)
 
 
@@ -177,7 +182,7 @@ def _metrics(session: Session, company: Company) -> list[SummaryMetric]:
     annual = {statement: loaded[(statement, freq)] for statement, freq in wanted}
     table = ratios_service.annual_ratios_from(session, company, annual)
     values = {r.code: r.values for r in table.rows}
-    values["revenue"] = _aligned(annual["IS"].periods, annual["IS"].rows, table.periods)
+    values["revenue"] = [annual["IS"].value_at("revenue", p.point) for p in table.periods]
     fiscal = [i for i, p in enumerate(table.periods) if p.fiscal_period == "FY"][-YEARS:]
     return [
         _metric(code, [YearValue(table.periods[i].fiscal_year, values[code][i]) for i in fiscal])
@@ -190,15 +195,6 @@ def _metric(code: str, years: list[YearValue]) -> SummaryMetric:
     latest = years[-1].value if years else None
     prior = years[-2].value if len(years) > 1 else None
     return SummaryMetric(code, label, unit, years, latest, yoy(unit, latest, prior))
-
-
-def _aligned(
-    periods: Sequence[Period], rows: Sequence[Row], wanted: Sequence[Period]
-) -> list[Decimal | None]:
-    """The revenue row's values on the `wanted` periods (None where the statement has none)."""
-    row = next((r for r in rows if r.code == "revenue"), None)
-    by_key = {} if row is None else dict(zip((p.key for p in periods), row.values, strict=True))
-    return [by_key.get(p.key) for p in wanted]
 
 
 def _no_metrics() -> list[SummaryMetric]:

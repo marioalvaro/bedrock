@@ -9,9 +9,7 @@ import {
   VERDICTS,
   checkpointValueText,
   errorClassName,
-  formatDay,
   formatRangeCell,
-  formatReviewValue,
   restatedCapText,
   reviewHeading,
   sinceLastFilingText,
@@ -19,13 +17,6 @@ import {
 } from "./reviewFormat";
 
 const DASH = "—";
-
-describe("dates", () => {
-  it("formats an API date as it is, in any time zone", () => {
-    expect(formatDay("2026-10-31")).toBe("Oct 31, 2026");
-    expect(formatDay("2026-01-01")).toBe("Jan 1, 2026");
-  });
-});
 
 describe("headings", () => {
   it("names the period, the form and its filing date", () => {
@@ -39,17 +30,6 @@ describe("headings", () => {
   it("names the snapshot's date and scenario", () => {
     const snapshot = earningsReview().snapshot!;
     expect(snapshotHeading(snapshot)).toMatch(/^Against the snapshot of Oct 3[01], 2026 \(Main\)$/);
-  });
-});
-
-describe("formatReviewValue", () => {
-  it("formats by unit", () => {
-    expect(formatReviewValue("416161000000", "USD")).toBe("416.2B");
-    expect(formatReviewValue("6.11", "USD/shares")).toBe("6.11");
-    expect(formatReviewValue("0.469", "pct")).toBe("46.9%");
-    expect(formatReviewValue("45", "days")).toBe("45");
-    expect(formatReviewValue("1.5", "x")).toBe("1.5x");
-    expect(formatReviewValue(null, "USD")).toBe(DASH);
   });
 });
 
@@ -140,30 +120,32 @@ describe("checkpoint states", () => {
 });
 
 describe("checkpointValueText", () => {
-  it("shows both sides as percents for a statement typed in percent", () => {
+  it("shows both sides in the unit the API gives", () => {
     expect(checkpointValueText(checkpointOut())).toBe("45.2% vs 44.0%");
   });
 
-  it("shows plain numbers otherwise", () => {
-    const cp = checkpointOut({ statement: "net_debt_to_ebitda <= 2", left: "1.5300", right: "2" });
-    expect(checkpointValueText(cp)).toBe("1.53 vs 2");
+  it("formats multiples and amounts by their unit", () => {
+    const multiple = checkpointOut({ unit: "x", left: "1.5300", right: "2" });
+    expect(checkpointValueText(multiple)).toBe("1.5x vs 2.0x");
+    const amount = checkpointOut({ unit: "USD", left: "416161000000", right: "400000000000" });
+    expect(checkpointValueText(amount)).toBe("416.2B vs 400.0B");
   });
 
-  it("shows large amounts compact", () => {
-    const cp = checkpointOut({
-      statement: "revenue > 400000000000",
-      left: "416161000000",
-      right: "400000000000",
-    });
-    expect(checkpointValueText(cp)).toBe("416.2B vs 400.0B");
+  it("never reads the unit from the statement text", () => {
+    const cp = checkpointOut({ statement: "gross_profit / revenue > 40%", unit: null });
+    expect(checkpointValueText(cp)).toBe("0.452 vs 0.44");
   });
 
-  it("keeps a negative sign on small numbers", () => {
-    const cp = checkpointOut({
-      statement: "yoy(shares_outstanding) < 0",
-      left: "-0.0213",
-      right: "0",
-    });
+  it("shows plain numbers without a unit, large ones compact", () => {
+    expect(checkpointValueText(checkpointOut({ unit: null, left: "1.5300", right: "2" }))).toBe(
+      "1.53 vs 2",
+    );
+    const large = checkpointOut({ unit: null, left: "416161000000", right: "400000000000" });
+    expect(checkpointValueText(large)).toBe("416.2B vs 400.0B");
+  });
+
+  it("keeps a negative sign on small plain numbers", () => {
+    const cp = checkpointOut({ unit: null, left: "-0.0213", right: "0" });
     expect(checkpointValueText(cp)).toBe("-0.0213 vs 0");
   });
 

@@ -14,7 +14,6 @@ from typing import Literal
 from bedrock.mapping.config import CanonicalItemDef, load_canonical_items, parse_formula
 from bedrock.ratios.calculator import (
     Operands,
-    Point,
     RatioFreq,
     RatioInputs,
     row_caveat,
@@ -31,10 +30,12 @@ from bedrock.ratios.registry import (
     Unit,
     validate,
 )
+from bedrock.statements.periods import Point
 
 TermKind = Literal["line", "metric", "ratio"]
 
 _METRICS: dict[str, Metric] = {m.code: m for m in METRICS}
+_RATIOS = {r.code: r for r in RATIOS}
 _METRIC_UNITS = {"price": "USD/shares", "tax_rate": "pct", "earnings_growth": "points"}
 _WINDOW_NOTE = "latest quarter of the window with a value"
 
@@ -84,6 +85,21 @@ class RatioExplanation:
 @cache
 def _items() -> dict[str, CanonicalItemDef]:
     return {i.code: i for i in load_canonical_items()}
+
+
+def name_unit(code: str) -> str | None:
+    """The unit of a formula name: a canonical line's, a metric's or a registry ratio's; None for
+    a code that is none of them."""
+    if code in CANONICAL_CODES:
+        return _items()[code].unit
+    if code in _METRICS:
+        return _metric_unit(code)
+    ratio = _RATIOS.get(code)
+    return None if ratio is None else ratio.unit
+
+
+def _metric_unit(code: str) -> str:
+    return _METRIC_UNITS.get(code, "USD")
 
 
 def explain_ratio(
@@ -170,7 +186,7 @@ def _term(
             code,
             metric.label,
             "metric",
-            _METRIC_UNITS.get(code, "USD"),
+            _metric_unit(code),
             sign,
             value,
             metric.definition,

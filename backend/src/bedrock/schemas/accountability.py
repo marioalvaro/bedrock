@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict
 from bedrock.analysis.guidance import Basis, Verdict
 from bedrock.analysis.qoe import RuleUnit, Severity
 from bedrock.models.audit_log import AuditAction, AuditEntity
+from bedrock.models.forecast_run import SnapshotOrigin
 from bedrock.schemas.checkpoints import CheckpointOut
 from bedrock.services.audit import AuditPage
 from bedrock.services.backtest import BacktestView
@@ -56,7 +57,7 @@ class SnapshotOut(BaseModel):
     # M7d S4: the company's classification mode when it was taken; null for an older snapshot
     classification_mode: Literal["off", "accepted", "all"] | None
     # M7c: `auto` when a refresh took it just before storing a new 10-K or 10-Q
-    origin: Literal["manual", "auto"]
+    origin: SnapshotOrigin
 
     @classmethod
     def from_view(cls, view: SnapshotView) -> "SnapshotOut":
@@ -238,7 +239,7 @@ class ReviewSnapshotOut(BaseModel):
 
     id: int
     scenario_name: str
-    origin: Literal["manual", "auto"]
+    origin: SnapshotOrigin
     created_at: datetime
     data_as_of: date | None
     classification_mode: Literal["off", "accepted", "all"] | None

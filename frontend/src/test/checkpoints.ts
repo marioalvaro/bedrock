@@ -16,6 +16,7 @@ export function checkpointOut(overrides: Partial<CheckpointOut> = {}): Checkpoin
     left: "0.4520",
     right: "0.4400",
     gap: "0.0120",
+    unit: "pct",
     error: null,
     created_at: "2026-11-18T10:00:00",
     updated_at: "2026-11-18T10:00:00",

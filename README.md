@@ -4,7 +4,7 @@ A personal web app for deep fundamental analysis of a handful of US companies, s
 
 It is a single-user app: a FastAPI + SQLite backend and a React (Vite, TypeScript, Tailwind) SPA, in one repo.
 
-> **Status (2026-11-18):** M0 (scaffold) through M7d are built: statements, analysis, scenarios and forecasts, valuation (M5), statistical forecast engines (M6), snapshots, backtesting and the audit log (M7), data coverage (M7b) and the as-reported view with optional AI line classification (M7d). M7c (Closing the loop) is in progress: new-filing detection, automatic snapshots, the earnings review and thesis checkpoints are done (S1–S5); the workspace polish (archive, two-level tabs, a Data tab, company switcher, analytic charts and a comparison view; S6–S9) is next. Browser acceptance and CI runs are still open for M5 onward. Macro and later milestones (M8+) are not built yet.
+> **Status (2026-11-20):** M0 (scaffold) through M7d are built: statements, analysis, scenarios and forecasts, valuation (M5), statistical forecast engines (M6), snapshots, backtesting and the audit log (M7), data coverage (M7b) and the as-reported view with optional AI line classification (M7d). M7c (Closing the loop) is built (S1–S9): new-filing detection, automatic snapshots, the earnings review, thesis checkpoints, and the workspace polish (archive instead of delete, two-level tabs, a Data tab, a company switcher, a summary Overview, analytic charts and a comparison view). Browser acceptance and CI runs are still open for M5 onward. Macro and later milestones (M8+) are not built yet.
 
 New to the app? Read the [tutorial](TUTORIAL.md), a walkthrough of every screen.
 
@@ -14,7 +14,7 @@ New to the app? Read the [tutorial](TUTORIAL.md), a walkthrough of every screen.
 - **Canonical statements.** Facts are mapped to about 80 canonical line items (`backend/src/bedrock/mapping/canonical_items.yaml`, plus per-company overrides) and shown as Income, Balance and Cash Flow statements, annual, quarterly or TTM. Q4 and missing quarters are derived from year-to-date figures, so Q1..Q4 always add up to the fiscal year.
 - **Grid views.** YoY growth and common-size rows, collapsible subtotals, a balance check on every balance-sheet period and CSV export.
 - **Provenance.** Each cell is marked reported or derived. Clicking a cell shows its source XBRL tag, the filing, the derivation formula and every filed vintage of the value.
-- **Data gaps.** Each company's Overview lists items with no value in some year and concepts in the latest 10-K that nothing maps, with suggested canonical codes.
+- **Data gaps.** Each company's Data tab lists items with no value in some year and concepts in the latest 10-K that nothing maps, with suggested canonical codes.
 - **Normalized basis.** Adjustments (one-offs, restructuring, impairments and so on) are stored apart from the as-reported data and flow through the income-statement waterfall and into balance-sheet and cash-flow subtotals. Cell details show each adjustment.
 - **Splits.** Split history comes from yfinance and every share and per-share figure is adjusted by filing date.
 - **Ratios.** A registry of ratios (profitability, returns, liquidity, leverage, efficiency, cash flow), annual or TTM, with caveats where a company's structure makes one misleading (for example DE's captive finance arm).
@@ -44,6 +44,11 @@ New to the app? Read the [tutorial](TUTORIAL.md), a walkthrough of every screen.
 - **Thesis checkpoints.** Testable statements of your thesis in the formula language, such as `gross_margin > 44%` or `net_debt_to_ebitda <= 2`, each shown as Holding, At risk, Broken or Unknown on the latest data, with what the last filing changed.
 - **Scheduled refresh.** Prices refresh hourly in US market hours, and the market series (risk-free rate, equity risk premium) and analyst consensus once a day. Filings stay behind Refresh.
 - **Company list** with price, market cap, P/E, EV/EBITDA and TTM revenue growth. Each stat is blank when an input is missing.
+- **Archive instead of delete.** A company is archived from the list (with an Undo) and restored from the Archived table. A scheduled refresh skips an archived company. Permanent deletion is a second step: the dialog lists what is lost (filings, facts, notes, scenarios, snapshots, …) and needs the ticker typed.
+- **Overview summary.** Seven key metrics over five years with sparklines and year-on-year change, the open quality flags, the value range against the price, how fresh the forecast is, and the latest notes.
+- **Analytic charts.** Ratio trend lines (pick up to five ratios), capital-allocation bars, backtest error by horizon, and a forecast-against-history line.
+- **Comparison view.** Two to six followed companies side by side: key stats and summary metrics in a table, and one metric charted over five fiscal years.
+- **Company switcher.** The ticker in a company's header opens a filterable list to jump to another company on the same tab.
 
 The test companies are AAPL, MSFT, COST and DE.
 
@@ -51,9 +56,19 @@ The test companies are AAPL, MSFT, COST and DE.
 
 Each company has these tabs, grouped by function:
 
-**Overview** | **Income · Balance · Cash Flow · Segments** | **Ratios · Capital · Quality · Seasonality · Comps** | **Guidance · Forecast · Scenarios · Valuation · Backtest · Review** | **Notes**
+Two levels: a bar of groups, and under it the tabs of the active group (hidden for a group with one tab). The URLs (`/c/<ticker>/<tab>`) do not depend on the group.
 
-- **Overview**: key stats, data gaps (with the lines to classify), adjustments and corporate actions.
+| Group | Tabs |
+|---|---|
+| **Overview** | Overview |
+| **Financials** | Income · Balance · Cash Flow · Segments · Data |
+| **Analysis** | Ratios · Capital · Quality · Seasonality · Comps |
+| **Model** | Guidance · Scenarios · Forecast · Valuation |
+| **Track** | Backtest · Review |
+| **Notes** | Notes |
+
+- **Overview**: a summary: key stats, key metrics with sparklines, open flags, valuation range, forecast freshness and the latest notes.
+- **Data**: data gaps (with the lines to classify), adjustments and corporate actions.
 - **Backtest** has three views: Backtest, Snapshots and Audit log. **Review** is the earnings review of the newest report. **Notes** holds the thesis checkpoints above the journal.
 - Valuation, Forecast and Scenarios share the picked scenario and case (`?scenario=<id>&case=base|bull|bear`).
 
@@ -69,11 +84,15 @@ Every route is under `/api/v1`. Interactive docs are at `/docs` on a running bac
 | `POST` | `/auth/login` | public | Body `{"password": "..."}`. Returns `204` and sets the `bedrock_session` cookie, or `401` for a wrong password, or `429` after 5 failures in 15 min. |
 | `POST` | `/auth/logout` | public | `204` and clears the session |
 | `GET` | `/auth/me` | session | `{"authenticated": true}`, or `401` |
-| `GET` | `/companies` | session | The followed companies, each with its key stats |
+| `GET` | `/companies` | session | The followed companies, each with its key stats. Query `archived=true` lists the archived ones instead. |
 | `POST` | `/companies/manual` | session | Body `{"ticker", "name", "fiscal_year_end_month", "sic"?}`. Creates a manual-only company (no SEC data, USD): `201`, or `409` if the ticker is already followed. |
-| `POST` | `/companies` | session | Body `{"ticker": "AAPL"}`. Follows the company and loads its data: `201`, or `404` for an unknown ticker, `409` if already followed, `503` without `SEC_USER_AGENT`, `502` if a source fails. Nothing is kept if the first load fails. |
+| `POST` | `/companies` | session | Body `{"ticker": "AAPL"}`. Follows the company and loads its data: `201`, or `404` for an unknown ticker, `409` if already followed or archived, `503` without `SEC_USER_AGENT`, `502` if a source fails. Nothing is kept if the first load fails. |
 | `GET` | `/companies/{ticker}` | session | One followed company with its key stats, or `404` |
-| `DELETE` | `/companies/{ticker}` | session | `204`. Removes the company and its stored data. |
+| `POST` | `/companies/{ticker}/archive` | session | `204`. Archives the company (a no-op if archived). The scheduler and `--all` commands skip it; nothing is deleted. |
+| `POST` | `/companies/{ticker}/restore` | session | `204`. Follows an archived company again. No re-ingestion. |
+| `GET` | `/companies/{ticker}/deletion-impact` | session | Counts of what a permanent delete removes: filings, facts, notes, scenarios, snapshots, guidance, adjustments, checkpoints, comps sets, imports |
+| `DELETE` | `/companies/{ticker}` | session | `204`. Removes the company and its stored data; `409` unless the company is archived first. |
+| `GET` | `/companies/{ticker}/summary` | session | The Overview summary: seven key metrics over five years, open flags, valuation range, forecast freshness, latest notes, and a warning for any block that could not be computed |
 | `POST` | `/companies/{ticker}/refresh` | session | Loads new filings and prices. Returns counts and warnings: a price failure is a warning, an EDGAR failure is an error. When a new 10-K or 10-Q is about to be stored, the default scenario is snapshotted first and `snapshot_id` names it (null otherwise). |
 | `POST` | `/companies/{ticker}/backfill-filings` | session | `202`. Reads the XBRL of every 10-K and 10-Q not read yet, in the background; progress is `filings_parsed` of `filings_total` on the company. `409` while one runs. |
 | `GET` | `/companies/{ticker}/statements` | session | Query `type=IS\|BS\|CF`, `freq=annual\|quarterly\|ttm`, optional `common_size_base=total\|parent`. Periods and rows with values, provenance, YoY and common size; a balance check for `BS`. `422` for a TTM balance sheet. |
@@ -166,7 +185,7 @@ The rules to know:
 
 ### Fill the gaps of a followed company
 
-1. Open the company and click **Import** on the Overview (next to Data gaps) or on any statement tab.
+1. Open the company and click **Import** on the Overview or the Data tab or on any statement tab.
 2. Under **1. Template** pick the format (Excel or CSV), the **Scale** your numbers are in, and tick **Prefill with current values** to see today's numbers, then **Download template**.
 3. Fill it in (the layout is below) and save it.
 4. Under **2. Upload and review** choose the file and click **Preview**. Read the counts, the ignored cells and any warnings.

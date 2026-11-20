@@ -7,6 +7,7 @@ import { companiesQueryOptions } from "@/api/companies";
 import type { CompanyListItem, CompanySummaryOut } from "@/api/generated/types.gen";
 import { summaryQueryOptions } from "@/api/summary";
 import { Chart } from "@/components/Chart";
+import { Td, Th } from "@/components/ui/table";
 import {
   formatCompact,
   formatMultiple,
@@ -21,9 +22,6 @@ const MIN_COMPARED = 2;
 const MAX_COMPARED = 6;
 const DEFAULT_METRIC = "revenue";
 const SELECT = "border-input h-8 rounded-lg border bg-transparent px-2 text-sm";
-const HEAD = "px-2 py-1 text-right font-medium whitespace-nowrap";
-const ROW_HEAD = "px-2 py-1 text-left font-normal whitespace-nowrap";
-const CELL = "num px-2 py-1 text-right whitespace-nowrap";
 const LOADING = "…";
 
 interface SummaryResults {
@@ -70,7 +68,7 @@ function metricChoices(summaries: (CompanySummaryOut | undefined)[]): MetricChoi
         byCode.set(metric.code, {
           code: metric.code,
           label: metric.label,
-          unit: metric.unit as RatioUnit,
+          unit: metric.unit,
         });
       }
     }
@@ -235,36 +233,36 @@ export function Compare() {
             <table aria-label="Comparison" className="text-sm">
               <thead className="text-muted-foreground">
                 <tr>
-                  <th className={HEAD} />
+                  <Th numeric className="font-medium text-inherit" />
                   {tickers.map((ticker) => (
-                    <th key={ticker} scope="col" className={HEAD}>
+                    <Th key={ticker} scope="col" numeric className="font-medium text-inherit">
                       {ticker}
-                    </th>
+                    </Th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {KEY_STATS.map(({ label, text }) => (
                   <tr key={label} className="border-border border-t">
-                    <th scope="row" className={ROW_HEAD}>
+                    <Th scope="row" className="text-inherit">
                       {label}
-                    </th>
+                    </Th>
                     {tickers.map((ticker) => (
-                      <td key={ticker} className={CELL}>
+                      <Td key={ticker} numeric>
                         {text(followed.get(ticker)!)}
-                      </td>
+                      </Td>
                     ))}
                   </tr>
                 ))}
                 {choices.map((choice) => (
                   <tr key={choice.code} className="border-border border-t">
-                    <th scope="row" className={ROW_HEAD}>
+                    <Th scope="row" className="text-inherit">
                       {choice.label}
-                    </th>
+                    </Th>
                     {tickers.map((ticker, at) => (
-                      <td key={ticker} className={CELL}>
+                      <Td key={ticker} numeric>
                         {latestText(at, choice)}
-                      </td>
+                      </Td>
                     ))}
                   </tr>
                 ))}

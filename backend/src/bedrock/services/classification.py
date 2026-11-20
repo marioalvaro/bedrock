@@ -16,6 +16,7 @@ from bedrock.classify import pricing, questions, registry
 from bedrock.classify.protocol import ClassifierError, LineClassifier
 from bedrock.classify.questions import AskedLine
 from bedrock.classify.types import LineQuestion, Usage
+from bedrock.core.clock import naive_utc
 from bedrock.core.config import Settings
 from bedrock.models.classification_run import ClassificationRun
 from bedrock.models.company import Company
@@ -88,7 +89,7 @@ def open_lines(session: Session, company: Company) -> list[AskedLine]:
 
 
 def status(session: Session, settings: Settings, now: datetime) -> Status:
-    day, next_day, month, next_month = _windows(_naive_utc(now))
+    day, next_day, month, next_month = _windows(naive_utc(now))
     used_month, cost_month = repo.usage(session, month, next_month)
     return Status(
         classifiers=registry.available(settings),
@@ -168,7 +169,7 @@ class ClassificationRunner:
         if company is None:
             raise CompanyNotFound(ticker)
         classifier = factory(classifier_name, settings)
-        now = _naive_utc(self._clock())
+        now = naive_utc(self._clock())
         self._fail_stale(session, now)
         asking = _to_ask(
             open_lines(session, company),
@@ -216,7 +217,7 @@ class ClassificationRunner:
         try:
             thread.start()
         except BaseException as error:
-            _finish(session, run, "failed", str(error), _naive_utc(self._clock()))
+            _finish(session, run, "failed", str(error), naive_utc(self._clock()))
             raise
         with self._lock:
             self._thread = thread
@@ -256,7 +257,7 @@ class ClassificationRunner:
                     session.rollback()
                     logger.exception("classification run %d failed", run_id)
                     outcome, reason = "failed", f"{type(error).__name__}: {error}"
-                _finish(session, run, outcome, reason, _naive_utc(self._clock()))
+                _finish(session, run, outcome, reason, naive_utc(self._clock()))
         except Exception:  # the thread's top level: nothing above it would see the error
             logger.exception("classification run %d could not be closed", run_id)
 
@@ -274,7 +275,7 @@ class ClassificationRunner:
         reasons: dict[str, None] = {}  # why answers were unusable, in order, once each
         for start in range(0, len(asked), classifier.batch_size):
             batch = asked[start : start + classifier.batch_size]
-            now = _naive_utc(self._clock())
+            now = naive_utc(self._clock())
             estimate = classifier.estimate(batch)
             reason = _over_budget(
                 session, settings, now, estimate.input_tokens + estimate.output_tokens
@@ -327,7 +328,7 @@ def decide(
     row = repo.get(session, company.id, classification_id)
     if row is None:
         raise ClassificationNotFound(str(classification_id))
-    stamp = _naive_utc(now)
+    stamp = naive_utc(now)
     before = row.status
     put_back = repo.set_status(session, row, status, stamp)
     _record(session, row, "edit", {"status": before}, {"status": status}, stamp)
@@ -359,7 +360,7 @@ def answer(
     unknown = set(chosen) - {c.code for c in asked.question.candidates}
     if unknown:
         raise InvalidClassification(f"Not a row this line can be: {', '.join(sorted(unknown))}")
-    stamp = _naive_utc(now)
+    stamp = naive_utc(now)
     row = repo.get_for(session, company.id, line, USER)
     if row is None:
         row = repo.add(
@@ -413,7 +414,7 @@ def set_mode(
         before,
         {"mode": mode, "source": source},
         lambda field: (f"Line classification {field}", None),
-        _naive_utc(now),
+        naive_utc(now),
     )
     session.commit()
     return company
@@ -491,8 +492,3 @@ def _record(
         lambda field: (f"{name} {field}", None),
         stamp,
     )
-
-
-def _naive_utc(moment: datetime) -> datetime:
-    # SQLite keeps no time zone: the columns hold UTC without one.
-    return moment.astimezone(UTC).replace(tzinfo=None)

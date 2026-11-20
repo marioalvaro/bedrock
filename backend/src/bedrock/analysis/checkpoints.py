@@ -7,15 +7,16 @@ read on the ratio calculator's operands as holding, at risk, broken or unknown.
 """
 
 import re
-from collections.abc import Sequence, Set
+from collections.abc import Callable, Sequence, Set
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Literal
 
 from bedrock.analysis import formula as formulas
-from bedrock.analysis.formula import Formula, FormulaError
-from bedrock.ratios.calculator import Operands, Point, year_earlier
+from bedrock.analysis.formula import BinOp, Call, Formula, FormulaError, Name, Neg, Node, Number
+from bedrock.ratios.calculator import Operands, year_earlier
 from bedrock.statements.build import RATIO_PLACES
+from bedrock.statements.periods import Point
 
 MAX_LENGTH = 500
 
@@ -158,3 +159,46 @@ def _quantize(value: Decimal) -> Decimal | None:
         return value.quantize(RATIO_PLACES)
     except InvalidOperation:
         return None
+
+
+# A plain number has no unit of its own: it takes the one it is combined with.
+_PLAIN = "plain"
+
+
+def statement_unit(statement: Statement, unit_of: Callable[[str], str | None]) -> str | None:
+    """The unit both sides are in, for display; `unit_of` gives a name's unit (None: unknown).
+
+    A name has its unit, a percent literal is "pct" and `yoy` a growth rate ("pct"); `prev`,
+    `avg` and a minus sign keep their operand's unit. A plain number takes the unit of what it is
+    added to, subtracted from, multiplied with or divides. Any other product or quotient, or two
+    different units, has none (None)."""
+    unit = _combine(_unit(statement.left.root, unit_of), _unit(statement.right.root, unit_of))
+    return None if unit == _PLAIN else unit
+
+
+def _unit(node: Node, unit_of: Callable[[str], str | None]) -> str | None:
+    match node:
+        case Number(_, percent):
+            return "pct" if percent else _PLAIN
+        case Name(code):
+            return unit_of(code)
+        case Neg(operand) | Call("prev" | "avg", operand):
+            return _unit(operand, unit_of)
+        case Call("yoy", _):
+            return "pct"
+        case BinOp(op, left, right):
+            lhs, rhs = _unit(left, unit_of), _unit(right, unit_of)
+            if op in ("+", "-"):
+                return _combine(lhs, rhs)
+            if op == "*" and _PLAIN in (lhs, rhs):
+                return rhs if lhs == _PLAIN else lhs
+            return lhs if op == "/" and rhs == _PLAIN else None
+    raise AssertionError(f"unreachable node {node!r}")  # pragma: no cover
+
+
+def _combine(lhs: str | None, rhs: str | None) -> str | None:
+    if lhs is None or rhs is None:
+        return None
+    if lhs == _PLAIN:
+        return rhs
+    return lhs if rhs in (lhs, _PLAIN) else None

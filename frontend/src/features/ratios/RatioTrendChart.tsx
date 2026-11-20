@@ -28,7 +28,7 @@ interface UnitChart {
 // row's API values as they are: the axis and tooltip format them, nothing is computed.
 function unitCharts(payload: RatiosOut, codes: string[]): UnitChart[] {
   const rows = codes.flatMap((code) => payload.rows.filter((row) => row.code === code));
-  const units = [...new Set(rows.map((row) => row.unit as RatioUnit))];
+  const units = [...new Set(rows.map((row) => row.unit))];
   const labels = payload.periods.map((period) => period.label);
   return units
     .map((unit) => ({ unit, rows: rows.filter((row) => row.unit === unit) }))

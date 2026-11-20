@@ -2,7 +2,7 @@
 "Earnings review"). Computed on read from what is stored: nothing here is persisted."""
 
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
@@ -27,13 +27,13 @@ from bedrock.ratios.calculator import RatioFreq
 from bedrock.repositories import facts as facts_repo
 from bedrock.repositories import runs as runs_repo
 from bedrock.services import qoe
-from bedrock.services.checkpoints import CheckpointView, list_checkpoints
+from bedrock.services.checkpoints import CheckpointView, checkpoints_for_report
 from bedrock.services.guidance import LoggedEntry, guidance_log
 from bedrock.services.ratios import ratio_inputs
 from bedrock.services.snapshots import SnapshotDetail, detail
 from bedrock.services.statements import canonical_items, statement_tables
 from bedrock.statements.build import Freq, StatementTable, growth
-from bedrock.statements.periods import Period
+from bedrock.statements.periods import Period, Point
 
 __all__ = ["DRIVERS_NOTE", "EarningsReview", "ReviewLine", "earnings_review"]
 
@@ -82,7 +82,7 @@ def earnings_review(session: Session, company: Company) -> EarningsReview:
         return EarningsReview(company.ticker, None, None, None, [], [], None, [], 0, [], [])
     annual = filing.form == "10-K"
     freq: Freq = "annual" if annual else "quarterly"
-    before = filing.filed_at - timedelta(days=1)
+    before = filing.before_as_of
     # The key lines are read under the company's classification mode, as the Snapshots view
     # scores them; what the filing changed is read as reported, with no classification on
     # either side, so accepting one never shows as a restatement or a flag change (G55).
@@ -121,7 +121,7 @@ def earnings_review(session: Session, company: Company) -> EarningsReview:
         restated=changed[:RESTATED_LIMIT],
         restated_total=len(changed),
         flags=flags,
-        checkpoints=[c for c in list_checkpoints(session, company).checkpoints if c.changed],
+        checkpoints=[c for c in checkpoints_for_report(session, company, filing) if c.changed],
     )
 
 
@@ -151,7 +151,7 @@ def _lines(
     period: Period,
     snapshot: SnapshotDetail | None,
 ) -> list[ReviewLine]:
-    point = (period.fiscal_year, period.fiscal_period)
+    point = period.point
     prior = (period.fiscal_year - 1, period.fiscal_period)
     items = {i.code: i for i in canonical_items()}
     entries = [e for e in guidance_log(session, company).entries if e.result.latest]
@@ -175,20 +175,15 @@ def _lines(
     return lines
 
 
-def _value(tables: list[StatementTable], code: str, point: tuple[int, str]) -> Decimal | None:
+def _value(tables: list[StatementTable], code: str, point: Point) -> Decimal | None:
+    """The cell of line `code` at `point` in the first statement that has both."""
     for table in tables:
-        row = next((r for r in table.rows if r.code == code), None)
-        if row is None:
-            continue
-        for p, value in zip(table.periods, row.values, strict=True):
-            if (p.fiscal_year, p.fiscal_period) == point:
-                return value
+        if table.row(code) is not None and any(p.point == point for p in table.periods):
+            return table.value_at(code, point)
     return None
 
 
-def _entry(
-    entries: list[LoggedEntry], source: str, code: str, point: tuple[int, str]
-) -> LoggedEntry | None:
+def _entry(entries: list[LoggedEntry], source: str, code: str, point: Point) -> LoggedEntry | None:
     """The latest entry of `source` on the line at the period; `reported` wins over `normalized`."""
     found = [
         e

@@ -2,7 +2,7 @@
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal, cast
 
@@ -22,6 +22,7 @@ from bedrock.analysis.guidance import (
     quarter_margin,
     summarize,
 )
+from bedrock.core.clock import naive_utc
 from bedrock.models.company import Company
 from bedrock.models.guidance import Guidance
 from bedrock.ratios.calculator import compute_ratios
@@ -141,7 +142,7 @@ def create_entry(
     unknown metric (or KPI), a quarter on a metric that has no quarterly value, a year out of
     range, a non-finite or out-of-range (`AMOUNT_LIMIT`, G21) value, or low > high."""
     _validate(session, company, data)
-    stamp = _naive_utc(now)
+    stamp = naive_utc(now)
     added = repo.add(
         session,
         Guidance(company_id=company.id, created_at=stamp, updated_at=stamp, **_fields(data)),
@@ -160,7 +161,7 @@ def update_entry(
     _validate(session, company, data)
     for name, value in _fields(data).items():
         setattr(stored, name, value)
-    stored.updated_at = _naive_utc(now)
+    stored.updated_at = naive_utc(now)
     session.commit()
     return _logged(session, company, guidance_id)
 
@@ -196,10 +197,7 @@ def actual_history(
         if choice.group == "ratio":
             table = compute_ratios(inputs, "annual")
             row = next(r for r in table.rows if r.code == metric)
-            values = {
-                (p.fiscal_year, p.fiscal_period): v
-                for p, v in zip(table.periods, row.values, strict=True)
-            }
+            values = {p.point: v for p, v in zip(table.periods, row.values, strict=True)}
         else:
             lines = _line_values([inputs.income, inputs.cash_flow, inputs.balance])
             values = {(y, p): v for (c, y, p), v in lines.items() if c == metric}
@@ -434,8 +432,3 @@ def _editable(session: Session, company: Company, guidance_id: int) -> Guidance:
             "deleted"
         )
     return stored
-
-
-def _naive_utc(moment: datetime) -> datetime:
-    # SQLite keeps no time zone: the columns hold UTC without one.
-    return moment.astimezone(UTC).replace(tzinfo=None) if moment.tzinfo else moment

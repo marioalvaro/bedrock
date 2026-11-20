@@ -1609,6 +1609,18 @@
             "title": "Statement",
             "type": "string"
           },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The unit both sides are in (pct, USD, x, \u2026); null when unknown",
+            "title": "Unit"
+          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
@@ -1629,6 +1641,7 @@
           "left",
           "right",
           "gap",
+          "unit",
           "error",
           "created_at",
           "updated_at"
@@ -10437,6 +10450,13 @@
             "title": "Latest"
           },
           "unit": {
+            "enum": [
+              "pct",
+              "x",
+              "days",
+              "USD/shares",
+              "USD"
+            ],
             "title": "Unit",
             "type": "string"
           },

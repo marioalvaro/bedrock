@@ -18,10 +18,11 @@ from bedrock.backtest.scoring import (
     summarize,
 )
 from bedrock.backtest.snapshot import RowKind, ValueRow, read_meta, run_meta, value_rows
+from bedrock.core.clock import naive_utc
 from bedrock.forecast.errors import ForecastUnavailable
 from bedrock.ingest.parse import FilingRecord
 from bedrock.models.company import Company
-from bedrock.models.forecast_run import ForecastRun, ForecastSnapshot, ValuationRun
+from bedrock.models.forecast_run import ForecastRun, ForecastSnapshot, SnapshotOrigin, ValuationRun
 from bedrock.repositories import facts as facts_repo
 from bedrock.repositories import runs as repo
 from bedrock.repositories import scenarios as scenarios_repo
@@ -43,7 +44,6 @@ from bedrock.services.scenarios import (
     ensure_defaults,
     get_scenario,
     load_history,
-    naive_utc,
     settings_of,
 )
 from bedrock.services.valuation import CaseValuation, case_valuation
@@ -76,7 +76,7 @@ class SnapshotView:
     revenue_mape: Decimal | None  # over them
     # M7d S4: the company's classification mode when the snapshot was taken; None before 0022
     classification_mode: str | None
-    origin: str  # M7c: `manual`, or `auto` when a refresh took it before a new report
+    origin: SnapshotOrigin  # M7c
 
 
 @dataclass(frozen=True)
@@ -141,7 +141,7 @@ class SnapshotDetail:
     scored_periods: int
     revenue_mape: Decimal | None
     classification_mode: str | None
-    origin: str
+    origin: SnapshotOrigin
     cases: list[SnapshotCase]
 
 
@@ -152,7 +152,7 @@ def create_snapshot(
     note: str | None,
     now: datetime,
     *,
-    origin: str = "manual",
+    origin: SnapshotOrigin = "manual",
     trigger_accession: str | None = None,
 ) -> SnapshotView:
     """Freezes the scenario's three cases and their valuations. A case that cannot run is stored
@@ -225,7 +225,8 @@ def snapshot_before(
     if repo.has_trigger(session, company.id, trigger.accession_no):
         return None
     ensure_defaults(session, company, now)
-    default = next(s for s in scenarios_repo.list_for(session, company.id) if s.is_default)
+    default = scenarios_repo.get_default(session, company.id)
+    assert default is not None  # ensure_defaults ran
     filed = trigger.filed_at.isoformat()
     if len(incoming) == 1:
         note = f"Before the {trigger.form} filed {filed}"

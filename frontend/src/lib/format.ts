@@ -1,6 +1,28 @@
 import type { Scale } from "./scale";
 
-const DASH = "—";
+/** The text of a missing value. */
+export const DASH = "—";
+
+/** The API's timestamps are UTC with no offset: read them as UTC, whatever the browser's zone. */
+export function utcDate(iso: string): Date {
+  return new Date(/(Z|[+-]\d{2}:?\d{2})$/.test(iso) ? iso : `${iso}Z`);
+}
+
+/** An API date ("2026-10-31") as "Oct 31, 2026" ("Oct 31" without the year), read in UTC so no
+ * time zone shifts the day. */
+export function formatDay(isoDate: string, { year = true }: { year?: boolean } = {}): string {
+  return new Date(`${isoDate}T00:00:00Z`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    ...(year ? { year: "numeric" } : {}),
+    timeZone: "UTC",
+  });
+}
+
+/** An API timestamp's day in the browser's time zone ("Nov 10, 2026"). */
+export function formatLocalDay(iso: string): string {
+  return utcDate(iso).toLocaleDateString("en-US", { dateStyle: "medium" });
+}
 
 const DIVISORS: Record<Scale, number> = { K: 1e3, M: 1e6, B: 1e9 };
 const SCALE_WORDS: Record<Scale, string> = { K: "thousands", M: "millions", B: "billions" };

@@ -2,7 +2,7 @@
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
@@ -16,6 +16,7 @@ from bedrock.analysis.comps import (
     compare,
     suggest_peers,
 )
+from bedrock.core.clock import naive_utc
 from bedrock.models.company import Company
 from bedrock.models.comps_set import CompsSet
 from bedrock.repositories import companies as companies_repo
@@ -62,10 +63,6 @@ class Comparison:
     table: CompsTable
 
 
-def _naive_utc(moment: datetime) -> datetime:
-    return moment.astimezone(UTC).replace(tzinfo=None) if moment.tzinfo else moment
-
-
 def list_sets(session: Session, company: Company) -> list[SetView]:
     """The company's sets by name, with their members by ticker."""
     sets = repo.list_sets(session, company.id)
@@ -81,7 +78,7 @@ def create_set(
     member that is the company itself, listed twice or not a followed company."""
     clean = _check_name(session, company, name, None)
     peers = _resolve_members(session, company, tickers)
-    stamp = _naive_utc(now)
+    stamp = naive_utc(now)
     created = repo.add_set(
         session,
         CompsSet(company_id=company.id, name=clean, created_at=stamp, updated_at=stamp),
@@ -105,7 +102,7 @@ def update_set(
     clean = _check_name(session, company, name, stored.id)
     peers = _resolve_members(session, company, tickers)
     stored.name = clean
-    stored.updated_at = _naive_utc(now)
+    stored.updated_at = naive_utc(now)
     repo.replace_members(session, stored, [p.id for p in peers])
     session.commit()
     return SetView(stored.id, stored.name, peers)
@@ -164,7 +161,7 @@ def _figures(
             values[ratio.code] = next((v for v in reversed(ratio.values) if v is not None), None)
         if ratio.caveat:
             caveats[ratio.code] = ratio.caveat
-    revenue = next((r for r in current.income.rows if r.code == "revenue"), None)
+    revenue = current.income.row("revenue")
     values["revenue_growth"] = revenue.yoy[-1] if revenue is not None and revenue.yoy else None
     periods = current.income.periods
     header = ComparedCompany(

@@ -35,7 +35,7 @@ def rollup(
     driver while the year's four quarters agree with it and None once one differs; `min_cash`, a
     floor, is the last quarter's. A year the statements do not cover is left out."""
     annual = statements.annual()
-    span = {(p.fiscal_year, p.fiscal_period) for p in statements.periods if p.fiscal_period != "FY"}
+    span = {p.point for p in statements.periods if p.fiscal_period != "FY"}
     covered = [y for y in years if y in {p.fiscal_year for p in annual}]
     if not covered:
         return {}

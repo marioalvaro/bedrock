@@ -17,8 +17,9 @@ from dataclasses import dataclass, field
 from decimal import Decimal, DecimalException
 from typing import Literal, cast, get_args
 
-from bedrock.ratios.calculator import Operands, Point, year_earlier
+from bedrock.ratios.calculator import Operands, year_earlier
 from bedrock.statements.build import growth
+from bedrock.statements.periods import Point
 
 MAX_LENGTH = 500
 MAX_DEPTH = 32

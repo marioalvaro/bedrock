@@ -39,6 +39,7 @@ KEYS = {
     "left",
     "right",
     "gap",
+    "unit",
     "error",
     "created_at",
     "updated_at",
@@ -115,6 +116,21 @@ def test_annual_reads_the_last_fiscal_year(api: TestClient) -> None:
     created = create(api, statement="gross_margin > 44%", freq="annual")
     assert created["period"]["label"] == "FY25"
     assert Decimal(created["left"]) == Decimal("0.469052")
+
+
+@pytest.mark.parametrize(
+    ("statement", "unit"),
+    [
+        ("gross_margin > 44%", "pct"),
+        ("revenue > 0", "USD"),
+        ("pe < 40", "x"),
+        ("gross_profit / revenue > 40%", None),
+    ],
+)
+def test_the_unit_both_sides_are_in(api: TestClient, statement: str, unit: str | None) -> None:
+    created = create(api, statement=statement)
+    assert created["unit"] == unit
+    assert listed(api)["checkpoints"][0]["unit"] == unit
 
 
 def test_the_list_is_in_id_order(api: TestClient) -> None:
@@ -308,6 +324,7 @@ def test_a_stored_statement_that_no_longer_parses_lists_with_its_error(
     assert (checkpoints[1]["state"], checkpoints[1]["previous_state"]) == ("unknown", None)
     assert checkpoints[1]["changed"] is False
     assert checkpoints[1]["period"] is None
+    assert checkpoints[1]["unit"] is None
 
 
 def test_a_manual_company_has_no_report_and_unknown_states(

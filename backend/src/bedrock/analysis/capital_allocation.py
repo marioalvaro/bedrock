@@ -7,9 +7,9 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Literal
 
-from bedrock.ratios.calculator import Operands, Point, RatioFreq, RatioInputs, year_earlier
+from bedrock.ratios.calculator import Operands, RatioFreq, RatioInputs, year_earlier
 from bedrock.statements.build import RATIO_PLACES, growth
-from bedrock.statements.periods import Period
+from bedrock.statements.periods import Period, Point
 
 CapitalUnit = Literal["USD", "x", "pct"]
 
@@ -45,7 +45,7 @@ def capital_allocation(inputs: RatioInputs, freq: RatioFreq) -> CapitalAllocatio
         raise ValueError("TTM capital allocation needs the quarterly income statement")
     operands = Operands(inputs, freq)
     periods = inputs.income.periods
-    points: list[Point] = [(p.fiscal_year, p.fiscal_period) for p in periods]
+    points: list[Point] = [p.point for p in periods]
     grid = [[_value(operands, spec, point) for point in points] for spec in _ROWS]
     cfo, fcf = grid[0], grid[1]
     kept = [i for i in range(len(periods)) if any(values[i] is not None for values in grid)]

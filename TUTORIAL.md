@@ -67,27 +67,63 @@ The company appears in the list tagged `manual`. It starts empty. [Section 6](#6
 
 ### The company list
 
-Each row shows the price, market cap, P/E, EV/EBITDA, TTM revenue growth and when it was last refreshed. A stat is blank when one of its inputs is missing, never zero. Click a ticker to open the company. The bin icon removes a company and its stored data (you can add it back later).
+Each row shows the price, market cap, P/E, EV/EBITDA, TTM revenue growth and when it was last refreshed. A stat is blank when one of its inputs is missing, never zero. Click a ticker to open the company. **Archive** takes a company off the list without deleting anything; a line "Archived AAPL. Undo" lets you take it back at once. See [Archive and delete](#archive-and-delete).
 
 A company with a 10-K or 10-Q filed on EDGAR but not loaded yet carries a mark under its name, such as **10-Q filed Aug 1** (and "+1" when more are waiting). The app checks EDGAR's filing index once a day by itself; nothing is loaded until you refresh the company ([section 18](#18-keeping-data-fresh)).
+
+### Archive and delete
+
+Archiving is the everyday way to stop following a company, and it is reversible:
+
+1. Click **Archive** on the company's row. The row leaves the list; **Undo** in the line above brings it back.
+2. Under the table, **Archived (n)** opens the archived companies. **Restore** follows one again, with its data intact and no re-download.
+3. An archived company is skipped by the scheduled refresh and the new-filing check. Adding its ticker again says "Restore it from the archived list" rather than creating a second copy.
+4. **Delete permanently…** (archived companies only) opens a dialog that lists what would be lost, for example "12 filings, 48,210 facts, 7 notes, 3 scenarios, 5 snapshots …", and says it cannot be undone. The button stays disabled until you type the ticker.
+
+### Compare companies
+
+**Compare** in the header opens a side-by-side view. Choose two to six followed companies with the chips; the choice is kept in the address (`?t=AAPL,MSFT`), so you can bookmark it. The table has a column per company: price, market cap, P/E, EV/EBITDA and revenue growth, then the latest value of each summary metric (revenue, margins, FCF margin, ROIC, EPS, net debt to EBITDA). Below it, **Chart metric** draws one metric over the last five fiscal years, a line per company. Fiscal years are each company's own, not calendar-aligned.
 
 ## 3. Read the statements
 
 A company page has a header and a row of tabs. The header shows:
 
-- the ticker, name, price and market cap;
+- the ticker, name, price and market cap. **Click the ticker** to open the **company switcher**: type to filter by ticker or name, use ↑/↓ and Enter (or click) to jump to another company on the same tab;
 - the **new-filing mark** when a 10-K or 10-Q is waiting to be loaded (hover it: "Refresh to load it. The forecast is snapshotted first.");
 - **Filings read: X of Y** and a **Read all filings** button (see [below](#reading-every-filing));
 - **Refreshed** and the refresh button. After a refresh that loaded a new report, a line under the header says "Forecast snapshotted before loading the filing." with a **Review the result** link to the [Review tab](#15-review-the-newest-report).
 
-The tabs are grouped by function, with a thin divider between groups:
+The tabs are on two levels. The top bar lists the groups; under it are the tabs of the active group (a group with one tab shows no second bar). Clicking a group opens its first tab. The groups follow the workflow:
 
-**Overview** | **Income · Balance · Cash Flow · Segments** | **Ratios · Capital · Quality · Seasonality · Comps** | **Guidance · Forecast · Scenarios · Valuation · Backtest · Review** | **Notes**
+| Group | Tabs |
+|---|---|
+| **Overview** | Overview |
+| **Financials** | Income · Balance · Cash Flow · Segments · Data |
+| **Analysis** | Ratios · Capital · Quality · Seasonality · Comps |
+| **Model** | Guidance · Scenarios · Forecast · Valuation |
+| **Track** | Backtest · Review |
+| **Notes** | Notes |
+
+Model runs inputs before outputs (what management says, then your drivers, then the forecast and the value). Track scores the model against what happened.
 
 ### Overview
 
-- **Key stats**: price, market cap, P/E, EV/EBITDA and revenue growth.
-- **Data gaps**: what is missing and why ([below](#data-gaps)), with the lines to classify. The **Import** button sits here.
+The Overview is a summary, top to bottom:
+
+- **Key stats**: price, market cap, P/E, EV/EBITDA and revenue growth, with the **Import** button.
+- **Key metrics**: revenue, gross margin, operating margin, FCF margin, ROIC, diluted EPS and net debt to EBITDA, over the last five fiscal years with a sparkline, the latest value and the change on the year before (relative for money amounts, in points for percentages, in turns for multiples; green up, red down by sign only).
+- **Open flags**: quality rules at warn or alert on the newest year, linking to the Quality tab.
+- **Valuation**: the range of values per share across your cases, the base value against the price and the upside, linking to Valuation.
+- **Forecast**: when your default scenario was updated and last snapshotted. "Not updated since the <date> filing" means a newer report is loaded than your drivers reflect; it links to Scenarios.
+- **Latest notes**: the three newest, linking to Notes.
+
+A block that cannot be computed (for example no default scenario) says so in a muted line and never blocks the rest.
+
+### Data
+
+The **Data** tab (under Financials) holds what used to sit on the Overview:
+
+- **Data gaps**: what is missing and why ([below](#data-gaps)), with the lines to classify. It has its own **Import** button.
 - **Adjustments**: the list of your normalization adjustments ([section 5](#adjustments-and-the-normalized-view)).
 - **Corporate actions**: the stock splits that Bedrock uses to adjust share counts and per-share figures.
 
@@ -128,7 +164,7 @@ The legend under the toolbar explains how a number is styled:
 
 ### Data gaps
 
-On the Overview, **Data gaps** answers "what is missing":
+On the Data tab, **Data gaps** answers "what is missing":
 
 - **Coverage**: how much of each statement has data, as two percentages: over every cell, and over the applicable cells, which leaves out cells that cannot hold a value (n/a and "incl. in"). It is split by how the data got there (reported, derived, imported, and so on) and by why a cell is empty (no filing data, not applicable, included in another line, structural, rule rejected, annual only, unclassified line, not reported). A list under the table explains each cause.
 - **Rule warnings**: places where a gap-filling rule declined to fill a cell because the result would be implausible, with the reason.
@@ -167,6 +203,7 @@ Ratios by group (profitability, returns, liquidity, leverage, efficiency, cash f
 
 - **Annual / TTM** and **Reported / Normalized** switch the basis, and **CSV** exports.
 - **Click a value** to see its formula, the numerator and denominator with every input down to the statement lines, a price with its date, and the reason when the value is empty.
+- **Chart ratios.** The chart icon after a ratio's label adds it to a trend chart above the grid (up to five at once; the choice is kept in the address, `?chart=`). Ratios with different units get a chart each: percent, multiples (x), days, dollars.
 - A ratio can carry a **caveat** where the company's structure makes it misleading, for example Deere's captive finance arm inflates debt-based ratios.
 
 ### Quality
@@ -177,7 +214,7 @@ Below the flags, **Off-balance-sheet items** is a log you keep by hand. Click **
 
 ### Capital
 
-Where the cash goes: buybacks, dividends, the net change in share count (dilution or accretion), capex against depreciation and amortization, and acquisitions, shown as history and as a percentage of operating cash flow and free cash flow.
+Where the cash goes: buybacks, dividends, the net change in share count (dilution or accretion), capex against depreciation and amortization, and acquisitions, shown as history and as a percentage of operating cash flow and free cash flow. A **chart** above the grid stacks capex, acquisitions, buybacks and dividends per period (outflows below zero) with operating cash flow as a line.
 
 ## 5. Fix and normalize the data
 
@@ -190,7 +227,7 @@ Reported numbers sometimes hide a one-off. An **adjustment** is a correction you
 3. Enter the **Amount** (in the displayed sign: an expense is positive, so removing a one-off charge from SG&A is negative), a **Category** (one-off, restatement, reclass or other) and a **Reason** (required). Click **Save**.
 4. Switch the toolbar to **Normalized**. The cell and its subtotals now include the adjustment, shown as normalized.
 
-An adjustment to a component rolls up into its subtotals, so the statement still adds up. Adjust a component rather than a subtotal. You can edit or delete an adjustment in the panel or from the **Adjustments** list on the Overview. Ratios, comps and guidance can all be viewed on the normalized basis.
+An adjustment to a component rolls up into its subtotals, so the statement still adds up. Adjust a component rather than a subtotal. You can edit or delete an adjustment in the panel or from the **Adjustments** list on the Data tab. Ratios, comps and guidance can all be viewed on the normalized basis.
 
 Some lines cannot be adjusted: the computed totals, EPS, share counts and dividends per share.
 
@@ -501,6 +538,7 @@ Below the grid, **Compare** charts one line (Revenue by default) for Bull, Base 
 The **Forecast** tab shows the three statements the drivers produce: the same grids as Income, Balance and Cash Flow, with the forecast periods tinted and labelled `E`.
 
 - Pick the scenario and case, the statement (**Income | Balance | Cash flow**) and **Annual | Quarterly**.
+- A **line chart** above the grid shows one line of the statement (pick it in **Line**; revenue by default): the actual periods solid, the forecast dashed and joined to the last actual.
 - The **Integrity** panel under the grid checks every forecast period: the balance sheet balances, cash and retained earnings roll forward, and (for years built from quarters) Q1..Q4 add up to the year. "All checks pass" is what you want to see; a failing check shows the difference.
 - If a required driver is missing, the tab says "Set these drivers: …" with an **Open Scenarios** button that takes you to the same scenario and case.
 
@@ -570,7 +608,7 @@ Click **Run backtest** (it takes about 15 seconds). For each of the last 10 date
 
 ### Snapshots
 
-The snapshots you took (and the automatic ones, tagged **Auto**: "Taken before a new filing was loaded"), newest first: when, scenario, note, data as of, scored periods and revenue MAPE, with the aggregate scores of Base, Bull and Bear on top. Click a row to open it: pick the case and a line to see the forecast against the actual per period, the error and whether the actual fell inside Bear–Bull, plus the case's valuations. The sheet also shows the line-classification setting the snapshot was taken under, and says so when it differs from today's.
+The snapshots you took (and the automatic ones, tagged **Auto**: "Taken before a new filing was loaded"), newest first: when, scenario, note, data as of, scored periods and revenue MAPE, with the aggregate scores of Base, Bull and Bear on top. Above the score table, a bar chart shows the **MAPE by horizon** (years or quarters ahead) of the Base case for the **Metric** you picked, annual and quarterly side by side; hover a bar for how many forecasts it averages. Click a row to open it: pick the case and a line to see the forecast against the actual per period, the error and whether the actual fell inside Bear–Bull, plus the case's valuations. The sheet also shows the line-classification setting the snapshot was taken under, and says so when it differs from today's.
 
 ### Audit log
 
@@ -717,7 +755,7 @@ Two complete paths through the app, each linking to the detailed steps above.
 ### From a ticker to a valued, tracked company
 
 1. **Add the company** on the Companies page ([section 2](#2-add-companies)). Click **Read all filings** in its header and let it finish ([section 3](#reading-every-filing)).
-2. **Check the data.** On the Overview, read **Data gaps**: coverage, rule warnings and missing items. Import what matters and is missing ([section 6](#6-manual-input)); classify lines if you use a classifier ([section 3](#classify-lines-optional)).
+2. **Check the data.** On the Data tab, read **Data gaps**: coverage, rule warnings and missing items. Import what matters and is missing ([section 6](#6-manual-input)); classify lines if you use a classifier ([section 3](#classify-lines-optional)).
 3. **Normalize** one-offs you do not want in the forecast base with adjustments ([section 5](#adjustments-and-the-normalized-view)).
 4. **Understand the business.** Ratios, Quality, Capital, and Seasonality for a quarterly business ([section 8](#8-seasonality)). Enter segments and KPIs if you want a segment or volume × price build ([section 7](#7-segments-and-kpis)).
 5. **Set up peers** on Comps ([section 9](#9-comps)): you will need them for peer-median multiples.

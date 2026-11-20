@@ -3,11 +3,11 @@
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from bedrock.analysis.checkpoints import AtRiskBy, State
+from bedrock.models.thesis_checkpoint import CheckpointFreq
 from bedrock.services.checkpoints import (
-    CheckpointFreq,
     CheckpointInput,
     CheckpointList,
     CheckpointView,
@@ -52,6 +52,9 @@ class CheckpointOut(BaseModel):
     left: Decimal | None
     right: Decimal | None
     gap: Decimal | None
+    unit: str | None = Field(
+        description="The unit both sides are in (pct, USD, x, …); null when unknown"
+    )
     error: str | None
     created_at: datetime
     updated_at: datetime
@@ -85,6 +88,7 @@ class CheckpointOut(BaseModel):
             left=evaluation.left,
             right=evaluation.right,
             gap=evaluation.gap,
+            unit=view.unit,
             error=view.error,
             created_at=row.created_at,
             updated_at=row.updated_at,

@@ -17,12 +17,12 @@ from bedrock.models.company import Company
 from bedrock.models.filing import Filing
 from bedrock.models.pending_filing import PendingFiling
 from bedrock.repositories import companies as companies_repo
+from bedrock.repositories.pending_filings import for_companies
 from bedrock.services.new_filings import (
     FILINGS_CHECK_INTERVAL,
     check_all,
     check_company,
     filings_due,
-    pending,
 )
 from bedrock.services.refresh import refresh_company
 
@@ -195,7 +195,7 @@ def _rows(session: Session, company: Company) -> list[tuple[str, str, date, date
     session.expire_all()
     return [
         (r.accession_no, r.form, r.filed_at, r.period_end)
-        for r in pending(session, [company.id])[company.id]
+        for r in for_companies(session, [company.id])[company.id]
     ]
 
 
@@ -246,11 +246,11 @@ def test_pending_rows_are_newest_first_and_every_asked_company_has_a_list(
     other = _company(db_session, "BBB", cik="0000000002")
     check_company(db_session, FakeSubmissions({"AAA": [FY, Q1]}), company, NOW)
 
-    found = pending(db_session, [company.id, other.id])
+    found = for_companies(db_session, [company.id, other.id])
 
     assert [r.accession_no for r in found[company.id]] == ["q1-next", "fy"]
     assert found[other.id] == []
-    assert pending(db_session, []) == {}
+    assert for_companies(db_session, []) == {}
 
 
 def test_a_manual_company_is_skipped_with_no_call(db_session: Session) -> None:
@@ -295,7 +295,7 @@ def test_check_all_checks_every_due_sec_company_in_ticker_order(db_session: Sess
     assert check_all(db_session, source, NOW) == []
 
     assert source.calls == ["AAA", "ZZZ"]
-    found = pending(db_session, [early.id, late.id, fresh.id])
+    found = for_companies(db_session, [early.id, late.id, fresh.id])
     assert [len(found[c.id]) for c in (early, late, fresh)] == [1, 1, 0]
 
 
@@ -327,7 +327,7 @@ def test_a_failing_company_does_not_stop_the_others(db_session: Session) -> None
     source = _FailsFirst({"BBB": [FY]})
 
     assert check_all(db_session, source, NOW) == ["AAA: filings not checked: down"]
-    assert len(pending(db_session, [other.id])[other.id]) == 1
+    assert len(for_companies(db_session, [other.id])[other.id]) == 1
 
 
 def test_a_check_adds_no_filing_and_no_fact(db_session: Session) -> None:
@@ -337,7 +337,7 @@ def test_a_check_adds_no_filing_and_no_fact(db_session: Session) -> None:
     check_all(db_session, FakeSubmissions({"AAA": [FY, Q1]}), NOW)
 
     assert db_session.execute(select(func.count()).select_from(Filing)).scalar_one() == before
-    assert len(pending(db_session, [company.id])[company.id]) == 2
+    assert len(for_companies(db_session, [company.id])[company.id]) == 2
 
 
 # --- the refresh clears what it loaded ----------------------------------------------------------
@@ -397,5 +397,5 @@ def test_check_all_skips_an_archived_company(db_session: Session) -> None:
     assert check_all(db_session, source, NOW) == []
 
     assert source.calls == ["BBB"]
-    assert pending(db_session, [archived.id])[archived.id] == []
+    assert for_companies(db_session, [archived.id])[archived.id] == []
     assert archived.filings_checked_at is None

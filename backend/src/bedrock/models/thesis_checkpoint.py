@@ -1,11 +1,14 @@
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from bedrock.models.adjustment import utc_now
 from bedrock.models.base import Base
+
+CheckpointFreq = Literal["annual", "ttm"]
 
 
 class ThesisCheckpoint(Base):
@@ -26,7 +29,7 @@ class ThesisCheckpoint(Base):
     )
     label: Mapped[str] = mapped_column(String, nullable=False)
     statement: Mapped[str] = mapped_column(String, nullable=False)
-    freq: Mapped[str] = mapped_column(String, nullable=False)
+    freq: Mapped[CheckpointFreq] = mapped_column(String, nullable=False)
     margin: Mapped[Decimal | None] = mapped_column(Numeric(28, 10), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(

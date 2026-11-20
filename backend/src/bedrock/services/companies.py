@@ -1,16 +1,17 @@
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 
 from bedrock.analysis.multiples import KeyStats
+from bedrock.core.clock import naive_utc
 from bedrock.ingest.sources import Sources
 from bedrock.models.company import Company
 from bedrock.models.pending_filing import PendingFiling
 from bedrock.repositories import companies as companies_repo
 from bedrock.repositories import filing_lines as lines_repo
+from bedrock.repositories import pending_filings as pending_repo
 from bedrock.repositories.companies import DeletionCounts
-from bedrock.services import new_filings as new_filings_service
 from bedrock.services.errors import (
     CompanyArchived,
     CompanyExists,
@@ -50,17 +51,11 @@ class CompanyView:
 
 def list_companies(session: Session, archived: bool = False) -> list[CompanyView]:
     """The followed companies, or with `archived` the archived ones only, by ticker."""
-    companies = companies_repo.list_followed(session, archived)
-    ids = [c.id for c in companies]
-    progress = lines_repo.xbrl_progress(session, ids)
-    pending = new_filings_service.pending(session, ids)
-    return [
-        _view(session, company, progress[company.id], pending[company.id]) for company in companies
-    ]
+    return _views(session, companies_repo.list_followed(session, archived))
 
 
 def get_company(session: Session, ticker: str) -> CompanyView:
-    return _view(session, _followed(session, ticker))
+    return _views(session, [_followed(session, ticker)])[0]
 
 
 def add_company(session: Session, sources: Sources, ticker: str, now: datetime) -> CompanyView:
@@ -90,7 +85,7 @@ def add_company(session: Session, sources: Sources, ticker: str, now: datetime) 
     session.add(company)
     session.flush()
     refresh_company(session, sources, profile.ticker, now)  # commits, or rolls back and raises
-    return _view(session, company)
+    return _views(session, [company])[0]
 
 
 def add_manual_company(
@@ -112,7 +107,7 @@ def add_manual_company(
     )
     session.add(company)
     session.commit()
-    return _view(session, company)
+    return _views(session, [company])[0]
 
 
 def archive_company(session: Session, ticker: str, now: datetime) -> None:
@@ -120,7 +115,7 @@ def archive_company(session: Session, ticker: str, now: datetime) -> None:
     archived company keeps the time it was first archived."""
     company = _followed(session, ticker)
     if company.archived_at is None:
-        company.archived_at = now.astimezone(UTC).replace(tzinfo=None)  # naive UTC, as stored
+        company.archived_at = naive_utc(now)
         session.commit()
 
 
@@ -162,13 +157,12 @@ def _followed(session: Session, ticker: str) -> Company:
     return company
 
 
-def _view(
-    session: Session,
-    company: Company,
-    progress: tuple[int, int] | None = None,
-    pending: list[PendingFiling] | None = None,
-) -> CompanyView:
-    parsed, total = progress or lines_repo.xbrl_progress(session, [company.id])[company.id]
-    if pending is None:
-        pending = new_filings_service.pending(session, [company.id])[company.id]
-    return CompanyView(company, company_key_stats(session, company), parsed, total, pending)
+def _views(session: Session, companies: list[Company]) -> list[CompanyView]:
+    """Each company's view, its XBRL progress and pending filings read in one query each."""
+    ids = [c.id for c in companies]
+    progress = lines_repo.xbrl_progress(session, ids)
+    pending = pending_repo.for_companies(session, ids)
+    return [
+        CompanyView(c, company_key_stats(session, c), *progress[c.id], pending[c.id])
+        for c in companies
+    ]

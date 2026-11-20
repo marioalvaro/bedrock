@@ -13,9 +13,7 @@ import type {
 } from "@/api/generated/types.gen";
 import { summaryQueryOptions } from "@/api/summary";
 import { Sparkline } from "@/components/Sparkline";
-import { utcDate } from "@/features/backtest/backtestFormat";
 import { ImportButton } from "@/features/imports/ImportButton";
-import { formatDay } from "@/features/review/reviewFormat";
 import {
   formatChange,
   formatCompact,
@@ -26,7 +24,8 @@ import {
   formatRatio,
   formatRelative,
   formatSignedPercent,
-  type RatioUnit,
+  formatLocalDay,
+  formatDay,
 } from "@/lib/format";
 import { useNow } from "@/lib/now";
 
@@ -85,7 +84,7 @@ function KeyMetrics({ metrics }: { metrics: SummaryMetricOut[] }) {
         </thead>
         <tbody>
           {metrics.map((metric) => {
-            const unit = metric.unit as RatioUnit;
+            const unit = metric.unit;
             const byYear = new Map(metric.years.map((y) => [y.fiscal_year, y.value]));
             return (
               <tr key={metric.code} className="border-border border-b">
@@ -196,8 +195,6 @@ function Forecast({ ticker, forecast }: { ticker: string; forecast: SummaryForec
   );
 }
 
-const noteDate = (iso: string) => utcDate(iso).toLocaleDateString("en-US", { dateStyle: "medium" });
-
 function LatestNotes({ ticker, notes }: { ticker: string; notes: SummaryNoteOut[] }) {
   return (
     <>
@@ -208,7 +205,7 @@ function LatestNotes({ ticker, notes }: { ticker: string; notes: SummaryNoteOut[
           {notes.map((note) => (
             <li key={note.id} className="flex gap-3">
               <span className="text-muted-foreground shrink-0 tabular-nums">
-                {noteDate(note.created_at)}
+                {formatLocalDay(note.created_at)}
               </span>
               <span>{note.excerpt}</span>
             </li>

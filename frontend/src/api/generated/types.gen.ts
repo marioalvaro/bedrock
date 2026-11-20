@@ -874,6 +874,12 @@ export type CheckpointOut = {
      */
     statement: string;
     /**
+     * Unit
+     *
+     * The unit both sides are in (pct, USD, x, …); null when unknown
+     */
+    unit: string | null;
+    /**
      * Updated At
      */
     updated_at: string;
@@ -5517,7 +5523,7 @@ export type SummaryMetricOut = {
     /**
      * Unit
      */
-    unit: string;
+    unit: 'pct' | 'x' | 'days' | 'USD/shares' | 'USD';
     /**
      * Years
      *

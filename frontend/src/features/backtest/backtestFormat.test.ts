@@ -15,23 +15,11 @@ import {
   metricOptions,
   resolveSelection,
   scoreTableRows,
-  utcDate,
 } from "./backtestFormat";
 
 const DASH = "—";
 const MINUS = "−";
 const NO_ASK = { metric: null, freq: null, stat: null };
-
-describe("utcDate", () => {
-  it("reads the API's offset-less timestamps as UTC", () => {
-    expect(utcDate("2026-11-10T12:30:00").toISOString()).toBe("2026-11-10T12:30:00.000Z");
-  });
-
-  it("keeps an explicit offset", () => {
-    expect(utcDate("2026-11-10T12:30:00Z").toISOString()).toBe("2026-11-10T12:30:00.000Z");
-    expect(utcDate("2026-11-10T12:30:00+02:00").toISOString()).toBe("2026-11-10T10:30:00.000Z");
-  });
-});
 
 describe("formatLocalTime", () => {
   it("prints the instant in the browser's time zone", () => {

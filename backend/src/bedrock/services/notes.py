@@ -7,6 +7,7 @@ from datetime import UTC, date, datetime
 from sqlalchemy.orm import Session
 
 from bedrock.analysis.capital_allocation import CAPITAL_METRICS
+from bedrock.core.clock import naive_utc
 from bedrock.models.company import Company
 from bedrock.models.note import Note
 from bedrock.ratios.registry import RATIOS
@@ -106,7 +107,7 @@ def create_note(session: Session, company: Company, data: NoteInput, now: dateti
     capital codes, or the QoE rule codes built-in and custom), a line together with a metric, a
     year without a period (or the reverse), or a period the company has no statements for."""
     body = _validate(session, company, data)
-    stamp = _naive_utc(now)
+    stamp = naive_utc(now)
     added = repo.add(
         session,
         Note(
@@ -143,7 +144,7 @@ def update_note(
     stored.fiscal_period = data.fiscal_period
     if data.note_date is not None:
         stored.note_date = data.note_date
-    stored.updated_at = _naive_utc(now)
+    stored.updated_at = naive_utc(now)
     session.commit()
     return _stored(session, company, note_id)
 
@@ -205,8 +206,3 @@ def _stored(session: Session, company: Company, note_id: int) -> Note:
 
 def _utc(moment: datetime) -> datetime:
     return moment.astimezone(UTC)
-
-
-def _naive_utc(moment: datetime) -> datetime:
-    # SQLite keeps no time zone: the columns hold UTC without one.
-    return moment.astimezone(UTC).replace(tzinfo=None) if moment.tzinfo else moment

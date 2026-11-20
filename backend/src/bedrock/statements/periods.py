@@ -13,6 +13,8 @@ FY_DAYS = (350, 380)  # a mapped flow fact this long is a fiscal year
 QUARTER_END_DAYS = (70, 300)  # a Q1..Q3 end lies this far after the year start
 START_TOLERANCE = timedelta(days=7)
 
+Point = tuple[int, str]  # (fiscal_year, fiscal_period): FY in annual, Q1..Q4 in TTM
+
 
 @dataclass(frozen=True)
 class Period:
@@ -22,6 +24,10 @@ class Period:
     fiscal_period: str  # FY, Q1..Q4 (a TTM period carries the quarter it ends at)
     start: date
     end: date
+
+    @property
+    def point(self) -> Point:
+        return (self.fiscal_year, self.fiscal_period)
 
 
 @dataclass(frozen=True)

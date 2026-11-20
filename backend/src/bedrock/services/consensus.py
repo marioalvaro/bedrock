@@ -3,13 +3,14 @@ rows, their placement on the company's reported revenue, and the read-only `cons
 entries the refresh logs from them."""
 
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from bedrock.analysis.consensus import ConsensusRow, EpsHistoryRow, place, place_history
+from bedrock.core.clock import naive_utc
 from bedrock.ingest.protocol import CompanyRef, ConsensusLike
 from bedrock.models.company import Company
 from bedrock.models.consensus_estimate import ConsensusEstimate
@@ -53,7 +54,7 @@ def refresh_consensus(
     ref = CompanyRef(company.ticker, company.cik)
     rows = source.fetch(ref)
     history = source.history(ref)
-    at = now.astimezone(UTC).replace(tzinfo=None)
+    at = naive_utc(now)
     session.execute(delete(ConsensusEstimate).where(ConsensusEstimate.company_id == company.id))
     for r in rows:
         session.add(
@@ -229,7 +230,7 @@ def _reported(session: Session, company: Company) -> tuple[_Annual, _Quarterly, 
     quarterly: _Quarterly = {}
     ends: _QuarterEnds = {}
     for (_, freq), table in tables.items():
-        row = next((r for r in table.rows if r.code == "revenue"), None)
+        row = table.row("revenue")
         if row is None:
             continue
         for period, value in zip(table.periods, row.values, strict=True):
@@ -238,8 +239,8 @@ def _reported(session: Session, company: Company) -> tuple[_Annual, _Quarterly, 
             if freq == "annual" and period.fiscal_period == "FY":
                 annual[period.fiscal_year] = value
             elif freq == "quarterly" and period.fiscal_period.startswith("Q"):
-                quarterly[(period.fiscal_year, period.fiscal_period)] = value
-                ends[(period.fiscal_year, period.fiscal_period)] = period.end
+                quarterly[period.point] = value
+                ends[period.point] = period.end
     return annual, quarterly, ends
 
 

@@ -5,9 +5,9 @@ so nothing but the statement is stored. Not audited (a statement of the thesis, 
 assumption of the model)."""
 
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
-from typing import Any, Literal, cast, get_args
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -20,13 +20,16 @@ from bedrock.analysis.checkpoints import (
     evaluate_checkpoint,
     format_statement,
     parse_statement,
+    statement_unit,
 )
 from bedrock.analysis.formula import FormulaError
 from bedrock.analysis.qoe import LEVEL_LIMIT, LEVEL_PLACES, formula_names
+from bedrock.core.clock import naive_utc
 from bedrock.models.company import Company
 from bedrock.models.filing import Filing
-from bedrock.models.thesis_checkpoint import ThesisCheckpoint
+from bedrock.models.thesis_checkpoint import CheckpointFreq, ThesisCheckpoint
 from bedrock.ratios.calculator import Operands, RatioFreq
+from bedrock.ratios.explain import name_unit
 from bedrock.repositories import checkpoints as repo
 from bedrock.repositories import facts as facts_repo
 from bedrock.services.errors import CheckpointNotFound, InvalidCheckpoint
@@ -34,8 +37,6 @@ from bedrock.services.ratios import ratio_inputs
 from bedrock.statements.periods import Period
 
 LABEL_LIMIT = 120
-CheckpointFreq = Literal["annual", "ttm"]
-_FREQS: tuple[str, ...] = get_args(CheckpointFreq)
 
 
 @dataclass(frozen=True)
@@ -45,7 +46,7 @@ class CheckpointInput:
 
     statement: str
     label: str | None = None
-    freq: str = "ttm"
+    freq: CheckpointFreq = "ttm"
     margin: str | None = None
 
 
@@ -54,13 +55,15 @@ class CheckpointView:
     """A stored checkpoint (margin a plain decimal) with its state now (`evaluation`, read at
     `period`) and the state as of the day before the newest report (`previous_state`; None for a
     company with no report or a statement that no longer parses, whose `error` is then the
-    `FormulaError` text)."""
+    `FormulaError` text). `unit` is the one both sides are in (`statement_unit`), None when
+    they have none or the statement no longer parses."""
 
     row: ThesisCheckpoint
     evaluation: Evaluation
     period: Period | None
     previous_state: State | None
     error: str | None
+    unit: str | None
 
     @property
     def state(self) -> State:
@@ -91,8 +94,15 @@ def list_checkpoints(session: Session, company: Company) -> CheckpointList:
     """Every checkpoint with its states. Never fails on a stored statement: one that no longer
     parses lists as `unknown` with its `error`."""
     report = facts_repo.latest_report(session, company.id)
-    rows = repo.list_for(session, company.id)
-    return CheckpointList(report, _views(session, company, report, rows))
+    return CheckpointList(report, checkpoints_for_report(session, company, report))
+
+
+def checkpoints_for_report(
+    session: Session, company: Company, report: Filing | None
+) -> list[CheckpointView]:
+    """Every checkpoint, its previous state read before `report` (the newest 10-K or 10-Q, as
+    `latest_report` gives it; None for none)."""
+    return _views(session, company, report, repo.list_for(session, company.id))
 
 
 def create_checkpoint(
@@ -100,7 +110,7 @@ def create_checkpoint(
 ) -> CheckpointView:
     """Validates (`InvalidCheckpoint`), stores and commits; `created_at` / `updated_at` are `now`
     as naive UTC."""
-    stamp = _naive_utc(now)
+    stamp = naive_utc(now)
     fields = _fields(data)
     row = repo.add(
         session,
@@ -121,7 +131,7 @@ def update_checkpoint(
         raise CheckpointNotFound(checkpoint_id)
     for field, value in _fields(data).items():
         setattr(row, field, value)
-    row.updated_at = _naive_utc(now)
+    row.updated_at = naive_utc(now)
     session.commit()
     return _committed(session, company, checkpoint_id)
 
@@ -144,8 +154,6 @@ def _fields(data: CheckpointInput) -> dict[str, Any]:
     label = (data.label or "").strip() or format_statement(statement)
     if len(label) > LABEL_LIMIT:
         raise InvalidCheckpoint(f"A label has at most {LABEL_LIMIT} characters")
-    if data.freq not in _FREQS:
-        raise InvalidCheckpoint(f"A checkpoint reads 'annual' or 'ttm' figures, not '{data.freq}'")
     return {
         "label": label,
         "statement": data.statement.strip(),
@@ -190,14 +198,17 @@ def _constant(text: str) -> Decimal | None:
 
 @dataclass(frozen=True)
 class _Read:
-    """One frequency's operands and the points of its income statement, oldest first."""
+    """One frequency's operands and the periods of its income statement, oldest first."""
 
     ops: Operands
     periods: list[Period]
 
-    @property
-    def points(self) -> list[tuple[int, str]]:
-        return [(p.fiscal_year, p.fiscal_period) for p in self.periods]
+    def evaluate(self, statement: Statement, margin: Decimal | None) -> Evaluation:
+        return evaluate_checkpoint(statement, margin, self.ops, [p.point for p in self.periods])
+
+    def period_of(self, evaluation: Evaluation) -> Period | None:
+        """The period the evaluation was read at."""
+        return next((p for p in self.periods if p.point == evaluation.point), None)
 
 
 def _views(
@@ -210,32 +221,23 @@ def _views(
             parsed[row.id] = parse_statement(row.statement, formula_names())
         except FormulaError as error:
             parsed[row.id] = error
-    freqs = {cast(RatioFreq, r.freq) for r in rows if isinstance(parsed[r.id], Statement)}
-    before = None if report is None else report.filed_at - timedelta(days=1)
+    freqs = {r.freq for r in rows if isinstance(parsed[r.id], Statement)}
+    before = None if report is None else report.before_as_of
     now_reads = {f: _read(session, company, f, None) for f in freqs}
     before_reads = {} if before is None else {f: _read(session, company, f, before) for f in freqs}
     views = []
     for row in rows:
         statement = parsed[row.id]
         if isinstance(statement, FormulaError):
-            views.append(CheckpointView(row, _UNKNOWN, None, None, str(statement)))
+            views.append(CheckpointView(row, _UNKNOWN, None, None, str(statement), None))
             continue
-        freq = cast(RatioFreq, row.freq)
-        now = now_reads[freq]
-        evaluation = evaluate_checkpoint(statement, row.margin, now.ops, now.points)
-        previous = None
-        if freq in before_reads:
-            earlier = before_reads[freq]
-            previous = evaluate_checkpoint(statement, row.margin, earlier.ops, earlier.points)
-        views.append(
-            CheckpointView(
-                row,
-                evaluation,
-                _period(now.periods, evaluation),
-                None if previous is None else previous.state,
-                None,
-            )
-        )
+        now = now_reads[row.freq]
+        evaluation = now.evaluate(statement, row.margin)
+        earlier = before_reads.get(row.freq)
+        previous = None if earlier is None else earlier.evaluate(statement, row.margin).state
+        period = now.period_of(evaluation)
+        unit = statement_unit(statement, name_unit)
+        views.append(CheckpointView(row, evaluation, period, previous, None, unit))
     return views
 
 
@@ -244,20 +246,9 @@ def _read(session: Session, company: Company, freq: RatioFreq, as_of: date | Non
     return _Read(Operands(inputs, freq), list(inputs.income.periods))
 
 
-def _period(periods: list[Period], evaluation: Evaluation) -> Period | None:
-    if evaluation.point is None:
-        return None
-    return next(p for p in periods if (p.fiscal_year, p.fiscal_period) == evaluation.point)
-
-
 def _committed(session: Session, company: Company, checkpoint_id: int) -> CheckpointView:
     """The checkpoint re-read after a commit expired it, with its states."""
     row = repo.get(session, company.id, checkpoint_id)
     assert row is not None
     report = facts_repo.latest_report(session, company.id)
     return _views(session, company, report, [row])[0]
-
-
-def _naive_utc(moment: datetime) -> datetime:
-    # SQLite keeps no time zone: the columns hold UTC without one.
-    return moment.astimezone(UTC).replace(tzinfo=None)

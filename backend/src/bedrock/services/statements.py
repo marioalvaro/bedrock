@@ -311,10 +311,7 @@ def fiscal_periods(session: Session, company: Company) -> set[tuple[int, str]]:
     if loaded.empty:
         return set()
     calendar = company_calendar(loaded.canonical, loaded.rules.imported)
-    return {
-        (p.fiscal_year, p.fiscal_period)
-        for p in annual_periods(calendar) + quarterly_periods(calendar)
-    }
+    return {p.point for p in annual_periods(calendar) + quarterly_periods(calendar)}
 
 
 def mapping_gaps(session: Session, company: Company) -> MappingGaps:

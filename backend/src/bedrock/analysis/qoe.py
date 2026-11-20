@@ -17,10 +17,10 @@ import yaml
 
 from bedrock.analysis import formula as formulas
 from bedrock.analysis.formula import Formula
-from bedrock.ratios.calculator import Operands, Point, RatioFreq, RatioInputs, year_earlier
+from bedrock.ratios.calculator import Operands, RatioFreq, RatioInputs, year_earlier
 from bedrock.ratios.registry import CANONICAL_CODES, METRICS, RATIOS
 from bedrock.statements.build import RATIO_PLACES, growth
-from bedrock.statements.periods import Period
+from bedrock.statements.periods import Period, Point
 
 DEFAULT_RULES_PATH = Path(__file__).parent / "qoe_rules.yaml"
 
@@ -228,7 +228,7 @@ def evaluate_flags(inputs: RatioInputs, rules: Sequence[Rule], freq: RatioFreq) 
             raise RuleError(f"{r.code}: no value function for this rule")
     operands = Operands(inputs, freq)
     periods = inputs.income.periods
-    points = [(p.fiscal_year, p.fiscal_period) for p in periods]
+    points = [p.point for p in periods]
     grid = [[_rule_value(r, operands, pt) for pt in points] for r in rules]
     kept = [i for i in range(len(periods)) if any(row[i] is not None for row in grid)]
     rows = []

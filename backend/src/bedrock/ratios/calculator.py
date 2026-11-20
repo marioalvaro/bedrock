@@ -20,14 +20,13 @@ from bedrock.ratios.registry import (
     validate,
 )
 from bedrock.statements.build import RATIO_PLACES, Row, StatementTable
-from bedrock.statements.periods import Period
+from bedrock.statements.periods import Period, Point
 
 RatioFreq = Literal["annual", "ttm"]
 
 # Names resolve canonical code -> metric -> ratio (registry.py::validate).
 _METRICS: dict[str, Metric] = {m.code: m for m in METRICS}
 
-Point = tuple[int, str]  # (fiscal_year, fiscal_period): FY in annual, Q1..Q4 in TTM
 Series = dict[Point, Decimal | None]
 
 
@@ -88,10 +87,7 @@ def compute_ratios(
         validate(METRICS, _merged(ratios), CANONICAL_CODES)
     evaluator = Operands(inputs, freq, ratios)
     periods = inputs.income.periods
-    grid = [
-        [evaluator.ratio(ratio.code, (p.fiscal_year, p.fiscal_period)) for p in periods]
-        for ratio in ratios
-    ]
+    grid = [[evaluator.ratio(ratio.code, p.point) for p in periods] for ratio in ratios]
     kept = [i for i in range(len(periods)) if any(row[i] is not None for row in grid)]
     return RatioTable(
         freq=freq,
@@ -145,7 +141,7 @@ def _series(tables: Sequence[StatementTable]) -> dict[str, tuple[str, Series]]:
     """code -> (kind, values by point); the first table holding a code wins."""
     found: dict[str, tuple[str, Series]] = {}
     for table in tables:
-        points = [(p.fiscal_year, p.fiscal_period) for p in table.periods]
+        points = [p.point for p in table.periods]
         for row in table.rows:
             if row.code not in found:
                 found[row.code] = (row.kind, dict(zip(points, row.values, strict=True)))
@@ -157,7 +153,7 @@ def _carriers(tables: Sequence[StatementTable]) -> dict[str, dict[Point, str]]:
     marked `included_in`); the first table holding a code wins, as in `_series`."""
     found: dict[str, dict[Point, str]] = {}
     for table in tables:
-        points = [(p.fiscal_year, p.fiscal_period) for p in table.periods]
+        points = [p.point for p in table.periods]
         for row in table.rows:
             if row.code not in found:
                 marks = zip(points, row.included_in, strict=True)
@@ -197,11 +193,11 @@ class Operands:
         quarterly = inputs.quarterly_income
         self._quarterly = _series([quarterly]) if quarterly is not None else {}
         self._ratios = {r.code: r for r in _merged(ratios)}
-        self._ends = {(p.fiscal_year, p.fiscal_period): p.end for p in inputs.income.periods}
+        self._ends = {p.point: p.end for p in inputs.income.periods}
         self._prices = sorted(inputs.prices)
         if inputs.as_of is not None and inputs.income.periods:
             last = inputs.income.periods[-1]
-            self._ends[(last.fiscal_year, last.fiscal_period)] = inputs.as_of
+            self._ends[last.point] = inputs.as_of
         self._memo: dict[tuple[str, Point], Decimal | None] = {}
 
     def ratio(self, code: str, point: Point) -> Decimal | None:

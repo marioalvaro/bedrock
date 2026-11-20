@@ -1,13 +1,12 @@
 import type { EChartsOption, LineSeriesOption } from "echarts";
 
 import type { SeasonalityOut } from "@/api/generated/types.gen";
-import { formatChartNumber, formatValue, scaledNumber } from "@/lib/format";
+import { formatChartNumber, formatValue, scaledNumber, DASH } from "@/lib/format";
 import type { Scale } from "@/lib/scale";
 
 // The Seasonality tab's texts and chart options, from the backend's `SeasonalityOut`. Everything
 // here only lays out and formats; the decomposition, factors and strength are the backend's.
 
-const DASH = "—";
 const MINUS = "−";
 export const QUARTERS = ["Q1", "Q2", "Q3", "Q4"] as const;
 

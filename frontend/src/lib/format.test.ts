@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  DASH,
+  formatDay,
+  formatLocalDay,
+  utcDate,
   formatChange,
   formatChartNumber,
   scaledNumber,
@@ -673,5 +677,29 @@ describe("formatChartNumber", () => {
 
   it("shows a missing point as a dash", () => {
     expect(formatChartNumber(null, "USD")).toBe("—");
+  });
+});
+
+describe("dates", () => {
+  it("reads the API's offset-less timestamps as UTC and keeps an explicit offset", () => {
+    expect(utcDate("2026-11-10T12:30:00").toISOString()).toBe("2026-11-10T12:30:00.000Z");
+    expect(utcDate("2026-11-10T12:30:00Z").toISOString()).toBe("2026-11-10T12:30:00.000Z");
+    expect(utcDate("2026-11-10T12:30:00+02:00").toISOString()).toBe("2026-11-10T10:30:00.000Z");
+  });
+
+  it("formats an API date in UTC, so no time zone shifts the day", () => {
+    expect(formatDay("2026-10-31")).toBe("Oct 31, 2026");
+    expect(formatDay("2026-01-01")).toBe("Jan 1, 2026");
+    expect(formatDay("2026-08-01", { year: false })).toBe("Aug 1");
+  });
+
+  it("formats an API timestamp's day in the browser's time zone", () => {
+    expect(formatLocalDay("2026-11-10T12:30:00")).toBe(
+      utcDate("2026-11-10T12:30:00").toLocaleDateString("en-US", { dateStyle: "medium" }),
+    );
+  });
+
+  it("exports the dash used for a missing value", () => {
+    expect(DASH).toBe("—");
   });
 });

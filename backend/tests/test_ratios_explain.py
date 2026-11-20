@@ -8,7 +8,7 @@ from decimal import Decimal
 import pytest
 
 from bedrock.ratios.calculator import RatioInputs, compute_ratios
-from bedrock.ratios.explain import Term, explain_ratio
+from bedrock.ratios.explain import Term, explain_ratio, name_unit
 from bedrock.ratios.registry import METRICS, RATIOS, Ratio
 from tests.test_ratios_calculator import fy, quarter, table, ttm
 from tests.test_valuation_ratios import inputs
@@ -234,3 +234,20 @@ def test_an_unknown_ratio_or_period_is_a_key_error_for_the_service_to_name() -> 
 def test_every_metric_has_a_definition() -> None:
     assert all(m.definition for m in METRICS)
     assert len(RATIOS) > 0
+
+
+@pytest.mark.parametrize(
+    ("code", "unit"),
+    [
+        ("revenue", "USD"),  # a canonical line
+        ("shares_outstanding", "shares"),
+        ("ebitda", "USD"),  # a metric
+        ("tax_rate", "pct"),
+        ("price", "USD/shares"),
+        ("gross_margin", "pct"),  # a ratio
+        ("pe", "x"),
+        ("not_a_name", None),
+    ],
+)
+def test_the_unit_of_a_name(code: str, unit: str | None) -> None:
+    assert name_unit(code) == unit

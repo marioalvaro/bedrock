@@ -1,10 +1,11 @@
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 
 from bedrock.backtest.snapshot import incoming_reports
+from bedrock.core.clock import naive_utc
 from bedrock.forecast.errors import ForecastUnavailable
 from bedrock.ingest.parse import ParsedFacts, parse_companyfacts
 from bedrock.ingest.protocol import CompanyRef, SourceUnavailable
@@ -12,8 +13,8 @@ from bedrock.ingest.sources import Sources
 from bedrock.models.company import Company
 from bedrock.repositories import companies as companies_repo
 from bedrock.repositories import facts as facts_repo
+from bedrock.repositories import pending_filings as pending_repo
 from bedrock.services import consensus as consensus_service
-from bedrock.services import new_filings as new_filings_service
 from bedrock.services import snapshots as snapshots_service
 from bedrock.services.errors import CompanyNotFound
 from bedrock.services.filings import ingest_filings
@@ -70,11 +71,7 @@ def refresh_company(
             parsed = parse_companyfacts(payload.companyfacts)
             snapshot_id = _snapshot_step(session, company, parsed, now, warnings)
         sync_mappings(session)
-        new_filings = new_facts = 0
-        if parsed is not None:
-            new_filings, new_facts = facts_repo.insert_parsed(session, company, parsed)
-            # A marked filing goes when it is stored, in this transaction (M7c, FR-DATA-23).
-            new_filings_service.clear_ingested(session, company)
+        new_filings, new_facts = (0, 0) if parsed is None else _store(session, company, parsed)
 
         new_prices = 0
         new_splits = 0
@@ -84,8 +81,7 @@ def refresh_company(
         except SourceUnavailable as error:
             warnings.append(f"prices and splits not updated: {error}")
 
-        # SQLite keeps no time zone, so the column holds UTC without one.
-        company.last_refreshed_at = now.astimezone(UTC).replace(tzinfo=None)
+        company.last_refreshed_at = naive_utc(now)
         session.commit()
     except Exception:
         session.rollback()
@@ -121,6 +117,14 @@ def refresh_company(
         new_filing_lines,
         snapshot_id,
     )
+
+
+def _store(session: Session, company: Company, parsed: ParsedFacts) -> tuple[int, int]:
+    """Inserts the parsed filings and facts (new filings, new facts) and unmarks the pending
+    filings now stored, in the refresh transaction (M7c, FR-DATA-23). No commit."""
+    counts = facts_repo.insert_parsed(session, company, parsed)
+    pending_repo.delete_ingested(session, company.id)
+    return counts
 
 
 def _snapshot_step(

@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { multiplesQueryOptions } from "@/api/analysis";
 import type { Basis } from "@/api/statements";
-import { formatRatio, type RatioUnit } from "@/lib/format";
+import { formatRatio } from "@/lib/format";
 
 function ordinal(n: number): string {
   const tens = n % 100;
@@ -51,7 +51,7 @@ export function MultiplesTable({ ticker, basis }: MultiplesTableProps) {
           </thead>
           <tbody>
             {data.rows.map((row) => {
-              const unit = row.unit as RatioUnit;
+              const unit = row.unit;
               const percent =
                 row.percentile === null ? null : Math.round(Number(row.percentile) * 100);
               return (

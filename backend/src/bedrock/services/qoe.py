@@ -2,7 +2,7 @@
 and formula levels (FR-ANL-10; docs/erd/analysis.md "Custom rules and formula levels (M2)")."""
 
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from functools import cache
 from typing import Any, cast
@@ -22,6 +22,7 @@ from bedrock.analysis.qoe import (
     load_rules,
     validate_thresholds,
 )
+from bedrock.core.clock import naive_utc
 from bedrock.models.qoe_custom_rule import QoeCustomRule
 from bedrock.models.qoe_threshold import QoeThreshold
 from bedrock.repositories import qoe_custom_rules as custom_repo
@@ -216,7 +217,7 @@ def set_thresholds(
     warn_level, alert_level = parse_level(code, warn), parse_level(code, alert)
     _check_order(code, rule.direction, warn_level, alert_level)
     (warn_number, warn_text), (alert_number, alert_text) = _store(warn_level), _store(alert_level)
-    stamp = _naive_utc(now)
+    stamp = naive_utc(now)
     stored = repo.get(session, code)
     if stored is None:
         repo.add(
@@ -258,7 +259,7 @@ def create_custom_rule(session: Session, data: CustomRuleInput, now: datetime) -
     the formula parsed with `formula_names()` (InvalidFormula) and stored as typed (stripped),
     the levels through `parse_level` and, when both are numbers, `validate_thresholds`
     (InvalidThreshold). `created_at` / `updated_at` are `now` as naive UTC."""
-    stamp = _naive_utc(now)
+    stamp = naive_utc(now)
     row = custom_repo.add(
         session, QoeCustomRule(created_at=stamp, updated_at=stamp, **_fields(data))
     )
@@ -278,7 +279,7 @@ def update_custom_rule(
         raise CustomRuleNotFound(rule_id)
     for field, value in _fields(data).items():
         setattr(row, field, value)
-    row.updated_at = _naive_utc(now)
+    row.updated_at = naive_utc(now)
     session.commit()
     return _committed(session, rule_id)
 
@@ -333,8 +334,3 @@ def _rule(code: str) -> Rule:
     if rule is None:
         raise RuleNotFound(code)
     return rule
-
-
-def _naive_utc(moment: datetime) -> datetime:
-    # SQLite keeps no time zone: the columns hold UTC without one.
-    return moment.astimezone(UTC).replace(tzinfo=None)

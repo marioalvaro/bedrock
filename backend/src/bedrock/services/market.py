@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
+from bedrock.core.clock import naive_utc
 from bedrock.ingest.protocol import SourceUnavailable
 from bedrock.ingest.sources import Sources
 from bedrock.models.company import Company
@@ -49,7 +50,7 @@ def market_due(session: Session, now: datetime) -> bool:
     fetched = macro.fetched_at(session, INDEX_SERIES)
     if fetched is None:
         return True
-    return now.astimezone(UTC).replace(tzinfo=None) - fetched >= _DUE_AFTER
+    return naive_utc(now) - fetched >= _DUE_AFTER
 
 
 def discount_defaults(session: Session, company: Company) -> dict[str, Decimal]:

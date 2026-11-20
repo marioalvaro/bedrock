@@ -8,18 +8,7 @@ import type {
   ReviewLineOut,
   ReviewSnapshotOut,
 } from "@/api/generated/types.gen";
-import { utcDate } from "@/features/backtest/backtestFormat";
-import { formatCompact, formatInput, formatPercent } from "@/lib/format";
-
-const DASH = "—";
-
-/** An API date ("2026-10-31") as "Oct 31, 2026", read in UTC so no time zone shifts the day. */
-export function formatDay(isoDate: string): string {
-  return new Date(`${isoDate}T00:00:00Z`).toLocaleDateString("en-US", {
-    dateStyle: "medium",
-    timeZone: "UTC",
-  });
-}
+import { formatCompact, formatInput, DASH, formatDay, formatLocalDay } from "@/lib/format";
 
 /** "FY26 · 10-K filed Oct 31, 2026"; empty when nothing is loaded. */
 export function reviewHeading(review: EarningsReviewOut): string {
@@ -29,19 +18,13 @@ export function reviewHeading(review: EarningsReviewOut): string {
 
 /** "Against the snapshot of Oct 31, 2026 (Main)", the day in the browser's time zone. */
 export function snapshotHeading(snapshot: ReviewSnapshotOut): string {
-  const day = utcDate(snapshot.created_at).toLocaleDateString("en-US", { dateStyle: "medium" });
-  return `Against the snapshot of ${day} (${snapshot.scenario_name})`;
-}
-
-/** A line's or a driver's value by its unit: amounts compact ("416.2B"), the rest as ratios. */
-export function formatReviewValue(value: string | null, unit: string): string {
-  return formatInput(value, unit);
+  return `Against the snapshot of ${formatLocalDay(snapshot.created_at)} (${snapshot.scenario_name})`;
 }
 
 /** A consensus or guidance range in the line's unit ("410.0B–420.0B"); "—" with none. */
 export function formatRangeCell(range: RangeOut | null, unit: string): string {
   if (range === null) return DASH;
-  return `${formatReviewValue(range.low, unit)}–${formatReviewValue(range.high, unit)}`;
+  return `${formatInput(range.low, unit)}–${formatInput(range.high, unit)}`;
 }
 
 /** The Guidance tab's verdict words and colors. */
@@ -99,21 +82,18 @@ export function sinceLastFilingText(checkpoint: CheckpointOut): string {
   return before === "unknown" ? "New" : `was ${CHECKPOINT_STATES[before].text}`;
 }
 
-// A side of a checkpoint with no unit in the payload: amounts from a million up compact, the rest
-// with up to 4 decimals.
+// A side of a checkpoint whose unit is unknown: amounts from a million up compact, the rest with
+// up to 4 decimals.
 function plainNumber(value: string): string {
   const number = Number(value);
   if (Math.abs(number) >= 1e6) return formatCompact(value);
   return String(Number(number.toFixed(4)));
 }
 
-/**
- * "45.2% vs 44.0%": the two sides at the point evaluated. The payload carries no unit, so a
- * statement typed with "%" shows both sides as percents and any other as plain numbers.
- */
+/** "45.2% vs 44.0%": the two sides at the point evaluated, in the unit the API gives. */
 export function checkpointValueText(checkpoint: CheckpointOut): string {
-  const percent = checkpoint.statement.includes("%");
+  const { unit } = checkpoint;
   const side = (value: string | null) =>
-    value === null ? DASH : percent ? formatPercent(value) : plainNumber(value);
+    value === null ? DASH : unit === null ? plainNumber(value) : formatInput(value, unit);
   return `${side(checkpoint.left)} vs ${side(checkpoint.right)}`;
 }

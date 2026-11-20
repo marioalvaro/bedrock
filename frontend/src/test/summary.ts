@@ -10,7 +10,7 @@ const years = (values: (string | null)[]): SummaryYearOut[] =>
 function metric(
   code: string,
   label: string,
-  unit: string,
+  unit: SummaryMetricOut["unit"],
   values: (string | null)[],
   yoy: string | null,
 ): SummaryMetricOut {

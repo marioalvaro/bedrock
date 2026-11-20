@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Literal
 
 from sqlalchemy import (
     CheckConstraint,
@@ -16,6 +17,8 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from bedrock.models.base import Base
+
+SnapshotOrigin = Literal["manual", "auto"]  # `auto`: taken by a refresh before a new report
 
 
 class ForecastSnapshot(Base):
@@ -44,7 +47,7 @@ class ForecastSnapshot(Base):
     # M7d: the company's classification mode when the snapshot was taken; null before 0022
     classification_mode: Mapped[str | None] = mapped_column(String, nullable=True)
     # M7c: `auto` when the refresh took it before storing a new report, whose accession it keeps
-    origin: Mapped[str] = mapped_column(
+    origin: Mapped[SnapshotOrigin] = mapped_column(
         String, nullable=False, default="manual", server_default="manual"
     )
     trigger_accession: Mapped[str | None] = mapped_column(String, nullable=True)

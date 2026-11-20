@@ -24,6 +24,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Td, Th } from "@/components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   CHECKPOINT_STATES,
@@ -32,9 +33,6 @@ import {
 } from "@/features/review/reviewFormat";
 
 type Freq = CheckpointIn["freq"];
-
-const HEAD = "text-muted-foreground px-2 py-1 text-left font-normal whitespace-nowrap";
-const CELL = "px-2 py-1 align-top";
 
 interface CheckpointFormProps {
   ticker: string;
@@ -185,11 +183,11 @@ export function CheckpointsPanel({ ticker }: { ticker: string }) {
         <table aria-label="Thesis checkpoints" className="w-full text-sm">
           <thead>
             <tr>
-              <th className={HEAD}>State</th>
-              <th className={HEAD}>Checkpoint</th>
-              <th className={HEAD}>Value</th>
-              <th className={HEAD}>Since last filing</th>
-              <th className="px-2 py-1" />
+              <Th>State</Th>
+              <Th>Checkpoint</Th>
+              <Th>Value</Th>
+              <Th>Since last filing</Th>
+              <Th />
             </tr>
           </thead>
           <tbody>
@@ -197,22 +195,22 @@ export function CheckpointsPanel({ ticker }: { ticker: string }) {
               const state = CHECKPOINT_STATES[checkpoint.state];
               return (
                 <tr key={checkpoint.id} className="border-border border-t">
-                  <td className={`${CELL} whitespace-nowrap`}>
+                  <Td className="align-top">
                     <span className={`rounded px-1 ${state.className}`}>{state.text}</span>
-                  </td>
-                  <td className={CELL}>
+                  </Td>
+                  <Td className="align-top whitespace-normal">
                     <div>{checkpoint.label}</div>
                     <div className="text-muted-foreground font-mono text-xs break-words">
                       {checkpoint.statement}
                     </div>
-                  </td>
-                  <td className={`${CELL} whitespace-nowrap`}>
+                  </Td>
+                  <Td className="align-top">
                     <ValueCell checkpoint={checkpoint} />
-                  </td>
-                  <td className={`${CELL} text-muted-foreground whitespace-nowrap`}>
+                  </Td>
+                  <Td className="text-muted-foreground align-top">
                     {sinceLastFilingText(checkpoint)}
-                  </td>
-                  <td className={`${CELL} whitespace-nowrap`}>
+                  </Td>
+                  <Td className="align-top">
                     <Button
                       type="button"
                       variant="ghost"
@@ -234,7 +232,7 @@ export function CheckpointsPanel({ ticker }: { ticker: string }) {
                     >
                       <Trash2 />
                     </Button>
-                  </td>
+                  </Td>
                 </tr>
               );
             })}

@@ -7,6 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from bedrock.ratios.registry import Unit as RatioUnit
 from bedrock.services.summary import CompanySummary
 
 
@@ -23,7 +24,7 @@ class SummaryYearOut(BaseModel):
 class SummaryMetricOut(BaseModel):
     code: str
     label: str
-    unit: str
+    unit: RatioUnit
     years: list[SummaryYearOut] = Field(description="The last five fiscal years, oldest first")
     latest: Decimal | None
     yoy: Decimal | None = Field(

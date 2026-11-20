@@ -108,7 +108,7 @@ function toGridRows(payload: RatiosOut): GridRow[] {
         heading: false,
         definition: row.definition,
         caveat: row.caveat !== null,
-        unit: row.unit as RatioUnit,
+        unit: row.unit,
         values: row.values,
       })),
   ]);

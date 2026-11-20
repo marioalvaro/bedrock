@@ -15,6 +15,7 @@ from bedrock.analysis.checkpoints import (
     evaluate_checkpoint,
     format_statement,
     parse_statement,
+    statement_unit,
 )
 from bedrock.analysis.formula import Formula, FormulaError, Name, Number, parse
 from bedrock.analysis.formula import format as format_formula
@@ -318,3 +319,35 @@ def test_a_room_near_the_decimal_limit_does_not_raise() -> None:
     huge = "9.9E+999999"  # at the context maximum: left - right fits, twice it overflows
     result = check("revenue > 0", {"revenue": [huge, huge, huge, huge]})
     assert (result.state, result.left) == ("holding", None)  # too large to quantize
+
+
+# --- the unit of a statement's sides -------------------------------------------------------
+
+UNITS = {"a": "USD", "b": "USD", "revenue": "USD", "gross_profit": "USD", "gross_margin": "pct"}
+
+
+def unit_of(text: str) -> str | None:
+    return statement_unit(stmt(text), lambda code: UNITS.get(code))
+
+
+@pytest.mark.parametrize(
+    ("text", "unit"),
+    [
+        ("gross_margin > 44%", "pct"),  # a name against a percent literal
+        ("44% < gross_margin", "pct"),
+        ("revenue > 0", "USD"),  # a plain number takes the other side's unit
+        ("revenue > gross_profit", "USD"),
+        ("revenue - gross_profit > 1000", "USD"),  # + and - keep a shared unit
+        ("-revenue < 0", "USD"),
+        ("revenue * 1.1 > gross_profit", "USD"),  # scaled by a plain number
+        ("revenue / 2 > gross_profit", "USD"),
+        ("yoy(revenue) > 5%", "pct"),  # a growth rate
+        ("avg(revenue) > prev(revenue)", "USD"),
+        ("gross_profit / revenue > 40%", None),  # a quotient of two units has none
+        ("revenue > gross_margin", None),  # the sides disagree
+        ("revenue + gross_margin > 0", None),
+        ("shares_outstanding > 0", None),  # a name with no known unit
+    ],
+)
+def test_the_statement_unit(text: str, unit: str | None) -> None:
+    assert unit_of(text) == unit

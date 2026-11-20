@@ -10,8 +10,15 @@ import type {
   RangeOut,
 } from "@/api/generated/types.gen";
 import { reviewQueryOptions } from "@/api/review";
+import { Td, Th } from "@/components/ui/table";
 import { classificationText } from "@/features/backtest/backtestFormat";
-import { formatFiscalPeriod, formatRatio, formatSignedPercent } from "@/lib/format";
+import {
+  formatFiscalPeriod,
+  formatInput,
+  formatRatio,
+  formatSignedPercent,
+  DASH,
+} from "@/lib/format";
 
 import {
   CHECKPOINT_STATES,
@@ -19,18 +26,12 @@ import {
   VERDICTS,
   errorClassName,
   formatRangeCell,
-  formatReviewValue,
   restatedCapText,
   reviewHeading,
   snapshotHeading,
 } from "./reviewFormat";
 
-const DASH = "—";
 const TABLE = "w-full text-sm";
-const HEAD = "text-muted-foreground px-2 py-1 text-left font-normal whitespace-nowrap";
-const NUM_HEAD = "text-muted-foreground px-2 py-1 text-right font-normal whitespace-nowrap";
-const CELL = "px-2 py-1 whitespace-nowrap";
-const NUM_CELL = "num px-2 py-1 text-right whitespace-nowrap";
 const ROW = "border-border border-t";
 
 function Block({ title, children }: { title: string; children: ReactNode }) {
@@ -47,13 +48,13 @@ const Muted = ({ children }: { children: ReactNode }) => (
 );
 
 function RangeCell({ range, unit }: { range: RangeOut | null; unit: string }) {
-  if (range === null) return <td className={NUM_CELL}>{DASH}</td>;
+  if (range === null) return <Td numeric>{DASH}</Td>;
   const verdict = VERDICTS[range.verdict];
   return (
-    <td className={NUM_CELL}>
+    <Td numeric>
       {formatRangeCell(range, unit)}
       <span className={`ml-2 ${verdict.className ?? ""}`}>{verdict.text}</span>
-    </td>
+    </Td>
   );
 }
 
@@ -64,33 +65,33 @@ function KeyLines({ review }: { review: EarningsReviewOut }) {
         <table aria-label="Key lines" className={TABLE}>
           <thead>
             <tr>
-              <th className={HEAD}>Line</th>
-              <th className={NUM_HEAD}>Actual</th>
-              <th className={NUM_HEAD}>YoY</th>
-              <th className={NUM_HEAD}>Forecast</th>
-              <th className={NUM_HEAD}>Error</th>
-              <th className={NUM_HEAD}>Bear–Bull</th>
-              <th className={NUM_HEAD}>Consensus</th>
-              <th className={NUM_HEAD}>Guidance</th>
+              <Th>Line</Th>
+              <Th numeric>Actual</Th>
+              <Th numeric>YoY</Th>
+              <Th numeric>Forecast</Th>
+              <Th numeric>Error</Th>
+              <Th numeric>Bear–Bull</Th>
+              <Th numeric>Consensus</Th>
+              <Th numeric>Guidance</Th>
             </tr>
           </thead>
           <tbody>
             {review.lines.map((line) => (
               <tr key={line.code} className={ROW}>
-                <td className={CELL}>{line.label}</td>
-                <td className={NUM_CELL}>{formatReviewValue(line.actual, line.unit)}</td>
-                <td className={NUM_CELL}>{formatSignedPercent(line.yoy)}</td>
-                <td className={NUM_CELL}>{formatReviewValue(line.forecast, line.unit)}</td>
-                <td className={NUM_CELL}>
+                <Td>{line.label}</Td>
+                <Td numeric>{formatInput(line.actual, line.unit)}</Td>
+                <Td numeric>{formatSignedPercent(line.yoy)}</Td>
+                <Td numeric>{formatInput(line.forecast, line.unit)}</Td>
+                <Td numeric>
                   <span className={errorClassName(line)}>
                     {formatSignedPercent(line.pct_error)}
                   </span>
-                </td>
-                <td className={NUM_CELL}>
+                </Td>
+                <Td numeric>
                   {line.low === null || line.high === null
                     ? DASH
-                    : `${formatReviewValue(line.low, line.unit)}–${formatReviewValue(line.high, line.unit)}`}
-                </td>
+                    : `${formatInput(line.low, line.unit)}–${formatInput(line.high, line.unit)}`}
+                </Td>
                 <RangeCell range={line.consensus} unit={line.unit} />
                 <RangeCell range={line.guidance} unit={line.unit} />
               </tr>
@@ -116,21 +117,21 @@ function Drivers({ review }: { review: EarningsReviewOut }) {
       <table aria-label={title} className={TABLE}>
         <thead>
           <tr>
-            <th className={HEAD}>Driver</th>
-            <th className={NUM_HEAD}>Forecast</th>
-            <th className={NUM_HEAD}>Actual</th>
-            <th className={NUM_HEAD}>Error</th>
-            <th className={HEAD}>Source</th>
+            <Th>Driver</Th>
+            <Th numeric>Forecast</Th>
+            <Th numeric>Actual</Th>
+            <Th numeric>Error</Th>
+            <Th>Source</Th>
           </tr>
         </thead>
         <tbody>
           {review.drivers.map((driver) => (
             <tr key={driver.code} className={ROW}>
-              <td className={CELL}>{driver.label}</td>
-              <td className={NUM_CELL}>{formatReviewValue(driver.forecast, driver.unit)}</td>
-              <td className={NUM_CELL}>{formatReviewValue(driver.actual, driver.unit)}</td>
-              <td className={NUM_CELL}>{formatSignedPercent(driver.pct_error)}</td>
-              <td className={CELL}>{driver.source ?? DASH}</td>
+              <Td>{driver.label}</Td>
+              <Td numeric>{formatInput(driver.forecast, driver.unit)}</Td>
+              <Td numeric>{formatInput(driver.actual, driver.unit)}</Td>
+              <Td numeric>{formatSignedPercent(driver.pct_error)}</Td>
+              <Td>{driver.source ?? DASH}</Td>
             </tr>
           ))}
         </tbody>
@@ -154,11 +155,11 @@ function Restated({ review }: { review: EarningsReviewOut }) {
       <table aria-label="Restated" className={TABLE}>
         <thead>
           <tr>
-            <th className={HEAD}>Line</th>
-            <th className={HEAD}>Period</th>
-            <th className={NUM_HEAD}>Before</th>
-            <th className={NUM_HEAD}>After</th>
-            <th className={NUM_HEAD}>Change</th>
+            <Th>Line</Th>
+            <Th>Period</Th>
+            <Th numeric>Before</Th>
+            <Th numeric>After</Th>
+            <Th numeric>Change</Th>
           </tr>
         </thead>
         <tbody>
@@ -167,11 +168,11 @@ function Restated({ review }: { review: EarningsReviewOut }) {
               key={`${row.statement}:${row.code}:${row.fiscal_year}:${row.fiscal_period}`}
               className={ROW}
             >
-              <td className={CELL}>{row.label}</td>
-              <td className={CELL}>{formatFiscalPeriod(row.fiscal_year, row.fiscal_period)}</td>
-              <td className={NUM_CELL}>{formatReviewValue(row.before, row.unit)}</td>
-              <td className={NUM_CELL}>{formatReviewValue(row.after, row.unit)}</td>
-              <td className={NUM_CELL}>{formatSignedPercent(row.pct_change)}</td>
+              <Td>{row.label}</Td>
+              <Td>{formatFiscalPeriod(row.fiscal_year, row.fiscal_period)}</Td>
+              <Td numeric>{formatInput(row.before, row.unit)}</Td>
+              <Td numeric>{formatInput(row.after, row.unit)}</Td>
+              <Td numeric>{formatSignedPercent(row.pct_change)}</Td>
             </tr>
           ))}
         </tbody>
@@ -197,22 +198,22 @@ function Flags({ review }: { review: EarningsReviewOut }) {
       <table aria-label="Quality flags" className={TABLE}>
         <thead>
           <tr>
-            <th className={HEAD}>Rule</th>
-            <th className={HEAD}>Before → After</th>
-            <th className={NUM_HEAD}>Value</th>
+            <Th>Rule</Th>
+            <Th>Before → After</Th>
+            <Th numeric>Value</Th>
           </tr>
         </thead>
         <tbody>
           {review.flags.map((flag) => (
             <tr key={flag.code} className={ROW}>
-              <td className={CELL}>{flag.label}</td>
-              <td className={CELL}>
+              <Td>{flag.label}</Td>
+              <Td>
                 {severity(flag.before)} → {severity(flag.after)}
-              </td>
-              <td className={NUM_CELL}>
+              </Td>
+              <Td numeric>
                 {formatRatio(flag.value_before, flag.unit)} →{" "}
                 {formatRatio(flag.value_after, flag.unit)}
-              </td>
+              </Td>
             </tr>
           ))}
         </tbody>
@@ -245,17 +246,17 @@ function Thesis({ review, ticker }: { review: EarningsReviewOut; ticker: string 
       <table aria-label="Thesis" className={TABLE}>
         <thead>
           <tr>
-            <th className={HEAD}>Checkpoint</th>
-            <th className={HEAD}>Before → After</th>
+            <Th>Checkpoint</Th>
+            <Th>Before → After</Th>
           </tr>
         </thead>
         <tbody>
           {review.checkpoints.map((checkpoint) => (
             <tr key={checkpoint.id} className={ROW}>
-              <td className={CELL}>{checkpoint.label}</td>
-              <td className={CELL}>
+              <Td>{checkpoint.label}</Td>
+              <Td>
                 {beforeWord(checkpoint)} → {CHECKPOINT_STATES[checkpoint.state].text}
-              </td>
+              </Td>
             </tr>
           ))}
         </tbody>

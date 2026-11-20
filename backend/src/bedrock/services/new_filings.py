@@ -2,11 +2,11 @@
 each SEC company's EDGAR filing index is read and the 10-Ks and 10-Qs not loaded yet are marked.
 Nothing is ingested here: the Refresh button stays the one way filings are read."""
 
-from collections.abc import Collection
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
+from bedrock.core.clock import naive_utc
 from bedrock.ingest.parse import unseen_filings
 from bedrock.ingest.protocol import (
     CompanyRef,
@@ -15,7 +15,6 @@ from bedrock.ingest.protocol import (
     SubmissionsLike,
 )
 from bedrock.models.company import Company
-from bedrock.models.pending_filing import PendingFiling
 from bedrock.repositories import companies as companies_repo
 from bedrock.repositories import facts as facts_repo
 from bedrock.repositories import pending_filings as pending_repo
@@ -29,7 +28,7 @@ def filings_due(checked_at: datetime | None, now: datetime) -> bool:
     `checked_at` is naive UTC (as stored); `now` is aware."""
     if checked_at is None:
         return True
-    return _naive_utc(now) - checked_at >= FILINGS_CHECK_INTERVAL
+    return naive_utc(now) - checked_at >= FILINGS_CHECK_INTERVAL
 
 
 def check_company(
@@ -46,7 +45,7 @@ def check_company(
         facts_repo.filing_accessions(session, company.id),
         facts_repo.latest_filing_date(session, company.id),
     )
-    stamp = _naive_utc(now)
+    stamp = naive_utc(now)
     pending_repo.replace(session, company.id, unseen, stamp)
     company.filings_checked_at = stamp
     session.commit()
@@ -67,19 +66,3 @@ def check_all(session: Session, source: SubmissionsLike, now: datetime) -> list[
             session.rollback()
             warnings.append(f"{company.ticker}: filings not checked: {error}")
     return warnings
-
-
-def clear_ingested(session: Session, company: Company) -> None:
-    """Delete the company's pending rows whose filing is now stored. No commit: the refresh calls
-    it inside its own transaction."""
-    pending_repo.delete_ingested(session, company.id)
-
-
-def pending(session: Session, company_ids: Collection[int]) -> dict[int, list[PendingFiling]]:
-    """Company id → its pending filings, newest `filed_at` first, in one query."""
-    return pending_repo.for_companies(session, company_ids)
-
-
-def _naive_utc(when: datetime) -> datetime:
-    # SQLite keeps no time zone, so the columns hold UTC without one.
-    return when.astimezone(UTC).replace(tzinfo=None)
