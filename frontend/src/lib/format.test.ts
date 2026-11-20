@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  DASH,
+  formatDay,
+  formatLocalDay,
+  utcDate,
+  formatChange,
   formatChartNumber,
   scaledNumber,
   formatCompact,
@@ -510,6 +515,24 @@ describe("formatSignedPercent", () => {
   });
 });
 
+describe("formatChange", () => {
+  // The summary's year-on-year change (erd/workspace.md "Company summary"): relative for USD and
+  // per-share units, a difference for pct (points), x (turns) and days.
+  it.each([
+    ["0.064255", "USD", "+6.4%"],
+    ["-0.031", "USD/shares", "-3.1%"],
+    ["0.007", "pct", "+0.7 pts"],
+    ["-0.039", "pct", "-3.9 pts"],
+    ["-0.09", "x", "-0.1x"],
+    ["0.25", "x", "+0.3x"],
+    ["3", "days", "+3.0 days"],
+    ["0", "x", "0.0x"],
+    [null, "pct", "—"],
+  ] as const)("formats %j %s as %j", (value, unit, text) => {
+    expect(formatChange(value, unit)).toBe(text);
+  });
+});
+
 describe("formatVsMedian", () => {
   it.each([
     ["0.123", "x", "+12.3%"],
@@ -654,5 +677,29 @@ describe("formatChartNumber", () => {
 
   it("shows a missing point as a dash", () => {
     expect(formatChartNumber(null, "USD")).toBe("—");
+  });
+});
+
+describe("dates", () => {
+  it("reads the API's offset-less timestamps as UTC and keeps an explicit offset", () => {
+    expect(utcDate("2026-11-10T12:30:00").toISOString()).toBe("2026-11-10T12:30:00.000Z");
+    expect(utcDate("2026-11-10T12:30:00Z").toISOString()).toBe("2026-11-10T12:30:00.000Z");
+    expect(utcDate("2026-11-10T12:30:00+02:00").toISOString()).toBe("2026-11-10T10:30:00.000Z");
+  });
+
+  it("formats an API date in UTC, so no time zone shifts the day", () => {
+    expect(formatDay("2026-10-31")).toBe("Oct 31, 2026");
+    expect(formatDay("2026-01-01")).toBe("Jan 1, 2026");
+    expect(formatDay("2026-08-01", { year: false })).toBe("Aug 1");
+  });
+
+  it("formats an API timestamp's day in the browser's time zone", () => {
+    expect(formatLocalDay("2026-11-10T12:30:00")).toBe(
+      utcDate("2026-11-10T12:30:00").toLocaleDateString("en-US", { dateStyle: "medium" }),
+    );
+  });
+
+  it("exports the dash used for a missing value", () => {
+    expect(DASH).toBe("—");
   });
 });

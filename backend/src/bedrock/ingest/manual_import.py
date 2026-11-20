@@ -157,10 +157,7 @@ def check_periods(
     against the calendar's own dates (the plan's are snapped to them, within a week); a new period
     must lie before the first SEC year, or anywhere when the company has no SEC years. Returns the
     errors and the plan with the snapped periods."""
-    known = {
-        (p.fiscal_year, p.fiscal_period): p
-        for p in annual_periods(current) + quarterly_periods(current)
-    }
+    known = {p.point: p for p in annual_periods(current) + quarterly_periods(current)}
     issues: list[ImportIssue] = []
     snapped: list[PlanPeriod] = []
     for period in plan.periods:

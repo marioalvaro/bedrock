@@ -1,18 +1,19 @@
 import type { EChartsOption, LineSeriesOption } from "echarts";
 
-import type { BacktestOut, ScoreRowOut } from "@/api/generated/types.gen";
+import type { BacktestOut, ScoreRowOut, SnapshotOut } from "@/api/generated/types.gen";
 import {
   formatCompact,
   formatHitRate,
   formatPercent,
   formatRelative,
   formatSignedPercent,
+  DASH,
+  utcDate,
 } from "@/lib/format";
 
 // The Backtest tab's texts, tables and chart options. Everything here only lays out and formats
 // the backend's scores: errors, MAPE, bias and hit rates are computed there.
 
-const DASH = "—";
 const MINUS = "−";
 const OFFSET = "offset:";
 
@@ -55,11 +56,6 @@ const methodRank = (code: string) => {
   const rank = METHOD_ORDER.indexOf(code);
   return rank === -1 ? METHOD_ORDER.length : rank;
 };
-
-/** The API's timestamps are UTC with no offset: read them as UTC, whatever the browser's zone. */
-export function utcDate(iso: string): Date {
-  return new Date(/(Z|[+-]\d{2}:?\d{2})$/.test(iso) ? iso : `${iso}Z`);
-}
 
 /** An API timestamp in the browser's time zone ("Nov 10, 2026, 1:30 PM"). */
 export function formatLocalTime(iso: string): string {
@@ -279,4 +275,27 @@ export function askedSelection(params: URLSearchParams): AskedSelection {
     freq: params.get(FREQ_PARAM),
     stat: params.get(STAT_PARAM),
   };
+}
+
+type ClassificationMode = NonNullable<SnapshotOut["classification_mode"]>;
+const MODE_NAMES: Record<ClassificationMode, string> = {
+  off: "Off",
+  accepted: "Accepted only",
+  all: "All",
+};
+
+/**
+ * The company's line-classification mode when the snapshot was taken (M7d S5), and whether it has
+ * changed since: the actuals it is scored against are read under the current mode. Shared by the
+ * Snapshot sheet and the Review tab.
+ */
+export function classificationText(
+  mode: SnapshotOut["classification_mode"],
+  current?: string,
+): string {
+  if (mode === null) return "Line classification: not recorded";
+  const text = `Line classification: ${MODE_NAMES[mode]}`;
+  return current !== undefined && current !== mode
+    ? `${text} · differs from the current setting`
+    : text;
 }

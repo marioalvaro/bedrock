@@ -12,6 +12,7 @@ from bedrock.schemas.accountability import (
     AuditRationaleIn,
     AuditRowOut,
     BacktestOut,
+    EarningsReviewOut,
     SnapshotDetailOut,
     SnapshotIn,
     SnapshotListOut,
@@ -19,6 +20,7 @@ from bedrock.schemas.accountability import (
 )
 from bedrock.services import audit as audit_service
 from bedrock.services import backtest as backtest_service
+from bedrock.services import review as review_service
 from bedrock.services import snapshots as snapshots_service
 
 router = APIRouter(tags=["accountability"])
@@ -66,6 +68,13 @@ def get_backtest(
     company: Company = Depends(followed_company), session: Session = Depends(get_session)
 ) -> BacktestOut:
     return BacktestOut.from_view(backtest_service.backtest_view(session, company))
+
+
+@router.get("/companies/{ticker}/earnings-review")
+def get_earnings_review(
+    company: Company = Depends(followed_company), session: Session = Depends(get_session)
+) -> EarningsReviewOut:
+    return EarningsReviewOut.from_review(review_service.earnings_review(session, company))
 
 
 @router.get("/companies/{ticker}/audit")

@@ -1,6 +1,7 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -11,10 +12,12 @@ import {
   listLinksApiV1CompaniesTickerNotesLinksGet,
   listNotesApiV1CompaniesTickerNotesGet,
 } from "@/api/generated/sdk.gen";
+import { Chart } from "@/components/Chart";
 import { downloadText } from "@/lib/download";
 import { createQueryClient } from "@/lib/query-client";
 import { multiples, ratioCell, ratios } from "@/test/analysis";
 import { note, noteLink } from "@/test/context";
+import { LocationProbe } from "@/test/LocationProbe";
 import { errorResult, okResult } from "@/test/responses";
 
 import { RatiosView } from "./RatiosView";
@@ -31,13 +34,23 @@ const links = vi.mocked(listLinksApiV1CompaniesTickerNotesLinksGet);
 const listNotes = vi.mocked(listNotesApiV1CompaniesTickerNotesGet);
 const createNote = vi.mocked(createNoteApiV1CompaniesTickerNotesPost);
 vi.mock("@/lib/download", () => ({ downloadText: vi.fn() }));
+vi.mock("@/components/Chart", () => ({ Chart: vi.fn(() => null) }));
+const chart = vi.mocked(Chart);
 
-function renderView() {
+let search = "";
+const onSearch = (next: string) => {
+  search = next;
+};
+
+function renderView(initial = "/c/DE/ratios") {
   const queryClient = createQueryClient();
   queryClient.setDefaultOptions({ queries: { retry: false } });
   render(
     <QueryClientProvider client={queryClient}>
-      <RatiosView ticker="DE" />
+      <MemoryRouter initialEntries={[initial]}>
+        <RatiosView ticker="DE" />
+        <LocationProbe onSearch={onSearch} />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -401,5 +414,71 @@ describe("RatiosView notes", () => {
     renderView();
     expect(await screen.findByText("Return on equity")).toBeVisible();
     expect(document.querySelector(".has-note")).toBeNull();
+  });
+});
+
+describe("RatiosView trend charts", () => {
+  const toggle = (label: string) => screen.findByRole("button", { name: `Chart ${label}` });
+  const chartLabels = () => chart.mock.calls.map(([props]) => props.ariaLabel);
+
+  it("charts a ratio from its row toggle and keeps it in ?chart=", async () => {
+    renderView();
+
+    const button = await toggle("Gross margin");
+    expect(button).toHaveAttribute("aria-pressed", "false");
+    expect(chart).not.toHaveBeenCalled();
+
+    await userEvent.click(button);
+
+    expect(await toggle("Gross margin")).toHaveAttribute("aria-pressed", "true");
+    expect(new URLSearchParams(search).get("chart")).toBe("gross_margin");
+    expect(chartLabels()).toContain("Ratio trends, percent");
+  });
+
+  it("opens with the ratios of ?chart= charted, and a second click removes one", async () => {
+    renderView("/c/DE/ratios?chart=gross_margin,dso");
+
+    expect(await toggle("Days sales outstanding")).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(await toggle("Gross margin"));
+
+    await waitFor(() => expect(new URLSearchParams(search).get("chart")).toBe("dso"));
+    expect(await toggle("Gross margin")).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("takes five ratios at most: the others' toggles are disabled", async () => {
+    renderView(
+      "/c/DE/ratios?chart=gross_margin,roe,debt_to_equity,interest_coverage,dso,eps_diluted",
+    );
+
+    expect(await toggle("EPS (diluted)")).toBeDisabled();
+    expect(await toggle("EPS (diluted)")).toHaveAttribute("aria-pressed", "false");
+    expect(await toggle("Return on equity")).toBeEnabled();
+  });
+
+  it("ignores codes the table does not have, so they take none of the five picks", async () => {
+    renderView("/c/DE/ratios?chart=old_a,old_b,old_c,old_d,old_e");
+
+    const button = await toggle("Gross margin");
+    expect(button).toBeEnabled();
+    await userEvent.click(button);
+
+    await waitFor(() => expect(new URLSearchParams(search).get("chart")).toBe("gross_margin"));
+  });
+
+  it("draws the chart above the grid", async () => {
+    renderView("/c/DE/ratios?chart=gross_margin");
+
+    const trends = await screen.findByRole("region", { name: "Ratio trends" });
+    const grid = document.querySelector(".ag-root-wrapper")!;
+    expect(trends.compareDocumentPosition(grid) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("drops the chart parameter when the last ratio is removed", async () => {
+    renderView("/c/DE/ratios?chart=dso");
+
+    await userEvent.click(await toggle("Days sales outstanding"));
+
+    await waitFor(() => expect(new URLSearchParams(search).has("chart")).toBe(false));
+    expect(screen.queryByRole("region", { name: "Ratio trends" })).not.toBeInTheDocument();
   });
 });

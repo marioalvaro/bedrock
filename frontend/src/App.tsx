@@ -6,6 +6,7 @@ import { RequireAuth } from "@/components/RequireAuth";
 import { createQueryClient } from "@/lib/query-client";
 import { Companies } from "@/routes/Companies";
 import { Company } from "@/routes/Company";
+import { Compare } from "@/routes/Compare";
 import { Login } from "@/routes/Login";
 import { Settings } from "@/routes/Settings";
 
@@ -30,6 +31,7 @@ export function AppRoutes() {
       <Route path="/login" element={<Login />} />
       <Route element={<Shell />}>
         <Route index element={<Companies />} />
+        <Route path="compare" element={<Compare />} />
         <Route path="settings" element={<Settings />} />
         <Route path="c/:ticker/:tab?" element={<Company />} />
       </Route>

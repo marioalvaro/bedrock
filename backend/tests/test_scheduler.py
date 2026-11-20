@@ -2,6 +2,7 @@
 does. The asyncio loop that sleeps between runs is a thin shell around these two."""
 
 import asyncio
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -9,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi import FastAPI
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from bedrock.core import scheduler
@@ -23,13 +24,17 @@ from bedrock.core.scheduler import (
     startup_due,
     write_last_run,
 )
+from bedrock.ingest.parse import parse_recent_filings
 from bedrock.ingest.protocol import SourceUnavailable
 from bedrock.ingest.sources import Sources
 from bedrock.models.consensus_estimate import ConsensusEstimate
+from bedrock.models.filing import Filing
 from bedrock.models.guidance import Guidance
+from bedrock.models.pending_filing import PendingFiling
+from bedrock.models.raw_fact import RawFact
 from bedrock.repositories import macro
 
-from .fakes import FakeConsensus, FakeEdgar, FakeMarket, FakePrices
+from .fakes import FIXTURES, FakeConsensus, FakeEdgar, FakeMarket, FakePrices, FakeSubmissions
 from .seed import follow
 
 NY = ZoneInfo("America/New_York")
@@ -125,6 +130,88 @@ def test_a_failing_consensus_fetch_is_a_warning_and_keeps_the_rest_of_the_run(
     assert _stored_consensus(db_session) == 0
 
 
+# --- the new-filing check (M7c, FR-DATA-23) -----------------------------------------------------
+
+
+def _aapl_index() -> FakeSubmissions:
+    doc = json.loads((FIXTURES / "edgar" / "recent_filings" / "AAPL.json").read_text())
+    return FakeSubmissions({"AAPL": parse_recent_filings(doc)})
+
+
+def _count(session: Session, model: Any) -> int:
+    session.expire_all()
+    return int(session.execute(select(func.count()).select_from(model)).scalar_one())
+
+
+def test_a_run_checks_the_filing_index_even_when_the_market_is_not_due(
+    seed_db: Any, app: FastAPI, db_session: Session
+) -> None:
+    seed_db("AAPL")
+    now = datetime(2026, 11, 18, 14, 30, tzinfo=UTC)
+    market = Sources(edgar=FakeEdgar(), prices=FakePrices(), market=FakeMarket())
+    run_scheduled_refresh(app.state.session_factory, market, now)  # the market is now fresh
+    submissions = _aapl_index()
+    sources = Sources(
+        edgar=FakeEdgar(), prices=FakePrices(), market=FakeMarket(), submissions=submissions
+    )
+
+    run = run_scheduled_refresh(app.state.session_factory, sources, now.replace(hour=15))
+
+    assert run.filings_checked and not run.market_refreshed
+    assert submissions.calls == ["AAPL"]
+    db_session.expire_all()
+    marked = db_session.execute(select(PendingFiling)).scalars().all()
+    assert [(row.accession_no, row.form) for row in marked] == [("0000320193-26-000029", "10-K")]
+
+
+def test_a_run_without_an_index_source_checks_no_filing(
+    seed_db: Any, app: FastAPI, db_session: Session
+) -> None:
+    seed_db("AAPL")
+    sources = Sources(edgar=FakeEdgar(), prices=FakePrices())
+
+    run = run_scheduled_refresh(
+        app.state.session_factory, sources, datetime(2026, 11, 18, 14, 30, tzinfo=UTC)
+    )
+
+    assert not run.filings_checked
+    assert _count(db_session, PendingFiling) == 0
+
+
+def test_a_scheduled_run_ingests_no_filing_and_no_fact(
+    seed_db: Any, app: FastAPI, db_session: Session
+) -> None:
+    seed_db("AAPL")
+    filings, facts = _count(db_session, Filing), _count(db_session, RawFact)
+    sources = Sources(edgar=FakeEdgar(), prices=FakePrices(), submissions=_aapl_index())
+
+    run_scheduled_refresh(
+        app.state.session_factory, sources, datetime(2026, 11, 18, 14, 30, tzinfo=UTC)
+    )
+
+    assert (_count(db_session, Filing), _count(db_session, RawFact)) == (filings, facts)
+    assert _count(db_session, PendingFiling) == 1
+
+
+def test_a_failing_index_is_a_warning_and_the_market_still_refreshes(
+    app: FastAPI, db_session: Session
+) -> None:
+    follow(db_session, FakeEdgar(), "AAPL")
+    sources = Sources(
+        edgar=FakeEdgar(),
+        prices=FakePrices(),
+        market=FakeMarket(),
+        submissions=FakeSubmissions(raises=SourceUnavailable("edgar is down")),
+    )
+
+    run = run_scheduled_refresh(
+        app.state.session_factory, sources, datetime(2026, 11, 18, 14, 30, tzinfo=UTC)
+    )
+
+    assert run.filings_checked and run.market_refreshed
+    assert "AAPL: filings not checked: edgar is down" in run.warnings
+
+
 def test_only_one_process_holds_the_scheduler_lock(tmp_path: Path) -> None:
     # The prod image runs three uvicorn workers: only the lock holder runs the loop.
     first = acquire_scheduler_lock(tmp_path)
@@ -206,3 +293,33 @@ def test_the_loop_runs_at_startup_when_a_slot_has_passed_and_records_it(
 
     assert _run_loop_once(monkeypatch, tmp_path, now) == [now]
     assert read_last_run(tmp_path) == now
+
+
+# --- archived companies (M7c S6, FR-WS-07) ------------------------------------------------------
+
+
+def test_a_run_leaves_an_archived_company_alone(
+    seed_db: Any, app: FastAPI, db_session: Session
+) -> None:
+    seed_db("AAPL", "MSFT")
+    db_session.execute(
+        text("UPDATE company SET archived_at = '2026-10-01 00:00:00' WHERE ticker = 'AAPL'")
+    )
+    db_session.commit()
+    consensus, index = FakeConsensus(), FakeSubmissions()
+    sources = Sources(
+        edgar=FakeEdgar(),
+        prices=FakePrices(),
+        market=FakeMarket(),
+        consensus=consensus,
+        submissions=index,
+    )
+
+    run = run_scheduled_refresh(
+        app.state.session_factory, sources, datetime(2026, 10, 8, 14, 30, tzinfo=UTC)
+    )
+
+    assert set(run.new_prices) == {"MSFT"}  # no prices for the archived one
+    assert consensus.calls == ["MSFT"]
+    assert index.calls == ["MSFT"]
+    assert run.market_refreshed and run.filings_checked

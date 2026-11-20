@@ -151,6 +151,24 @@ def latest_filing_date(session: Session, company_id: int) -> date | None:
     return session.execute(stmt).scalar_one_or_none()
 
 
+def latest_report(session: Session, company_id: int) -> Filing | None:
+    """The company's newest stored filing whose form is exactly 10-K or 10-Q (amendments and
+    other forms left out), by `filed_at`, then id; None with none."""
+    stmt = (
+        select(Filing)
+        .where(Filing.company_id == company_id, Filing.form.in_(("10-K", "10-Q")))
+        .order_by(Filing.filed_at.desc(), Filing.id.desc())
+        .limit(1)
+    )
+    return session.execute(stmt).scalar_one_or_none()
+
+
+def filing_accessions(session: Session, company_id: int) -> set[str]:
+    """The accession numbers of the company's stored filings, every form."""
+    stmt = select(Filing.accession_no).where(Filing.company_id == company_id)
+    return set(session.execute(stmt).scalars())
+
+
 def load_cover_shares(session: Session, company_id: int) -> pd.DataFrame:
     """The cover-page share counts (`dei:EntityCommonStockSharesOutstanding`) in the canonical
     frame's shape, as `shares_outstanding` instants. A cover fact is dated weeks after the period

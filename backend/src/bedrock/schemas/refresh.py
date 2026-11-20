@@ -14,6 +14,8 @@ class RefreshResultOut(BaseModel):
     new_filing_lines: int
     last_refreshed_at: datetime
     warnings: list[str]
+    # M7c: the snapshot taken before a new 10-K or 10-Q was stored; null when none was
+    snapshot_id: int | None
 
     @classmethod
     def from_result(cls, result: RefreshResult) -> "RefreshResultOut":
@@ -26,6 +28,7 @@ class RefreshResultOut(BaseModel):
             new_filing_lines=result.new_filing_lines,
             last_refreshed_at=result.last_refreshed_at,
             warnings=result.warnings,
+            snapshot_id=result.snapshot_id,
         )
 
 

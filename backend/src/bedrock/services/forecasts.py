@@ -105,7 +105,7 @@ def forecast_table(
     first = (periods[0].fiscal_year, periods[0].fiscal_period)
     tables = history.annual if freq == "annual" else history.quarterly
     actual = trim_periods(tables[statement])
-    before = [p.key for p in actual.periods if (p.fiscal_year, p.fiscal_period) < first]
+    before = [p.key for p in actual.periods if p.point < first]
     combined = extend_table(select_periods(actual, before), periods, statements.values)
     keys = frozenset(p.key for p in periods)
     return Forecast(

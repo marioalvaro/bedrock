@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router";
 
 import { snapshotsQueryOptions } from "@/api/accountability";
 
+import { HorizonChart } from "./HorizonChart";
 import { ScoreControls, ScoreTable } from "./ScoreTable";
 import { SnapshotSheet } from "./SnapshotSheet";
 import { askedSelection, formatLocalTime, formatStat, resolveSelection } from "./backtestFormat";
@@ -56,7 +57,10 @@ export function SnapshotsPanel({ ticker }: SnapshotsPanelProps) {
       )}
       <div className="space-y-4 p-4">
         {selection ? (
-          <ScoreTable summary={view.summary} selection={selection} />
+          <>
+            <HorizonChart summary={view.summary} code={selection.code} />
+            <ScoreTable summary={view.summary} selection={selection} />
+          </>
         ) : (
           <p className="text-muted-foreground text-sm">
             Nothing scored yet: no actuals have landed.
@@ -87,7 +91,17 @@ export function SnapshotsPanel({ ticker }: SnapshotsPanelProps) {
                       {formatLocalTime(snapshot.created_at)}
                     </button>
                   </td>
-                  <td className={CELL}>{snapshot.scenario_name}</td>
+                  <td className={`${CELL} whitespace-nowrap`}>
+                    {snapshot.scenario_name}
+                    {snapshot.origin === "auto" && (
+                      <span
+                        className="text-prov-derived border-border ml-2 rounded border px-1 text-xs"
+                        title="Taken before a new filing was loaded"
+                      >
+                        Auto
+                      </span>
+                    )}
+                  </td>
                   <td className={CELL}>{snapshot.note ?? "—"}</td>
                   <td className={CELL}>{snapshot.data_as_of ?? "—"}</td>
                   <td className={NUM_CELL}>{snapshot.scored_periods}</td>

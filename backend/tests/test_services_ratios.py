@@ -1,7 +1,7 @@
 """The ratios use-case and its one-load statement helper over a test database (FR-ANL-01..04)."""
 
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 from sqlalchemy.orm import Session
@@ -12,7 +12,13 @@ from bedrock.ratios.calculator import RatioInputs, compute_ratios
 from bedrock.ratios.caveats import load_caveats
 from bedrock.ratios.registry import RATIOS
 from bedrock.repositories import companies as companies_repo
-from bedrock.services.ratios import annual_ratios_from, current_ttm, multiples, ratios
+from bedrock.services.ratios import (
+    annual_ratios_from,
+    current_ttm,
+    multiples,
+    ratio_inputs,
+    ratios,
+)
 from bedrock.services.scenarios import load_history
 from bedrock.services.statements import statement_tables
 from bedrock.statements import build
@@ -193,3 +199,50 @@ def test_multiples_solve_the_cells_once_and_equal_separate_builds(
 
     assert multiples(db_session, aapl, "reported") == expected
     assert len(calls) == 1
+
+
+# --- ratio_inputs as of a date (M7c S3) ----------------------------------------------------------
+
+AAPL_LAST_10Q = date(2026, 7, 31)  # the filing date of AAPL's newest stored report (Q3 FY2026)
+
+
+def test_ratio_inputs_as_of_none_is_the_plain_read(db_session: Session, aapl: Company) -> None:
+    assert ratio_inputs(db_session, aapl, "ttm", "reported", as_of=None) == ratio_inputs(
+        db_session, aapl, "ttm", "reported"
+    )
+
+
+@pytest.mark.parametrize(
+    ("as_of", "last"),
+    [(AAPL_LAST_10Q, "TTM-FY2026Q3"), (date(2026, 7, 30), "TTM-FY2026Q2")],
+)
+def test_ttm_ratio_inputs_as_of_see_only_the_filings_filed_by_then(
+    db_session: Session, aapl: Company, as_of: date, last: str
+) -> None:
+    inputs = ratio_inputs(db_session, aapl, "ttm", "reported", as_of=as_of)
+    assert inputs.income.periods[-1].key == last
+    assert inputs.quarterly_income is not None
+    assert inputs.quarterly_income.periods[-1].key == last.removeprefix("TTM-")
+
+
+def test_annual_ratio_inputs_as_of_cut_at_the_10k(db_session: Session, aapl: Company) -> None:
+    inputs = ratio_inputs(db_session, aapl, "annual", "reported", as_of=date(2025, 10, 30))
+    assert inputs.income.periods[-1].key == "FY2024"
+
+
+def test_no_classification_reads_as_mode_off_whatever_the_companys_mode(
+    db_session: Session, aapl: Company
+) -> None:
+    """M7c S4: the earnings review compares the as-reported reads (docs/Gotcha.md G55)."""
+    from .classification_support import parse_filings
+    from .test_statements_api import classify, set_mode
+
+    parse_filings(db_session)
+    off = ratio_inputs(db_session, aapl, "annual", "reported")
+    off_tables = statement_tables(db_session, aapl, [("BS", "quarterly")])
+    classify(db_session, aapl, status="accepted")
+    set_mode(db_session, aapl, "accepted")
+
+    assert ratio_inputs(db_session, aapl, "annual", "reported") != off  # the answer applies
+    assert ratio_inputs(db_session, aapl, "annual", "reported", classified={}) == off
+    assert statement_tables(db_session, aapl, [("BS", "quarterly")], classified={}) == off_tables

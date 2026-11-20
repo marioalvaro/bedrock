@@ -10,9 +10,10 @@ import {
   getSnapshotApiV1CompaniesTickerSnapshotsSnapshotIdGet,
   listSnapshotsApiV1CompaniesTickerSnapshotsGet,
 } from "@/api/generated/sdk.gen";
+import { Chart } from "@/components/Chart";
 import { createQueryClient } from "@/lib/query-client";
 import { setScale } from "@/lib/scale";
-import { snapshotDetail, snapshotList, snapshotOut } from "@/test/accountability";
+import { scoreRow, snapshotDetail, snapshotList, snapshotOut } from "@/test/accountability";
 import { companyItem } from "@/test/companies";
 import { errorResult, okResult } from "@/test/responses";
 
@@ -24,6 +25,9 @@ vi.mock("@/api/generated/sdk.gen", () => ({
   getSnapshotApiV1CompaniesTickerSnapshotsSnapshotIdGet: vi.fn(),
   listSnapshotsApiV1CompaniesTickerSnapshotsGet: vi.fn(),
 }));
+
+vi.mock("@/components/Chart", () => ({ Chart: vi.fn(() => null) }));
+const chart = vi.mocked(Chart);
 
 const list = vi.mocked(listSnapshotsApiV1CompaniesTickerSnapshotsGet);
 const detail = vi.mocked(getSnapshotApiV1CompaniesTickerSnapshotsSnapshotIdGet);
@@ -284,6 +288,25 @@ describe("the sheet", () => {
   });
 });
 
+describe("the Auto badge (M7c, FR-ACC-05)", () => {
+  it("marks a snapshot taken before a new filing was loaded", async () => {
+    list.mockResolvedValue(
+      okResult(
+        snapshotList({ snapshots: [snapshotOut({ id: 8, origin: "auto" }), snapshotOut()] }),
+      ) as never,
+    );
+    renderPanel();
+    await screen.findByRole("table", { name: "Snapshots" });
+
+    const [, auto, manual] = rowsOf("Snapshots");
+    expect(within(auto!).getByText("Auto")).toHaveAttribute(
+      "title",
+      "Taken before a new filing was loaded",
+    );
+    expect(within(manual!).queryByText("Auto")).not.toBeInTheDocument();
+  });
+});
+
 describe("the snapshot's classification mode (M7d S5)", () => {
   async function openWith(mode: "off" | "accepted" | "all" | null) {
     detail.mockResolvedValue(okResult(snapshotDetail()) as never);
@@ -315,5 +338,41 @@ describe("the snapshot's classification mode (M7d S5)", () => {
     await openWith(null);
     expect(await screen.findByText("Line classification: not recorded")).toBeInTheDocument();
     expect(screen.queryByText(/differs from the current setting/)).not.toBeInTheDocument();
+  });
+});
+
+describe("SnapshotsPanel error by horizon", () => {
+  it("charts the selected line's MAPE by horizon above the score table", async () => {
+    await renderLoaded();
+
+    expect(chart.mock.lastCall![0].ariaLabel).toBe("Revenue: MAPE by horizon, Base case");
+    const horizon = screen.getByRole("region", { name: "Error by horizon" });
+    const scores = screen.getByRole("table", { name: "Scores" });
+    expect(horizon.compareDocumentPosition(scores) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("follows the metric asked in the URL", async () => {
+    list.mockResolvedValue(
+      okResult(
+        snapshotList({
+          summary: [
+            ...snapshotList().summary,
+            scoreRow({ code: "net_income", label: "Net income", method: "base", mape: "0.2" }),
+          ],
+        }),
+      ) as never,
+    );
+    renderPanel("/c/AAPL/backtest?view=snapshots&metric=net_income");
+    await screen.findByRole("table", { name: "Snapshots" });
+
+    expect(chart.mock.lastCall![0].ariaLabel).toBe("Net income: MAPE by horizon, Base case");
+  });
+
+  it("draws no chart before anything is scored", async () => {
+    list.mockResolvedValue(okResult(snapshotList({ summary: [] })) as never);
+    renderPanel();
+    await screen.findByRole("table", { name: "Snapshots" });
+
+    expect(screen.queryByRole("region", { name: "Error by horizon" })).not.toBeInTheDocument();
   });
 });

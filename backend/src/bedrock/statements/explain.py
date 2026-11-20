@@ -84,7 +84,7 @@ def explain_cell(
         (
             p
             for p in annual_periods(calendar) + quarterly_periods(calendar)
-            if (p.fiscal_year, p.fiscal_period) == (fiscal_year, fiscal_period)
+            if p.point == (fiscal_year, fiscal_period)
         ),
         None,
     )

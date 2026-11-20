@@ -774,6 +774,150 @@ export type CheckOut = {
 };
 
 /**
+ * CheckpointIn
+ */
+export type CheckpointIn = {
+    /**
+     * Freq
+     */
+    freq?: 'annual' | 'ttm';
+    /**
+     * Label
+     */
+    label?: string | null;
+    /**
+     * Margin
+     */
+    margin?: string | number | string | null;
+    /**
+     * Statement
+     */
+    statement: string;
+};
+
+/**
+ * CheckpointListOut
+ *
+ * The newest 10-K or 10-Q (null for a manual company or none stored) and the checkpoints.
+ */
+export type CheckpointListOut = {
+    /**
+     * Checkpoints
+     */
+    checkpoints: Array<CheckpointOut>;
+    report: CheckpointReportOut | null;
+};
+
+/**
+ * CheckpointOut
+ *
+ * A checkpoint with its state on the latest data. `left`, `right` and `gap` (the room left)
+ * are at `period`, the last period where both sides have a value; `previous_state` is the
+ * state as of the day before the newest report (null with no report or with `error`).
+ */
+export type CheckpointOut = {
+    /**
+     * At Risk By
+     */
+    at_risk_by: 'margin' | 'pace' | null;
+    /**
+     * Changed
+     */
+    changed: boolean;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Error
+     */
+    error: string | null;
+    /**
+     * Freq
+     */
+    freq: 'annual' | 'ttm';
+    /**
+     * Gap
+     */
+    gap: string | null;
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Left
+     */
+    left: string | null;
+    /**
+     * Margin
+     */
+    margin: string | null;
+    period: CheckpointPeriodOut | null;
+    /**
+     * Previous State
+     */
+    previous_state: 'holding' | 'at_risk' | 'broken' | 'unknown' | null;
+    /**
+     * Right
+     */
+    right: string | null;
+    /**
+     * State
+     */
+    state: 'holding' | 'at_risk' | 'broken' | 'unknown';
+    /**
+     * Statement
+     */
+    statement: string;
+    /**
+     * Unit
+     *
+     * The unit both sides are in (pct, USD, x, …); null when unknown
+     */
+    unit: string | null;
+    /**
+     * Updated At
+     */
+    updated_at: string;
+};
+
+/**
+ * CheckpointPeriodOut
+ */
+export type CheckpointPeriodOut = {
+    /**
+     * Fiscal Period
+     */
+    fiscal_period: string;
+    /**
+     * Fiscal Year
+     */
+    fiscal_year: number;
+    /**
+     * Label
+     */
+    label: string;
+};
+
+/**
+ * CheckpointReportOut
+ */
+export type CheckpointReportOut = {
+    /**
+     * Filed At
+     */
+    filed_at: string;
+    /**
+     * Form
+     */
+    form: string;
+};
+
+/**
  * ClassificationOut
  *
  * One answer of one classifier (or of `user`) for a line. `codes`: empty for none of the
@@ -1006,6 +1150,12 @@ export type CompanyCreate = {
  */
 export type CompanyListItem = {
     /**
+     * Archived At
+     *
+     * When the company was archived; null for a followed company
+     */
+    archived_at: string | null;
+    /**
      * Cik
      *
      * Null for a manual company
@@ -1064,6 +1214,12 @@ export type CompanyListItem = {
      */
     name: string;
     /**
+     * New Filings
+     *
+     * 10-Ks and 10-Qs EDGAR lists that are not loaded yet, newest first; empty for a manual company
+     */
+    new_filings: Array<NewFilingOut>;
+    /**
      * Pe
      */
     pe: string | null;
@@ -1095,6 +1251,40 @@ export type CompanyListItem = {
      * Ticker
      */
     ticker: string;
+};
+
+/**
+ * CompanySummaryOut
+ */
+export type CompanySummaryOut = {
+    /**
+     * Flags
+     *
+     * Warn and alert rules of the newest annual period, alerts first, then by label
+     */
+    flags: Array<SummaryFlagOut>;
+    forecast: SummaryForecastOut | null;
+    /**
+     * Metrics
+     */
+    metrics: Array<SummaryMetricOut>;
+    /**
+     * Notes
+     *
+     * The three newest notes
+     */
+    notes: Array<SummaryNoteOut>;
+    /**
+     * Ticker
+     */
+    ticker: string;
+    valuation: SummaryValuationOut | null;
+    /**
+     * Warnings
+     *
+     * Why a block is empty or partial
+     */
+    warnings: Array<string>;
 };
 
 /**
@@ -1546,6 +1736,58 @@ export type DecisionIn = {
 };
 
 /**
+ * DeletionImpactOut
+ *
+ * What deleting the company permanently removes: the rows of each kind the cascade takes.
+ */
+export type DeletionImpactOut = {
+    /**
+     * Adjustments
+     */
+    adjustments: number;
+    /**
+     * Checkpoints
+     */
+    checkpoints: number;
+    /**
+     * Comps Sets
+     */
+    comps_sets: number;
+    /**
+     * Facts
+     */
+    facts: number;
+    /**
+     * Filings
+     */
+    filings: number;
+    /**
+     * Guidance
+     */
+    guidance: number;
+    /**
+     * Imports
+     */
+    imports: number;
+    /**
+     * Notes
+     */
+    notes: number;
+    /**
+     * Scenarios
+     */
+    scenarios: number;
+    /**
+     * Snapshots
+     */
+    snapshots: number;
+    /**
+     * Ticker
+     */
+    ticker: string;
+};
+
+/**
  * DerivationInputOut
  */
 export type DerivationInputOut = {
@@ -1969,6 +2211,50 @@ export type DriversIn = {
 };
 
 /**
+ * EarningsReviewOut
+ *
+ * The review of the newest 10-K or 10-Q; `filing` null (none stored) leaves every list
+ * empty. `restated` holds the first 50 of `restated_total`.
+ */
+export type EarningsReviewOut = {
+    /**
+     * Checkpoints
+     */
+    checkpoints: Array<CheckpointOut>;
+    /**
+     * Drivers
+     */
+    drivers: Array<ReviewDriverOut>;
+    /**
+     * Drivers Note
+     */
+    drivers_note: string | null;
+    filing: ReviewFilingOut | null;
+    /**
+     * Flags
+     */
+    flags: Array<FlagChangeOut>;
+    /**
+     * Lines
+     */
+    lines: Array<ReviewLineOut>;
+    period: ReviewPeriodOut | null;
+    /**
+     * Restated
+     */
+    restated: Array<RestatedOut>;
+    /**
+     * Restated Total
+     */
+    restated_total: number;
+    snapshot: ReviewSnapshotOut | null;
+    /**
+     * Ticker
+     */
+    ticker: string;
+};
+
+/**
  * EngineChoicesIn
  *
  * Each row sets one driver's engine (`auto` deletes the choice); drivers not listed are
@@ -2165,6 +2451,42 @@ export type FillAnnualOut = {
      * Values Unchanged
      */
     values_unchanged: number;
+};
+
+/**
+ * FlagChangeOut
+ *
+ * A QoE flag whose severity at the last period changed with the filing (null: no value).
+ */
+export type FlagChangeOut = {
+    /**
+     * After
+     */
+    after: 'none' | 'warn' | 'alert' | null;
+    /**
+     * Before
+     */
+    before: 'none' | 'warn' | 'alert' | null;
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Unit
+     */
+    unit: 'pct' | 'x';
+    /**
+     * Value After
+     */
+    value_after: string | null;
+    /**
+     * Value Before
+     */
+    value_before: string | null;
 };
 
 /**
@@ -3057,6 +3379,26 @@ export type MultiplesOut = {
 };
 
 /**
+ * NewFilingOut
+ *
+ * A 10-K or 10-Q EDGAR lists that is not loaded yet (M7c, FR-DATA-23).
+ */
+export type NewFilingOut = {
+    /**
+     * Filed At
+     */
+    filed_at: string;
+    /**
+     * Form
+     */
+    form: '10-K' | '10-Q';
+    /**
+     * Period End
+     */
+    period_end: string | null;
+};
+
+/**
  * NoteIn
  *
  * The link is a subject (`canonical_code` for a line, or `metric_kind` + `metric_code` for a
@@ -3541,6 +3883,43 @@ export type QoeThresholdsIn = {
 };
 
 /**
+ * RangeOut
+ *
+ * A latest guidance or consensus entry on the line at the period. `actual` is the entry's own
+ * (judged on its basis), so it can differ from the line's.
+ */
+export type RangeOut = {
+    /**
+     * Actual
+     */
+    actual: string | null;
+    /**
+     * Basis
+     */
+    basis: 'reported' | 'normalized';
+    /**
+     * Given On
+     */
+    given_on: string;
+    /**
+     * High
+     */
+    high: string;
+    /**
+     * Low
+     */
+    low: string;
+    /**
+     * Surprise
+     */
+    surprise: string | null;
+    /**
+     * Verdict
+     */
+    verdict: 'beat' | 'in_range' | 'miss' | 'pending';
+};
+
+/**
  * RatioCellOut
  *
  * How one ratio value was computed: `value` = numerator ÷ denominator × `scale`.
@@ -3685,6 +4064,10 @@ export type RefreshResultOut = {
      */
     new_splits: number;
     /**
+     * Snapshot Id
+     */
+    snapshot_id: number | null;
+    /**
      * Ticker
      */
     ticker: string;
@@ -3692,6 +4075,213 @@ export type RefreshResultOut = {
      * Warnings
      */
     warnings: Array<string>;
+};
+
+/**
+ * RestatedOut
+ *
+ * A prior value the filing changed: the read the day before it against the read now.
+ */
+export type RestatedOut = {
+    /**
+     * After
+     */
+    after: string;
+    /**
+     * Before
+     */
+    before: string;
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Fiscal Period
+     */
+    fiscal_period: string;
+    /**
+     * Fiscal Year
+     */
+    fiscal_year: number;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Pct Change
+     */
+    pct_change: string | null;
+    /**
+     * Statement
+     */
+    statement: 'IS' | 'BS' | 'CF';
+    /**
+     * Unit
+     */
+    unit: string;
+};
+
+/**
+ * ReviewDriverOut
+ */
+export type ReviewDriverOut = {
+    /**
+     * Actual
+     */
+    actual: string | null;
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Forecast
+     */
+    forecast: string;
+    /**
+     * In Range
+     */
+    in_range: boolean | null;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Pct Error
+     */
+    pct_error: string;
+    /**
+     * Source
+     */
+    source: string | null;
+    /**
+     * Unit
+     */
+    unit: string;
+};
+
+/**
+ * ReviewFilingOut
+ */
+export type ReviewFilingOut = {
+    /**
+     * Accession No
+     */
+    accession_no: string;
+    /**
+     * Filed At
+     */
+    filed_at: string;
+    /**
+     * Form
+     */
+    form: string;
+    /**
+     * Period End
+     */
+    period_end: string;
+};
+
+/**
+ * ReviewLineOut
+ */
+export type ReviewLineOut = {
+    /**
+     * Actual
+     */
+    actual: string | null;
+    /**
+     * Code
+     */
+    code: string;
+    consensus: RangeOut | null;
+    /**
+     * Forecast
+     */
+    forecast: string | null;
+    guidance: RangeOut | null;
+    /**
+     * High
+     */
+    high: string | null;
+    /**
+     * In Range
+     */
+    in_range: boolean | null;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Low
+     */
+    low: string | null;
+    /**
+     * Pct Error
+     */
+    pct_error: string | null;
+    /**
+     * Prior Year
+     */
+    prior_year: string | null;
+    /**
+     * Unit
+     */
+    unit: string;
+    /**
+     * Yoy
+     */
+    yoy: string | null;
+};
+
+/**
+ * ReviewPeriodOut
+ */
+export type ReviewPeriodOut = {
+    /**
+     * Fiscal Period
+     */
+    fiscal_period: string;
+    /**
+     * Fiscal Year
+     */
+    fiscal_year: number;
+    /**
+     * Label
+     */
+    label: string;
+};
+
+/**
+ * ReviewSnapshotOut
+ *
+ * The snapshot taken on data older than the filing; `classification_mode` is the snapshot's
+ * own (the actuals are read under the company's current mode).
+ */
+export type ReviewSnapshotOut = {
+    /**
+     * Classification Mode
+     */
+    classification_mode: 'off' | 'accepted' | 'all' | null;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Data As Of
+     */
+    data_as_of: string | null;
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Origin
+     */
+    origin: 'manual' | 'auto';
+    /**
+     * Scenario Name
+     */
+    scenario_name: string;
 };
 
 /**
@@ -4455,6 +5045,10 @@ export type SnapshotDetailOut = {
      */
     note: string | null;
     /**
+     * Origin
+     */
+    origin: 'manual' | 'auto';
+    /**
      * Revenue Mape
      */
     revenue_mape: string | null;
@@ -4657,6 +5251,10 @@ export type SnapshotOut = {
      */
     note: string | null;
     /**
+     * Origin
+     */
+    origin: 'manual' | 'auto';
+    /**
      * Revenue Mape
      */
     revenue_mape: string | null;
@@ -4831,6 +5429,68 @@ export type SummaryCaseOut = {
 };
 
 /**
+ * SummaryFlagOut
+ */
+export type SummaryFlagOut = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Period Label
+     */
+    period_label: string;
+    /**
+     * Severity
+     */
+    severity: 'warn' | 'alert';
+    /**
+     * Unit
+     */
+    unit: 'pct' | 'x';
+    /**
+     * Value
+     */
+    value: string | null;
+};
+
+/**
+ * SummaryForecastOut
+ */
+export type SummaryForecastOut = {
+    /**
+     * Last Snapshot At
+     */
+    last_snapshot_at: string | null;
+    /**
+     * Newest Filing Date
+     */
+    newest_filing_date: string | null;
+    /**
+     * Scenario Id
+     */
+    scenario_id: number;
+    /**
+     * Scenario Name
+     */
+    scenario_name: string;
+    /**
+     * Stale
+     *
+     * The scenario was last edited before the newest 10-K/10-Q
+     */
+    stale: boolean;
+    /**
+     * Updated At
+     */
+    updated_at: string;
+};
+
+/**
  * SummaryMethodOut
  */
 export type SummaryMethodOut = {
@@ -4842,6 +5502,110 @@ export type SummaryMethodOut = {
      * Label
      */
     label: string;
+};
+
+/**
+ * SummaryMetricOut
+ */
+export type SummaryMetricOut = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Latest
+     */
+    latest: string | null;
+    /**
+     * Unit
+     */
+    unit: 'pct' | 'x' | 'days' | 'USD/shares' | 'USD';
+    /**
+     * Years
+     *
+     * The last five fiscal years, oldest first
+     */
+    years: Array<SummaryYearOut>;
+    /**
+     * Yoy
+     *
+     * The latest year against the one before: relative for USD and per-share units, the difference for pct and x
+     */
+    yoy: string | null;
+};
+
+/**
+ * SummaryNoteOut
+ */
+export type SummaryNoteOut = {
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Excerpt
+     */
+    excerpt: string;
+    /**
+     * Id
+     */
+    id: number;
+};
+
+/**
+ * SummaryValuationOut
+ */
+export type SummaryValuationOut = {
+    /**
+     * Base
+     */
+    base: string | null;
+    /**
+     * High
+     */
+    high: string;
+    /**
+     * Low
+     */
+    low: string;
+    /**
+     * Price
+     */
+    price: string | null;
+    /**
+     * Price Date
+     */
+    price_date: string | null;
+    /**
+     * Scenario Id
+     */
+    scenario_id: number;
+    /**
+     * Scenario Name
+     */
+    scenario_name: string;
+    /**
+     * Upside
+     */
+    upside: string | null;
+};
+
+/**
+ * SummaryYearOut
+ */
+export type SummaryYearOut = {
+    /**
+     * Fiscal Year
+     */
+    fiscal_year: number;
+    /**
+     * Value
+     */
+    value: string | null;
 };
 
 /**
@@ -5558,9 +6322,23 @@ export type GetStatusApiV1ClassificationStatusGetResponse = GetStatusApiV1Classi
 export type GetCompaniesApiV1CompaniesGetData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        /**
+         * Archived
+         */
+        archived?: boolean;
+    };
     url: '/api/v1/companies';
 };
+
+export type GetCompaniesApiV1CompaniesGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetCompaniesApiV1CompaniesGetError = GetCompaniesApiV1CompaniesGetErrors[keyof GetCompaniesApiV1CompaniesGetErrors];
 
 export type GetCompaniesApiV1CompaniesGetResponses = {
     /**
@@ -5813,6 +6591,36 @@ export type UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutRespon
 
 export type UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutResponse = UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutResponses[keyof UpdateAdjustmentApiV1CompaniesTickerAdjustmentsAdjustmentIdPutResponses];
 
+export type ArchiveCompanyApiV1CompaniesTickerArchivePostData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/archive';
+};
+
+export type ArchiveCompanyApiV1CompaniesTickerArchivePostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ArchiveCompanyApiV1CompaniesTickerArchivePostError = ArchiveCompanyApiV1CompaniesTickerArchivePostErrors[keyof ArchiveCompanyApiV1CompaniesTickerArchivePostErrors];
+
+export type ArchiveCompanyApiV1CompaniesTickerArchivePostResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type ArchiveCompanyApiV1CompaniesTickerArchivePostResponse = ArchiveCompanyApiV1CompaniesTickerArchivePostResponses[keyof ArchiveCompanyApiV1CompaniesTickerArchivePostResponses];
+
 export type GetAsReportedApiV1CompaniesTickerAsReportedGetData = {
     body?: never;
     path: {
@@ -6053,6 +6861,134 @@ export type GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetResponse
 };
 
 export type GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetResponse = GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetResponses[keyof GetCapitalAllocationApiV1CompaniesTickerCapitalAllocationGetResponses];
+
+export type ListCheckpointsApiV1CompaniesTickerCheckpointsGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/checkpoints';
+};
+
+export type ListCheckpointsApiV1CompaniesTickerCheckpointsGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListCheckpointsApiV1CompaniesTickerCheckpointsGetError = ListCheckpointsApiV1CompaniesTickerCheckpointsGetErrors[keyof ListCheckpointsApiV1CompaniesTickerCheckpointsGetErrors];
+
+export type ListCheckpointsApiV1CompaniesTickerCheckpointsGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: CheckpointListOut;
+};
+
+export type ListCheckpointsApiV1CompaniesTickerCheckpointsGetResponse = ListCheckpointsApiV1CompaniesTickerCheckpointsGetResponses[keyof ListCheckpointsApiV1CompaniesTickerCheckpointsGetResponses];
+
+export type CreateCheckpointApiV1CompaniesTickerCheckpointsPostData = {
+    body: CheckpointIn;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/checkpoints';
+};
+
+export type CreateCheckpointApiV1CompaniesTickerCheckpointsPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateCheckpointApiV1CompaniesTickerCheckpointsPostError = CreateCheckpointApiV1CompaniesTickerCheckpointsPostErrors[keyof CreateCheckpointApiV1CompaniesTickerCheckpointsPostErrors];
+
+export type CreateCheckpointApiV1CompaniesTickerCheckpointsPostResponses = {
+    /**
+     * Successful Response
+     */
+    201: CheckpointOut;
+};
+
+export type CreateCheckpointApiV1CompaniesTickerCheckpointsPostResponse = CreateCheckpointApiV1CompaniesTickerCheckpointsPostResponses[keyof CreateCheckpointApiV1CompaniesTickerCheckpointsPostResponses];
+
+export type DeleteCheckpointApiV1CompaniesTickerCheckpointsCheckpointIdDeleteData = {
+    body?: never;
+    path: {
+        /**
+         * Checkpoint Id
+         */
+        checkpoint_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/checkpoints/{checkpoint_id}';
+};
+
+export type DeleteCheckpointApiV1CompaniesTickerCheckpointsCheckpointIdDeleteErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeleteCheckpointApiV1CompaniesTickerCheckpointsCheckpointIdDeleteError = DeleteCheckpointApiV1CompaniesTickerCheckpointsCheckpointIdDeleteErrors[keyof DeleteCheckpointApiV1CompaniesTickerCheckpointsCheckpointIdDeleteErrors];
+
+export type DeleteCheckpointApiV1CompaniesTickerCheckpointsCheckpointIdDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeleteCheckpointApiV1CompaniesTickerCheckpointsCheckpointIdDeleteResponse = DeleteCheckpointApiV1CompaniesTickerCheckpointsCheckpointIdDeleteResponses[keyof DeleteCheckpointApiV1CompaniesTickerCheckpointsCheckpointIdDeleteResponses];
+
+export type UpdateCheckpointApiV1CompaniesTickerCheckpointsCheckpointIdPutData = {
+    body: CheckpointIn;
+    path: {
+        /**
+         * Checkpoint Id
+         */
+        checkpoint_id: number;
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/checkpoints/{checkpoint_id}';
+};
+
+export type UpdateCheckpointApiV1CompaniesTickerCheckpointsCheckpointIdPutErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateCheckpointApiV1CompaniesTickerCheckpointsCheckpointIdPutError = UpdateCheckpointApiV1CompaniesTickerCheckpointsCheckpointIdPutErrors[keyof UpdateCheckpointApiV1CompaniesTickerCheckpointsCheckpointIdPutErrors];
+
+export type UpdateCheckpointApiV1CompaniesTickerCheckpointsCheckpointIdPutResponses = {
+    /**
+     * Successful Response
+     */
+    200: CheckpointOut;
+};
+
+export type UpdateCheckpointApiV1CompaniesTickerCheckpointsCheckpointIdPutResponse = UpdateCheckpointApiV1CompaniesTickerCheckpointsCheckpointIdPutResponses[keyof UpdateCheckpointApiV1CompaniesTickerCheckpointsCheckpointIdPutResponses];
 
 export type SetModeApiV1CompaniesTickerClassificationModePutData = {
     body: ModeIn;
@@ -6413,6 +7349,66 @@ export type ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetResponses
 };
 
 export type ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetResponse = ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetResponses[keyof ListCorporateActionsApiV1CompaniesTickerCorporateActionsGetResponses];
+
+export type DeletionImpactApiV1CompaniesTickerDeletionImpactGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/deletion-impact';
+};
+
+export type DeletionImpactApiV1CompaniesTickerDeletionImpactGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeletionImpactApiV1CompaniesTickerDeletionImpactGetError = DeletionImpactApiV1CompaniesTickerDeletionImpactGetErrors[keyof DeletionImpactApiV1CompaniesTickerDeletionImpactGetErrors];
+
+export type DeletionImpactApiV1CompaniesTickerDeletionImpactGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: DeletionImpactOut;
+};
+
+export type DeletionImpactApiV1CompaniesTickerDeletionImpactGetResponse = DeletionImpactApiV1CompaniesTickerDeletionImpactGetResponses[keyof DeletionImpactApiV1CompaniesTickerDeletionImpactGetResponses];
+
+export type GetEarningsReviewApiV1CompaniesTickerEarningsReviewGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/earnings-review';
+};
+
+export type GetEarningsReviewApiV1CompaniesTickerEarningsReviewGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetEarningsReviewApiV1CompaniesTickerEarningsReviewGetError = GetEarningsReviewApiV1CompaniesTickerEarningsReviewGetErrors[keyof GetEarningsReviewApiV1CompaniesTickerEarningsReviewGetErrors];
+
+export type GetEarningsReviewApiV1CompaniesTickerEarningsReviewGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: EarningsReviewOut;
+};
+
+export type GetEarningsReviewApiV1CompaniesTickerEarningsReviewGetResponse = GetEarningsReviewApiV1CompaniesTickerEarningsReviewGetResponses[keyof GetEarningsReviewApiV1CompaniesTickerEarningsReviewGetResponses];
 
 export type GetFlagsApiV1CompaniesTickerFlagsGetData = {
     body?: never;
@@ -7355,6 +8351,36 @@ export type RefreshApiV1CompaniesTickerRefreshPostResponses = {
 };
 
 export type RefreshApiV1CompaniesTickerRefreshPostResponse = RefreshApiV1CompaniesTickerRefreshPostResponses[keyof RefreshApiV1CompaniesTickerRefreshPostResponses];
+
+export type RestoreCompanyApiV1CompaniesTickerRestorePostData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/restore';
+};
+
+export type RestoreCompanyApiV1CompaniesTickerRestorePostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type RestoreCompanyApiV1CompaniesTickerRestorePostError = RestoreCompanyApiV1CompaniesTickerRestorePostErrors[keyof RestoreCompanyApiV1CompaniesTickerRestorePostErrors];
+
+export type RestoreCompanyApiV1CompaniesTickerRestorePostResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type RestoreCompanyApiV1CompaniesTickerRestorePostResponse = RestoreCompanyApiV1CompaniesTickerRestorePostResponses[keyof RestoreCompanyApiV1CompaniesTickerRestorePostResponses];
 
 export type ListScenariosApiV1CompaniesTickerScenariosGetData = {
     body?: never;
@@ -8683,6 +9709,36 @@ export type GetCellApiV1CompaniesTickerStatementsCellGetResponses = {
 };
 
 export type GetCellApiV1CompaniesTickerStatementsCellGetResponse = GetCellApiV1CompaniesTickerStatementsCellGetResponses[keyof GetCellApiV1CompaniesTickerStatementsCellGetResponses];
+
+export type GetSummaryApiV1CompaniesTickerSummaryGetData = {
+    body?: never;
+    path: {
+        /**
+         * Ticker
+         */
+        ticker: string;
+    };
+    query?: never;
+    url: '/api/v1/companies/{ticker}/summary';
+};
+
+export type GetSummaryApiV1CompaniesTickerSummaryGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetSummaryApiV1CompaniesTickerSummaryGetError = GetSummaryApiV1CompaniesTickerSummaryGetErrors[keyof GetSummaryApiV1CompaniesTickerSummaryGetErrors];
+
+export type GetSummaryApiV1CompaniesTickerSummaryGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: CompanySummaryOut;
+};
+
+export type GetSummaryApiV1CompaniesTickerSummaryGetResponse = GetSummaryApiV1CompaniesTickerSummaryGetResponses[keyof GetSummaryApiV1CompaniesTickerSummaryGetResponses];
 
 export type HealthApiV1HealthGetData = {
     body?: never;

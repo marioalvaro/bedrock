@@ -4,13 +4,14 @@ scenario's three-case summary (FR-VAL-01..03, -05; docs/erd/valuation.md "Inputs
 
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
 from sqlalchemy.orm import Session
 
 from bedrock.analysis.multiples import balance_sheet_shares
+from bedrock.core.clock import naive_utc
 from bedrock.forecast.engines.driver import FORECAST_HORIZON
 from bedrock.forecast.errors import ForecastUnavailable
 from bedrock.forecast.history import ForecastHistory, forecast_years
@@ -215,7 +216,7 @@ def put_valuation_inputs(
     InvalidScenario and InvalidValuationInput."""
     scenario, kase = get_case(session, company, scenario_id, case)
     values = _checked(session, company, rows)
-    stamp = now.astimezone(UTC).replace(tzinfo=None) if now.tzinfo else now
+    stamp = naive_utc(now)
     before = _own_inputs(session, kase.id)
     repo.put_rows(session, kase.id, values, stamp)
     _record_inputs(session, company, scenario, kase, "edit", before, stamp)
@@ -230,7 +231,7 @@ def reset_valuation_inputs(
     scenario, kase = get_case(session, company, scenario_id, case)
     before = _own_inputs(session, kase.id)
     repo.delete_all(session, kase.id)
-    stamp = now.astimezone(UTC).replace(tzinfo=None) if now.tzinfo else now
+    stamp = naive_utc(now)
     _record_inputs(session, company, scenario, kase, "reset", before, stamp)
     session.commit()
     return valuation_inputs(session, company, scenario_id, case)

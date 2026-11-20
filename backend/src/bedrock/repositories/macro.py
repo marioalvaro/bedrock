@@ -1,10 +1,11 @@
 from collections.abc import Sequence
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from bedrock.core.clock import naive_utc
 from bedrock.models.macro import MacroObservation, MacroSeries
 from bedrock.repositories.numeric import plain
 
@@ -20,7 +21,7 @@ def upsert(
 ) -> int:
     """Store the series and its observations, a stored date taking the new value; returns how
     many dates were new."""
-    at = fetched_at.astimezone(UTC).replace(tzinfo=None)
+    at = naive_utc(fetched_at)
     series = session.get(MacroSeries, series_id)
     if series is None:
         series = MacroSeries(series_id=series_id, title=title, frequency=frequency, source=source)

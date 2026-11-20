@@ -62,7 +62,7 @@ def balance_sheet_shares(*tables: StatementTable) -> Decimal | None:
     for a company with no cover-page (`dei`) count."""
     found: list[tuple[date, Decimal]] = []
     for table in tables:
-        row = next((r for r in table.rows if r.code == "shares_outstanding"), None)
+        row = table.row("shares_outstanding")
         if row is not None:
             found += [(p.end, v) for p, v in zip(table.periods, row.values, strict=True) if v]
     return max(found, key=lambda f: f[0])[1] if found else None
@@ -74,12 +74,7 @@ def _enterprise_value(
     if market_cap is None or balance_sheet is None or ttm_period is None:
         return None
     at = next(
-        (
-            p
-            for p in balance_sheet.periods
-            if (p.fiscal_year, p.fiscal_period)
-            == (ttm_period.fiscal_year, ttm_period.fiscal_period)
-        ),
+        (p for p in balance_sheet.periods if p.point == ttm_period.point),
         None,
     )
     debt = [_value(balance_sheet, code, at) for code in ("short_term_debt", "long_term_debt")]
@@ -99,7 +94,7 @@ def _value(
     """One row's `values` (or `yoy`) entry at `period`, matched by key."""
     if table is None or period is None:
         return None
-    row = next((r for r in table.rows if r.code == code), None)
+    row = table.row(code)
     if row is None:
         return None
     for p, value in zip(table.periods, getattr(row, field), strict=True):

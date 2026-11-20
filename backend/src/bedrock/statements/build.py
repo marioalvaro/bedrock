@@ -22,6 +22,7 @@ from bedrock.statements.normalize import AdjustmentLike, apply_adjustments
 from bedrock.statements.periods import (
     Calendar,
     Period,
+    Point,
     annual_periods,
     quarterly_periods,
     ttm_windows,
@@ -87,6 +88,20 @@ class StatementTable:
     warnings: list[str]
     # rules whose result a guard refused (the same list on every table of one company)
     rule_warnings: tuple[RuleWarning, ...] = ()
+
+    def row(self, code: str) -> Row | None:
+        """The line `code`, None when the table has none."""
+        return next((r for r in self.rows if r.code == code), None)
+
+    def value_at(self, code: str, point: Point) -> Decimal | None:
+        """The cell of line `code` at `point`; None for an empty cell, or a line or point the
+        table does not have."""
+        row = self.row(code)
+        if row is None:
+            return None
+        return next(
+            (v for p, v in zip(self.periods, row.values, strict=True) if p.point == point), None
+        )
 
 
 OTHER_PREFIX = "other:"
@@ -268,7 +283,7 @@ def extend_table(
     as built."""
     added = list(periods)
     combined = table.periods + added
-    position = {(p.fiscal_year, p.fiscal_period): i for i, p in enumerate(combined)}
+    position = {p.point: i for i, p in enumerate(combined)}
     total = "total_assets" if table.statement == "BS" else "revenue"
     rows = []
     for row in table.rows:
@@ -336,7 +351,7 @@ def _row(
         EMPTY.value if base is None else cells.get((base.code, p.key), EMPTY).value for p in periods
     ]
     values = [c.value for c in series]
-    position = {(p.fiscal_year, p.fiscal_period): i for i, p in enumerate(periods)}
+    position = {p.point: i for i, p in enumerate(periods)}
     yoy: list[Decimal | None] = []
     for p, value in zip(periods, values, strict=True):
         prior_at = position.get((p.fiscal_year - 1, p.fiscal_period))

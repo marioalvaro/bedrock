@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/sheet";
 import { SubjectNotes } from "@/features/notes/SubjectNotesSheet";
 import type { FiscalPeriod } from "@/api/context";
-import { formatFiscalPeriod, formatInput, formatRatio, type RatioUnit } from "@/lib/format";
+import { formatFiscalPeriod, formatInput, formatRatio } from "@/lib/format";
 
 export interface RatioCellTarget {
   code: string;
@@ -95,7 +95,7 @@ function Details({
 }
 
 function Explanation({ cell }: { cell: RatioCellOut }) {
-  const unit = cell.unit as RatioUnit;
+  const unit = cell.unit;
   return (
     <>
       <div>

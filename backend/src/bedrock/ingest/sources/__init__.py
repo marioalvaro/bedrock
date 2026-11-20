@@ -11,6 +11,7 @@ from bedrock.ingest.protocol import (
     MarketLike,
     PricesLike,
     SourceNotConfigured,
+    SubmissionsLike,
 )
 from bedrock.ingest.sources.edgar import EdgarSource
 from bedrock.ingest.sources.edgar_filings import EdgarFilingsSource
@@ -28,6 +29,8 @@ class Sources:
     consensus: ConsensusLike | None = None
     # Each 10-K and 10-Q's own XBRL files (M7b S6); None (tests) fetches nothing.
     filings: FilingsLike | None = None
+    # EDGAR's filing index, read by the daily new-filing check (M7c); None (tests) fetches nothing.
+    submissions: SubmissionsLike | None = None
 
 
 def build_sources(settings: Settings) -> Sources:
@@ -47,8 +50,10 @@ def build_sources(settings: Settings) -> Sources:
                 shared.append(RateLimitedClient(user_agent))
             return shared[0]
 
+    edgar = EdgarSource(edgar_client, RawCache(settings.data_dir))
     return Sources(
-        edgar=EdgarSource(edgar_client, RawCache(settings.data_dir)),
+        edgar=edgar,
+        submissions=edgar,
         filings=EdgarFilingsSource(edgar_client, settings.data_dir),
         prices=YFinanceSource(),
         market=MarketSource(settings.fred_api_key),

@@ -11,6 +11,7 @@ import {
   parseThreshold,
   toScaledText,
   toThresholdText,
+  DASH,
 } from "@/lib/format";
 import type { Scale } from "@/lib/scale";
 
@@ -20,7 +21,6 @@ import type { Scale } from "@/lib/scale";
 export type DriverUnit = DriverRowOut["unit"];
 export type DriverMode = DriverRowIn["kind"]; // "value", or "offset" (vs Base)
 
-const DASH = "—";
 const MUTED = "text-muted-foreground";
 
 const shortYear = (year: number) => String(year % 100).padStart(2, "0");

@@ -7,20 +7,24 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getCompaniesApiV1CompaniesGet,
   getCompanyApiV1CompaniesTickerGet,
-  getMappingGapsApiV1CompaniesTickerMappingGapsGet,
+  getSummaryApiV1CompaniesTickerSummaryGet,
   loginApiV1AuthLoginPost,
   logoutApiV1AuthLogoutPost,
   meApiV1AuthMeGet,
 } from "@/api/generated/sdk.gen";
 import { AppRoutes } from "@/App";
 import { createQueryClient } from "@/lib/query-client";
-import { companyItem, mappingGaps } from "@/test/companies";
+import { companyItem } from "@/test/companies";
 import { errorResult, okResult } from "@/test/responses";
+import { companySummary } from "@/test/summary";
+
+// jsdom cannot draw a canvas: the Overview's sparklines render their wrapper only.
+vi.mock("echarts-for-react/esm/core", () => ({ default: vi.fn(() => null) }));
 
 vi.mock("@/api/generated/sdk.gen", () => ({
   getCompaniesApiV1CompaniesGet: vi.fn(),
   getCompanyApiV1CompaniesTickerGet: vi.fn(),
-  getMappingGapsApiV1CompaniesTickerMappingGapsGet: vi.fn(),
+  getSummaryApiV1CompaniesTickerSummaryGet: vi.fn(),
   loginApiV1AuthLoginPost: vi.fn(),
   logoutApiV1AuthLogoutPost: vi.fn(),
   meApiV1AuthMeGet: vi.fn(),
@@ -45,8 +49,8 @@ describe("protected routes", () => {
     vi.mocked(getCompanyApiV1CompaniesTickerGet).mockResolvedValue(
       okResult(companyItem()) as never,
     );
-    vi.mocked(getMappingGapsApiV1CompaniesTickerMappingGapsGet).mockResolvedValue(
-      okResult(mappingGaps()) as never,
+    vi.mocked(getSummaryApiV1CompaniesTickerSummaryGet).mockResolvedValue(
+      okResult(companySummary()) as never,
     );
   });
 
@@ -69,11 +73,19 @@ describe("protected routes", () => {
     expect(screen.getByRole("button", { name: "Log out" })).toBeInTheDocument();
   });
 
+  it("opens the comparison view from the header's Compare link", async () => {
+    renderAt("/");
+
+    await userEvent.click(await screen.findByRole("link", { name: "Compare" }));
+
+    expect(await screen.findByRole("heading", { name: "Compare" })).toBeInTheDocument();
+  });
+
   it("renders the company page for a ticker", async () => {
     renderAt("/c/AAPL");
 
     expect(await screen.findByRole("heading", { name: "AAPL" })).toBeInTheDocument();
-    expect(await screen.findByRole("region", { name: "Data gaps" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Key stats" })).toBeInTheDocument();
   });
 
   it("sends the user to /login when a data query gets a 401", async () => {

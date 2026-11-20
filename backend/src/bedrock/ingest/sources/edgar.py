@@ -5,7 +5,15 @@ from typing import ClassVar
 
 from bedrock.ingest.cache import RawCache
 from bedrock.ingest.http import RateLimitedClient
-from bedrock.ingest.protocol import CompanyProfile, CompanyRef, EdgarPayload, UnknownTicker
+from bedrock.ingest.parse import parse_recent_filings
+from bedrock.ingest.protocol import (
+    CompanyProfile,
+    CompanyRef,
+    EdgarPayload,
+    FilingRef,
+    SourceUnavailable,
+    UnknownTicker,
+)
 
 _TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 _SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
@@ -58,6 +66,19 @@ class EdgarSource:
         fetched_at = self._clock()
         self._cache.write(company.cik, fetched_at.date(), body)
         return EdgarPayload(companyfacts=json.loads(body), fetched_at=fetched_at)
+
+    def recent_filings(self, company: CompanyRef) -> list[FilingRef]:
+        """The 10-K and 10-Q rows of the company's filing index, newest first (M7c): one GET of
+        the submissions document, never cached on disk. Raises SourceUnavailable, also for a
+        document of an unexpected shape, so the daily check makes it one company's warning."""
+        if company.cik is None:
+            raise ValueError(f"{company.ticker} has no CIK: EDGAR holds nothing for it")
+        url = _SUBMISSIONS_URL.format(cik=company.cik)
+        doc = self._get_client().get_json(url)
+        try:
+            return parse_recent_filings(doc)
+        except (AttributeError, KeyError, TypeError, ValueError) as error:
+            raise SourceUnavailable(f"{url}: unexpected submissions shape ({error!r})") from error
 
     def _get_client(self) -> RateLimitedClient:
         # Built on first use, so a missing SEC_USER_AGENT fails there and never at app start.

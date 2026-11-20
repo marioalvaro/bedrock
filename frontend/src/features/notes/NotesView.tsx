@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
+import { CheckpointsPanel } from "./CheckpointsPanel";
 import { noteLinkText } from "./link";
 import { NoteBody } from "./NoteBody";
 import { PERIODS, SELECT } from "./constants";
@@ -29,7 +30,8 @@ interface NotesViewProps {
   ticker: string;
 }
 
-/** The Notes tab: the Markdown journal of the company, filterable by line and period. */
+/** The Notes tab: the thesis checkpoints, then the Markdown journal of the company, filterable by
+ * line and period. */
 export function NotesView({ ticker }: NotesViewProps) {
   const subjects = useSubjectGroups(ticker);
   const periods = usePeriodOptions(ticker);
@@ -55,6 +57,7 @@ export function NotesView({ ticker }: NotesViewProps) {
 
   return (
     <div>
+      <CheckpointsPanel ticker={ticker} />
       <div className="border-border flex flex-wrap items-end gap-2 border-b px-4 py-2">
         <select
           aria-label="Filter by subject"

@@ -14,6 +14,14 @@ class CompanyExists(Exception):
     """The company is already followed."""
 
 
+class CompanyArchived(Exception):
+    """The ticker is an archived company: restore it instead of adding it again."""
+
+
+class CompanyNotArchived(Exception):
+    """A followed company is deleted permanently only once archived."""
+
+
 class BackfillRunning(Exception):
     """A filing backfill of this company is already running."""
 
@@ -59,6 +67,16 @@ class InvalidFormula(Exception):
 class InvalidCustomRule(Exception):
     """A custom rule breaks a rule other than its formula (e.g. a blank label); the message says
     which."""
+
+
+class CheckpointNotFound(Exception):
+    """No thesis checkpoint with this id on the company (another company's id counts as
+    unknown)."""
+
+
+class InvalidCheckpoint(Exception):
+    """A thesis checkpoint breaks a rule; the message says which (a statement error names its
+    position as `InvalidFormula` does, e.g. "Unknown name 'revenu' at 4")."""
 
 
 class OffBalanceItemNotFound(Exception):
@@ -230,6 +248,8 @@ class InvalidClassification(Exception):
 DOMAIN_ERRORS = (
     CompanyNotFound,
     CompanyExists,
+    CompanyArchived,
+    CompanyNotArchived,
     BackfillRunning,
     FilingNotFound,
     CellNotFound,
@@ -325,6 +345,10 @@ def user_message(error: Exception) -> str:
             return error.detail
         case CompanyExists():
             return f"{error} is already followed"
+        case CompanyArchived():
+            return f"{error} is archived. Restore it from the archived list."
+        case CompanyNotArchived():
+            return f"Archive {error} before deleting it permanently."
         case BackfillRunning():
             return f"A filing backfill of {error} is already running"
         case SourceNotConfigured():

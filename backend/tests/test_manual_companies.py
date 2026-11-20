@@ -16,6 +16,7 @@ from bedrock.services.companies import (
     CompanyExists,
     add_company,
     add_manual_company,
+    archive_company,
     get_company,
     remove_company,
 )
@@ -79,6 +80,7 @@ def test_a_followed_manual_company_blocks_the_same_ticker_from_sec(db_session: S
 def test_removing_a_manual_company_removes_it(db_session: Session) -> None:
     _manual(db_session)
 
+    archive_company(db_session, "ACME", datetime(2026, 11, 18, tzinfo=UTC))
     remove_company(db_session, "ACME")
 
     assert db_session.execute(select(func.count()).select_from(Company)).scalar() == 0

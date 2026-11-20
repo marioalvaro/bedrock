@@ -1,10 +1,11 @@
+from dataclasses import asdict
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, StringConstraints, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
-from bedrock.services.companies import CompanyView
+from bedrock.services.companies import CompanyView, DeletionCounts
 
 
 class CompanyCreate(BaseModel):
@@ -18,6 +19,16 @@ class ManualCompanyCreate(BaseModel):
     sic: Annotated[str, StringConstraints(pattern=r"^\d{4}$")] | None = None
 
 
+class NewFilingOut(BaseModel):
+    """A 10-K or 10-Q EDGAR lists that is not loaded yet (M7c, FR-DATA-23)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    form: Literal["10-K", "10-Q"]
+    filed_at: date
+    period_end: date | None
+
+
 class CompanyOut(BaseModel):
     id: int
     ticker: str
@@ -28,6 +39,9 @@ class CompanyOut(BaseModel):
     source: Literal["sec", "manual"]
     sic: str | None
     last_refreshed_at: datetime | None
+    archived_at: datetime | None = Field(
+        description="When the company was archived; null for a followed company"
+    )
     filings_parsed: int = Field(
         description="10-K and 10-Q filings (amendments included) whose XBRL is read"
     )
@@ -38,8 +52,12 @@ class CompanyOut(BaseModel):
     classification_source: str | None = Field(
         description="The classifier whose proposals mode `all` uses"
     )
+    new_filings: list[NewFilingOut] = Field(
+        description="10-Ks and 10-Qs EDGAR lists that are not loaded yet, newest first; "
+        "empty for a manual company"
+    )
 
-    @field_validator("last_refreshed_at")
+    @field_validator("last_refreshed_at", "archived_at")
     @classmethod
     def _is_utc(cls, value: datetime | None) -> datetime | None:
         # SQLite keeps no time zone, so the stored UTC time comes back naive; without a zone in
@@ -49,7 +67,9 @@ class CompanyOut(BaseModel):
 
 # The `CompanyOut` fields read straight from the `company` row; the rest come from the view.
 _COMPANY_COLUMNS = tuple(
-    n for n in CompanyOut.model_fields if n not in {"filings_parsed", "filings_total"}
+    n
+    for n in CompanyOut.model_fields
+    if n not in {"filings_parsed", "filings_total", "new_filings"}
 )
 
 
@@ -70,6 +90,7 @@ class CompanyListItem(CompanyOut):
             **{name: getattr(view.company, name) for name in _COMPANY_COLUMNS},
             filings_parsed=view.filings_parsed,
             filings_total=view.filings_total,
+            new_filings=[NewFilingOut.model_validate(row) for row in view.new_filings],
             price=stats.price,
             price_date=stats.price_date,
             market_cap=stats.market_cap,
@@ -77,3 +98,23 @@ class CompanyListItem(CompanyOut):
             ev_ebitda=stats.ev_ebitda,
             revenue_growth=stats.revenue_growth,
         )
+
+
+class DeletionImpactOut(BaseModel):
+    """What deleting the company permanently removes: the rows of each kind the cascade takes."""
+
+    ticker: str
+    filings: int
+    facts: int
+    notes: int
+    scenarios: int
+    snapshots: int
+    guidance: int
+    adjustments: int
+    checkpoints: int
+    comps_sets: int
+    imports: int
+
+    @classmethod
+    def from_counts(cls, ticker: str, counts: DeletionCounts) -> "DeletionImpactOut":
+        return cls(ticker=ticker, **asdict(counts))

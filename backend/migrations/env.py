@@ -27,6 +27,7 @@ from bedrock.models import (  # noqa: F401  ensure models are registered
     macro,
     note,
     off_balance_item,
+    pending_filing,
     price_daily,
     qoe_custom_rule,
     qoe_threshold,
@@ -35,6 +36,7 @@ from bedrock.models import (  # noqa: F401  ensure models are registered
     segment_series,
     segment_value,
     statement_import,
+    thesis_checkpoint,
     valuation_input,
 )
 from bedrock.models.base import Base
@@ -42,7 +44,8 @@ from bedrock.models.base import Base
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # Keep the loggers already imported: in-process runs (the tests) would lose them otherwise.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata
 

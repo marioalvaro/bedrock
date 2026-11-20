@@ -19,10 +19,9 @@ import {
   parseThreshold,
   scaleLabel,
   toThresholdText,
+  DASH,
 } from "@/lib/format";
 import type { Scale } from "@/lib/scale";
-
-const DASH = "—";
 
 /** A value per share: "$187.40", a negative "($12.00)", null "—". */
 export function formatPerShare(value: string | null): string {

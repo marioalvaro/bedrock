@@ -20,6 +20,12 @@ def list_for(session: Session, company_id: int) -> list[Scenario]:
     return list(session.execute(stmt).scalars())
 
 
+def get_default(session: Session, company_id: int) -> Scenario | None:
+    """The company's default scenario; None before `ensure_defaults` made one."""
+    stmt = select(Scenario).where(Scenario.company_id == company_id, Scenario.is_default)
+    return session.execute(stmt).scalar_one_or_none()
+
+
 def get(session: Session, company_id: int, scenario_id: int) -> Scenario | None:
     """The scenario, only when it belongs to the company."""
     stmt = select(Scenario).where(Scenario.company_id == company_id, Scenario.id == scenario_id)

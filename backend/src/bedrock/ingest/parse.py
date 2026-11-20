@@ -1,10 +1,13 @@
-"""Pure parser for SEC companyfacts JSON: no DB, no network."""
+"""Pure parsers for SEC companyfacts JSON and the submissions filing index: no DB, no network."""
 
 from collections import Counter
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from typing import Any
+
+from bedrock.ingest.protocol import FilingRef
 
 
 @dataclass(frozen=True)
@@ -93,6 +96,44 @@ def _filings(facts: list[FactRecord], forms: dict[str, tuple[str, date]]) -> lis
             )
         )
     return sorted(filings, key=lambda f: (f.filed_at, f.accession_no))
+
+
+# Amendments and every other form never mark a company (docs/prd/data.md, M7c decisions).
+NEW_FILING_FORMS = frozenset({"10-K", "10-Q"})
+
+
+def parse_recent_filings(doc: dict[str, Any]) -> list[FilingRef]:
+    """The 10-K and 10-Q rows of a submissions document's `filings.recent` page, newest
+    `filed_at` first; a blank `reportDate` is no period end. The older pages are never read."""
+    recent = doc.get("filings", {}).get("recent")
+    if not recent:
+        return []
+    refs = [
+        FilingRef(accession, form, date.fromisoformat(filed), _date(reported))
+        for accession, form, filed, reported in zip(
+            recent["accessionNumber"],
+            recent["form"],
+            recent["filingDate"],
+            recent["reportDate"],
+            strict=True,
+        )
+        if form in NEW_FILING_FORMS
+    ]
+    return sorted(refs, key=lambda r: (r.filed_at, r.accession_no), reverse=True)
+
+
+def unseen_filings(
+    recent: list[FilingRef], stored_accessions: Collection[str], newest_stored: date | None
+) -> list[FilingRef]:
+    """The refs not stored and filed on or after the newest stored filing (of any form). The
+    date test keeps out old filings companyfacts never listed; with nothing stored, none."""
+    if newest_stored is None:
+        return []
+    return [
+        ref
+        for ref in recent
+        if ref.accession_no not in stored_accessions and ref.filed_at >= newest_stored
+    ]
 
 
 def _most_common[T](values: Any) -> T | None:

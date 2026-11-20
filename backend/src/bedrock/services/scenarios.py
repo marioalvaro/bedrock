@@ -3,13 +3,14 @@ docs/erd/forecasting.md "Scenarios and cases", "API")."""
 
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal, get_args
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from bedrock.core.clock import naive_utc
 from bedrock.forecast.driver_io import (
     DriverChange,
     DriverFileError,
@@ -179,10 +180,6 @@ class ScenarioDrivers:
     engines: EngineDefaults  # what the scenario's engine choices set (empty maps for `mean`)
 
 
-def naive_utc(moment: datetime) -> datetime:
-    return moment.astimezone(UTC).replace(tzinfo=None) if moment.tzinfo else moment
-
-
 def load_history(session: Session, company: Company, as_of: date | None = None) -> ForecastHistory:
     """The company's normalized annual and quarterly IS/BS/CF tables (untrimmed, one load), its
     segment and KPI series with their FY values, and its latest fiscal year end. With `as_of`, the
@@ -275,7 +272,8 @@ def create_scenario(
     scenario); the settings it does not give are the default scenario's. Raises InvalidScenario
     (name, settings) and ScenarioConflict (a duplicate name)."""
     ensure_defaults(session, company, now)
-    default = _default_scenario(session, company)
+    default = repo.get_default(session, company.id)
+    assert default is not None  # ensure_defaults ran
     name = _check_name(session, company, data.name or "", None)
     stamp = naive_utc(now)
     scenario = _copy(default, name, stamp)
@@ -454,10 +452,6 @@ def _fill_year(
         )
         for r in filled
     ]
-
-
-def _default_scenario(session: Session, company: Company) -> Scenario:
-    return next(s for s in repo.list_for(session, company.id) if s.is_default)
 
 
 def _copy(default: Scenario, name: str, stamp: datetime) -> Scenario:

@@ -12,6 +12,7 @@ import { capitalAllocationQueryOptions, type AnalysisFreq } from "@/api/analysis
 import type { CapitalAllocationOut, PeriodOut } from "@/api/generated/types.gen";
 import { DataGrid, type DataGridHandle } from "@/components/DataGrid";
 import { UnitToggle } from "@/components/UnitToggle";
+import { CapitalBars } from "@/features/capital/CapitalBars";
 import { Button } from "@/components/ui/button";
 import { Toggle } from "@/components/ui/toggle";
 import { NoteMarker } from "@/features/notes/NoteMarker";
@@ -266,14 +267,17 @@ export function CapitalView({ ticker }: CapitalViewProps) {
         <p className="text-muted-foreground p-4 text-sm">No capital allocation for this company.</p>
       )}
       {data && !empty && (
-        <DataGrid<GridRow>
-          ref={grid}
-          rowData={rows}
-          columnDefs={columns}
-          getRowId={(row) => row.id}
-          getRowClass={(row) => (row.isSub ? "row-sub" : undefined)}
-          onCellClicked={openCell}
-        />
+        <>
+          <CapitalBars data={data} />
+          <DataGrid<GridRow>
+            ref={grid}
+            rowData={rows}
+            columnDefs={columns}
+            getRowId={(row) => row.id}
+            getRowClass={(row) => (row.isSub ? "row-sub" : undefined)}
+            onCellClicked={openCell}
+          />
+        </>
       )}
       <SubjectNotesSheet ticker={ticker} target={target} onClose={() => setTarget(null)} />
     </div>

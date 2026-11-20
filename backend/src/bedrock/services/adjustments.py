@@ -2,11 +2,12 @@
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
+from bedrock.core.clock import naive_utc
 from bedrock.mapping.config import is_adjustable
 from bedrock.models.adjustment import CATEGORIES, Adjustment
 from bedrock.models.company import Company
@@ -84,7 +85,7 @@ def create_adjustment(
     session: Session, company: Company, data: AdjustmentInput, now: datetime
 ) -> Adjustment:
     _validate(session, company, data)
-    stamp = _naive_utc(now)
+    stamp = naive_utc(now)
     added = repo.add(
         session,
         Adjustment(
@@ -109,7 +110,7 @@ def update_adjustment(
     before = _audited_edit(stored)
     for name, value in _fields(data).items():
         setattr(stored, name, value)
-    stamp = _naive_utc(now)
+    stamp = naive_utc(now)
     stored.updated_at = stamp
     session.flush()
     session.refresh(stored)
@@ -122,7 +123,7 @@ def delete_adjustment(
     session: Session, company: Company, adjustment_id: int, now: datetime
 ) -> None:
     stored = _stored(session, company, adjustment_id)
-    _record(session, stored, "delete", _audited(stored), {}, _naive_utc(now))
+    _record(session, stored, "delete", _audited(stored), {}, naive_utc(now))
     repo.delete(session, stored)
     session.commit()
 
@@ -218,8 +219,3 @@ def _validate(session: Session, company: Company, data: AdjustmentInput) -> None
         raise InvalidAdjustment(
             f"FY{data.fiscal_year} {data.fiscal_period} is not a fiscal period of {company.ticker}"
         )
-
-
-def _naive_utc(moment: datetime) -> datetime:
-    # SQLite keeps no time zone: the columns hold UTC without one.
-    return moment.astimezone(UTC).replace(tzinfo=None)

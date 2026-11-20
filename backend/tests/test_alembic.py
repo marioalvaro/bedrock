@@ -31,6 +31,7 @@ from bedrock.models import (
     macro,
     note,
     off_balance_item,
+    pending_filing,
     price_daily,
     qoe_custom_rule,
     qoe_threshold,
@@ -39,6 +40,7 @@ from bedrock.models import (
     segment_series,
     segment_value,
     statement_import,
+    thesis_checkpoint,
     valuation_input,
 )
 from bedrock.models.base import Base
@@ -66,6 +68,7 @@ _MODELS = (
     macro,
     note,
     off_balance_item,
+    pending_filing,
     price_daily,
     qoe_custom_rule,
     qoe_threshold,
@@ -74,6 +77,7 @@ _MODELS = (
     segment_series,
     segment_value,
     statement_import,
+    thesis_checkpoint,
     valuation_input,
 )
 
@@ -2374,3 +2378,300 @@ def test_0022_downgrade_drops_only_what_it_added_and_keeps_the_rows(
 
     _run_alembic(tmp_path, monkeypatch, ("upgrade", "head"))
     assert "line_classification" in inspect(engine).get_table_names()
+
+
+# --- 0023: pending filings (M7c S1, docs/erd/data.md "New-filing detection") -------------------
+
+
+def _pending(connection: Connection, company_id: int, **cols: object) -> int:
+    row = {
+        "company_id": company_id,
+        "accession_no": f"acc-{company_id}",
+        "form": "10-Q",
+        "filed_at": "2026-10-30",
+        "period_end": "2026-09-26",
+        "detected_at": _NOW,
+    } | cols
+    return _insert(connection, "pending_filing", **row)
+
+
+def test_0023_adds_the_pending_filing_table_and_the_check_time_and_keeps_the_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0022"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        _company(connection, "AAA")
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "0023"))
+
+    engine.dispose()
+    inspector = inspect(engine)
+    assert "pending_filing" in inspector.get_table_names()
+    assert "ix_pending_filing_company_id" in {
+        i["name"] for i in inspector.get_indexes("pending_filing")
+    }
+    with engine.begin() as connection:
+        assert connection.execute(text("SELECT filings_checked_at FROM company")).all() == [(None,)]
+
+
+def test_0023_accession_is_unique_form_is_checked_and_rows_go_with_the_company(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0023"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        company_id = _company(connection, "AAA")
+        kept_id = _company(connection, "BBB")
+        _pending(connection, company_id, accession_no="a1", period_end=None)
+        _pending(connection, kept_id, accession_no="b1", form="10-K")
+    for bad in ({"accession_no": "a1"}, {"accession_no": "a2", "form": "10-K/A"}):
+        with engine.begin() as connection, pytest.raises(IntegrityError):
+            _pending(connection, company_id, **bad)
+    with engine.begin() as connection, pytest.raises(IntegrityError):
+        _pending(connection, company_id, accession_no="a3", filed_at=None)
+    with engine.begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+        connection.execute(text("DELETE FROM company WHERE id = :id"), {"id": company_id})
+        assert connection.execute(text("SELECT accession_no FROM pending_filing")).all() == [
+            ("b1",)
+        ]
+
+
+def test_0023_downgrade_drops_only_what_it_added_and_keeps_the_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0022"))
+    engine = create_engine(database_url)
+    before = {c["name"] for c in inspect(engine).get_columns("company")}
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "0023"))
+    with engine.begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+        company_id = _company(connection, "AAA")
+        _audit(connection, company_id)  # a row that cascades from `company` (G34)
+        _pending(connection, company_id)
+
+    _run_alembic(tmp_path, monkeypatch, ("downgrade", "0022"))
+
+    engine.dispose()
+    assert "pending_filing" not in inspect(engine).get_table_names()
+    assert {c["name"] for c in inspect(engine).get_columns("company")} == before
+    with engine.begin() as connection:
+        assert _count(connection, "company") == 1
+        assert _count(connection, "audit_log") == 1
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "0023"))
+    assert "pending_filing" in inspect(engine).get_table_names()
+
+
+# --- 0024: snapshot origin (M7c S2, docs/erd/accountability.md "Automatic snapshots") ----------
+
+
+def test_0024_adds_origin_and_trigger_and_existing_snapshots_are_manual(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0023"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        _snapshot(connection, _company(connection, "AAA"), None)
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "0024"))
+
+    engine.dispose()
+    columns = {c["name"]: c for c in inspect(engine).get_columns("forecast_snapshot")}
+    assert columns["origin"]["nullable"] is False
+    assert columns["trigger_accession"]["nullable"] is True
+    with engine.begin() as connection:
+        assert connection.execute(
+            text("SELECT origin, trigger_accession FROM forecast_snapshot")
+        ).all() == [("manual", None)]
+
+
+def test_0024_origin_is_manual_or_auto(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0024"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        company_id = _company(connection, "AAA")
+        _insert(
+            connection,
+            "forecast_snapshot",
+            company_id=company_id,
+            scenario_name="Main",
+            created_at=_NOW,
+            origin="auto",
+            trigger_accession="0000320193-26-000020",
+        )
+    for bad in ("scheduled", None):
+        with engine.begin() as connection, pytest.raises(IntegrityError):
+            _insert(
+                connection,
+                "forecast_snapshot",
+                company_id=company_id,
+                scenario_name="Main",
+                created_at=_NOW,
+                origin=bad,
+            )
+
+
+def test_0024_downgrade_drops_only_what_it_added_and_keeps_the_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0023"))
+    engine = create_engine(database_url)
+    before = {c["name"] for c in inspect(engine).get_columns("forecast_snapshot")}
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "0024"))
+    with engine.begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+        company_id = _company(connection, "AAA")
+        _audit(connection, company_id)  # a row that cascades from `company` (G34)
+        _snapshot(connection, company_id, None)
+
+    _run_alembic(tmp_path, monkeypatch, ("downgrade", "0023"))
+
+    engine.dispose()
+    assert {c["name"] for c in inspect(engine).get_columns("forecast_snapshot")} == before
+    with engine.begin() as connection:
+        assert _count(connection, "forecast_snapshot") == 1
+        assert _count(connection, "audit_log") == 1
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "0024"))
+    assert "origin" in {c["name"] for c in inspect(engine).get_columns("forecast_snapshot")}
+
+
+# --- 0025: thesis checkpoints (M7c S3, docs/erd/workspace.md "Thesis checkpoints") -------------
+
+
+def _checkpoint(connection: Connection, company_id: int, **cols: object) -> int:
+    row = {
+        "company_id": company_id,
+        "label": "Margins hold",
+        "statement": "gross_margin > 44%",
+        "freq": "ttm",
+        "margin": None,
+        "created_at": _NOW,
+        "updated_at": _NOW,
+    } | cols
+    return _insert(connection, "thesis_checkpoint", **row)
+
+
+def test_0025_creates_the_checkpoint_table_with_its_index(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0025"))
+    inspector = inspect(create_engine(database_url))
+    assert "thesis_checkpoint" in inspector.get_table_names()
+    assert "ix_thesis_checkpoint_company_id" in {
+        i["name"] for i in inspector.get_indexes("thesis_checkpoint")
+    }
+    nullable = {c["name"]: c["nullable"] for c in inspector.get_columns("thesis_checkpoint")}
+    assert nullable == {
+        "id": False,
+        "company_id": False,
+        "label": False,
+        "statement": False,
+        "freq": False,
+        "margin": True,
+        "created_at": False,
+        "updated_at": False,
+    }
+
+
+@pytest.mark.parametrize(
+    "bad", [{"freq": "quarterly"}, {"margin": -0.01}, {"label": None}, {"statement": None}]
+)
+def test_0025_checks_hold_at_the_database_level(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bad: dict[str, object]
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0025"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        company_id = _company(connection, "AAA")
+        _checkpoint(connection, company_id, freq="annual", margin=0)  # the boundaries pass
+    with engine.begin() as connection, pytest.raises(IntegrityError):
+        _checkpoint(connection, company_id, **bad)
+
+
+def test_0025_checkpoints_go_with_their_company(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0025"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+        gone = _company(connection, "AAA")
+        kept = _company(connection, "BBB")
+        _checkpoint(connection, gone)
+        _checkpoint(connection, kept, label="kept")
+        connection.execute(text("DELETE FROM company WHERE id = :id"), {"id": gone})
+        assert connection.execute(text("SELECT label FROM thesis_checkpoint")).all() == [("kept",)]
+
+
+def test_0025_downgrade_drops_only_the_table_and_up_again_recreates_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0025"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        company_id = _company(connection, "AAA")
+        _audit(connection, company_id)
+        _checkpoint(connection, company_id)
+
+    _run_alembic(tmp_path, monkeypatch, ("downgrade", "0024"))
+
+    engine.dispose()
+    assert "thesis_checkpoint" not in inspect(engine).get_table_names()
+    with engine.begin() as connection:
+        assert _count(connection, "company") == 1
+        assert _count(connection, "audit_log") == 1
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "0025"))
+    assert "thesis_checkpoint" in inspect(engine).get_table_names()
+
+
+# --- 0026: company archive (M7c S6, docs/erd/workspace.md "Archive and permanent deletion") ----
+
+
+def test_0026_adds_a_nullable_archived_at_and_keeps_the_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0025"))
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        _company(connection, "AAA")
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "0026"))
+
+    engine.dispose()
+    columns = {c["name"]: c for c in inspect(engine).get_columns("company")}
+    assert columns["archived_at"]["nullable"] is True
+    with engine.begin() as connection:
+        assert connection.execute(text("SELECT ticker, archived_at FROM company")).all() == [
+            ("AAA", None)
+        ]
+
+
+def test_0026_downgrade_drops_only_the_column_and_keeps_the_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_url = _run_alembic(tmp_path, monkeypatch, ("upgrade", "0025"))
+    engine = create_engine(database_url)
+    before = {c["name"] for c in inspect(engine).get_columns("company")}
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "0026"))
+    with engine.begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+        company_id = _company(connection, "AAA")
+        _audit(connection, company_id)  # a row that cascades from `company` (G34)
+        _checkpoint(connection, company_id)
+        connection.execute(text("UPDATE company SET archived_at = :at"), {"at": _NOW})
+
+    _run_alembic(tmp_path, monkeypatch, ("downgrade", "0025"))
+
+    engine.dispose()
+    assert {c["name"] for c in inspect(engine).get_columns("company")} == before
+    with engine.begin() as connection:
+        assert _count(connection, "company") == 1
+        assert _count(connection, "audit_log") == 1
+        assert _count(connection, "thesis_checkpoint") == 1
+
+    _run_alembic(tmp_path, monkeypatch, ("upgrade", "0026"))
+    assert "archived_at" in {c["name"] for c in inspect(engine).get_columns("company")}

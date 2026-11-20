@@ -20,6 +20,7 @@ from bedrock.ingest.protocol import (
     CompanyProfile,
     CompanyRef,
     EdgarPayload,
+    FilingRef,
     PricePayload,
     PriceRow,
     SeriesPayload,
@@ -221,3 +222,22 @@ def _recorded_filing(ticker: str, accession_no: str) -> tuple[tuple[str, bytes],
         (path.name.removesuffix(".gz"), gzip.decompress(path.read_bytes()))
         for path in sorted(folder.iterdir())
     )
+
+
+class FakeSubmissions:
+    """EDGAR's filing index: `rows` maps a ticker to the refs it lists (none for any other
+    ticker). Set `raises` (also after construction) to fail every call. `calls` lists the ticker
+    of every call, failing ones too."""
+
+    def __init__(
+        self, rows: dict[str, list[FilingRef]] | None = None, raises: Exception | None = None
+    ) -> None:
+        self.rows = dict(rows or {})
+        self.raises = raises
+        self.calls: list[str] = []
+
+    def recent_filings(self, company: CompanyRef) -> list[FilingRef]:
+        self.calls.append(company.ticker)
+        if self.raises is not None:
+            raise self.raises
+        return list(self.rows.get(company.ticker, []))

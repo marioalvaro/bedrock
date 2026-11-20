@@ -2,11 +2,12 @@
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
+from bedrock.core.clock import naive_utc
 from bedrock.models.company import Company
 from bedrock.models.segment_series import DIMENSIONS, UNITS, SegmentSeries
 from bedrock.models.segment_value import SegmentValue
@@ -73,10 +74,6 @@ _YEAR_RANGE = (1000, 9999)  # four digits, as the import grammar
 _ORDER_RANGE = (0, 1_000_000)
 
 
-def _naive_utc(moment: datetime) -> datetime:
-    return moment.astimezone(UTC).replace(tzinfo=None) if moment.tzinfo else moment
-
-
 def segment_grid(session: Session, company: Company, freq: SegmentFreq) -> SegmentGrid:
     """`statements/segments.py::segment_grid` on the company's series and values and its reported
     income statement of `freq` (trimmed: `services/statements.py::statement_tables` then
@@ -106,7 +103,7 @@ def create_series(
     _check_definition(data)
     existing = repo.list_series(session, company.id)
     _check_unique(existing, data.dimension, name, data.metric, None)
-    stamp = _naive_utc(now)
+    stamp = naive_utc(now)
     created = repo.add_series(
         session,
         SegmentSeries(
@@ -145,7 +142,7 @@ def update_series(
     )
     stored.name = name
     stored.display_order = display_order
-    stored.updated_at = _naive_utc(now)
+    stored.updated_at = naive_utc(now)
     session.commit()
     return _stored(session, company, series_id)
 
@@ -180,7 +177,7 @@ def set_values(
         if item.value is not None:
             _check_value(item.value)
     current = {(v.fiscal_year, v.fiscal_period): v for v in repo.list_values(session, [stored.id])}
-    stamp = _naive_utc(now)
+    stamp = naive_utc(now)
     for item in values:
         found = current.get((item.fiscal_year, item.fiscal_period))
         if item.value is None:
@@ -242,7 +239,7 @@ def import_segments(
         issues.sort(key=lambda i: (i.row, -1 if i.column is None else i.column))
         raise InvalidImport(issues)
 
-    stamp = _naive_utc(now)
+    stamp = naive_utc(now)
     next_order = repo.max_display_order(session, company.id)
     current = {
         (v.series_id, v.fiscal_year, v.fiscal_period): v
@@ -305,7 +302,7 @@ def fill_annual(session: Session, company: Company, dry_run: bool, now: datetime
     for fill in fills:
         _check_value(fill.value)
     current = {(v.series_id, v.fiscal_year): v for v in stored if v.fiscal_period == "FY"}
-    stamp = _naive_utc(now)
+    stamp = naive_utc(now)
     created = overwritten = unchanged = 0
     for fill in fills:
         old = current.get((fill.series_id, fill.fiscal_year))

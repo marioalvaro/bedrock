@@ -18,11 +18,14 @@ from bedrock.backtest.scoring import (
     summarize,
 )
 from bedrock.backtest.snapshot import RowKind, ValueRow, read_meta, run_meta, value_rows
+from bedrock.core.clock import naive_utc
 from bedrock.forecast.errors import ForecastUnavailable
+from bedrock.ingest.parse import FilingRecord
 from bedrock.models.company import Company
-from bedrock.models.forecast_run import ForecastRun, ForecastSnapshot, ValuationRun
+from bedrock.models.forecast_run import ForecastRun, ForecastSnapshot, SnapshotOrigin, ValuationRun
 from bedrock.repositories import facts as facts_repo
 from bedrock.repositories import runs as repo
+from bedrock.repositories import scenarios as scenarios_repo
 from bedrock.repositories.numeric import plain
 from bedrock.repositories.runs import StoredRun
 from bedrock.schemas.valuation import ValuationResultOut
@@ -37,7 +40,12 @@ from bedrock.services.run_scores import (
     load_actuals,
     score,
 )
-from bedrock.services.scenarios import get_scenario, load_history, naive_utc, settings_of
+from bedrock.services.scenarios import (
+    ensure_defaults,
+    get_scenario,
+    load_history,
+    settings_of,
+)
 from bedrock.services.valuation import CaseValuation, case_valuation
 from bedrock.statements.splits import split_factor
 from bedrock.valuation.inputs import format_input
@@ -49,6 +57,7 @@ __all__ = [
     "create_snapshot",
     "detail",
     "list_view",
+    "snapshot_before",
 ]
 
 NOTE_LIMIT = 500
@@ -67,6 +76,7 @@ class SnapshotView:
     revenue_mape: Decimal | None  # over them
     # M7d S4: the company's classification mode when the snapshot was taken; None before 0022
     classification_mode: str | None
+    origin: SnapshotOrigin  # M7c
 
 
 @dataclass(frozen=True)
@@ -131,15 +141,24 @@ class SnapshotDetail:
     scored_periods: int
     revenue_mape: Decimal | None
     classification_mode: str | None
+    origin: SnapshotOrigin
     cases: list[SnapshotCase]
 
 
 def create_snapshot(
-    session: Session, company: Company, scenario_id: int, note: str | None, now: datetime
+    session: Session,
+    company: Company,
+    scenario_id: int,
+    note: str | None,
+    now: datetime,
+    *,
+    origin: SnapshotOrigin = "manual",
+    trigger_accession: str | None = None,
 ) -> SnapshotView:
     """Freezes the scenario's three cases and their valuations. A case that cannot run is stored
     with its error. Raises ScenarioNotFound, InvalidSnapshot, and ForecastUnavailable when no case
-    can run (nothing is written)."""
+    can run (nothing is written). `origin` and `trigger_accession` are set by `snapshot_before`
+    only."""
     cleaned = _clean_note(note)
     scenario = get_scenario(session, company, scenario_id)
     # All reads first, with no write lock held.
@@ -183,12 +202,45 @@ def create_snapshot(
             data_as_of=data_as_of,
             created_at=stamp,
             classification_mode=company.classification_mode,
+            origin=origin,
+            trigger_accession=trigger_accession,
         ),
         runs,
     )
     session.commit()
     views, _ = _views(session, [snapshot], actuals_from(session, company, history))
     return views[0]
+
+
+def snapshot_before(
+    session: Session, company: Company, incoming: Sequence[FilingRecord], now: datetime
+) -> SnapshotView | None:
+    """Freezes the default scenario before the `incoming` reports (oldest first, from
+    `backtest/snapshot.py::incoming_reports`) are stored (FR-ACC-05; docs/erd/accountability.md
+    "Automatic snapshots"). None when nothing comes in or a snapshot was already taken before the
+    newest of them. Commits on its own; raises what `create_snapshot` raises."""
+    if not incoming:
+        return None
+    trigger = incoming[-1]
+    if repo.has_trigger(session, company.id, trigger.accession_no):
+        return None
+    ensure_defaults(session, company, now)
+    default = scenarios_repo.get_default(session, company.id)
+    assert default is not None  # ensure_defaults ran
+    filed = trigger.filed_at.isoformat()
+    if len(incoming) == 1:
+        note = f"Before the {trigger.form} filed {filed}"
+    else:
+        note = f"Before {len(incoming)} filings, the newest the {trigger.form} filed {filed}"
+    return create_snapshot(
+        session,
+        company,
+        default.id,
+        note,
+        now,
+        origin="auto",
+        trigger_accession=trigger.accession_no,
+    )
 
 
 def list_view(session: Session, company: Company) -> SnapshotList:
@@ -326,6 +378,7 @@ def _view(
         scored_periods=len(revenue),
         revenue_mape=sum(errors, Decimal(0)) / len(errors) if errors else None,
         classification_mode=snapshot.classification_mode,
+        origin=snapshot.origin,
     )
 
 

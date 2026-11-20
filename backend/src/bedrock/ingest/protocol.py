@@ -83,6 +83,23 @@ class FilingsLike(Protocol):
     def fetch(self, company: CompanyRef, accession_no: str) -> dict[str, bytes]: ...
 
 
+@dataclass(frozen=True)
+class FilingRef:
+    """One 10-K or 10-Q as EDGAR's filing index lists it (M7c, FR-DATA-23)."""
+
+    accession_no: str
+    form: str  # 10-K | 10-Q
+    filed_at: date
+    period_end: date | None  # EDGAR's `reportDate`; None when blank
+
+
+class SubmissionsLike(Protocol):
+    """What the services need from EDGAR's filing index: `EdgarSource`, or a test double.
+    `recent_filings` gives the 10-K and 10-Q rows, newest first, and raises SourceUnavailable."""
+
+    def recent_filings(self, company: CompanyRef) -> list[FilingRef]: ...
+
+
 class PricesLike(DataSource[PricePayload], Protocol):
     """What the services need from the price source: `YFinanceSource`, or a test double."""
 

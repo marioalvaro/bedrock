@@ -2,7 +2,7 @@
 company (FR-ANL-05, FR-ANL-06). Flags and capital allocation are on the reported basis."""
 
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from bedrock.analysis import capital_allocation as capital_engine
 from bedrock.analysis.capital_allocation import CapitalAllocationTable
 from bedrock.analysis.qoe import FlagTable, evaluate_flags
+from bedrock.core.clock import naive_utc
 from bedrock.models.company import Company
 from bedrock.models.off_balance_item import KINDS, OffBalanceItem
 from bedrock.ratios.calculator import RatioFreq
@@ -64,7 +65,7 @@ def create_off_balance_item(
     an amount that is not finite or whose magnitude is >= `services/adjustments.py::AMOUNT_LIMIT`
     (docs/Gotcha.md G15)."""
     _validate(data)
-    stamp = _naive_utc(now)
+    stamp = naive_utc(now)
     added = repo.add(
         session,
         OffBalanceItem(company_id=company.id, created_at=stamp, updated_at=stamp, **_fields(data)),
@@ -83,7 +84,7 @@ def update_off_balance_item(
     _validate(data)
     for name, value in _fields(data).items():
         setattr(stored, name, value)
-    stored.updated_at = _naive_utc(now)
+    stored.updated_at = naive_utc(now)
     session.commit()
     return _reloaded(session, company, item_id)
 
@@ -132,8 +133,3 @@ def _validate(data: OffBalanceInput) -> None:
         raise InvalidOffBalanceItem(
             f"The amount is too large: it must be below {AMOUNT_LIMIT:,} USD"
         )
-
-
-def _naive_utc(moment: datetime) -> datetime:
-    # SQLite keeps no time zone: the columns hold UTC without one.
-    return moment.astimezone(UTC).replace(tzinfo=None)

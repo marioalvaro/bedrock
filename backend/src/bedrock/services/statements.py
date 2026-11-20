@@ -252,16 +252,19 @@ def statement_tables(
     basis: Basis = "reported",
     common_size_base: CommonSizeBase = "total",
     as_of: date | None = None,
+    classified: Mapping[Concept, tuple[str, ...]] | None = None,
 ) -> dict[tuple[str, Freq], StatementTable]:
     """Every requested (statement, freq) table on `basis`, untrimmed, from one load of the
     company's facts (and one read of its adjustments when `normalized`) and one solve of its
     cells (`statements/build.py::build_tables`), keyed in request order. `common_size_base`
     applies to every table. A company with no facts gives empty tables. Raises ValueError for a
     TTM balance sheet. With `as_of`, only what was known on that date counts (`_load`, and the
-    adjustments created by then)."""
+    adjustments created by then). `classified` is passed to `face_lines`: None applies the
+    company's effective classifications, `{}` none (the as-reported read of M7c's earnings
+    review)."""
     if ("BS", "ttm") in wanted:
         raise ValueError("TTM is only defined for flow statements, not the balance sheet")
-    loaded = _load(session, company, as_of=as_of)
+    loaded = _load(session, company, as_of=as_of, classified=classified)
     if loaded.empty:
         return {(s, f): StatementTable(s, f, [], [], None, []) for s, f in wanted}
     adjustments = (
@@ -308,10 +311,7 @@ def fiscal_periods(session: Session, company: Company) -> set[tuple[int, str]]:
     if loaded.empty:
         return set()
     calendar = company_calendar(loaded.canonical, loaded.rules.imported)
-    return {
-        (p.fiscal_year, p.fiscal_period)
-        for p in annual_periods(calendar) + quarterly_periods(calendar)
-    }
+    return {p.point for p in annual_periods(calendar) + quarterly_periods(calendar)}
 
 
 def mapping_gaps(session: Session, company: Company) -> MappingGaps:
@@ -387,11 +387,12 @@ def _load(
     codes: frozenset[str] | None = None,
     as_of: date | None = None,
     structure: bool = True,
+    classified: Mapping[Concept, tuple[str, ...]] | None = None,
 ) -> StatementInputs:
     """`structure=False` leaves the face lines of the filings out (no structure rule then runs):
     for a caller that reads the calendar and solves nothing. `as_of` cuts the facts and cover-page
     shares by `filed_at` (before the vintage and the NCI rule read them) and the imported values
-    by import date. Splits, mappings and custom-line
+    by import date; `classified` is `face_lines`'. Splits, mappings and custom-line
     definitions are not cut (a custom line defined later simply has no values at the date)."""
     items = canonical_items()
     mappings = mappings_repo.mappings_for(session, company.id)
@@ -424,7 +425,9 @@ def _load(
         imported.vintages,
         complete_parents([(r.code, r.parent_code, r.children_complete) for r in rows]),
         # The structure rules, like the identities, would read an unloaded line as empty.
-        face_lines(session, company, mappings, as_of) if codes is None and structure else None,
+        face_lines(session, company, mappings, as_of, classified)
+        if codes is None and structure
+        else None,
     )
     return StatementInputs(items, mappings, facts, canonical, rules, tuple(stored), custom)
 

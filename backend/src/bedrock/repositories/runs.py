@@ -44,6 +44,15 @@ def list_snapshots(session: Session, company_id: int) -> list[ForecastSnapshot]:
     return list(session.execute(stmt).scalars())
 
 
+def has_trigger(session: Session, company_id: int, accession_no: str) -> bool:
+    """Whether a snapshot of the company was already taken before this filing."""
+    stmt = select(ForecastSnapshot.id).where(
+        ForecastSnapshot.company_id == company_id,
+        ForecastSnapshot.trigger_accession == accession_no,
+    )
+    return session.execute(stmt.limit(1)).first() is not None
+
+
 def get_snapshot(session: Session, company_id: int, snapshot_id: int) -> ForecastSnapshot | None:
     """The snapshot, if it is this company's."""
     stmt = select(ForecastSnapshot).where(

@@ -107,7 +107,7 @@ def missing_items(
         table = tables.get(item.statement)
         if item.residual or item.code in SUPPORT_CODES or table is None:
             continue
-        row = next((r for r in table.rows if r.code == item.code), None)
+        row = table.row(item.code)
         if row is None:
             continue
         periods = [

@@ -10,12 +10,14 @@ import {
   getFlagsApiV1CompaniesTickerFlagsGet,
   getRatiosApiV1CompaniesTickerRatiosGet,
   getStatementApiV1CompaniesTickerStatementsGet,
+  listCheckpointsApiV1CompaniesTickerCheckpointsGet,
   listNotesApiV1CompaniesTickerNotesGet,
   updateNoteApiV1CompaniesTickerNotesNoteIdPut,
 } from "@/api/generated/sdk.gen";
 import type { NoteOut } from "@/api/generated/types.gen";
 import { createQueryClient } from "@/lib/query-client";
 import { capitalAllocation, flags, ratios } from "@/test/analysis";
+import { checkpointList } from "@/test/checkpoints";
 import { note } from "@/test/context";
 import { errorResult, okResult } from "@/test/responses";
 import { balanceStatement, incomeStatement } from "@/test/statements";
@@ -31,6 +33,7 @@ vi.mock("@/api/generated/sdk.gen", () => ({
   getRatiosApiV1CompaniesTickerRatiosGet: vi.fn(),
   getCapitalAllocationApiV1CompaniesTickerCapitalAllocationGet: vi.fn(),
   getFlagsApiV1CompaniesTickerFlagsGet: vi.fn(),
+  listCheckpointsApiV1CompaniesTickerCheckpointsGet: vi.fn(),
 }));
 
 const list = vi.mocked(listNotesApiV1CompaniesTickerNotesGet);
@@ -73,6 +76,9 @@ beforeEach(() => {
   create.mockResolvedValue(okResult(note({ id: 9 }), 201) as never);
   update.mockResolvedValue(okResult(note()) as never);
   remove.mockResolvedValue(okResult(null, 204) as never);
+  vi.mocked(listCheckpointsApiV1CompaniesTickerCheckpointsGet).mockResolvedValue(
+    okResult(checkpointList()) as never,
+  );
   // Each statement has its own lines, so no option is listed twice.
   const cashFlow = incomeStatement({
     statement: "CF",
@@ -171,7 +177,10 @@ describe("NotesView list", () => {
   it("shows loading first", () => {
     list.mockReturnValue(new Promise(() => {}) as never);
     renderView();
-    expect(screen.getByText("Loading…")).toBeVisible();
+    // The checkpoints panel above the journal loads too (M7c).
+    const loading = screen.getAllByText("Loading…");
+    expect(loading).toHaveLength(2);
+    for (const line of loading) expect(line).toBeVisible();
   });
 });
 
@@ -584,5 +593,17 @@ describe("NotesView delete", () => {
     const dialog = await screen.findByRole("alertdialog");
     await userEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
     expect(await screen.findByText("Note not found")).toBeVisible();
+  });
+});
+
+describe("thesis checkpoints (M7c, FR-NOTE-03)", () => {
+  it("lists the checkpoints above the journal", async () => {
+    await renderLoaded();
+    const heading = await screen.findByRole("heading", { name: "Thesis checkpoints" });
+    expect(await screen.findByText("Gross margin holds")).toBeInTheDocument();
+    const journal = screen.getByText("Plain journal entry");
+    expect(
+      heading.compareDocumentPosition(journal) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });

@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import CheckConstraint, Date, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
@@ -30,3 +30,9 @@ class Filing(Base):
         nullable=True,
     )
     xbrl_parser_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    @property
+    def before_as_of(self) -> date:
+        """The as-of date of the read before this filing: the day before it was filed. What the
+        filing changed is that read against the one now (earnings review, checkpoints)."""
+        return self.filed_at - timedelta(days=1)

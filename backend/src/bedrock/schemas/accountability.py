@@ -4,9 +4,15 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from bedrock.analysis.guidance import Basis, Verdict
+from bedrock.analysis.qoe import RuleUnit, Severity
 from bedrock.models.audit_log import AuditAction, AuditEntity
+from bedrock.models.forecast_run import SnapshotOrigin
+from bedrock.schemas.checkpoints import CheckpointOut
 from bedrock.services.audit import AuditPage
 from bedrock.services.backtest import BacktestView
+from bedrock.services.guidance import LoggedEntry
+from bedrock.services.review import EarningsReview, ReviewLine
 from bedrock.services.snapshots import SnapshotDetail, SnapshotList, SnapshotView
 
 
@@ -50,6 +56,8 @@ class SnapshotOut(BaseModel):
     revenue_mape: Decimal | None
     # M7d S4: the company's classification mode when it was taken; null for an older snapshot
     classification_mode: Literal["off", "accepted", "all"] | None
+    # M7c: `auto` when a refresh took it just before storing a new 10-K or 10-Q
+    origin: SnapshotOrigin
 
     @classmethod
     def from_view(cls, view: SnapshotView) -> "SnapshotOut":
@@ -201,3 +209,179 @@ class AuditRationaleIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     rationale: str | None  # blank or null clears it
+
+
+# --- earnings review (M7c, FR-ACC-06) ------------------------------------------------------------
+
+
+class ReviewFilingOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    accession_no: str
+    form: str
+    filed_at: date
+    period_end: date
+
+
+class ReviewPeriodOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    fiscal_year: int
+    fiscal_period: str
+    label: str
+
+
+class ReviewSnapshotOut(BaseModel):
+    """The snapshot taken on data older than the filing; `classification_mode` is the snapshot's
+    own (the actuals are read under the company's current mode)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    scenario_name: str
+    origin: SnapshotOrigin
+    created_at: datetime
+    data_as_of: date | None
+    classification_mode: Literal["off", "accepted", "all"] | None
+
+
+class RangeOut(BaseModel):
+    """A latest guidance or consensus entry on the line at the period. `actual` is the entry's own
+    (judged on its basis), so it can differ from the line's."""
+
+    low: Decimal
+    high: Decimal
+    basis: Basis
+    actual: Decimal | None
+    verdict: Verdict
+    surprise: Decimal | None
+    given_on: date
+
+    @classmethod
+    def from_entry(cls, logged: LoggedEntry | None) -> "RangeOut | None":
+        if logged is None:
+            return None
+        result = logged.result
+        entry = result.entry
+        return cls(
+            low=entry.low,
+            high=entry.high,
+            basis=entry.basis,
+            actual=result.actual,
+            verdict=result.verdict,
+            surprise=result.surprise,
+            given_on=entry.given_on,
+        )
+
+
+class ReviewLineOut(BaseModel):
+    code: str
+    label: str
+    unit: str
+    actual: Decimal | None
+    prior_year: Decimal | None
+    yoy: Decimal | None
+    forecast: Decimal | None  # the snapshot's Base
+    low: Decimal | None  # the Bull-Bear envelope; null unless all three cases have a forecast
+    high: Decimal | None
+    pct_error: Decimal | None
+    in_range: bool | None
+    consensus: RangeOut | None
+    guidance: RangeOut | None
+
+    @classmethod
+    def from_line(cls, line: ReviewLine) -> "ReviewLineOut":
+        pick = line.snapshot
+        return cls(
+            code=line.code,
+            label=line.label,
+            unit=line.unit,
+            actual=line.actual,
+            prior_year=line.prior_year,
+            yoy=line.yoy,
+            forecast=pick.forecast,
+            low=pick.low,
+            high=pick.high,
+            pct_error=pick.pct_error,
+            in_range=pick.in_range,
+            consensus=RangeOut.from_entry(line.consensus),
+            guidance=RangeOut.from_entry(line.guidance),
+        )
+
+
+class ReviewDriverOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    code: str
+    label: str
+    unit: str
+    forecast: Decimal
+    actual: Decimal | None
+    pct_error: Decimal
+    in_range: bool | None
+    source: str | None
+
+
+class RestatedOut(BaseModel):
+    """A prior value the filing changed: the read the day before it against the read now."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    statement: Literal["IS", "BS", "CF"]
+    code: str
+    label: str
+    unit: str
+    fiscal_year: int
+    fiscal_period: str
+    before: Decimal
+    after: Decimal
+    pct_change: Decimal | None  # null when before is 0
+
+
+class FlagChangeOut(BaseModel):
+    """A QoE flag whose severity at the last period changed with the filing (null: no value)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    code: str
+    label: str
+    unit: RuleUnit
+    before: Severity | None
+    after: Severity | None
+    value_before: Decimal | None
+    value_after: Decimal | None
+
+
+class EarningsReviewOut(BaseModel):
+    """The review of the newest 10-K or 10-Q; `filing` null (none stored) leaves every list
+    empty. `restated` holds the first 50 of `restated_total`."""
+
+    ticker: str
+    filing: ReviewFilingOut | None
+    period: ReviewPeriodOut | None
+    snapshot: ReviewSnapshotOut | None
+    lines: list[ReviewLineOut]
+    drivers: list[ReviewDriverOut]
+    drivers_note: str | None
+    restated: list[RestatedOut]
+    restated_total: int
+    flags: list[FlagChangeOut]
+    checkpoints: list[CheckpointOut]
+
+    @classmethod
+    def from_review(cls, review: EarningsReview) -> "EarningsReviewOut":
+        return cls(
+            ticker=review.ticker,
+            filing=None if review.filing is None else ReviewFilingOut.model_validate(review.filing),
+            period=None if review.period is None else ReviewPeriodOut.model_validate(review.period),
+            snapshot=None
+            if review.snapshot is None
+            else ReviewSnapshotOut.model_validate(review.snapshot),
+            lines=[ReviewLineOut.from_line(line) for line in review.lines],
+            drivers=[ReviewDriverOut.model_validate(d) for d in review.drivers],
+            drivers_note=review.drivers_note,
+            restated=[RestatedOut.model_validate(r) for r in review.restated],
+            restated_total=review.restated_total,
+            flags=[FlagChangeOut.model_validate(f) for f in review.flags],
+            checkpoints=[CheckpointOut.from_view(c) for c in review.checkpoints],
+        )

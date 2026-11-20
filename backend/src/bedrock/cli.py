@@ -74,6 +74,11 @@ def _result_lines(result: RefreshResult) -> list[str]:
         f"  new_splits: {result.new_splits}",
         f"  new_filing_lines: {result.new_filing_lines}",
         f"  last_refreshed_at: {result.last_refreshed_at.isoformat()}",
+        *(
+            [f"  snapshot {result.snapshot_id} taken before the new filing"]
+            if result.snapshot_id is not None
+            else []
+        ),
         *(f"  warning: {warning}" for warning in result.warnings),
     ]
 
@@ -109,7 +114,7 @@ def _tickers_or_all(tickers: list[str] | None, all_companies: bool) -> list[str]
     if all_companies:
         engine = make_engine(load_settings().resolved_database_url)
         with make_sessionmaker(engine)() as session:
-            tickers = [c.ticker for c in companies_repo.list_all(session)]
+            tickers = [c.ticker for c in companies_repo.list_followed(session)]
         engine.dispose()
     return tickers or []
 

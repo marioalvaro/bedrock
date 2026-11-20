@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Literal
 
 from sqlalchemy import (
     CheckConstraint,
@@ -17,6 +18,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from bedrock.models.base import Base
 
+SnapshotOrigin = Literal["manual", "auto"]  # `auto`: taken by a refresh before a new report
+
 
 class ForecastSnapshot(Base):
     """A frozen copy of a scenario (FR-ACC-01; docs/erd/accountability.md "Snapshots"). Nothing
@@ -24,7 +27,10 @@ class ForecastSnapshot(Base):
     kept as text."""
 
     __tablename__ = "forecast_snapshot"
-    __table_args__ = (Index("ix_forecast_snapshot_company_created", "company_id", "created_at"),)
+    __table_args__ = (
+        Index("ix_forecast_snapshot_company_created", "company_id", "created_at"),
+        CheckConstraint("origin IN ('manual', 'auto')", name="origin"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     company_id: Mapped[int] = mapped_column(
@@ -40,6 +46,11 @@ class ForecastSnapshot(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     # M7d: the company's classification mode when the snapshot was taken; null before 0022
     classification_mode: Mapped[str | None] = mapped_column(String, nullable=True)
+    # M7c: `auto` when the refresh took it before storing a new report, whose accession it keeps
+    origin: Mapped[SnapshotOrigin] = mapped_column(
+        String, nullable=False, default="manual", server_default="manual"
+    )
+    trigger_accession: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 class ForecastRun(Base):

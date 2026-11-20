@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from bedrock.backtest.pit import origins, run_method
 from bedrock.backtest.scoring import Scored, summarize
+from bedrock.core.clock import naive_utc
 from bedrock.forecast.engine_defaults import ENGINE_CODES
 from bedrock.models.company import Company
 from bedrock.models.forecast_run import ForecastRun
@@ -18,7 +19,7 @@ from bedrock.repositories.runs import StoredRun
 from bedrock.services.engines import memo_fit
 from bedrock.services.errors import InvalidBacktest
 from bedrock.services.run_scores import ScoreRow, labelled, load_actuals, score
-from bedrock.services.scenarios import load_history, naive_utc
+from bedrock.services.scenarios import load_history
 
 __all__ = ["BacktestView", "backtest_view", "run_backtest"]
 
